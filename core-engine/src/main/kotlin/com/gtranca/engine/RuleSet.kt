@@ -17,6 +17,28 @@ data class RuleSet(
     val minCanastaSize: Int = 6,
     /** §6.3 máximo de coringas por conjunto. */
     val maxWildsPerMeld: Int = 1,
+    /** §12.1 cada 3 vermelho na mesa. */
+    val redThreePoints: Int = 100,
+    /** §12.1 cada canastra limpa. */
+    val cleanCanastaPoints: Int = 200,
+    /** §12.1 cada canastra suja. */
+    val dirtyCanastaPoints: Int = 100,
+    /** §12.1 batida (só o lado vencedor). */
+    val goOutPoints: Int = 100,
+    /** §12.2 lado que terminou a partida sem ter pego morto. */
+    val mortoNotTakenPoints: Int = -100,
+    /** §12.2 3 vermelho na mão. */
+    val handRedThreePoints: Int = -5,
+    /** §12.2 3 preto na mão. */
+    val handBlackThreePoints: Int = -5,
+    /** §12.2 cartas de 4 a 10 na mão. */
+    val handFourToTenPoints: Int = -8,
+    /** §12.2 J, Q, K e A na mão. */
+    val handFaceCardOrAcePoints: Int = -10,
+    /** §12.2 coringa (2) na mão. */
+    val handWildPoints: Int = -10,
+    /** §14 pontuação-alvo padrão (configurável pelo jogador ao iniciar o jogo). */
+    val defaultTargetScore: Int = 3000,
 ) {
     init {
         // O posicionamento do coringa na sequência (§6.3) só é definido para no máximo 1 coringa.

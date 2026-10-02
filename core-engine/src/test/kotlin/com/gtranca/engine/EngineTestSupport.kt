@@ -5,6 +5,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldId
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
@@ -35,6 +36,8 @@ class RoundStateBuilder(private val mode: GameMode) {
     var discardPile: List<Card> = emptyList()
     var current: Int = 0
     var phase: Phase = Phase.AWAITING_DRAW
+    /** Se definido, a partida está encerrada ([Phase.FINISHED]) com este resultado. */
+    var result: RoundResult? = null
 
     fun hand(seat: Int, text: String) { hands[seat] = cards(text) }
     fun stock(text: String) { stock = cards(text) }
@@ -65,7 +68,8 @@ class RoundStateBuilder(private val mode: GameMode) {
         tables = tables.toList(),
         firstSeat = Seat(0),
         currentSeat = Seat(current),
-        phase = phase,
+        phase = if (result != null) Phase.FINISHED else phase,
+        result = result,
         mortoStatus = mortoStatus.toList(),
     )
 }
