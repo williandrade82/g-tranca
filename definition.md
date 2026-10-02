@@ -32,6 +32,7 @@
 
 ### **3.2. Mortos**
 - São formados **2 mortos**, cada um com **11 cartas**.
+- Os mortos são distribuídos **depois das mãos**, **uma carta por vez para cada morto, alternadamente** (1ª carta para o 1º morto, 2ª para o 2º morto, 3ª para o 1º morto…), até que cada morto tenha 11 cartas.
 - Os mortos ficam na mesa como **dois montes separados**, com as cartas **viradas para baixo**: todos sabem que eles existem, mas ninguém pode ver suas cartas até pegá-los.
 
 ### **3.3. Monte**
