@@ -45,16 +45,13 @@ object RoundEngine {
         step(state, seat, action, rules).getOrThrow()
 
     /**
-     * Ações válidas do [seat]. Não lista todas as combinações, e sim um conjunto representativo:
-     * - fase de compra: [Action.DrawFromStock], [Action.DeclineDraw] (§10.2) e, para pegar o lixo,
-     *   cada plano válido com o mínimo de cartas da mão (acréscimo a cada conjunto do lado; grupo novo
-     *   com 2 cartas da mão; sequência nova de menor tamanho válida contendo o topo);
-     * - fase de jogada: conjuntos novos mínimos (3 cartas; por naipe, uma sequência maior só se nenhuma
-     *   de 3 for válida), acréscimos de 1 carta e descartes.
+     * Ações válidas do [seat], **completas a menos de cartas idênticas**: toda ação aceita por [validate]
+     * está na lista, ou está uma equivalente que difere só pela cópia do baralho de alguma carta
+     * (mesmo valor e naipe). Cada classe aparece uma vez, com cartas representativas.
      *
-     * Para cada carta física, apenas uma cópia representativa é usada nos conjuntos. Jogadas maiores
-     * aceitas por [validate] em geral se decompõem nessas (ex.: acréscimo de várias cartas = acréscimos
-     * de uma em uma, numa ordem adequada), mas a decomposição não é garantida em todos os casos de §6.4.
+     * Inclui, conforme a fase: [Action.DrawFromStock], [Action.DeclineDraw] (§10.2), todos os planos de
+     * [Action.TakeDiscardPile] (§5.1); todos os [Action.CreateMeld] e [Action.AddToMeld] (de qualquer
+     * tamanho) e todos os [Action.Discard]. Ver [LegalActions] para a enumeração.
      */
     fun legalActions(state: RoundState, seat: Seat, rules: RuleSet = RuleSet.DEFAULT): List<Action> =
         LegalActions.generate(state, seat, rules)
@@ -214,7 +211,7 @@ object RoundEngine {
     /** §4.2 passa a vez; §10.2 / §11.2 fim sem vencedor se o próximo não pode comprar nem pegar o lixo. */
     private fun passTurn(state: RoundState, seat: Seat, rules: RuleSet): RoundState {
         val next = state.copy(currentSeat = state.mode.nextSeat(seat), phase = Phase.AWAITING_DRAW)
-        if (cannotDraw(next) && LegalActions.discardPileOptions(next, next.currentSeat, rules).isEmpty()) {
+        if (cannotDraw(next) && !LegalActions.canTakeDiscardPile(next, next.currentSeat, rules)) {
             return next.finish(RoundResult.NoWinner)
         }
         return next

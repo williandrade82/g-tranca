@@ -169,6 +169,7 @@ Um conjunto pode ser:
 ### **7.3. Crescimento**
 - Uma canastra pode continuar recebendo cartas naturais.
 - Uma canastra limpa não pode receber coringa (ver §6.3).
+- Ao acrescentar várias cartas de uma vez, vale o estado do conjunto **antes** do acréscimo: um conjunto que ainda não é canastra pode receber um coringa junto com cartas naturais, mesmo que o resultado seja uma canastra (suja). Ex.: 4-5-6-7-8♥ + 10♥ e um coringa → canastra suja de 7 cartas.
 
 ---
 

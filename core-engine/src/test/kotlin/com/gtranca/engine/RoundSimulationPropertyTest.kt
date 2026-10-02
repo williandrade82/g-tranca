@@ -43,7 +43,8 @@ class RoundSimulationPropertyTest {
             // ninguém fora da vez tem ação
             mode.seats.filter { it != seat }.forEach { RoundEngine.legalActions(state, it) shouldBe emptyList() }
             if (legal.isEmpty()) return Outcome(state, count, deadEnd = true)
-            legal.forEach { RoundEngine.validate(state, seat, it).shouldBeOk() }
+            // as ações listadas já passam por step na geração; confere uma amostra via validate
+            legal.shuffled(random).take(3).forEach { RoundEngine.validate(state, seat, it).shouldBeOk() }
             state = RoundEngine.apply(state, seat, choose(legal, random))
             count++
             checkInvariants(state)

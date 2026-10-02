@@ -167,6 +167,17 @@ class MeldAddTest {
     }
 
     @Test
+    fun `acrescimo de varias cartas vale o estado antes do acrescimo`() {
+        // §7.3 ex.: 4-5-6-7-8♥ + 10♥ e um coringa juntos → canastra suja de 7 cartas
+        val m = meld("4H 5H 6H 7H 8H").add(cards("TH 2C")).shouldBeOk()
+        m.cards.size shouldBe 7
+        m.wildRank shouldBe Rank.NINE
+        m.isDirtyCanasta().shouldBeTrue()
+        // já canastra limpa, o mesmo acréscimo é recusado
+        meld("4H 5H 6H 7H 8H 9H").add(cards("JH 2C")) shouldFailWith MeldError.WILD_IN_CLEAN_CANASTA
+    }
+
+    @Test
     fun `tamanho minimo de canastra vem do RuleSet`() {
         // §14 tamanho mínimo de canastra no RuleSet
         RuleSet.DEFAULT.minCanastaSize shouldBe 6

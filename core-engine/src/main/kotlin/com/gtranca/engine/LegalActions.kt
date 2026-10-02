@@ -1,6 +1,7 @@
 package com.gtranca.engine
 
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.Meld
 import com.gtranca.engine.model.MeldKind
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Rank
@@ -10,8 +11,16 @@ import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Suit
 
 /**
- * Gera candidatos de ação agrupando as cartas por naipe/valor (sem força bruta sobre subconjuntos)
- * e mantém só os aceitos por [RoundEngine.step]. Ver [RoundEngine.legalActions].
+ * Enumeração COMPLETA, a menos de cartas idênticas, das ações válidas (ver [RoundEngine.legalActions]).
+ *
+ * As cartas da mão são agrupadas em classes de equivalência (valor + naipe; as duas cópias do baralho
+ * são intercambiáveis para todas as regras). Para cada classe de jogada, os candidatos são gerados de
+ * forma estrutural, sem percorrer subconjuntos da mão:
+ * - grupo: quantas naturais de cada naipe daquele número (0..cópias na mão) + coringa opcional;
+ * - sequência: faixa de valores (4..Ás) de um naipe, com no máximo um buraco preenchido por coringa,
+ *   ou sem buraco e com coringa opcional (o motor posiciona na ponta, §6.3);
+ * - acréscimo/plano de lixo: idem, com o resultado contendo o conjunto existente (e o topo do lixo).
+ * Cada candidato é então conferido por [RoundEngine.step]; só os aceitos são devolvidos.
  */
 internal object LegalActions {
 
@@ -19,136 +28,163 @@ internal object LegalActions {
 
     fun generate(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
         if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
-        val candidates: List<Action> = when (state.phase) {
-            Phase.AWAITING_DRAW -> listOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat, rules)
-            Phase.PLAYING -> createCandidates(state, seat, rules) + addCandidates(state, seat) + discardCandidates(state, seat)
-            Phase.FINISHED -> emptyList()
+        val candidates: Sequence<Action> = when (state.phase) {
+            Phase.AWAITING_DRAW ->
+                sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
+            Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
+            Phase.FINISHED -> emptySequence()
         }
-        return candidates.distinct().filter { isValid(state, seat, it, rules) }
+        return candidates.distinct().filter { isValid(state, seat, it, rules) }.toList()
     }
 
-    /** Planos válidos para pegar o lixo (usado também na verificação de fim sem vencedor, §10.2). */
-    fun discardPileOptions(state: RoundState, seat: Seat, rules: RuleSet): List<Action> =
-        discardPileCandidates(state, seat, rules).distinct().filter { isValid(state, seat, it, rules) }
+    /** §10.2 existe algum plano válido para pegar o lixo (verificação exata). */
+    fun canTakeDiscardPile(state: RoundState, seat: Seat, rules: RuleSet): Boolean =
+        discardPileCandidates(state, seat).any { isValid(state, seat, it, rules) }
 
     private fun isValid(state: RoundState, seat: Seat, action: Action, rules: RuleSet): Boolean =
         RoundEngine.step(state, seat, action, rules) is RuleResult.Ok
 
-    // ---------- pegar o lixo (§5.1) ----------
+    // ---------- índice da mão ----------
 
-    private fun discardPileCandidates(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
-        val top = state.discardTop ?: return emptyList()
-        if (top.isWild || top.rank.isThree) return emptyList()
-        val hand = state.handOf(seat)
-        val wild = hand.firstOrNull { it.isWild }
-        val result = mutableListOf<Action>()
+    /** Mão agrupada por classe (valor + naipe); coringas por naipe. */
+    private class HandIndex(hand: List<Card>) {
+        private val byClass: Map<Pair<Rank, Suit>, List<Card>> =
+            hand.filter { !it.isWild }.groupBy { it.rank to it.suit }
 
-        // acréscimo do topo a conjunto do lado: sozinho ou preenchendo o intervalo até a sequência
-        for (tableMeld in state.tableOf(state.mode.sideOf(seat)).melds) {
-            val id = tableMeld.id
-            result += Action.TakeDiscardPile(DiscardPlan.AddToMeld(id))
-            val kind = tableMeld.meld.kind
-            if (kind is MeldKind.Sequence && kind.suit == top.suit) {
-                val meld = tableMeld.meld
-                val gap = when {
-                    top.rank > meld.highRank -> Rank.entries.filter { it > meld.highRank && it < top.rank }
-                    top.rank < meld.lowRank -> Rank.entries.filter { it > top.rank && it < meld.lowRank }
-                    else -> emptyList()
-                }
-                if (gap.isNotEmpty()) {
-                    val found = gap.mapNotNull { r -> hand.firstOrNull { !it.isWild && it.suit == top.suit && it.rank == r } }
-                    val missing = gap.size - found.size
-                    if (missing == 0) result += Action.TakeDiscardPile(DiscardPlan.AddToMeld(id, found))
-                    if (missing == 1 && wild != null) result += Action.TakeDiscardPile(DiscardPlan.AddToMeld(id, found + wild))
-                }
+        /** Opções de coringa: nenhum, ou um representante de cada naipe de coringa presente. */
+        val wildOptions: List<Card?> = listOf<Card?>(null) + hand.filter { it.isWild }.distinctBy { it.suit }
+
+        val realWilds: List<Card> = wildOptions.filterNotNull()
+
+        fun natural(rank: Rank, suit: Suit): Card? = byClass[rank to suit]?.first()
+
+        /** Todas as escolhas de naturais do número [rank] (por naipe, 0..cópias), inclusive a vazia. */
+        fun groupChoices(rank: Rank): List<List<Card>> =
+            Suit.entries.fold(listOf(emptyList())) { acc, suit ->
+                val copies = byClass[rank to suit].orEmpty()
+                acc.flatMap { partial -> (0..copies.size).map { n -> partial + copies.take(n) } }
             }
-        }
 
-        // grupo novo: topo + 2 naturais do mesmo número, ou topo + 1 natural + coringa
-        val sameRank = hand.filter { !it.isWild && it.rank == top.rank }
-        if (sameRank.size >= 2) result += Action.TakeDiscardPile(DiscardPlan.NewMeld(sameRank.take(2)))
-        if (sameRank.isNotEmpty() && wild != null) {
-            result += Action.TakeDiscardPile(DiscardPlan.NewMeld(listOf(sameRank.first(), wild)))
-        }
-
-        // sequência nova contendo o topo: a de menor tamanho válida
-        val bySuit = representativesBySuit(hand, top.suit)
-        val runs = sequenceRuns(bySuit + (top.rank to top), wild, mustContain = top.rank)
-        for (length in runs.keys.sorted()) {
-            val valid = runs.getValue(length)
-                .map { cards -> Action.TakeDiscardPile(DiscardPlan.NewMeld(cards - top)) }
-                .filter { isValid(state, seat, it, rules) }
-            if (valid.isNotEmpty()) {
-                result += valid
-                break
-            }
-        }
-        return result
+        fun naturalRanks(): Set<Rank> = byClass.keys.map { it.first }.toSet()
     }
 
-    // ---------- jogada (§4.3 etapa 2 e 3) ----------
-
-    private fun createCandidates(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
-        val hand = state.handOf(seat)
-        val wild = hand.firstOrNull { it.isWild }
-        val result = mutableListOf<Action>()
-        val naturals = hand.filter { !it.isWild && !it.rank.isThree }
-        for ((_, cards) in naturals.groupBy { it.rank }) {
-            if (cards.size >= 3) result += Action.CreateMeld(cards.take(3))
-            if (cards.size >= 2 && wild != null) result += Action.CreateMeld(cards.take(2) + wild)
-        }
-        for (suit in Suit.entries) {
-            val runs = sequenceRuns(representativesBySuit(hand, suit), wild, mustContain = null)
-            for (length in runs.keys.sorted()) {
-                val valid = runs.getValue(length).map { Action.CreateMeld(it) }.filter { isValid(state, seat, it, rules) }
-                if (valid.isNotEmpty()) {
-                    result += valid
-                    break
-                }
-            }
-        }
-        return result
-    }
-
-    private fun addCandidates(state: RoundState, seat: Seat): List<Action> {
-        val hand = state.handOf(seat)
-        return state.tableOf(state.mode.sideOf(seat)).melds.flatMap { tableMeld ->
-            hand.filter { card ->
-                card.isWild || when (val kind = tableMeld.meld.kind) {
-                    is MeldKind.Sequence -> card.suit == kind.suit
-                    is MeldKind.Group -> card.rank == kind.rank
-                }
-            }.map { Action.AddToMeld(tableMeld.id, listOf(it)) }
-        }
-    }
-
-    private fun discardCandidates(state: RoundState, seat: Seat): List<Action> =
-        state.handOf(seat).map { Action.Discard(it) }
-
-    // ---------- sequências ----------
-
-    /** Uma carta natural representativa por valor de sequência (4..Ás) do [suit]. */
-    private fun representativesBySuit(hand: List<Card>, suit: Suit): Map<Rank, Card> =
-        hand.filter { !it.isWild && it.suit == suit && it.rank >= Rank.FOUR }
-            .groupBy { it.rank }
-            .mapValues { (_, cards) -> cards.first() }
+    // ---------- sequências: faixas com no máximo um buraco ----------
 
     /**
-     * Faixas consecutivas (4..Ás) de 3 ou mais valores formáveis com [available] e, no máximo,
-     * um [wild] cobrindo um valor ausente; agrupadas por tamanho. Se [mustContain], a faixa o inclui.
+     * Faixas de valores (4..Ás) e buraco opcional. Para cada uma, devolve os valores naturais necessários
+     * (a faixa sem o buraco) e se o coringa é obrigatório (há buraco).
      */
-    private fun sequenceRuns(available: Map<Rank, Card>, wild: Card?, mustContain: Rank?): Map<Int, List<List<Card>>> {
-        val runs = mutableMapOf<Int, MutableList<List<Card>>>()
-        for (lowIndex in SEQUENCE_RANKS.indices) {
-            for (highIndex in lowIndex + 2 until SEQUENCE_RANKS.size) {
-                val range = SEQUENCE_RANKS.subList(lowIndex, highIndex + 1)
-                if (mustContain != null && mustContain !in range) continue
-                val missing = range.filter { it !in available }
-                if (missing.size > 1 || (missing.size == 1 && wild == null)) continue
-                val cards = range.mapNotNull { available[it] } + listOfNotNull(wild.takeIf { missing.size == 1 })
-                runs.getOrPut(range.size) { mutableListOf() } += cards
+    private fun ranges(): Sequence<Pair<List<Rank>, Boolean>> = sequence {
+        for (low in SEQUENCE_RANKS.indices) {
+            for (high in low until SEQUENCE_RANKS.size) {
+                val range = SEQUENCE_RANKS.subList(low, high + 1)
+                yield(range to false)
+                for (gap in range.drop(1).dropLast(1)) yield(range.filter { it != gap } to true)
             }
         }
-        return runs
+    }
+
+    /** Naturais do [suit] para os [ranks]; `null` se algum faltar na mão. */
+    private fun HandIndex.naturalsFor(ranks: List<Rank>, suit: Suit): List<Card>? =
+        ranks.map { natural(it, suit) ?: return null }
+
+    private fun HandIndex.wildsFor(needsWild: Boolean): List<Card?> = if (needsWild) realWilds else wildOptions
+
+    // ---------- pegar o lixo (§5.1) ----------
+
+    private fun discardPileCandidates(state: RoundState, seat: Seat): Sequence<Action> = sequence {
+        val top = state.discardTop ?: return@sequence
+        if (top.isWild || top.rank.isThree) return@sequence
+        val index = HandIndex(state.handOf(seat))
+
+        // conjunto novo: grupo do número do topo
+        for (choice in index.groupChoices(top.rank)) {
+            for (wild in index.wildOptions) {
+                val handCards = choice + listOfNotNull(wild)
+                if (handCards.size >= 2) yield(Action.TakeDiscardPile(DiscardPlan.NewMeld(handCards)))
+            }
+        }
+        // conjunto novo: sequência do naipe do topo contendo o topo (natural)
+        for ((naturalRanks, needsWild) in ranges()) {
+            if (top.rank !in naturalRanks) continue
+            val fromHand = index.naturalsFor(naturalRanks - top.rank, top.suit) ?: continue
+            for (wild in index.wildsFor(needsWild)) {
+                val handCards = fromHand + listOfNotNull(wild)
+                if (handCards.size >= 2) yield(Action.TakeDiscardPile(DiscardPlan.NewMeld(handCards)))
+            }
+        }
+        // acréscimo do topo (com ou sem cartas da mão) a conjunto do lado
+        for (tableMeld in state.tableOf(state.mode.sideOf(seat)).melds) {
+            for (handCards in additions(tableMeld.meld, index, extra = top)) {
+                yield(Action.TakeDiscardPile(DiscardPlan.AddToMeld(tableMeld.id, handCards)))
+            }
+        }
+    }
+
+    // ---------- jogada (§4.3 etapas 2 e 3) ----------
+
+    private fun createCandidates(state: RoundState, seat: Seat): Sequence<Action> = sequence {
+        val index = HandIndex(state.handOf(seat))
+        for (rank in index.naturalRanks()) {
+            if (rank.isWild || rank.isThree) continue
+            for (choice in index.groupChoices(rank)) {
+                for (wild in index.wildOptions) {
+                    val cards = choice + listOfNotNull(wild)
+                    if (cards.size >= 3) yield(Action.CreateMeld(cards))
+                }
+            }
+        }
+        for (suit in Suit.entries) {
+            for ((naturalRanks, needsWild) in ranges()) {
+                val naturals = index.naturalsFor(naturalRanks, suit) ?: continue
+                for (wild in index.wildsFor(needsWild)) {
+                    val cards = naturals + listOfNotNull(wild)
+                    if (cards.size >= 3) yield(Action.CreateMeld(cards))
+                }
+            }
+        }
+    }
+
+    private fun addCandidates(state: RoundState, seat: Seat): Sequence<Action> = sequence {
+        val index = HandIndex(state.handOf(seat))
+        for (tableMeld in state.tableOf(state.mode.sideOf(seat)).melds) {
+            for (cards in additions(tableMeld.meld, index, extra = null)) {
+                if (cards.isNotEmpty()) yield(Action.AddToMeld(tableMeld.id, cards))
+            }
+        }
+    }
+
+    private fun discardCandidates(state: RoundState, seat: Seat): Sequence<Action> =
+        state.handOf(seat).distinctBy { it.rank to it.suit }.asSequence().map { Action.Discard(it) }
+
+    /**
+     * Cartas da mão que podem ser acrescentadas a [meld], junto com [extra] (o topo do lixo) se houver.
+     * Devolve só as cartas da mão (o [extra] é implícito).
+     */
+    private fun additions(meld: Meld, index: HandIndex, extra: Card?): Sequence<List<Card>> = sequence {
+        when (val kind = meld.kind) {
+            is MeldKind.Group -> {
+                if (extra != null && extra.rank != kind.rank) return@sequence
+                for (choice in index.groupChoices(kind.rank)) {
+                    for (wild in index.wildOptions) yield(choice + listOfNotNull(wild))
+                }
+            }
+            is MeldKind.Sequence -> {
+                if (extra != null && extra.suit != kind.suit) return@sequence
+                val existing = meld.cards.filterNot { it.isWild }.map { it.rank }.toSet()
+                for ((naturalRanks, needsWild) in ranges()) {
+                    if (!naturalRanks.containsAll(existing)) continue
+                    val newRanks = naturalRanks - existing
+                    if (extra != null && extra.rank !in newRanks) continue
+                    val fromHand = index.naturalsFor(newRanks - listOfNotNull(extra?.rank), kind.suit) ?: continue
+                    val wildChoices: List<Card?> = when {
+                        meld.hasWild -> listOf(null) // o coringa do conjunto cobre o buraco ou corre
+                        needsWild -> index.realWilds
+                        else -> index.wildOptions
+                    }
+                    for (wild in wildChoices) yield(fromHand + listOfNotNull(wild))
+                }
+            }
+        }
     }
 }

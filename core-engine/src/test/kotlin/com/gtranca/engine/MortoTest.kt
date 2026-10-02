@@ -10,6 +10,7 @@ import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.cards
 import com.gtranca.engine.model.shouldFailWith
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -79,6 +80,52 @@ class MortoTest {
         s.currentSeat shouldBe Seat(1)
         s.phase shouldBe Phase.AWAITING_DRAW
         s.check(0, create("4C' 5C' 6C'")) shouldFailWith ActionError.NOT_YOUR_TURN
+        // logo após o descarte, o dono do morto não tem nenhuma ação
+        s.legalActions(0).shouldBeEmpty()
+
+        // o próximo jogador joga a sua vez…
+        val afterNext = s.act(1, Action.DrawFromStock).act(1, discardCard("9C"))
+        afterNext.currentSeat shouldBe Seat(0)
+        // …e, na sua próxima vez, o dono joga com as cartas do morto
+        val back = afterNext.act(0, Action.DrawFromStock)
+        back.legalActions(0).createPlans() shouldContain cards("4C' 5C' 6C'").toSet()
+        back.act(0, create("4C' 5C' 6C'")).table(0).melds.size shouldBe 1
+    }
+
+    @Test
+    fun `morto indireto com 3 vermelho e monte vazio usa o outro morto como monte`() {
+        // §9.3 + §9.4 3 vermelho do morto reposto; §10.1 monte vazio: o outro morto disponível vira monte
+        val s = round {
+            hand(0, "KS")
+            hand(1, "9C 9D")
+            morto(0, "3H 4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC'")
+            stock("")
+            phase = Phase.PLAYING
+        }.act(0, discardCard("KS"))
+        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0))
+        s.mortoStatus[1] shouldBe MortoStatus.BecameStock
+        s.redThreesOf(Side(0)) shouldContainExactly cards("3H")
+        s.hand(0) shouldContainExactlyInAnyOrder cards("4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC' 4D'")
+        s.stock shouldContainExactly cards("5D' 6D' 7D' 8D' 9D' TD' JD' QD' KD' AD'")
+        s.currentSeat shouldBe Seat(1)
+        s.phase shouldBe Phase.AWAITING_DRAW
+    }
+
+    @Test
+    fun `morto direto com 3 vermelho e monte vazio usa o outro morto como monte`() {
+        // §9.2 + §9.4 + §10.1
+        val s = round {
+            hand(0, "5H 6H 7H")
+            hand(1, "9C 9D")
+            morto(0, "3D 4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC'")
+            stock("")
+            phase = Phase.PLAYING
+        }.act(0, create("5H 6H 7H"))
+        s.mortoStatus[1] shouldBe MortoStatus.BecameStock
+        s.redThreesOf(Side(0)) shouldContainExactly cards("3D")
+        s.hand(0) shouldContainExactlyInAnyOrder cards("4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC' 4D'")
+        s.phase shouldBe Phase.PLAYING
+        s.currentSeat shouldBe Seat(0)
     }
 
     @Test
