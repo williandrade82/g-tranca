@@ -124,13 +124,20 @@ Um conjunto pode ser:
 - O **2 é sempre coringa**; nunca é usado como carta natural. Não existe grupo de 2.
 - O coringa substitui qualquer carta, em qualquer posição de uma sequência ou grupo.
 - **Máximo de 1 coringa por conjunto**. Todo conjunto tem, portanto, pelo menos 2 cartas naturais.
-- **Coringa que "corre":** quando a carta natural correspondente à posição do coringa em uma sequência é baixada, o coringa é movido para uma das pontas da sequência, desde que caiba (respeitando §6.2). Se não couber em nenhuma ponta, a carta natural **não pode** ser baixada nessa sequência. O conjunto continua com coringa.
+- **Posição do coringa na sequência:** é definida pelo jogo, não pelo jogador. Se o coringa estiver preenchendo um buraco entre cartas naturais (ex.: 5-2-7), ele ocupa o buraco. Caso contrário, ocupa a **ponta de cima** (ex.: 5-6-2 → o coringa vale 7); se não couber em cima (a sequência já chega ao Ás), ocupa a **ponta de baixo**.
+- **Coringa que "corre":** quando a carta natural correspondente à posição do coringa em uma sequência é baixada, o coringa é movido para uma das pontas da sequência, seguindo a mesma preferência (ponta de cima; se não couber, ponta de baixo), desde que caiba (respeitando §6.2). Se não couber em nenhuma ponta, a carta natural **não pode** ser baixada nessa sequência. O conjunto continua com coringa.
 - **Não é permitido** acrescentar um coringa a uma **canastra limpa**.
 
 ### **6.4. Conjuntos na mesa**
 - Os conjuntos pertencem ao **lado**. No modo duplas, os parceiros compartilham os conjuntos e podem acrescentar cartas aos jogos um do outro.
 - Cada lado pode ter **no máximo um grupo de cada número** na mesa.
-- Um lado pode ter **mais de uma sequência do mesmo naipe**, desde que elas **não sejam contíguas**. Uma carta que una ou prolongue uma sequência existente deve ser acrescentada a ela; não é permitido criar uma nova sequência encostada em outra (ex.: com 4-5-6♥ na mesa, não se pode baixar 7-8-9♥ como conjunto separado).
+- Um lado pode ter **mais de uma sequência do mesmo naipe**, desde que, ao ser **criada**, a nova sequência **não seja continuação** de uma sequência do mesmo naipe já na mesa. É continuação quando **todas as cartas da sequência nova poderiam ser acrescentadas, de uma vez, a uma sequência do mesmo naipe já na mesa do lado** (respeitando §6.2, §6.3 e §7.3); nesse caso, as cartas devem ser acrescentadas à existente. Exemplos, com 4-5-6♥ na mesa:
+  - 7-8-9♥ como conjunto novo: **proibido** (cabe na existente).
+  - 8♥-9♥-2 como conjunto novo: **proibido** (cabe como 4-5-6-2-8-9, com o coringa valendo 7).
+  - 8-9-10♥ como conjunto novo: **permitido** (falta o 7, não cabe).
+  - 6♥'-7♥-8♥ (6 do 2º baralho) como conjunto novo: **permitido** (o 6 se repetiria, não cabe).
+  - Com a canastra limpa 4…9♥ na mesa, 10♥-J♥-2 como conjunto novo: **permitido** (o coringa não pode entrar em canastra limpa, §7.3).
+- **Sequências na mesa nunca se unem.** Ao acrescentar cartas, o jogador **indica em qual conjunto** elas entram. Se uma carta servir para mais de um conjunto (ex.: com 4-5-6♥ e 8-9-10♥ na mesa, o 7♥ pode prolongar qualquer um dos dois), o jogador escolhe o conjunto; as duas sequências continuam separadas, mesmo que passem a ficar encostadas.
 
 ### **6.5. Três vermelhos**
 - **3 vermelho (copas ou ouros)**:

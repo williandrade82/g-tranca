@@ -22,8 +22,8 @@ Use o builder de estado (`GameStateBuilder`/DSL de teste) para montar mãos, lix
 - §5.3 3 preto no topo trava só o próximo jogador; depois disso ele vai para a mão junto com o lixo.
 - §5.4 coringa no topo: lixo não pode ser pego.
 - §6.2 A-2-3 e K-A-2 inválidos; maior sequência 4…A; nenhum 3 em conjunto.
-- §6.3 máx. 1 coringa; coringa corre para a ponta; natural rejeitada se o coringa não couber; coringa não entra em canastra limpa.
-- §6.4 um grupo por número por lado; sequências do mesmo naipe não contíguas.
+- §6.3 máx. 1 coringa; posição do coringa definida pelo motor (buraco → ponta de cima → ponta de baixo); coringa corre com a mesma preferência; natural rejeitada se o coringa não couber; coringa não entra em canastra limpa.
+- §6.4 um grupo por número por lado; nova sequência não pode ser continuação de outra do mesmo naipe; sequências nunca se unem e o jogador indica o conjunto de destino ao acrescentar.
 - §6.5 reposição em cadeia de 3 vermelho; 3 vermelho na distribuição e no morto; sem monte nem morto → sem reposição.
 - §8 ficar sem cartas só se resultar em morto ou batida.
 - §9.2 morto direto continua a jogada; §9.3 morto indireto só na próxima vez; duplas: só um morto por dupla.

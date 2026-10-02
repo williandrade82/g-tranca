@@ -5,6 +5,7 @@ import com.gtranca.engine.model.Deck
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.SideTable
 import kotlin.random.Random
 
 /**
@@ -79,6 +80,7 @@ internal fun dealFromOrderedDeck(
         discardPile = emptyList(),
         mortos = mortos.map { it.toList() },
         redThrees = redThrees.map { it.toList() },
+        tables = List(mode.sideCount) { SideTable() },
         firstSeat = firstSeat,
         currentSeat = firstSeat,
     )
