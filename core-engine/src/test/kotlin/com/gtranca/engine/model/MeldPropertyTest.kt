@@ -1,7 +1,9 @@
 package com.gtranca.engine.model
 
+import io.kotest.common.ExperimentalKotest
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
+import io.kotest.property.PropTestConfig
 import io.kotest.property.arbitrary.long
 import io.kotest.property.checkAll
 import kotlinx.coroutines.runBlocking
@@ -46,12 +48,14 @@ class MeldPropertyTest {
         Meld.create(m.cards).shouldBeOk() shouldBe m
     }
 
+    @OptIn(ExperimentalKotest::class)
     @Test
     fun `conjuntos validos continuam validos apos acrescimos validos`(): Unit = runBlocking {
         // §6.1/§6.2/§6.3 invariantes do conjunto; acréscimos (§4.3) e coringa que corre (§6.3)
         var accepted = 0
         var withWild = 0
-        checkAll(300, Arb.long()) { seed ->
+        // sementes fixas: o limiar de "não vácuo" abaixo precisa ser determinístico
+        checkAll(PropTestConfig(seed = 20261002, iterations = 300), Arb.long()) { seed ->
             val random = Random(seed)
             var m = randomMeld(random)
             assertValid(m)
@@ -76,6 +80,7 @@ class MeldPropertyTest {
             }
         }
         // o teste não é vácuo: muitos acréscimos foram aceitos, inclusive com coringa
+        println("MeldPropertyTest: aceitos=$accepted com coringa=$withWild")
         (accepted > 500) shouldBe true
         (withWild > 100) shouldBe true
     }

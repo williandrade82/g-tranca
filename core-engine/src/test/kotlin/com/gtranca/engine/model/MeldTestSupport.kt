@@ -11,7 +11,7 @@ fun <T> RuleResult<T>.shouldBeOk(): T = when (this) {
     is RuleResult.Failure -> fail("Esperado sucesso, veio erro $error")
 }
 
-infix fun <T> RuleResult<T>.shouldFailWith(expected: MeldError) {
+infix fun <T> RuleResult<T>.shouldFailWith(expected: RuleError) {
     when (this) {
         is RuleResult.Ok -> fail("Esperado erro $expected, veio sucesso: $value")
         is RuleResult.Failure -> error shouldBe expected

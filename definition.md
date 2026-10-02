@@ -61,6 +61,8 @@ Cada jogador, na sua vez, executa as ações na seguinte ordem:
    ou
    **Pegar o lixo**, se permitido (ver §5).
 
+   São **alternativas exclusivas**, feitas **uma única vez**, no **início** da jogada: quem comprou do monte não pode pegar o lixo, e quem pegou o lixo não compra do monte. Nenhuma outra ação (baixar, acrescentar, descartar) pode ser feita antes desta etapa.
+
 2. **Realizar qualquer ação, em qualquer ordem e quantas vezes quiser**, até descartar:
    - Baixar novos conjuntos.
    - Acrescentar cartas a conjuntos do seu lado já na mesa.
@@ -77,9 +79,9 @@ Cada jogador, na sua vez, executa as ações na seguinte ordem:
 O jogador **só pode pegar o lixo** se conseguir **levar imediatamente para a mesa** a **carta do topo** (a última descartada pelo jogador anterior), de uma das formas:
 
 - **Formando um novo conjunto** com a carta do topo e **pelo menos 2 cartas da própria mão** (um coringa da mão pode ser usado, respeitando o limite de 1 coringa por conjunto); ou
-- **Acrescentando** a carta do topo a um **conjunto do seu lado já na mesa**.
+- **Acrescentando** a carta do topo a um **conjunto do seu lado já na mesa**, sozinha ou junto com cartas da própria mão, desde que o acréscimo todo seja válido (ex.: com 4-5-6♥ na mesa e 8♥ no topo, o jogador pode acrescentar 7♥ da mão e o 8♥ do topo juntos).
 
-A carta do topo **não pode ir para a mão** e **não pode ser combinada com as demais cartas do lixo** para formar o conjunto.
+A carta do topo **não pode ir para a mão** e **não pode ser combinada com as demais cartas do lixo** para formar o conjunto. As "cartas da própria mão" são as que o jogador já tinha **antes de pegar o lixo**; as demais cartas do lixo só chegam à mão depois que o topo foi levado à mesa (§5.2).
 
 ### **5.2. Conteúdo do lixo**
 Ao pegar o lixo de forma válida:
@@ -175,7 +177,9 @@ Um conjunto pode ser:
 - Toda jogada termina com **exatamente um descarte**, exceto a batida feita baixando todas as cartas (ver §11).
 - Qualquer carta pode ser descartada, **exceto o 3 vermelho**. Coringas e 3 pretos podem ser descartados.
 - A carta do topo do lixo que o jogador pegou nesta jogada vai obrigatoriamente para a mesa e, portanto, não pode ser descartada.
-- **Ficar sem cartas é restrito:** o jogador só pode ficar com a mão vazia (baixando tudo ou descartando a última carta) se isso resultar em **pegar o morto** (§9) ou em **batida** (§11). Nos demais casos, a jogada é ilegal e o jogador deve manter pelo menos uma carta para descartar.
+- **Ficar sem cartas é restrito:** o jogador só pode ficar com a mão vazia (baixando tudo ou descartando a última carta) se isso resultar em **pegar o morto** (§9) ou em **batida** (§11). Nos demais casos, a jogada é ilegal.
+- **Manter cartas para descartar:** quando ficar sem cartas não for permitido, as jogadas de baixar conjuntos, acrescentar cartas e pegar o lixo devem deixar **pelo menos 2 cartas na mão** (uma para descartar e outra que permanece). Ex.: sem morto disponível e sem canastra, um jogador com 3 cartas não pode baixar 2 delas.
+- **Última carta sem reposição:** se o jogador ficar com apenas 1 carta porque um 3 vermelho comprado não pôde ser reposto (sem monte e sem morto, §6.5/§10) e não puder bater descartando essa carta, a **partida termina sem vencedor** (§11.2).
 
 ---
 
@@ -226,7 +230,9 @@ O jogador bate, encerrando a partida com vitória do seu lado, quando:
    - **descartando a última carta**.
 
 ### **11.2. Fim sem vencedor**
-A partida termina sem vencedor apenas no caso de §10 (monte esgotado, sem morto disponível e sem possibilidade de pegar o lixo).
+A partida termina sem vencedor apenas nos casos de:
+- §10: monte esgotado, sem morto disponível e sem possibilidade de pegar o lixo (ou o jogador não quer pegá-lo);
+- §8: jogador com apenas 1 carta após 3 vermelho sem reposição, sem poder bater.
 
 ---
 

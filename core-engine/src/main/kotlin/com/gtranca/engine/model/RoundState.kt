@@ -16,6 +16,10 @@ import kotlinx.serialization.Serializable
  * @property tables conjuntos na mesa de cada lado (§6.4), indexados por [Side.index].
  * @property firstSeat jogador inicial sorteado (§4.1).
  * @property currentSeat assento da vez.
+ * @property phase fase da jogada do assento da vez, ou partida encerrada.
+ * @property mortoStatus situação de cada morto (§9.1, §10). Um morto que não está
+ *   [MortoStatus.Available] tem a lista correspondente em [mortos] vazia.
+ * @property result resultado, presente somente quando [phase] é [Phase.FINISHED].
  */
 @Serializable
 data class RoundState(
@@ -28,8 +32,13 @@ data class RoundState(
     val tables: List<SideTable>,
     val firstSeat: Seat,
     val currentSeat: Seat,
+    val phase: Phase = Phase.AWAITING_DRAW,
+    val mortoStatus: List<MortoStatus> = List(2) { MortoStatus.Available },
+    val result: RoundResult? = null,
 ) {
     init {
+        require(mortoStatus.size == mortos.size) { "Uma situação por morto" }
+        require((phase == Phase.FINISHED) == (result != null)) { "Resultado existe só com a partida encerrada" }
         require(hands.size == mode.seatCount) { "Esperadas ${mode.seatCount} mãos, recebidas ${hands.size}" }
         require(redThrees.size == mode.sideCount) { "Esperados ${mode.sideCount} lados de 3 vermelhos" }
         require(tables.size == mode.sideCount) { "Esperadas ${mode.sideCount} mesas de lado" }
@@ -46,6 +55,15 @@ data class RoundState(
     fun redThreesOf(side: Side): List<Card> = redThrees[side.index]
 
     fun tableOf(side: Side): SideTable = tables[side.index]
+
+    /** §9.1 o lado já pegou um morto. */
+    fun hasTakenMorto(side: Side): Boolean = mortoStatus.any { it == MortoStatus.Taken(side) }
+
+    /** §9.1 índice do primeiro morto disponível, ou `null`. */
+    fun firstAvailableMorto(): Int? = mortoStatus.indexOfFirst { it == MortoStatus.Available }.takeIf { it >= 0 }
+
+    /** Topo do lixo (último elemento), ou `null` se vazio. */
+    val discardTop: Card? get() = discardPile.lastOrNull()
 
     /** Todas as cartas do estado (mãos, monte, lixo, mortos, 3 vermelhos e conjuntos na mesa). */
     fun allCards(): List<Card> =
