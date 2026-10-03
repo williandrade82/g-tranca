@@ -12,7 +12,9 @@ import com.gtranca.engine.model.Seat
  * Contrato:
  * - [chooseAction] devolve sempre um elemento de `legal` (o bot nunca valida regras por conta própria);
  * - aleatoriedade só pelo RNG com semente injetada na construção: mesma semente e mesmas entradas
- *   produzem as mesmas escolhas.
+ *   produzem as mesmas escolhas. Para bots com busca limitada por orçamento (o Difícil), a reprodutibilidade
+ *   vale com o orçamento por iterações; se um teto de tempo for atingido, o número de iterações passa a
+ *   depender da máquina e a jogada deixa de ser reproduzível (o bot registra quando isso acontece).
  */
 interface BotPlayer {
 

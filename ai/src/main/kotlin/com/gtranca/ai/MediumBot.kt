@@ -66,6 +66,58 @@ class MediumBot(
         return chosen ?: legal.first()
     }
 
+    /**
+     * Ações candidatas para a busca do bot Difícil: as melhores de [legal] segundo esta heurística, na ordem
+     * de preferência do Médio (a primeira é a que ele escolheria, a menos de desempates no descarte).
+     *
+     * - Início da jogada: a escolha do Médio, comprar do monte ou recusar (§10.2), quando legais, e os
+     *   [perKind] melhores planos de pegar o lixo (§5.1).
+     * - Durante a jogada: os [perKind] melhores conjuntos/acréscimos e os [perKind] melhores descartes; se o
+     *   Médio baixaria, as baixas vêm primeiro, senão os descartes.
+     *
+     * Devolve sempre elementos de [legal] (não vazia se [legal] não for). Não usa o RNG.
+     */
+    internal fun rankedCandidates(view: PlayerView, legal: List<Action>, perKind: Int): List<Action> {
+        if (legal.size <= 1) return legal
+        val result = LinkedHashSet<Action>()
+        when (view.phase) {
+            Phase.AWAITING_DRAW -> {
+                chooseDraw(view, legal)?.let(result::add)
+                legal.filter { it == Action.DrawFromStock || it == Action.DeclineDraw }.forEach(result::add)
+                legal.filterIsInstance<Action.TakeDiscardPile>()
+                    .map { it to takeScore(view, it.plan) }
+                    .sortedByDescending { it.second }
+                    .take(perKind)
+                    .forEach { result += it.first }
+            }
+            Phase.PLAYING -> {
+                val ctx = Context(view)
+                val melds = legal.mapNotNull { action ->
+                    when (action) {
+                        is Action.CreateMeld -> action to meldScore(ctx, action.cards, target = null)
+                        is Action.AddToMeld -> ctx.ownMeld(action.meldId.value)?.let { action to meldScore(ctx, action.cards, it) }
+                        else -> null
+                    }
+                }.sortedByDescending { it.second }.take(perKind)
+                val discards = legal.filterIsInstance<Action.Discard>()
+                    .map { it to discardCost(ctx, it.card) }
+                    .sortedBy { it.second }
+                    .take(perKind)
+                    .map { it.first }
+                val wouldMeld = melds.isNotEmpty() && (discards.isEmpty() || melds.first().second >= weights.meldThreshold)
+                if (wouldMeld) {
+                    melds.forEach { result += it.first }
+                    result += discards
+                } else {
+                    result += discards
+                    melds.forEach { result += it.first }
+                }
+            }
+            Phase.FINISHED -> Unit
+        }
+        return result.toList().ifEmpty { legal }
+    }
+
     // =====================================================================================
     // Etapa 1: monte ou lixo
     // =====================================================================================

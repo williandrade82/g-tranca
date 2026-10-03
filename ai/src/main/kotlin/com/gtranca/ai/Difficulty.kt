@@ -1,5 +1,6 @@
 package com.gtranca.ai
 
+import com.gtranca.ai.hard.HardBot
 import kotlin.random.Random
 
 /** Dificuldade dos jogadores virtuais (§14). */
@@ -16,11 +17,14 @@ enum class Difficulty(val id: String) {
 
 /**
  * Cria o bot da [difficulty] com o RNG [random] (semente injetada).
- * Implementados: [Difficulty.FACIL] e [Difficulty.MEDIO]; [Difficulty.DIFICIL] ainda não.
+ *
+ * [hardConfig] só vale para [Difficulty.DIFICIL]; o padrão ([HardBotConfig.DEFAULT]) tem teto de 800 ms por
+ * decisão, para o app. O Difícil faz uma busca de CPU em `chooseAction`: chame-o fora da thread principal
+ * (ex.: `Dispatchers.Default`).
  */
-fun createBot(difficulty: Difficulty, random: Random): BotPlayer = when (difficulty) {
-    Difficulty.FACIL -> EasyBot(random)
-    Difficulty.MEDIO -> MediumBot(random)
-    Difficulty.DIFICIL ->
-        throw UnsupportedOperationException("Bot de dificuldade '${difficulty.id}' ainda não implementado")
-}
+fun createBot(difficulty: Difficulty, random: Random, hardConfig: HardBotConfig = HardBotConfig.DEFAULT): BotPlayer =
+    when (difficulty) {
+        Difficulty.FACIL -> EasyBot(random)
+        Difficulty.MEDIO -> MediumBot(random)
+        Difficulty.DIFICIL -> HardBot(random, hardConfig)
+    }

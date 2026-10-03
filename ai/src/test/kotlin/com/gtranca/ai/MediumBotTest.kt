@@ -10,7 +10,6 @@ import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.viewFor
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.common.ExperimentalKotest
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -336,9 +335,8 @@ class MediumBotTest {
     // ---------- fábrica ----------
 
     @Test
-    fun `createBot cria o Medio e o Dificil continua nao suportado`() {
+    fun `createBot cria o Medio`() {
         createBot(Difficulty.MEDIO, Random(1)).shouldBeInstanceOf<MediumBot>()
-        shouldThrow<UnsupportedOperationException> { createBot(Difficulty.DIFICIL, Random(1)) }
     }
 
     // ---------- propriedades ----------

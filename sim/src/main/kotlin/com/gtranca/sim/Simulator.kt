@@ -2,6 +2,7 @@ package com.gtranca.sim
 
 import com.gtranca.ai.BotPlayer
 import com.gtranca.ai.PublicEvent
+import com.gtranca.ai.hard.HardBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.RoundEngine
 import com.gtranca.engine.finishRound
@@ -47,8 +48,18 @@ data class Failure(
     val message: String,
 )
 
-/** Resultado de uma partida concluída. */
-data class RoundStats(val turns: Int, val actions: Int, val winner: Side?)
+/** Resultado de uma partida concluída; [scores] = pontos de cada lado na partida (§12), por `Side.index`. */
+data class RoundStats(val turns: Int, val actions: Int, val winner: Side?, val scores: List<Int> = emptyList())
+
+/**
+ * Tempo gasto pelos bots de um lado em `chooseAction`, só nas decisões com mais de uma ação legal (as
+ * demais são triviais).
+ */
+data class DecisionTiming(val decisions: Int = 0, val totalNanos: Long = 0, val maxNanos: Long = 0) {
+    operator fun plus(nanos: Long) = DecisionTiming(decisions + 1, totalNanos + nanos, maxOf(maxNanos, nanos))
+    operator fun plus(other: DecisionTiming) =
+        DecisionTiming(decisions + other.decisions, totalNanos + other.totalNanos, maxOf(maxNanos, other.maxNanos))
+}
 
 /** Resultado de um jogo: concluído (com [winner]) ou interrompido por [failure]. */
 data class GameOutcome(
@@ -57,6 +68,12 @@ data class GameOutcome(
     val rounds: List<RoundStats>,
     val totals: List<Int>,
     val failure: Failure?,
+    /** Tempo de decisão por lado (indexado por `Side.index`). */
+    val timing: List<DecisionTiming> = emptyList(),
+    /** Por lado: decisões do Difícil em que o teto de tempo foi atingido (jogada não reproduzível). */
+    val hardTimeLimitHits: List<Int> = emptyList(),
+    /** Por lado: decisões do Difícil em que a busca falhou e ele jogou como o Médio. */
+    val hardSearchFailures: List<Int> = emptyList(),
 )
 
 /**
@@ -75,7 +92,7 @@ class Simulator internal constructor(
 
     constructor(config: SimConfig) : this(
         config,
-        botFactory = { seat, random -> createSimBot(config.sides[config.mode.sideOf(seat).index], random) },
+        botFactory = { seat, random -> createSimBot(config.sides[config.mode.sideOf(seat).index], random, config.hardConfig) },
         legalActionsOf = { state, seat -> RoundEngine.legalActions(state, seat) },
         playAction = { match, seat, action -> match.play(seat, action) },
     )
@@ -90,6 +107,7 @@ class Simulator internal constructor(
         var match: Match? = null
         var actionIndex = 0
         var lastAction: Action? = null
+        val timing = MutableList(mode.sideCount) { DecisionTiming() }
         try {
             match = startMatch(mode, config.target, Random(gameSeed))
             checkRoundInvariants(match.currentRound)
@@ -103,7 +121,12 @@ class Simulator internal constructor(
                     val seat = round.currentSeat
                     val legal = legalActionsOf(round, seat)
                     if (legal.isEmpty()) throw SimFailure(FailureKind.NO_LEGAL_ACTIONS, "assento ${seat.index} na fase ${round.phase}")
+                    val started = System.nanoTime()
                     val action = bots[seat.index].chooseAction(round.viewFor(seat), legal)
+                    if (legal.size > 1) {
+                        val side = mode.sideOf(seat).index
+                        timing[side] = timing[side] + (System.nanoTime() - started)
+                    }
                     lastAction = action
                     if (action !in legal) throw SimFailure(FailureKind.ILLEGAL_ACTION, "assento ${seat.index}: ação fora de legalActions")
                     val takenFromDiscard = if (action is Action.TakeDiscardPile) round.discardPile.dropLast(1) else emptyList()
@@ -118,8 +141,8 @@ class Simulator internal constructor(
                     }
                 }
                 val result = match.currentRound.result
-                rounds += RoundStats(turns, actionIndex, (result as? RoundResult.GoOut)?.side)
                 match = match.finishRound()
+                rounds += RoundStats(turns, actionIndex, (result as? RoundResult.GoOut)?.side, match.history.last().scores.map { it.total })
                 if (!match.isOver) {
                     if (rounds.size >= config.maxRoundsPerGame) {
                         throw SimFailure(FailureKind.ROUND_LIMIT, "jogo passou de ${config.maxRoundsPerGame} partidas")
@@ -128,7 +151,14 @@ class Simulator internal constructor(
                     checkRoundInvariants(match.currentRound)
                 }
             }
-            return GameOutcome(gameSeed, match.winner, rounds, match.totals, failure = null)
+            fun perSide(metric: (HardBot) -> Int): List<Int> = mode.sides.map { side ->
+                mode.seatsOf(side).sumOf { seat -> (bots[seat.index] as? HardBot)?.let(metric) ?: 0 }
+            }
+            return GameOutcome(
+                gameSeed, match.winner, rounds, match.totals, failure = null, timing = timing,
+                hardTimeLimitHits = perSide { it.timeLimitHits },
+                hardSearchFailures = perSide { it.searchFailures },
+            )
         } catch (e: SimFailure) {
             return failed(gameSeed, rounds, match, Failure(e.kind, gameSeed, rounds.size + 1, actionIndex, lastAction, e.message.orEmpty()))
         } catch (e: Exception) {

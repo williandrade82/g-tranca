@@ -16,6 +16,13 @@ class Report(private val config: SimConfig, private val outcomes: List<GameOutco
             "Modo: ${config.mode.name.lowercase()} | lados: ${config.sides.mapIndexed { i, s -> "lado $i=$s" }.joinToString(", ")}" +
                 " | alvo: ${config.target} | semente base: ${config.seed} | invariantes extras: ${if (config.checkInvariants) "sim" else "não"}",
         )
+        if ("dificil" in config.sides) {
+            val h = config.hardConfig
+            appendLine(
+                "Difícil: ${h.iterations} iterações, teto ${h.timeLimitMillis?.let { "$it ms" } ?: "nenhum"}, simulação ${h.rolloutTurns} vezes, " +
+                    "UCT c=${h.explorationConstant}, ${h.candidatesPerKind} candidatas/tipo, árvore ${h.treeDepth}, margem ${h.overrideMargin}, visitas mín. ${h.minVisitsToOverride}, confiança ${h.overrideConfidence}",
+            )
+        }
         appendLine("Jogos: ${outcomes.size} | concluídos: ${completed.size} | com falha: ${failures.size}")
         appendLine()
 
@@ -37,11 +44,31 @@ class Report(private val config: SimConfig, private val outcomes: List<GameOutco
             val batidas = rounds.count { it.winner?.index == side }
             appendLine("  batidas do lado $side: $batidas")
         }
+        val diffs = rounds.filter { it.scores.size == 2 }.map { (it.scores[0] - it.scores[1]).toDouble() }
+        if (diffs.size > 1) {
+            val mean = diffs.average()
+            val sd = sqrt(diffs.sumOf { (it - mean) * (it - mean) } / (diffs.size - 1))
+            appendLine("Diferença de pontos por partida (lado 0 − lado 1, §12): média ${fmt(mean)} ± ${fmt(1.96 * sd / sqrt(diffs.size.toDouble()))} (IC 95%)")
+        }
         appendLine("Pontuação final média: " + (0 until sideCount).joinToString(" | ") { side ->
             "lado $side ${avg(completed.map { it.totals[side].toDouble() })}"
         })
         appendLine()
 
+        appendLine("Tempo por decisão (só decisões com mais de uma ação legal):")
+        for (side in 0 until sideCount) {
+            val t = outcomes.mapNotNull { it.timing.getOrNull(side) }.fold(DecisionTiming()) { acc, x -> acc + x }
+            val mean = if (t.decisions > 0) t.totalNanos / 1e6 / t.decisions else 0.0
+            appendLine("  lado $side (${config.sides[side]}): ${t.decisions} decisões, média ${fmt2(mean)} ms, máx ${fmt2(t.maxNanos / 1e6)} ms")
+        }
+        if ("dificil" in config.sides) {
+            for (side in 0 until sideCount) {
+                if (config.sides[side] != "dificil") continue
+                val hits = outcomes.sumOf { it.hardTimeLimitHits.getOrElse(side) { 0 } }
+                val fails = outcomes.sumOf { it.hardSearchFailures.getOrElse(side) { 0 } }
+                appendLine("  lado $side (dificil): teto de tempo atingido em $hits decisões; busca falhou (jogou como o Médio) em $fails")
+            }
+        }
         appendLine("Tempo total: ${fmt(elapsedMillis / 1000.0)} s (${fmt(elapsedMillis.toDouble() / outcomes.size.coerceAtLeast(1))} ms por jogo)")
         appendLine()
 
@@ -68,6 +95,8 @@ class Report(private val config: SimConfig, private val outcomes: List<GameOutco
     private fun pct(part: Int, whole: Int): String = "${fmt(part * 100.0 / whole)}%"
 
     private fun avg(values: List<Double>): String = if (values.isEmpty()) "-" else fmt(values.average())
+
+    private fun fmt2(value: Double): String = String.format(Locale.ROOT, "%.2f", value)
 
     private fun fmt(value: Double): String = String.format(Locale.ROOT, "%.1f", value)
 }

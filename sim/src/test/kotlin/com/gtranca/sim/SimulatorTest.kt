@@ -1,6 +1,7 @@
 package com.gtranca.sim
 
 import com.gtranca.ai.BotPlayer
+import com.gtranca.ai.HardBotConfig
 import com.gtranca.engine.Action
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.RoundEngine
@@ -17,6 +18,8 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import kotlin.random.Random
 
 class SimulatorTest {
@@ -62,7 +65,67 @@ class SimulatorTest {
     @Test
     fun `mesma semente reproduz o mesmo jogo`() {
         val simulator = Simulator(SimConfig(target = 600, sides = listOf("facil", "aleatorio")))
-        simulator.runGame(99) shouldBe simulator.runGame(99)
+        // o tempo de decisão (medido) é o único campo que varia de execução para execução
+        simulator.runGame(99).copy(timing = emptyList()) shouldBe simulator.runGame(99).copy(timing = emptyList())
+    }
+
+    @Test
+    fun `le as opcoes do bot dificil`() {
+        val config = SimConfig.parse(
+            arrayOf(
+                "--sides", "dificil,medio", "--hard-iterations", "30", "--hard-rollout-turns", "6",
+                "--hard-exploration", "0.5", "--hard-candidates", "3", "--hard-tree-depth", "2",
+                "--hard-margin", "0.01", "--hard-min-visits", "4", "--threads", "2",
+            ),
+        )
+        config.sides shouldBe listOf("dificil", "medio")
+        config.threads shouldBe 2
+        config.hardConfig shouldBe HardBotConfig(
+            iterations = 30, timeLimitMillis = null, explorationConstant = 0.5, candidatesPerKind = 3,
+            rolloutTurns = 6, treeDepth = 2, overrideMargin = 0.01, minVisitsToOverride = 4,
+        )
+        shouldThrow<IllegalArgumentException> { SimConfig.parse(arrayOf("--hard-iterations", "0")) }
+        shouldThrow<IllegalArgumentException> { SimConfig.parse(arrayOf("--hard-iterations", "x")) }
+    }
+
+    @Test
+    fun `opcoes invalidas do dificil saem com codigo 2 e a mensagem de uso, sem stack trace`() {
+        val invalid = listOf(
+            arrayOf("--hard-tree-depth", "0"),
+            arrayOf("--hard-margin", "-0.1"),
+            arrayOf("--hard-min-visits", "-1"),
+            arrayOf("--hard-confidence", "-1"),
+            arrayOf("--hard-confidence", "NaN"),
+            arrayOf("--hard-exploration", "abc"),
+            arrayOf("--hard-iterations"),
+            arrayOf("--hard-time-ms", "0"),
+            arrayOf("--threads", "0"),
+        )
+        for (args in invalid) {
+            val out = ByteArrayOutputStream()
+            val err = ByteArrayOutputStream()
+            runSimulation(args, PrintStream(out, true, "UTF-8"), PrintStream(err, true, "UTF-8")) shouldBe 2
+            val message = err.toString("UTF-8")
+            message shouldContain "Erro:"
+            message shouldContain "Uso:"
+            message.contains("	at ") shouldBe false // sem stack trace
+            out.size() shouldBe 0
+        }
+    }
+
+    @Test
+    fun `dificil contra medio termina sem falhas nos dois modos e mede o tempo de decisao`() {
+        for (mode in GameMode.entries) {
+            val config = SimConfig(
+                games = 1, seed = 21, mode = mode, target = 300, sides = listOf("dificil", "medio"),
+                checkInvariants = true, hardIterations = 4, hardRolloutTurns = 4,
+            )
+            val outcome = Simulator(config).runGame(config.seed)
+            outcome.failure shouldBe null
+            outcome.winner shouldNotBe null
+            outcome.timing[0].decisions shouldNotBe 0
+            Report(config, listOf(outcome), elapsedMillis = 1).render() shouldContain "Tempo por decisão"
+        }
     }
 
     @Test
