@@ -209,8 +209,8 @@ private fun Header(state: GameUiState) {
 }
 
 /**
- * Os outros assentos, na ordem de jogada a partir do humano (§4.2): em duplas, adversário à esquerda,
- * parceiro e adversário à direita. De cada um, só o tamanho da mão (nunca as cartas, nem as do parceiro),
+ * Os outros assentos, na ordem de jogada a partir do humano (§4.2, anti-horário): em duplas, adversário à
+ * direita, parceiro e adversário à esquerda. De cada um, só o tamanho da mão (nunca as cartas, nem as do parceiro),
  * se está pensando e a última jogada.
  */
 @Composable

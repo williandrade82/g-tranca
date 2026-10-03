@@ -30,7 +30,7 @@ fun dealRound(
  * Distribui a partir de um baralho já ordenado ([deck] índice 0 = primeira carta distribuída).
  *
  * 1. §3.1 [RuleSet.cardsPerHand] cartas a cada jogador, uma por vez, começando por [firstSeat]
- *    e seguindo o sentido horário (§4.2).
+ *    e seguindo o sentido anti-horário (§4.2).
  * 2. §3.2 os mortos, com as cartas seguintes distribuídas uma por vez para cada morto,
  *    alternadamente, até cada um ter [RuleSet.cardsPerMorto] cartas.
  * 3. §3.3 o restante forma o monte, na mesma ordem (índice 0 = topo).

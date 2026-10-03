@@ -101,7 +101,7 @@ class TurnTest {
 
     @Test
     fun `descarte encerra a jogada e passa a vez no sentido horario`() {
-        // §4.2 sentido horário; §4.3 etapa 3; §8 descarte vai para o topo do lixo
+        // §4.2 sentido anti-horário; §4.3 etapa 3; §8 descarte vai para o topo do lixo
         val s = start.act(0, Action.DrawFromStock).act(0, discardCard("KS"))
         s.discardPile shouldContainExactly cards("KS")
         s.hand(0) shouldContainExactlyInAnyOrder cards("5H 6H 7H 8H")
@@ -111,7 +111,7 @@ class TurnTest {
 
     @Test
     fun `em duplas a vez passa ao proximo assento e o parceiro acrescenta aos jogos do lado`() {
-        // §4.2 sentido horário; §6.4 parceiros compartilham os conjuntos
+        // §4.2 sentido anti-horário; §6.4 parceiros compartilham os conjuntos
         val s = round(GameMode.DUPLAS) {
             hand(3, "8H KS QS")
             hand(1, "9C 9D")

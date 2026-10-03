@@ -211,14 +211,14 @@ class GameViewModelTest {
         advanceUntilIdle()
         val after = vm.uiState.value
         if (after.snapshot.stage == Stage.PLAYING) {
-            // A vez deu a volta: esquerda (1), parceiro (2) e direita (3) jogaram, nessa ordem (§4.2).
+            // A vez deu a volta: direita (1), parceiro (2) e esquerda (3) jogaram, nessa ordem (§4.2, anti-horário).
             after.isHumanTurn shouldBe true
             listOf(1, 2, 3).forEach { after.snapshot.turnEvents[it].shouldNotBeEmpty() }
         }
     }
 
     @Test
-    fun `duplas - a vez passa a esquerda, ao parceiro e a direita com a pausa entre bots`() = runTest(dispatcher) {
+    fun `§4_2 duplas - a vez passa a direita, ao parceiro e a esquerda com a pausa entre bots`() = runTest(dispatcher) {
         val vm = newGame(seed = 4, mode = GameMode.DUPLAS, botDelayMillis = 700)
         vm.uiState.value.isHumanTurn shouldBe true
         drawAndDiscard(vm)

@@ -6,8 +6,9 @@ import com.gtranca.engine.model.Seat
 /**
  * Papel de um assento do ponto de vista de quem joga no assento `viewer` (o humano).
  *
- * Em duplas (§1.1) o parceiro senta em frente (assento oposto). Esquerda e direita seguem o sentido horário
- * (§4.2): o adversário à esquerda joga logo depois de você; o da direita, logo antes.
+ * Em duplas (§1.1) o parceiro senta em frente (assento oposto). A vez gira no sentido anti-horário (§4.2): o
+ * adversário à direita joga logo depois de você (você descarta para ele); o da esquerda, logo antes (você
+ * recebe o descarte dele).
  */
 enum class SeatRole {
     YOU,
@@ -18,10 +19,10 @@ enum class SeatRole {
     /** Duplas: parceiro, em frente. */
     PARTNER,
 
-    /** Duplas: adversário que joga logo depois de você. */
+    /** Duplas: adversário que joga logo antes de você (§4.2: você recebe o descarte dele). */
     LEFT_OPPONENT,
 
-    /** Duplas: adversário que joga logo antes de você. */
+    /** Duplas: adversário que joga logo depois de você (§4.2: você descarta para ele). */
     RIGHT_OPPONENT,
     ;
 
@@ -36,9 +37,9 @@ enum class SeatRole {
                 GameMode.INDIVIDUAL -> if (offset == 0) YOU else OPPONENT
                 GameMode.DUPLAS -> when (offset) {
                     0 -> YOU
-                    1 -> LEFT_OPPONENT
+                    1 -> RIGHT_OPPONENT
                     2 -> PARTNER
-                    else -> RIGHT_OPPONENT
+                    else -> LEFT_OPPONENT
                 }
             }
         }

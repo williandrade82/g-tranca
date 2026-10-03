@@ -2,7 +2,7 @@ package com.gtranca.engine.model
 
 import kotlinx.serialization.Serializable
 
-/** Assento/jogador. A ordem horária (§4.2) é a de índice crescente. */
+/** Assento/jogador. A ordem de jogada (§4.2, sentido anti-horário) é a de índice crescente. */
 @Serializable
 @JvmInline
 value class Seat(val index: Int) {
@@ -48,7 +48,7 @@ enum class GameMode(val seatCount: Int) {
         return seats.filter { sideOf(it) == side }
     }
 
-    /** §4.2 próximo assento no sentido horário. */
+    /** §4.2 próximo assento no sentido anti-horário (o jogador à direita). */
     fun nextSeat(seat: Seat): Seat {
         requireSeat(seat)
         return Seat((seat.index + 1) % seatCount)

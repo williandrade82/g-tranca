@@ -28,8 +28,8 @@ class SidesTest {
     }
 
     @Test
-    fun `ordem horaria e indice crescente e volta ao inicio`() {
-        // §4.2 sentido horário (convenção: índice crescente)
+    fun `ordem anti-horaria e indice crescente e volta ao inicio`() {
+        // §4.2 sentido anti-horário (convenção: índice crescente)
         GameMode.DUPLAS.nextSeat(Seat(0)) shouldBe Seat(1)
         GameMode.DUPLAS.nextSeat(Seat(3)) shouldBe Seat(0)
         GameMode.INDIVIDUAL.nextSeat(Seat(1)) shouldBe Seat(0)

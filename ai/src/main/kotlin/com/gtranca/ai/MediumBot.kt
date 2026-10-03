@@ -358,7 +358,7 @@ class MediumBot(
         /** §11.1 o lado já cumpre morto e canastra: basta esvaziar a mão para bater. */
         val canGoOut: Boolean = sideHasMorto && sideHasCanasta
 
-        /** §4.2 o próximo no sentido horário é sempre adversário (em duplas, os parceiros ficam opostos). */
+        /** §4.2 o próximo no sentido anti-horário é sempre adversário (em duplas, os parceiros ficam opostos). */
         val nextSeat: Seat = view.mode.nextSeat(view.seat)
 
         /**

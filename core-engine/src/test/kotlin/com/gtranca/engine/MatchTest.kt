@@ -152,7 +152,7 @@ class MatchTest {
 
     @Test
     fun `proxima partida comeca pelo jogador seguinte ao que iniciou a anterior`() {
-        // §4.1 sorteio só na 1ª partida; depois, o próximo no sentido horário (§4.2) inicia,
+        // §4.1 sorteio só na 1ª partida; depois, o próximo no sentido anti-horário (§4.2) inicia,
         // com ou sem vencedor na partida anterior
         var m = startMatch(GameMode.DUPLAS, random = Random(42))
         val firsts = mutableListOf(m.currentRound.firstSeat)

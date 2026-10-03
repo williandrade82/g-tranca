@@ -84,7 +84,7 @@ class HomeToTableTest {
             rule.onAllNodesWithTag("action-discard").fetchSemanticsNodes().isNotEmpty()
         }
         handSize() shouldBeAtLeast before + 1
-        // Descarta a primeira carta: a vez passa ao adversário à esquerda, depois ao parceiro.
+        // Descarta a primeira carta: a vez passa ao adversário à direita (§4.2), depois ao parceiro.
         rule.onAllNodes(isHandCard, useUnmergedTree = true)[0].performClick()
         rule.onNodeWithTag("action-discard").performClick()
         rule.waitUntil(timeoutMillis = 10_000) {

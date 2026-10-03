@@ -44,7 +44,7 @@
 ### **3.5. Três vermelhos recebidos na distribuição**
 - Após a distribuição, **antes de qualquer jogada**, os 3 vermelhos recebidos são trocados **seguindo a ordem de jogada**, para que cada jogador receba a carta correta do monte:
   1. O primeiro jogador (§4.1) baixa automaticamente todos os seus 3 vermelhos e repõe cada um com uma carta do topo do monte, incluindo as reposições em cadeia (ver §6.5).
-  2. Só quando ele termina, o próximo jogador (sentido horário, §4.2) faz o mesmo, e assim por diante.
+  2. Só quando ele termina, o próximo jogador (sentido anti-horário, §4.2) faz o mesmo, e assim por diante.
   3. Quando todos tiverem trocado seus 3 vermelhos, o primeiro jogador inicia sua jogada (§4.3).
 
 ---
@@ -53,10 +53,11 @@
 
 ### **4.1. Primeiro jogador**
 - Na **primeira partida** do jogo, o jogador inicial é escolhido aleatoriamente.
-- Nas partidas seguintes, depois que a partida anterior terminar (com ou sem vencedor) e seus pontos forem computados, a nova partida é iniciada pelo **próximo jogador, no sentido horário (§4.2), depois do que iniciou a partida anterior**.
+- Nas partidas seguintes, depois que a partida anterior terminar (com ou sem vencedor) e seus pontos forem computados, a nova partida é iniciada pelo **próximo jogador, no sentido anti-horário (§4.2), depois do que iniciou a partida anterior**.
 
 ### **4.2. Sentido**
-- A ordem de jogada segue **sentido horário**.
+- A ordem de jogada segue **sentido anti-horário**: o próximo a jogar é o jogador **à direita** de quem acabou de jogar.
+- Assim, cada jogador recebe o descarte do jogador **à sua esquerda** (que joga antes dele) e descarta para o jogador **à sua direita** (que joga depois dele).
 
 ### **4.3. Estrutura de uma jogada**
 Cada jogador, na sua vez, executa as ações na seguinte ordem:
@@ -331,7 +332,7 @@ flowchart TD
     B --> C["Jogada do jogador da vez (§15.3), começando pelo primeiro jogador"]
     C --> D{"A partida terminou? (§11)"}
     D -->|"Sim: batida ou fim sem vencedor"| E["Fim da partida"]
-    D -->|Não| F["Próximo jogador, no sentido horário (§4.2)"]
+    D -->|Não| F["Próximo jogador, no sentido anti-horário (§4.2)"]
     F --> C
 ```
 
