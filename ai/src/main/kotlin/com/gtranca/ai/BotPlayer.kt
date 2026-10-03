@@ -43,4 +43,17 @@ data class PublicEvent(
     val seat: Seat,
     val action: Action,
     val takenFromDiscard: List<Card> = emptyList(),
-)
+) {
+    companion object {
+        /**
+         * Evento da [action] do [seat], dado o lixo [discardPileBefore] (último = topo) **antes** de aplicar a
+         * ação: depois dela o lixo já foi levado. Única forma de montar o evento de uma ação real, usada pelo
+         * app, pelo `:sim` e pelas simulações do Difícil.
+         */
+        fun of(discardPileBefore: List<Card>, seat: Seat, action: Action): PublicEvent = PublicEvent(
+            seat = seat,
+            action = action,
+            takenFromDiscard = if (action is Action.TakeDiscardPile) discardPileBefore.dropLast(1) else emptyList(),
+        )
+    }
+}

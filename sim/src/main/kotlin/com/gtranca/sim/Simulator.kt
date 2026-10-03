@@ -129,12 +129,11 @@ class Simulator internal constructor(
                     }
                     lastAction = action
                     if (action !in legal) throw SimFailure(FailureKind.ILLEGAL_ACTION, "assento ${seat.index}: ação fora de legalActions")
-                    val takenFromDiscard = if (action is Action.TakeDiscardPile) round.discardPile.dropLast(1) else emptyList()
+                    val event = PublicEvent.of(round.discardPile, seat, action)
                     match = playAction(match, seat, action)
                     if (action == Action.DrawFromStock || action is Action.TakeDiscardPile) turns++
                     actionIndex++
                     checkRoundInvariants(match.currentRound)
-                    val event = PublicEvent(seat, action, takenFromDiscard)
                     bots.forEach { it.observe(event) }
                     if (actionIndex >= config.maxActionsPerRound) {
                         throw SimFailure(FailureKind.ACTION_LIMIT, "partida passou de ${config.maxActionsPerRound} ações")

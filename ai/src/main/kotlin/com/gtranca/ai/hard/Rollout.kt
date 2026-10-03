@@ -31,9 +31,8 @@ internal object Rollout {
 
     /** Aplica [action] do [seat] e avisa todas as políticas do evento público correspondente. */
     fun step(state: RoundState, seat: Seat, action: Action, policies: List<MediumBot>): RoundState {
-        val takenFromDiscard = if (action is Action.TakeDiscardPile) state.discardPile.dropLast(1) else emptyList()
+        val event = PublicEvent.of(state.discardPile, seat, action)
         val next = RoundEngine.apply(state, seat, action)
-        val event = PublicEvent(seat, action, takenFromDiscard)
         policies.forEach { it.observe(event) }
         return next
     }

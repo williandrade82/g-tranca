@@ -22,7 +22,7 @@ Você desenvolve a camada Android do G-Tranca.
 ## Integração com os bots (obrigatório)
 - Cada bot recebe só `round.viewFor(seat)`. **A UI do humano também desenha a partir de `viewFor(humanSeat)`**, nunca do `RoundState` completo (não mostrar mão do parceiro, monte nem mortos; só tamanhos).
 - A cada partida distribuída: `bot.onNewRound()` em todos os bots.
-- A cada ação aplicada (de qualquer assento, inclusive do humano e do próprio bot): monte `PublicEvent(seat, action, takenFromDiscard)` e chame `observe` em todos os bots. `takenFromDiscard` = `round.discardPile.dropLast(1)` calculado **antes** do `play` quando a ação é `TakeDiscardPile` (vazio nas demais). Reaproveite o helper compartilhado se existir no `:ai`; o `:sim` faz o mesmo em `Simulator.runGame`.
+- A cada ação aplicada (de qualquer assento, inclusive do humano e do próprio bot): monte o evento com `PublicEvent.of(round.discardPile, seat, action)` **antes** do `play` (depois dele o lixo já foi levado) e chame `observe` em todos os bots. Nunca monte o `PublicEvent` à mão; o `:sim` faz o mesmo em `Simulator.runGame`.
 - `chooseAction` roda em `Dispatchers.Default` (o Difícil faz busca de CPU com teto de 800 ms). Nunca na main thread.
 
 ## Arquitetura

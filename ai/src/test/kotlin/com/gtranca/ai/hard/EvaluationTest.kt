@@ -100,9 +100,9 @@ class EvaluationTest {
                     val seat = state.currentSeat
                     val legal = RoundEngine.legalActions(state, seat)
                     val action = bots[seat.index].chooseAction(state.viewFor(seat), legal)
-                    val taken = if (action is Action.TakeDiscardPile) state.discardPile.dropLast(1) else emptyList()
+                    val event = PublicEvent.of(state.discardPile, seat, action)
                     state = RoundEngine.apply(state, seat, action)
-                    bots.forEach { it.observe(PublicEvent(seat, action, taken)) }
+                    bots.forEach { it.observe(event) }
                 }
                 withClue("modo $mode, semente $seed") {
                     for (side in mode.sides) {

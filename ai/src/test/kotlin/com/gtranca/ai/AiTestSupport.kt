@@ -95,9 +95,9 @@ fun playRound(mode: GameMode, dealSeed: Long, bots: List<BotPlayer>, maxActions:
         check(legal.isNotEmpty()) { "semente $dealSeed: sem ações legais" }
         val action = bots[seat.index].chooseAction(state.viewFor(seat), legal)
         check(action in legal) { "semente $dealSeed: ação fora das legais: $action" }
-        val takenFromDiscard = if (action is Action.TakeDiscardPile) state.discardPile.dropLast(1) else emptyList()
+        val event = PublicEvent.of(state.discardPile, seat, action)
         state = RoundEngine.apply(state, seat, action)
-        bots.forEach { it.observe(PublicEvent(seat, action, takenFromDiscard)) }
+        bots.forEach { it.observe(event) }
         actions += action
         check(actions.size < maxActions) { "semente $dealSeed: limite de ações" }
     }

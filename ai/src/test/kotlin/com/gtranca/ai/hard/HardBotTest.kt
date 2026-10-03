@@ -162,9 +162,9 @@ class HardBotTest {
             val seat = state.currentSeat
             val legal = RoundEngine.legalActions(state, seat)
             val action = bots[seat.index].chooseAction(state.viewFor(seat), legal)
-            val taken = if (action is Action.TakeDiscardPile) state.discardPile.dropLast(1) else emptyList()
+            val event = PublicEvent.of(state.discardPile, seat, action)
             state = RoundEngine.apply(state, seat, action)
-            bots.forEach { it.observe(PublicEvent(seat, action, taken)) }
+            bots.forEach { it.observe(event) }
         }
         val scorer = MediumBot(Random(0))
         var playingChecked = 0
@@ -244,9 +244,9 @@ class HardBotTest {
             val legal = RoundEngine.legalActions(state, seat)
             if (seat == Seat(0) && events.size >= minActions && legal.size > 2) return state to events
             val action = bots[seat.index].chooseAction(state.viewFor(seat), legal)
-            val taken = if (action is Action.TakeDiscardPile) state.discardPile.dropLast(1) else emptyList()
+            val event = PublicEvent.of(state.discardPile, seat, action)
             state = RoundEngine.apply(state, seat, action)
-            events += PublicEvent(seat, action, taken)
+            events += event
             bots.forEach { it.observe(events.last()) }
         }
     }
