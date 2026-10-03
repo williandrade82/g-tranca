@@ -306,29 +306,66 @@ Todas as demais regras deste documento são **fixas**. No código, elas ficam re
 
 # **15. Resumo do Fluxo de Jogo**
 
+Este resumo **não acrescenta regras**: ele organiza as seções anteriores, que prevalecem em caso de dúvida. O fluxo é apresentado em três níveis: o jogo (várias partidas), a partida (várias jogadas) e a jogada de um jogador.
+
+### **15.1. Jogo**
+
 ```mermaid
 flowchart TD
-A[Início da partida] --> B[Distribuição e 3 vermelhos automáticos]
-B --> C{Pode e quer pegar o lixo?}
-C -->|Sim| C2[Pega o lixo e leva o topo à mesa]
-C -->|Não| C1{Monte tem cartas?}
-C1 -->|Sim| C5[Compra do monte]
-C1 -->|Não| C3{Há morto disponível?}
-C3 -->|Sim| C4[Morto vira monte] --> C5
-C3 -->|Não| I[Fim da partida sem vencedor]
-C2 --> D[Baixa jogos e acrescenta cartas]
-C5 --> D
-D --> F{Ficou sem cartas?}
-F -->|Não| N[Descarta]
-F -->|Sim| K{Lado já pegou o morto?}
-K -->|Não| H[Pega o morto: direto] --> D
-K -->|Sim| O[Batida: fim da partida com vencedor]
-N --> P{Ficou sem cartas?}
-P -->|Não| L[Próximo jogador]
-P -->|Sim| Q{Lado já pegou o morto?}
-Q -->|Não| R[Pega o morto: indireto] --> L
-Q -->|Sim| O
-L --> C
+    A["Início do jogo: modo e pontuação-alvo (§14)"] --> B["Sorteia o primeiro jogador (§4.1)"]
+    B --> C["Partida (§15.2)"]
+    C --> D["Pontua a partida e soma aos totais de cada lado (§12)"]
+    D --> E{"Algum lado tem total maior ou igual à pontuação-alvo? (§13)"}
+    E -->|Não| F["Próxima partida, iniciada pelo jogador seguinte ao que iniciou a anterior (§4.1)"]
+    E -->|Sim| G{"Há um único lado com a maior pontuação? (§13)"}
+    G -->|Sim| H["Fim do jogo: vence esse lado"]
+    G -->|Não, há empate| F
+    F --> C
 ```
 
-> O motor só permite ficar sem cartas quando o resultado é válido (§8): pegar um morto disponível ou bater com ao menos uma canastra. Por isso o fluxograma não tem caminhos de "sem cartas" ilegais.
+### **15.2. Partida**
+
+```mermaid
+flowchart TD
+    A["Embaralha e distribui: 11 cartas por jogador, 2 mortos de 11 cartas, o restante no monte; lixo vazio (§1, §3)"] --> B["Trocas dos 3 vermelhos recebidos, na ordem de jogada; cada jogador termina as suas antes do próximo (§3.5)"]
+    B --> C["Jogada do jogador da vez (§15.3), começando pelo primeiro jogador"]
+    C --> D{"A partida terminou? (§11)"}
+    D -->|"Sim: batida ou fim sem vencedor"| E["Fim da partida"]
+    D -->|Não| F["Próximo jogador, no sentido horário (§4.2)"]
+    F --> C
+```
+
+### **15.3. Jogada**
+
+```mermaid
+flowchart TD
+    A["Início da jogada"] --> B{"Pegar o lixo? O lixo pode ser pego (§5) e o jogador quer"}
+    B -->|Sim| C["Leva o topo à mesa e recebe as demais cartas do lixo (§5.1, §5.2)"]
+    B -->|Não| D{"O monte tem cartas?"}
+    D -->|Sim| E["Compra uma carta do monte (§4.3)"]
+    D -->|Não| F{"Há morto disponível? (§10)"}
+    F -->|Sim| G["Um morto vira o novo monte (§10)"]
+    G --> E
+    F -->|Não| Z1["Fim da partida sem vencedor (§10, §11.2)"]
+    E --> H{"Ficou com 1 carta porque um 3 vermelho comprado não pôde ser reposto, e não pode bater? (§8)"}
+    H -->|Sim| Z1
+    H -->|Não| J["Baixa conjuntos e acrescenta cartas aos conjuntos do lado, em qualquer ordem e quantidade (§4.3, §6, §7)"]
+    C --> J
+    J --> K{"Ficou sem cartas antes de descartar?"}
+    K -->|Não| L["Descarta uma carta (§8)"]
+    K -->|Sim| M{"O lado já pegou o morto?"}
+    M -->|Não| N["Pega o morto direto e continua jogando (§9.2)"]
+    N --> J
+    M -->|Sim| Z2["Batida: fim da partida com vitória do lado (§11.1)"]
+    L --> O{"Ficou sem cartas?"}
+    O -->|Não| P["Fim da jogada"]
+    O -->|Sim| Q{"O lado já pegou o morto?"}
+    Q -->|Não| R["Pega o morto indireto, para jogar com ele na próxima vez (§9.3)"]
+    R --> P
+    Q -->|Sim| Z2
+```
+
+### **15.4. Observações**
+- **Ficar sem cartas** só é permitido quando leva a pegar o morto ou a bater (§8), e bater exige também que o lado tenha pelo menos uma canastra (§11.1). Como o motor só oferece jogadas válidas, os fluxogramas não mostram caminhos ilegais.
+- **3 vermelhos** que entram na mão por qualquer via (compra, morto ou reposição) são baixados e repostos automaticamente, inclusive em cadeia (§6.5, §9.4); não são uma ação do jogador.
+- **Duplas:** os parceiros compartilham os conjuntos e o morto do lado (§6.4, §9.1); o morto pego por um deles vale para a batida do outro (§11.1).
