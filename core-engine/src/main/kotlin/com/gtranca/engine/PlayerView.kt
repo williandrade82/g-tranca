@@ -74,5 +74,5 @@ fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
 )
 
 /** Cópia de [SideTable] sem compartilhar nenhuma lista com o original. */
-private fun SideTable.defensiveCopy(): SideTable =
+internal fun SideTable.defensiveCopy(): SideTable =
     copy(melds = melds.map { it.copy(meld = it.meld.copy(cards = it.meld.cards.toList())) })
