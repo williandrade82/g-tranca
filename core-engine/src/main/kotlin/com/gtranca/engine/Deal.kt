@@ -3,6 +3,7 @@ package com.gtranca.engine
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.Deck
 import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.SideTable
@@ -37,7 +38,8 @@ fun dealRound(
  * 4. §3.4 lixo vazio.
  * 5. §3.5 / §6.5 na ordem de jogada a partir de [firstSeat], cada 3 vermelho da mão vai para a mesa
  *    do lado do jogador e é reposto com a carta do topo do monte; se a reposição também for
- *    3 vermelho, repete (reposição em cadeia).
+ *    3 vermelho, repete (reposição em cadeia). Cada troca entra no registro público [RoundState.redThreeLog],
+ *    na ordem em que acontece, com `atDeal = true`.
  */
 internal fun dealFromOrderedDeck(
     mode: GameMode,
@@ -64,6 +66,7 @@ internal fun dealFromOrderedDeck(
     val stock = ArrayDeque(deck.subList(handCards + mortoCards, deck.size))
 
     val redThrees = List(mode.sideCount) { mutableListOf<Card>() }
+    val log = mutableListOf<RedThreeLaid>()
     for (seat in playOrder) {
         val hand = hands[seat.index]
         val side = mode.sideOf(seat)
@@ -71,6 +74,7 @@ internal fun dealFromOrderedDeck(
         while (redThree != null) {
             hand -= redThree
             redThrees[side.index] += redThree
+            log += RedThreeLaid(seat, redThree, atDeal = true) // §3.5 troca pública, na ordem real
             // §6.5 reposição do topo do monte. Na distribuição o monte nunca se esgota
             // (no máximo 4 reposições contra 38+ cartas), por isso §10 não se aplica aqui.
             check(stock.isNotEmpty()) { "Monte vazio durante a reposição de 3 vermelho da distribuição" }
@@ -89,5 +93,6 @@ internal fun dealFromOrderedDeck(
         tables = List(mode.sideCount) { SideTable() },
         firstSeat = firstSeat,
         currentSeat = firstSeat,
+        redThreeLog = log.toList(),
     )
 }

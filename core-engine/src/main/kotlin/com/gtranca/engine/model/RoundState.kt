@@ -21,6 +21,11 @@ import kotlinx.serialization.Serializable
  * @property mortoStatus situação de cada morto (§9.1, §10). Um morto que não está
  *   [MortoStatus.Available] tem a lista correspondente em [mortos] vazia.
  * @property result resultado, presente somente quando [phase] é [Phase.FINISHED].
+ * @property redThreeLog registro público (§3.5, §6.5) de quem baixou cada 3 vermelho, em ordem cronológica:
+ *   um item por 3 vermelho baixado, primeiro os da distribuição, depois os da jogada. Para cada lado, as cartas
+ *   do registro baixadas pelos assentos do lado são as de [redThrees] do lado, na mesma ordem. Vazio por padrão
+ *   para que o JSON salvo antes do registro existir continue legível (nesse caso o registro só tem as trocas
+ *   posteriores à leitura).
  */
 @Serializable
 data class RoundState(
@@ -36,6 +41,7 @@ data class RoundState(
     val phase: Phase = Phase.AWAITING_DRAW,
     val mortoStatus: List<MortoStatus> = List(2) { MortoStatus.Available },
     val result: RoundResult? = null,
+    val redThreeLog: List<RedThreeLaid> = emptyList(),
 ) {
     init {
         require(mortoStatus.size == mortos.size) { "Uma situação por morto" }
@@ -46,6 +52,7 @@ data class RoundState(
         require(mortos.size == 2) { "Esperados 2 mortos, recebidos ${mortos.size}" }
         mode.requireSeat(firstSeat)
         mode.requireSeat(currentSeat)
+        redThreeLog.forEach { mode.requireSeat(it.seat) }
     }
 
     fun handOf(seat: Seat): List<Card> {

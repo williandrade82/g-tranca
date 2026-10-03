@@ -5,6 +5,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldId
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleResult
@@ -38,6 +39,8 @@ class RoundStateBuilder(private val mode: GameMode) {
     var phase: Phase = Phase.AWAITING_DRAW
     /** Se definido, a partida está encerrada ([Phase.FINISHED]) com este resultado. */
     var result: RoundResult? = null
+    /** §3.5 / §6.5 registro público de quem baixou cada 3 vermelho (vazio por padrão). */
+    var redThreeLog: List<RedThreeLaid> = emptyList()
 
     fun hand(seat: Int, text: String) { hands[seat] = cards(text) }
     fun stock(text: String) { stock = cards(text) }
@@ -71,6 +74,7 @@ class RoundStateBuilder(private val mode: GameMode) {
         phase = if (result != null) Phase.FINISHED else phase,
         result = result,
         mortoStatus = mortoStatus.toList(),
+        redThreeLog = redThreeLog,
     )
 }
 
@@ -109,3 +113,23 @@ fun List<Action>.createPlans(): List<Set<Card>> = filterIsInstance<Action.Create
 /** Acréscimos listados: (id, cartas). */
 fun List<Action>.addPlans(): List<Pair<Int, Set<Card>>> =
     filterIsInstance<Action.AddToMeld>().map { it.meldId.value to it.cards.toSet() }
+
+/** Entrada do registro de 3 vermelhos (§3.5 / §6.5). */
+fun laid(seat: Int, card: String, atDeal: Boolean = false) = RedThreeLaid(Seat(seat), c(card), atDeal)
+
+/**
+ * §3.5 / §6.5 invariante do registro público de 3 vermelhos: para cada lado, as cartas do registro baixadas
+ * pelos assentos do lado são exatamente os 3 vermelhos do lado, na mesma ordem; e as trocas da distribuição
+ * (§3.5) vêm todas antes das trocas durante a jogada.
+ */
+fun RoundState.redThreeLogViolation(): String? {
+    for (side in mode.sides) {
+        val logged = redThreeLog.filter { mode.sideOf(it.seat) == side }.map { it.card }
+        if (logged != redThreesOf(side)) return "lado ${side.index}: registro $logged != 3 vermelhos ${redThreesOf(side)}"
+    }
+    val firstInPlay = redThreeLog.indexOfFirst { !it.atDeal }
+    if (firstInPlay >= 0 && redThreeLog.drop(firstInPlay).any { it.atDeal }) {
+        return "troca da distribuição depois de troca durante a jogada: $redThreeLog"
+    }
+    return null
+}

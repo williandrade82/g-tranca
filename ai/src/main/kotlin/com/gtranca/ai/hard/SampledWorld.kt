@@ -42,6 +42,7 @@ internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
     mortoSizes = mortos.map { it.size },
     redThrees = redThrees,
     tables = tables,
+    redThreeLog = redThreeLog,
 )
 
 /**

@@ -4,6 +4,7 @@ import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
@@ -26,6 +27,8 @@ import kotlinx.serialization.Serializable
  * @property mortoSizes número de cartas de cada morto (0 se pego ou se virou monte).
  * @property redThrees 3 vermelhos baixados na mesa (§6.5), indexados por [Side.index].
  * @property tables conjuntos na mesa de cada lado (§6.4), indexados por [Side.index].
+ * @property redThreeLog registro público (§3.5, §6.5) de quem baixou cada 3 vermelho, em ordem cronológica, igual
+ *   ao [RoundState.redThreeLog]. Não contém as cartas de reposição (ocultas). Vazio por padrão (JSON antigo).
  */
 @Serializable
 data class PlayerView(
@@ -44,6 +47,7 @@ data class PlayerView(
     val mortoSizes: List<Int>,
     val redThrees: List<List<Card>>,
     val tables: List<SideTable>,
+    val redThreeLog: List<RedThreeLaid> = emptyList(),
 ) {
     /** Topo do lixo (último elemento), ou `null` se vazio. */
     val discardTop: Card? get() = discardPile.lastOrNull()
@@ -71,6 +75,7 @@ fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
     mortoSizes = mortos.map { it.size },
     redThrees = redThrees.map { it.toList() },
     tables = tables.map { it.defensiveCopy() },
+    redThreeLog = redThreeLog.toList(),
 )
 
 /** Cópia de [SideTable] sem compartilhar nenhuma lista com o original. */

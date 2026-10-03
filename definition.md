@@ -46,6 +46,7 @@
   1. O primeiro jogador (§4.1) baixa automaticamente todos os seus 3 vermelhos e repõe cada um com uma carta do topo do monte, incluindo as reposições em cadeia (ver §6.5).
   2. Só quando ele termina, o próximo jogador (sentido anti-horário, §4.2) faz o mesmo, e assim por diante.
   3. Quando todos tiverem trocado seus 3 vermelhos, o primeiro jogador inicia sua jogada (§4.3).
+- As trocas são **públicas**: todos os jogadores são avisados, na ordem em que aconteceram, de **quem** baixou cada 3 vermelho. As cartas recebidas como reposição continuam ocultas (vão para a mão de quem trocou).
 
 ---
 
@@ -168,6 +169,7 @@ Um conjunto pode ser:
   - É baixado **automaticamente**, sozinho, sempre que entra na mão (distribuição, compra do monte, morto ou reposição).
   - Vale **+100 ou –100 pontos** na mesa, conforme o lado tenha ou não canastra ao fim da partida (§12.1).
   - Ao ser baixado, o jogador recebe **uma carta do monte** como reposição. Se a reposição também for 3 vermelho, o processo se repete (**reposição em cadeia**).
+  - A troca é **pública**: todos são avisados de quem baixou o 3 vermelho e em que momento (na distribuição, §3.5, ou durante a jogada). A carta de reposição é oculta.
   - Se o monte estiver vazio, a reposição segue §10. Se não houver monte nem morto, o 3 vermelho é baixado **sem reposição**.
   - **Não pode ser descartado.**
 - Baixar um 3 vermelho não conta como "baixar conjunto" e não altera as regras de morto e batida.

@@ -4,6 +4,7 @@ import com.gtranca.engine.model.ActionError
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleError
@@ -216,7 +217,10 @@ object RoundEngine {
         return next
     }
 
-    /** §6.5 baixa cada 3 vermelho da mão do [seat] e repõe do monte, em cadeia. */
+    /**
+     * §6.5 baixa cada 3 vermelho da mão do [seat] e repõe do monte, em cadeia. Cada 3 vermelho baixado entra
+     * no registro público [RoundState.redThreeLog] (§3.5 / §6.5) com o [seat] e `atDeal = false`.
+     */
     private fun settleRedThrees(state: RoundState, seat: Seat): RoundState {
         var current = state
         val side = current.mode.sideOf(seat)
@@ -224,7 +228,10 @@ object RoundEngine {
             val redThree = current.handOf(seat).firstOrNull { it.isRedThree } ?: return current
             current = current
                 .withHand(seat, current.handOf(seat) - redThree)
-                .copy(redThrees = current.redThrees.replaceAt(side.index, current.redThreesOf(side) + redThree))
+                .copy(
+                    redThrees = current.redThrees.replaceAt(side.index, current.redThreesOf(side) + redThree),
+                    redThreeLog = current.redThreeLog + RedThreeLaid(seat, redThree, atDeal = false),
+                )
             val (afterDraw, replacement) = drawOne(current)
             current = if (replacement == null) afterDraw else afterDraw.withHand(seat, afterDraw.handOf(seat) + replacement)
         }

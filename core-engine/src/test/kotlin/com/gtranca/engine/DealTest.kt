@@ -273,6 +273,80 @@ class DealTest {
         state.stock shouldHaveSize 56
     }
 
+    // ---------- §3.5 / §6.5 registro público das trocas ----------
+
+    @Test
+    fun `registro da distribuicao segue a ordem real das trocas inclusive em cadeia`() {
+        // §3.5 trocas públicas, na ordem em que aconteceram: o assento 0 (primeiro) troca tudo, inclusive a
+        // cadeia (§6.5), e só depois o assento 1
+        val deck = orderedDeck(mapOf(0 to "3H", 1 to "3D'", 44 to "3D", 45 to "3H'", 46 to "KS", 47 to "QD"))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0))
+        state.redThreeLog shouldContainExactly listOf(
+            laid(0, "3H", atDeal = true),
+            laid(0, "3D", atDeal = true),
+            laid(0, "3H'", atDeal = true),
+            laid(1, "3D'", atDeal = true),
+        )
+        state.redThreeLogViolation() shouldBe null
+    }
+
+    @Test
+    fun `registro da distribuicao comeca pelo primeiro jogador`() {
+        // §3.5 seguindo a ordem de jogada: com o assento 1 iniciando, a troca dele vem antes da do assento 0
+        val deck = orderedDeck(mapOf(0 to "3H", 1 to "3D", 44 to "KS", 45 to "QD"))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(1))
+        state.redThreeLog shouldContainExactly listOf(laid(1, "3H", atDeal = true), laid(0, "3D", atDeal = true))
+    }
+
+    @Test
+    fun `em duplas o registro diz qual parceiro baixou cada 3 vermelho`() {
+        // §3.5 todos são avisados de QUEM baixou: assentos 0 e 2 são do mesmo lado (§1.1), mas o registro os distingue
+        val deck = orderedDeck(
+            mapOf(
+                1 to "3D",  // assento 1 → lado 1
+                2 to "3H",  // assento 2 → lado 0
+                4 to "3H'", // assento 0 (2ª carta) → lado 0
+            ),
+        )
+        val state = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(0))
+        state.redThreeLog shouldContainExactly listOf(
+            laid(0, "3H'", atDeal = true),
+            laid(1, "3D", atDeal = true),
+            laid(2, "3H", atDeal = true),
+        )
+        state.redThreesOf(Side(0)) shouldContainExactly listOf(c("3H'"), c("3H"))
+        state.redThreeLogViolation() shouldBe null
+    }
+
+    @Test
+    fun `em duplas a cadeia do primeiro jogador vem inteira antes da troca do proximo`() {
+        // §3.5 cada jogador termina as suas trocas (com cadeia, §6.5) antes do próximo
+        val deck = orderedDeck(mapOf(0 to "3H", 1 to "3D", 66 to "3H'", 67 to "KS", 68 to "QD"))
+        val state = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(3))
+        state.redThreeLog shouldContainExactly listOf(
+            laid(3, "3H", atDeal = true),
+            laid(3, "3H'", atDeal = true),
+            laid(0, "3D", atDeal = true),
+        )
+    }
+
+    @Test
+    fun `distribuicao sem 3 vermelho na mao tem registro vazio`() {
+        // §3.5 sem troca, nada a avisar
+        dealFromOrderedDeck(GameMode.INDIVIDUAL, orderedDeck(), Seat(0)).redThreeLog.shouldBeEmpty()
+    }
+
+    @ParameterizedTest
+    @EnumSource(GameMode::class)
+    fun `registro da distribuicao bate com os 3 vermelhos de cada lado`(mode: GameMode) {
+        // §3.5 / §6.5 um item por 3 vermelho baixado, todos da distribuição
+        (0L until 200L).forEach { seed ->
+            val state = dealRound(mode, Random(seed))
+            state.redThreeLogViolation() shouldBe null
+            state.redThreeLog.all { it.atDeal } shouldBe true
+        }
+    }
+
     // ---------- §4.1 ----------
 
     @ParameterizedTest

@@ -15,7 +15,7 @@ import kotlin.random.Random
  * cartas ocultas. É a base de simulação do bot Difícil (ISMCTS), que só recebe a [PlayerView].
  *
  * Fica igual ao que o assento vê: a própria mão (na mesma ordem), o lixo (§5.6, na mesma ordem), as mesas,
- * os 3 vermelhos, a situação e o tamanho de cada morto, o tamanho do monte e das mãos, a fase, a vez,
+ * os 3 vermelhos e o registro público de quem os baixou (§3.5, §6.5), a situação e o tamanho de cada morto, o tamanho do monte e das mãos, a fase, a vez,
  * o [PlayerView.firstSeat], o modo e o resultado. Portanto `determinize(r).viewFor(seat) == this`, e as
  * ações válidas do [PlayerView.seat] no estado sorteado são as mesmas do estado real.
  *
@@ -44,7 +44,7 @@ import kotlin.random.Random
  * @throws IllegalArgumentException se a vista for incoerente (lado que não é o do assento, cartas visíveis
  *   repetidas, contagens que não somam 104, 3 vermelho na própria mão, no lixo ou num conjunto da mesa, carta
  *   que não é 3 vermelho na área de 3 vermelhos, conjunto da mesa diferente do que [Meld.create] produz com
- *   as mesmas cartas, morto indisponível com cartas, 3 vermelho oculto sem lugar fora das mãos, assento da
+ *   as mesmas cartas, morto indisponível com cartas, registro de 3 vermelhos que não corresponde à área de 3 vermelhos, 3 vermelho oculto sem lugar fora das mãos, assento da
  *   vez sem monte nem morto que não pode pegar o lixo) ou se [known] for incoerente (assento fora do modo ou o próprio, carta visível, carta repetida,
  *   3 vermelho, mais cartas do que o tamanho da mão).
  */
@@ -136,6 +136,7 @@ private fun PlayerView.sample(
         phase = phase,
         mortoStatus = mortoStatus.toList(),
         result = result,
+        redThreeLog = redThreeLog.toList(), // §3.5 / §6.5 público: o mundo sorteado tem o mesmo registro
     )
 }
 
@@ -177,7 +178,35 @@ private fun PlayerView.hiddenCardsOrThrow(): List<Card> {
         "Vista incoerente: ${visible.size} cartas visíveis + $hiddenSlots ocultas (mãos alheias, monte, mortos) " +
             "não somam ${Deck.SIZE}"
     }
+    // depois das demais conferências, para que os 3 vermelhos da mesa já estejam validados
+    validateRedThreeLog()
     return hidden
+}
+
+/**
+ * §3.5 / §6.5 o registro público é coerente com a área de 3 vermelhos: cada assento é do modo e, para cada lado, as
+ * cartas registradas pelos assentos do lado são o **final** de [PlayerView.redThrees] do lado, na mesma ordem; e as
+ * trocas da distribuição vêm antes de todas as da jogada (§3.5: elas acontecem antes da primeira jogada).
+ * Na partida normal o registro cobre todos os 3 vermelhos (igualdade); aceitar só o final mantém determinizáveis as
+ * partidas salvas antes de o registro existir (JSON antigo, registro vazio, que só ganha as trocas posteriores).
+ */
+private fun PlayerView.validateRedThreeLog() {
+    for (entry in redThreeLog) {
+        require(entry.seat.index in 0 until mode.seatCount) {
+            "Vista incoerente: registro de 3 vermelhos com assento ${entry.seat.index} fora do modo $mode"
+        }
+    }
+    require(redThreeLog.dropWhile { it.atDeal }.none { it.atDeal }) {
+        "Vista incoerente: registro de 3 vermelhos com troca da distribuição depois de uma troca da jogada (§3.5)"
+    }
+    for (side in mode.sides) {
+        val logged = redThreeLog.filter { mode.sideOf(it.seat) == side }.map { it.card }
+        val onTable = redThrees[side.index]
+        require(logged.size <= onTable.size && onTable.takeLast(logged.size) == logged) {
+            "Vista incoerente: registro de 3 vermelhos do lado ${side.index} ($logged) não corresponde aos 3 vermelhos " +
+                "do lado na mesa ($onTable) (§3.5, §6.5)"
+        }
+    }
 }
 
 /** §6.5 3 vermelhos só na área de 3 vermelhos; §6 só conjuntos válidos na mesa. */

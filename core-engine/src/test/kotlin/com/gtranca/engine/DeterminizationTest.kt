@@ -59,6 +59,8 @@ class DeterminizationTest {
             count++
             state.allCards() shouldContainExactlyInAnyOrder Deck.standard()
             state.hands.flatten().none { it.isRedThree } shouldBe true
+            // §3.5 / §6.5 o mundo sorteado mantém o registro coerente ao continuar jogando
+            state.redThreeLogViolation() shouldBe null
         }
         return state
     }

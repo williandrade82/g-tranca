@@ -26,7 +26,7 @@ Use o builder de estado `RoundStateBuilder` e os helpers `c("7H")`/`cards("7H 8H
 - §6.2 A-2-3 e K-A-2 inválidos; maior sequência 4…A; nenhum 3 em conjunto.
 - §6.3 máx. 1 coringa; situação do coringa definida pelas naturais: **travado** no buraco (5-2-7), **solto** na ponta sem valor fixo (6-7-2 aceita 8, 5, 5-4 ou só 4, que o trava no 5) ou **sem posição** na sequência 4..A completa; a natural do buraco libera o coringa e é sempre aceita; coringa **pode** entrar em canastra limpa, que passa a ser suja (evitar isso é estratégia do bot, não regra do motor).
 - §6.4 grupos do mesmo número podem se repetir (inclusive quando as cartas caberiam no existente); nova sequência não pode ser continuação de outra do mesmo naipe (**exceto** quando o coringa dela sujaria uma canastra limpa, ou quando caber exigiria travar ou mudar o valor do coringa da existente: aí pode ser conjunto separado); sequências nunca se unem e o jogador indica o conjunto de destino ao acrescentar.
-- §6.5 reposição em cadeia de 3 vermelho; 3 vermelho na distribuição e no morto; sem monte nem morto → sem reposição.
+- §6.5 reposição em cadeia de 3 vermelho; 3 vermelho na distribuição e no morto; sem monte nem morto → sem reposição. Toda troca é pública (§3.5): entra em `RoundState.redThreeLog` (`RedThreeLaid(seat, card, atDeal)`) na ordem real, com o assento de quem baixou (em duplas, qual parceiro); a reposição não entra (é oculta).
 - §8 ficar sem cartas só se resultar em morto ou batida.
 - §9.2 morto direto continua a jogada; §9.3 morto indireto só na próxima vez; duplas: só um morto por dupla.
 - §10 morto vira monte (apenas um, se houver dois); compra impossível → fim sem vencedor (salvo pegar o lixo).
@@ -40,3 +40,4 @@ Para partidas aleatórias com semente:
 - Nenhum conjunto na mesa viola §6.2/§6.3.
 - Nenhum jogador fica sem cartas fora das condições de §8.
 - `apply` de qualquer ação de `legalActions` nunca lança exceção.
+- §3.5 / §6.5 por lado, as cartas de `redThreeLog` dos assentos do lado == `redThrees[side]`, na mesma ordem; trocas da distribuição (`atDeal`) antes das da jogada (helper `redThreeLogViolation()` em `EngineTestSupport.kt`).

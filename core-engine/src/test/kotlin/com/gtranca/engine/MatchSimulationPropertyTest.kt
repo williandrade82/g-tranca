@@ -38,6 +38,8 @@ class MatchSimulationPropertyTest {
                     legal.isNotEmpty() shouldBe true
                 }
                 match = match.play(seat, choose(legal, random))
+                // §3.5 / §6.5 registro público de 3 vermelhos coerente com a mesa
+                withClue("registro de 3 vermelhos") { match.currentRound.redThreeLogViolation() shouldBe null }
                 actions++
                 withClue("limite de ações por partida") { (actions < 5_000) shouldBe true }
             }

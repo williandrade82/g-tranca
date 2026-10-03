@@ -36,6 +36,7 @@ class RoundSimulationPropertyTest {
     private fun play(mode: GameMode, seed: Long, maxActions: Int = 5_000): Outcome {
         val random = Random(seed)
         var state = dealRound(mode, random)
+        checkInvariants(state)
         var count = 0
         while (state.phase != Phase.FINISHED && count < maxActions) {
             val seat = state.currentSeat
@@ -62,6 +63,8 @@ class RoundSimulationPropertyTest {
         }
         // §6.5 nenhuma mão guarda 3 vermelho
         state.hands.flatten().none { it.isRedThree } shouldBe true
+        // §3.5 / §6.5 registro público: por lado, as cartas registradas são os 3 vermelhos do lado, na mesma ordem
+        withClue("registro de 3 vermelhos") { state.redThreeLogViolation() shouldBe null }
     }
 
     @Test
