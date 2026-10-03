@@ -78,6 +78,30 @@ class DiscardPileTest {
     }
 
     @Test
+    fun `pegar o lixo acrescentando topo e coringa da mao a canastra limpa`() {
+        // §5.1 + §6.3 topo 10♥ e coringa da mão entram na canastra limpa 4..9♥, que fica suja
+        val s = round {
+            hand(0, "2C KS QD")
+            meld(0, "4H 5H 6H 7H 8H 9H")
+            discard("TH")
+        }.act(0, takeAdd(0, "2C"))
+        s.table(0).meld(MeldId(0))!!.isDirtyCanasta() shouldBe true
+        s.hand(0) shouldContainExactlyInAnyOrder cards("KS QD")
+    }
+
+    @Test
+    fun `pegar o lixo formando sequencia com coringa ao lado de canastra limpa`() {
+        // §5.1 + §6.4 exceção: 10♥ do topo + J♥ e coringa da mão como conjunto separado
+        val s = round {
+            hand(0, "JH 2C KS")
+            meld(0, "4H 5H 6H 7H 8H 9H")
+            discard("TH")
+        }.act(0, takeNew("JH 2C"))
+        s.table(0).melds.size shouldBe 2
+        s.table(0).meld(MeldId(0))!!.isCleanCanasta() shouldBe true
+    }
+
+    @Test
     fun `pegar o lixo acrescentando o topo junto com cartas da mao`() {
         // §5.1 ex.: com 4-5-6♥ na mesa e 8♥ no topo, acrescenta 7♥ da mão e o 8♥ juntos
         val s = round {

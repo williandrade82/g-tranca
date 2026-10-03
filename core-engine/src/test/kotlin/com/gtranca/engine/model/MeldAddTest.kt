@@ -122,15 +122,23 @@ class MeldAddTest {
     }
 
     @Test
-    fun `coringa recusado em canastra limpa`() {
-        // §6.3 / §7.3 canastra limpa não recebe coringa
-        meld("4H 5H 6H 7H 8H 9H").add(cards("2C")) shouldFailWith MeldError.WILD_IN_CLEAN_CANASTA
-        meld("7H 7S 7C 7D 7H' 7S'").add(cards("2C")) shouldFailWith MeldError.WILD_IN_CLEAN_CANASTA
+    fun `coringa acrescentado a canastra limpa a torna suja`() {
+        // §6.3 / §7.3 canastra limpa pode receber coringa e passa a ser suja
+        val seq = meld("4H 5H 6H 7H 8H 9H").add(cards("2C")).shouldBeOk()
+        seq.wildRank shouldBe Rank.TEN
+        seq.isDirtyCanasta().shouldBeTrue()
+        meld("7H 7S 7C 7D 7H' 7S'").add(cards("2C")).shouldBeOk().isDirtyCanasta().shouldBeTrue()
+    }
+
+    @Test
+    fun `canastra que ficou suja nao recebe segundo coringa`() {
+        // §6.3 máx. 1 coringa por conjunto, também em canastra
+        meld("4H 5H 6H 7H 8H 9H 2C").add(cards("2S")) shouldFailWith MeldError.TOO_MANY_WILDS
     }
 
     @Test
     fun `coringa aceito em conjunto que ainda nao e canastra`() {
-        // §6.3 a proibição vale só para canastra limpa
+        // §6.3 coringa completa a canastra (suja)
         val m = meld("4H 5H 6H 7H 8H").add(cards("2C")).shouldBeOk()
         m.cards.size shouldBe 6
         m.isCanasta().shouldBeTrue()
@@ -167,14 +175,14 @@ class MeldAddTest {
     }
 
     @Test
-    fun `acrescimo de varias cartas vale o estado antes do acrescimo`() {
-        // §7.3 ex.: 4-5-6-7-8♥ + 10♥ e um coringa juntos → canastra suja de 7 cartas
+    fun `acrescimo de natural e coringa juntos`() {
+        // §6.3 4-5-6-7-8♥ + 10♥ e um coringa juntos → canastra suja de 7 cartas
         val m = meld("4H 5H 6H 7H 8H").add(cards("TH 2C")).shouldBeOk()
         m.cards.size shouldBe 7
         m.wildRank shouldBe Rank.NINE
         m.isDirtyCanasta().shouldBeTrue()
-        // já canastra limpa, o mesmo acréscimo é recusado
-        meld("4H 5H 6H 7H 8H 9H").add(cards("JH 2C")) shouldFailWith MeldError.WILD_IN_CLEAN_CANASTA
+        // §7.3 o mesmo vale para canastra limpa, que passa a ser suja
+        meld("4H 5H 6H 7H 8H 9H").add(cards("JH 2C")).shouldBeOk().isDirtyCanasta().shouldBeTrue()
     }
 
     @Test

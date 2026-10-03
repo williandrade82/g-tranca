@@ -1,5 +1,6 @@
 package com.gtranca.engine.model
 
+import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -77,8 +78,29 @@ class SideTableTest {
 
     @Test
     fun `nova sequencia com coringa ao lado de canastra limpa e permitida`() {
-        // §6.4 + §7.3 10♥-J♥-2 não pode entrar na canastra limpa 4..9♥ → permitido
+        // §6.4 exceção: não se considera sujar a canastra limpa 4..9♥ → 10♥-J♥-2 pode ser conjunto separado
         table("4H 5H 6H 7H 8H 9H").createMeld(cards("TH JH 2C")).shouldBeOk().melds shouldHaveSize 2
+        // §6.4 exceção vale também com o coringa no buraco (J♥-2-Q♥ valeria 4..9-2-J-Q)
+        table("4H 5H 6H 7H 8H 9H").createMeld(cards("JH QH 2C")).shouldBeOk().melds shouldHaveSize 2
+    }
+
+    @Test
+    fun `cartas com coringa podem sujar a canastra limpa se o jogador escolher`() {
+        // §6.3 / §6.4 a alternativa à sequência separada: acrescentar à canastra, que fica suja
+        val t = table("4H 5H 6H 7H 8H 9H").addToMeld(MeldId(0), cards("TH JH 2C")).shouldBeOk()
+        t.meld(MeldId(0))!!.isDirtyCanasta().shouldBeTrue()
+    }
+
+    @Test
+    fun `nova sequencia sem coringa que cabe em canastra limpa e proibida`() {
+        // §6.4 10♥-J♥-Q♥ cabe na canastra limpa 4..9♥ sem sujá-la → continuação
+        table("4H 5H 6H 7H 8H 9H").createMeld(cards("TH JH QH")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
+    }
+
+    @Test
+    fun `excecao da canastra limpa nao vale para sequencia que ainda nao e canastra`() {
+        // §6.4 4-5-6-7-8♥ não é canastra: 9♥-10♥-2 caberia (4..8-9-10-2) → proibido
+        table("4H 5H 6H 7H 8H").createMeld(cards("9H TH 2C")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
     }
 
     @Test

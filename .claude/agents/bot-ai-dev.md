@@ -17,7 +17,7 @@ Leia `CLAUDE.md`, `definition.md` e a API pública do `:core-engine` (`PlayerVie
 
 ## Níveis
 - **Fácil:** heurísticas simples de prioridade (baixar o que puder, descartar a carta menos útil), com alguns erros propositais.
-- **Médio:** heurísticas com pesos: risco de alimentar o adversário no descarte, travar com 3 preto, quando pegar o lixo, ritmo para pegar o morto, cooperação com o parceiro (não descartar o que o parceiro precisa, ajudar a fechar canastras do lado).
+- **Médio:** heurísticas com pesos: risco de alimentar o adversário no descarte, travar com 3 preto, quando pegar o lixo, ritmo para pegar o morto, cooperação com o parceiro (não descartar o que o parceiro precisa, ajudar a fechar canastras do lado), quando sujar uma canastra limpa (custa 100 pontos, §7.2, mas pode valer a pena para impedir o adversário de vencer ou pontuar mais).
 - **Difícil:** ISMCTS (Information Set Monte Carlo Tree Search) com determinização das cartas ocultas, usando a heurística média como política de rollout. Respeite um orçamento de tempo (padrão 800 ms por decisão) e rode fora da thread principal.
 
 ## Validação

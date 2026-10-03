@@ -70,7 +70,6 @@ data class Meld internal constructor(
      * - §6.1 sequência: mesmo naipe, consecutiva, sem repetição; grupo: mesmo número.
      * - §6.3 máx. 1 coringa; o coringa corre conforme a mesma preferência da criação; natural é
      *   rejeitada se o coringa não couber ([MeldError.WILD_DOES_NOT_FIT]).
-     * - §6.3/§7.3 coringa não entra em canastra limpa (avaliado sobre o conjunto antes do acréscimo).
      */
     fun add(newCards: List<Card>, rules: RuleSet = RuleSet.DEFAULT): RuleResult<Meld> {
         if (newCards.isEmpty()) return fail(MeldError.NO_CARDS)
@@ -78,7 +77,6 @@ data class Meld internal constructor(
         if (all.toSet().size != all.size) return fail(MeldError.DUPLICATE_CARD)
         if (newCards.any { it.rank.isThree }) return fail(MeldError.CONTAINS_THREE)
         if (all.count { it.isWild } > rules.maxWildsPerMeld) return fail(MeldError.TOO_MANY_WILDS)
-        if (newCards.any { it.isWild } && isCleanCanasta(rules)) return fail(MeldError.WILD_IN_CLEAN_CANASTA)
         val newNaturals = newCards.filterNot { it.isWild }
         return when (kind) {
             is MeldKind.Group ->

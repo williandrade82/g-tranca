@@ -29,7 +29,8 @@ data class SideTable(
      * Baixa um conjunto novo (§6.1–§6.3), aplicando as regras de mesa de §6.4:
      * - no máximo um grupo de cada número por lado;
      * - uma sequência nova não pode ser continuação de outra do mesmo naipe do lado, isto é,
-     *   suas cartas não podem caber, de uma vez, numa sequência existente (§6.2, §6.3, §7.3).
+     *   suas cartas não podem caber, de uma vez, numa sequência existente (§6.2, §6.3), salvo se a nova
+     *   tiver coringa e a existente for canastra limpa (exceção de §6.4).
      *
      * O novo conjunto entra no fim de [melds] com id [nextMeldId].
      */
@@ -61,8 +62,11 @@ data class SideTable(
     }
 
     private companion object {
-        /** §6.4 todas as cartas da nova sequência poderiam ser acrescentadas, de uma vez, à existente. */
+        /**
+         * §6.4 todas as cartas da nova sequência poderiam ser acrescentadas, de uma vez, à existente.
+         * Exceção: não se considera sujar uma canastra limpa com o coringa da nova sequência.
+         */
         fun isContinuation(new: Meld, existing: Meld, rules: RuleSet): Boolean =
-            existing.add(new.cards, rules) is RuleResult.Ok
+            !(new.hasWild && existing.isCleanCanasta(rules)) && existing.add(new.cards, rules) is RuleResult.Ok
     }
 }

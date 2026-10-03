@@ -1,6 +1,7 @@
 package com.gtranca.engine
 
 import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.ScoreLine
 import com.gtranca.engine.model.Seat
@@ -40,6 +41,21 @@ class ScoringTest {
         score(s, 0).cleanCanastas shouldBe ScoreLine(1, 200)
         score(s, 0).dirtyCanastas shouldBe ScoreLine(0, 0)
         score(s, 0).total shouldBe 200
+    }
+
+    @Test
+    fun `canastra limpa que recebe coringa na partida passa a valer 100`() {
+        // §6.3 / §7.3 coringa suja a canastra limpa; §12.1 ela pontua como suja (+100)
+        val played = round {
+            mortoTaken(0, 0)
+            mortoTaken(1, 1)
+            hand(0, "2C KS")
+            meld(0, "4H 5H 6H 7H 8H 9H")
+            phase = Phase.PLAYING
+        }.act(0, addTo(0, "2C"))
+        val s = played.copy(phase = Phase.FINISHED, result = RoundResult.NoWinner)
+        score(s, 0).cleanCanastas shouldBe ScoreLine(0, 0)
+        score(s, 0).dirtyCanastas shouldBe ScoreLine(1, 100)
     }
 
     @Test

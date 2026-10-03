@@ -76,7 +76,8 @@ class LegalActionsCompletenessTest {
         val side = mode.sideOf(seat)
         var table = SideTable()
         repeat(random.nextInt(0, 3)) {
-            val attempt = takeFrom(pool, random.nextInt(3, 6))
+            // até 7 cartas, para que a mesa também tenha canastras (limpas e sujas)
+            val attempt = takeFrom(pool, random.nextInt(3, 8))
             when (val r = table.createMeld(attempt)) {
                 is RuleResult.Ok -> table = r.value
                 is RuleResult.Failure -> pool.addAll(attempt)

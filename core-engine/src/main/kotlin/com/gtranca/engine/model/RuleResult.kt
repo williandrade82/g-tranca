@@ -77,8 +77,6 @@ enum class MeldError : RuleError {
     WRONG_SUIT,
     /** §6.1 carta de outro número acrescentada a um grupo. */
     WRONG_RANK,
-    /** §6.3/§7.3 coringa acrescentado a canastra limpa. */
-    WILD_IN_CLEAN_CANASTA,
     /** §6.4 o lado já tem um grupo desse número. */
     DUPLICATE_GROUP,
     /** §6.4 nova sequência seria continuação de outra do mesmo naipe do lado. */
