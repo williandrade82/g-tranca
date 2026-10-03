@@ -16,7 +16,7 @@ class MeldCreateTest {
         m.kind shouldBe MeldKind.Sequence(Suit.HEARTS)
         m.lowRank shouldBe Rank.FIVE
         m.highRank shouldBe Rank.SEVEN
-        m.wildRank.shouldBeNull()
+        m.wildState shouldBe WildState.None
     }
 
     @Test
@@ -95,9 +95,12 @@ class MeldCreateTest {
     }
 
     @Test
-    fun `4 a A completa nao comporta coringa`() {
-        // §6.2 + §6.3 o coringa não cabe nem acima do Ás nem abaixo do 4
-        Meld.create(cards("4S 5S 6S 7S 8S 9S TS JS QS KS AS 2H")) shouldFailWith MeldError.WILD_DOES_NOT_FIT
+    fun `4 a A completa com coringa fica com o coringa sem posicao`() {
+        // §6.3 sequência completa 4..A: o coringa permanece sem representar nenhuma carta
+        val m = meld("4S 5S 6S 7S 8S 9S TS JS QS KS AS 2H")
+        m.cards.size shouldBe 12
+        m.wildState shouldBe WildState.Unplaced
+        m.wildRank.shouldBeNull()
     }
 
     @Test
@@ -126,46 +129,38 @@ class MeldCreateTest {
     // ---------- §6.3 coringa ----------
 
     @Test
-    fun `5-6-2 coringa vale 7 na ponta de cima`() {
-        // §6.3 sem buraco, o coringa ocupa a ponta de cima
+    fun `5-6-2 coringa fica solto na ponta`() {
+        // §6.3 sem buraco entre as naturais, o coringa fica solto (sem valor fixo)
         val m = meld("5H 6H 2C")
-        m.wildRank shouldBe Rank.SEVEN
+        m.wildState shouldBe WildState.Loose
+        m.wildRank.shouldBeNull()
         m.lowRank shouldBe Rank.FIVE
-        m.highRank shouldBe Rank.SEVEN
+        m.highRank shouldBe Rank.SIX
         m.cards shouldContainExactly cards("5H 6H 2C")
     }
 
     @Test
-    fun `5-2-7 coringa preenche o buraco e vale 6`() {
-        // §6.3 coringa ocupa o buraco entre naturais
+    fun `5-2-7 coringa travado no buraco vale 6`() {
+        // §6.3 coringa ocupa o buraco entre naturais e fica travado
         val m = meld("5H 2D 7H")
+        m.wildState shouldBe WildState.Locked(Rank.SIX)
         m.wildRank shouldBe Rank.SIX
         m.cards shouldContainExactly cards("5H 2D 7H")
     }
 
     @Test
-    fun `Q-K-2 coringa vale A`() {
-        // §6.3 ponta de cima
-        val m = meld("QH KH 2S")
-        m.wildRank shouldBe Rank.ACE
-        m.highRank shouldBe Rank.ACE
-    }
-
-    @Test
-    fun `K-A-2 e valida e o coringa vale Q na ponta de baixo`() {
-        // §6.3 não cabe acima do Ás → ponta de baixo; §6.2 o 2 nunca é natural (não há volta K-A-2)
+    fun `K-A-2 e valida com o coringa solto embaixo`() {
+        // §6.3 sequência que chega ao Ás: o coringa só pode estar na ponta de baixo; §6.2 não há volta K-A-2
         val m = meld("KH AH 2H")
-        m.wildRank shouldBe Rank.QUEEN
-        m.lowRank shouldBe Rank.QUEEN
-        m.highRank shouldBe Rank.ACE
+        m.wildState shouldBe WildState.Loose
         m.cards shouldContainExactly cards("2H KH AH")
     }
 
     @Test
-    fun `5 a A com coringa usa o coringa como 4`() {
-        // §6.3 ponta de baixo quando a sequência já chega ao Ás; limite inferior 4 (§6.2)
+    fun `5 a A com coringa deixa o coringa solto`() {
+        // §6.3 sem buraco: solto (só pode ser o 4, §6.2)
         val m = meld("5S 6S 7S 8S 9S TS JS QS KS AS 2D")
-        m.wildRank shouldBe Rank.FOUR
+        m.wildState shouldBe WildState.Loose
         m.cards.size shouldBe 11
     }
 
@@ -177,9 +172,10 @@ class MeldCreateTest {
 
     @Test
     fun `grupo com coringa`() {
-        // §6.3 coringa em grupo
+        // §6.3 no grupo o coringa vale o número do grupo
         val m = meld("7H 7S 2D")
         m.kind shouldBe MeldKind.Group(Rank.SEVEN)
+        m.wildState shouldBe WildState.Locked(Rank.SEVEN)
         m.wildRank shouldBe Rank.SEVEN
         m.hasWild shouldBe true
     }

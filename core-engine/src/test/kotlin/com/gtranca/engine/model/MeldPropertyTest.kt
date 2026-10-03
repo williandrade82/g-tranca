@@ -44,8 +44,26 @@ class MeldPropertyTest {
         m.cards.none { it.rank.isThree } shouldBe true
         (m.cards.size >= 3) shouldBe true
         m.cards.toSet().size shouldBe m.cards.size
-        // recriar a partir das cartas dá o mesmo conjunto (mesmo tipo e mesma posição do coringa)
+        // recriar a partir das cartas dá o mesmo conjunto (mesmo tipo e mesma ordem)
         Meld.create(m.cards).shouldBeOk() shouldBe m
+        val kind = m.kind
+        if (kind is MeldKind.Sequence) {
+            // §6.3 a situação do coringa é coerente com as naturais
+            val naturals = m.cards.filterNot { it.isWild }.map { it.rank }
+            val gaps = (m.highRank.ordinal - m.lowRank.ordinal + 1) - naturals.size
+            when (val w = m.wildState) {
+                WildState.None -> gaps shouldBe 0
+                is WildState.Locked -> {
+                    gaps shouldBe 1
+                    (w.rank !in naturals && w.rank > m.lowRank && w.rank < m.highRank) shouldBe true
+                    // §6.3 a natural do buraco é sempre aceita e libera o coringa
+                    val hole = Deck.standard().first { it.suit == kind.suit && it.rank == w.rank }
+                    (m.add(listOf(hole)).shouldBeOk().wildState in listOf(WildState.Loose, WildState.Unplaced)) shouldBe true
+                }
+                WildState.Loose -> (gaps == 0 && naturals.size < 11) shouldBe true
+                WildState.Unplaced -> naturals.size shouldBe 11
+            }
+        }
     }
 
     @OptIn(ExperimentalKotest::class)

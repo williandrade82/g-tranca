@@ -18,7 +18,7 @@ import com.gtranca.engine.model.Suit
  * forma estrutural, sem percorrer subconjuntos da mão:
  * - grupo: quantas naturais de cada naipe daquele número (0..cópias na mão) + coringa opcional;
  * - sequência: faixa de valores (4..Ás) de um naipe, com no máximo um buraco preenchido por coringa,
- *   ou sem buraco e com coringa opcional (o motor posiciona na ponta, §6.3);
+ *   ou sem buraco e com coringa opcional (coringa solto ou sem posição, §6.3);
  * - acréscimo/plano de lixo: idem, com o resultado contendo o conjunto existente (e o topo do lixo);
  * - coringa no topo do lixo (§5.4): ele ocupa a vaga do coringa, e a mão entra só com naturais.
  * Cada candidato é então conferido por [RoundEngine.step]; só os aceitos são devolvidos.

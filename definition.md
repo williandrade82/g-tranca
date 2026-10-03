@@ -132,11 +132,15 @@ Um conjunto pode ser:
 
 ### **6.3. Coringa (2)**
 - O **2 é sempre coringa**; nunca é usado como carta natural. Não existe grupo de 2.
-- O coringa substitui qualquer carta, em qualquer posição de uma sequência ou grupo.
+- O coringa substitui uma carta de uma sequência ou grupo (na sequência, conforme as situações abaixo).
 - **Máximo de 1 coringa por conjunto**. Todo conjunto tem, portanto, pelo menos 2 cartas naturais.
-- **Posição do coringa na sequência:** é definida pelo jogo, não pelo jogador. Se o coringa estiver preenchendo um buraco entre cartas naturais (ex.: 5-2-7), ele ocupa o buraco. Caso contrário, ocupa a **ponta de cima** (ex.: 5-6-2 → o coringa vale 7); se não couber em cima (a sequência já chega ao Ás), ocupa a **ponta de baixo**.
-- **Coringa que "corre":** quando a carta natural correspondente à posição do coringa em uma sequência é baixada, o coringa é movido para uma das pontas da sequência, seguindo a mesma preferência (ponta de cima; se não couber, ponta de baixo), desde que caiba (respeitando §6.2). Se não couber em nenhuma ponta, a carta natural **não pode** ser baixada nessa sequência. O conjunto continua com coringa.
-- Um coringa **pode** ser acrescentado a uma **canastra limpa** (respeitando o máximo de 1 coringa); ela passa a ser **suja** (§7.2). Sujar ou não uma canastra limpa é decisão de estratégia do jogador, não uma restrição da regra.
+- **Posição do coringa na sequência:** é definida pelas cartas naturais do conjunto, nunca escolhida pelo jogador. Há três situações:
+  - **Travado:** se falta exatamente um valor entre as cartas naturais, o coringa ocupa esse buraco e vale esse número. Ex.: em 5-2-7 o coringa vale 6; só se acrescentam cartas do 4 para baixo ou do 8 para cima.
+  - **Solto:** se as cartas naturais não têm buraco, o coringa fica numa ponta **sem valor fixo** e pode servir em qualquer um dos lados. Ex.: em 6-7-2 o jogador pode acrescentar 8 (o coringa continua solto), 5 (continua solto), 5 e 4 (continua solto), apenas 4 (o coringa passa a valer 5 e fica travado) ou apenas 9 (o coringa passa a valer 8 e fica travado). Se a sequência já chega ao Ás (ex.: Q-K-A-2), o coringa só pode estar na ponta de baixo.
+  - **Sem posição:** se as cartas naturais já formam a sequência completa 4-5-6-7-8-9-10-J-Q-K-A, o coringa permanece no conjunto sem representar nenhuma carta.
+- **Coringa que "corre":** quando é baixada a carta natural do valor em que o coringa está travado, o buraco deixa de existir e o coringa volta a ficar **solto** (ou **sem posição**, se a sequência ficar completa). A carta natural é sempre aceita; o conjunto continua com coringa.
+- Um coringa **pode** ser acrescentado a uma **canastra limpa** (respeitando o máximo de 1 coringa), inclusive à sequência completa 4…A; ela passa a ser **suja** (§7.2). Sujar ou não uma canastra limpa (por exemplo, para poder bater) é decisão de estratégia do jogador, não uma restrição da regra.
+- No **grupo**, o coringa vale o número do grupo e não tem posição.
 
 ### **6.4. Conjuntos na mesa**
 - Os conjuntos pertencem ao **lado**. No modo duplas, os parceiros compartilham os conjuntos e podem acrescentar cartas aos jogos um do outro.

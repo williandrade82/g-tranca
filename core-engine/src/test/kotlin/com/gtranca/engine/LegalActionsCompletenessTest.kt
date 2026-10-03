@@ -75,6 +75,19 @@ class LegalActionsCompletenessTest {
         val seat = Seat(random.nextInt(mode.seatCount))
         val side = mode.sideOf(seat)
         var table = SideTable()
+        fun takeCard(match: (Card) -> Boolean): Card? {
+            for (list in listOf(pool, others)) list.firstOrNull(match)?.let { list.remove(it); return it }
+            return null
+        }
+        if (random.nextInt(4) == 0) {
+            // §6.3 sequência longa 4..A do naipe: limpa, com coringa travado num buraco ou sem posição
+            val ranks = Rank.entries.filter { it >= Rank.FOUR }.toMutableList()
+            val variant = random.nextInt(3)
+            if (variant == 1) ranks.removeAt(random.nextInt(1, ranks.size - 1))
+            val wild = if (variant > 0) listOfNotNull(takeCard { it.isWild }) else emptyList()
+            val long = ranks.mapNotNull { r -> takeCard { it.suit == suit && it.rank == r } } + wild
+            (table.createMeld(long) as? RuleResult.Ok)?.let { table = it.value }
+        }
         repeat(random.nextInt(0, 3)) {
             // até 7 cartas, para que a mesa também tenha canastras (limpas e sujas)
             val attempt = takeFrom(pool, random.nextInt(3, 8))

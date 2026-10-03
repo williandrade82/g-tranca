@@ -22,7 +22,7 @@ Use o builder de estado (`GameStateBuilder`/DSL de teste) para montar mãos, lix
 - §5.3 3 preto no topo trava só o próximo jogador; depois disso ele vai para a mão junto com o lixo.
 - §5.4 coringa no topo **pode** ser pego: ele é o único coringa do conjunto (mão entra só com naturais); conjunto novo com ≥2 naturais da mão ou acréscimo a conjunto sem coringa; leva todo o lixo.
 - §6.2 A-2-3 e K-A-2 inválidos; maior sequência 4…A; nenhum 3 em conjunto.
-- §6.3 máx. 1 coringa; posição do coringa definida pelo motor (buraco → ponta de cima → ponta de baixo); coringa corre com a mesma preferência; natural rejeitada se o coringa não couber; coringa **pode** entrar em canastra limpa, que passa a ser suja (evitar isso é estratégia do bot, não regra do motor).
+- §6.3 máx. 1 coringa; situação do coringa definida pelas naturais: **travado** no buraco (5-2-7), **solto** na ponta sem valor fixo (6-7-2 aceita 8, 5, 5-4 ou só 4, que o trava no 5) ou **sem posição** na sequência 4..A completa; a natural do buraco libera o coringa e é sempre aceita; coringa **pode** entrar em canastra limpa, que passa a ser suja (evitar isso é estratégia do bot, não regra do motor).
 - §6.4 um grupo por número por lado; nova sequência não pode ser continuação de outra do mesmo naipe (**exceto** quando o coringa dela sujaria uma canastra limpa: aí pode ser conjunto separado); sequências nunca se unem e o jogador indica o conjunto de destino ao acrescentar.
 - §6.5 reposição em cadeia de 3 vermelho; 3 vermelho na distribuição e no morto; sem monte nem morto → sem reposição.
 - §8 ficar sem cartas só se resultar em morto ou batida.

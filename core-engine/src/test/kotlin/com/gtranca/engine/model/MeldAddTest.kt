@@ -63,17 +63,16 @@ class MeldAddTest {
     // ---------- §6.3 coringa ----------
 
     @Test
-    fun `coringa acrescentado vai para a ponta de cima`() {
-        // §6.3 posição definida pelo jogo: ponta de cima
-        val m = meld("5H 6H 7H").add(cards("2C")).shouldBeOk()
-        m.wildRank shouldBe Rank.EIGHT
+    fun `coringa acrescentado sem buraco fica solto`() {
+        // §6.3 sem buraco entre as naturais o coringa fica solto
+        meld("5H 6H 7H").add(cards("2C")).shouldBeOk().wildState shouldBe WildState.Loose
     }
 
     @Test
-    fun `coringa acrescentado com natural preenche o buraco`() {
+    fun `coringa acrescentado com natural preenche o buraco e trava`() {
         // §6.3 coringa ocupa o buraco entre naturais
         val m = meld("5H 6H 7H").add(cards("9H 2C")).shouldBeOk()
-        m.wildRank shouldBe Rank.EIGHT
+        m.wildState shouldBe WildState.Locked(Rank.EIGHT)
         m.cards shouldContainExactly cards("5H 6H 7H 2C 9H")
     }
 
@@ -85,47 +84,78 @@ class MeldAddTest {
     }
 
     @Test
-    fun `coringa corre para a ponta de cima quando a natural e baixada`() {
-        // §6.3 coringa que corre: 5-6-W(7) + 7 natural → W vai a 8
-        val m = meld("5H 6H 2C").add(cards("7H")).shouldBeOk()
-        m.wildRank shouldBe Rank.EIGHT
-        m.cards shouldContainExactly cards("5H 6H 7H 2C")
-        m.hasWild.shouldBeTrue()
+    fun `coringa solto serve dos dois lados`() {
+        // §6.3 ex.: em 6-7-2 pode-se acrescentar 8, 5, 5 e 4, ou apenas 4 (o coringa trava no 5)
+        val m = meld("6H 7H 2C")
+        m.add(cards("8H")).shouldBeOk().wildState shouldBe WildState.Loose
+        m.add(cards("5H")).shouldBeOk().wildState shouldBe WildState.Loose
+        m.add(cards("5H 4H")).shouldBeOk().wildState shouldBe WildState.Loose
+        val only4 = m.add(cards("4H")).shouldBeOk()
+        only4.wildState shouldBe WildState.Locked(Rank.FIVE)
+        only4.cards shouldContainExactly cards("4H 2C 6H 7H")
+        m.add(cards("9H")).shouldBeOk().wildState shouldBe WildState.Locked(Rank.EIGHT)
     }
 
     @Test
-    fun `coringa no buraco corre para a ponta de cima`() {
-        // §6.3 5-W(6)-7 + 6 → W vai a 8
-        meld("5H 2C 7H").add(cards("6H")).shouldBeOk().wildRank shouldBe Rank.EIGHT
+    fun `coringa travado so aceita cartas fora do buraco`() {
+        // §6.3 em 5-2-7 o coringa vale 6: acrescentam-se cartas do 4 para baixo ou do 8 para cima
+        val m = meld("5H 2C 7H")
+        m.add(cards("4H")).shouldBeOk().wildState shouldBe WildState.Locked(Rank.SIX)
+        m.add(cards("8H")).shouldBeOk().wildState shouldBe WildState.Locked(Rank.SIX)
+        m.add(cards("9H")) shouldFailWith MeldError.NOT_CONSECUTIVE
     }
 
     @Test
-    fun `coringa corre para a ponta de baixo se nao couber acima do As`() {
-        // §6.3 K-A com W(Q) + Q natural → W vai a J
+    fun `natural do buraco libera o coringa que volta a ficar solto`() {
+        // §6.3 coringa que corre: 5-W(6)-7 + 6 → solto; depois pode travar de novo
+        val freed = meld("5H 2C 7H").add(cards("6H")).shouldBeOk()
+        freed.wildState shouldBe WildState.Loose
+        freed.cards shouldContainExactly cards("5H 6H 7H 2C")
+        freed.hasWild.shouldBeTrue()
+        freed.add(cards("9H")).shouldBeOk().wildState shouldBe WildState.Locked(Rank.EIGHT)
+        freed.add(cards("3H")) shouldFailWith MeldError.CONTAINS_THREE
+    }
+
+    @Test
+    fun `coringa solto de sequencia que chega ao As fica embaixo`() {
+        // §6.3 K-A com coringa + Q natural → coringa continua solto, só cabe embaixo
         val m = meld("KH AH 2C").add(cards("QH")).shouldBeOk()
-        m.wildRank shouldBe Rank.JACK
+        m.wildState shouldBe WildState.Loose
         m.cards shouldContainExactly cards("2C QH KH AH")
     }
 
     @Test
-    fun `natural rejeitada quando o coringa nao cabe em nenhuma ponta`() {
-        // §6.3 4..A completa com coringa no lugar do 7: o 7 natural não pode ser baixado
+    fun `natural que completa 4 a A deixa o coringa sem posicao`() {
+        // §6.3 4..A com o coringa travado no 7: o 7 natural é aceito e o coringa fica sem posição
         val m = meld("4S 5S 6S 2H 8S 9S TS JS QS KS AS")
-        m.wildRank shouldBe Rank.SEVEN
-        m.add(cards("7S")) shouldFailWith MeldError.WILD_DOES_NOT_FIT
+        m.wildState shouldBe WildState.Locked(Rank.SEVEN)
+        val full = m.add(cards("7S")).shouldBeOk()
+        full.wildState shouldBe WildState.Unplaced
+        full.cards.size shouldBe 12
+        full.isDirtyCanasta().shouldBeTrue()
     }
 
     @Test
-    fun `natural ao lado do coringa na ponta prolonga a sequencia`() {
-        // §6.3 5-6-W(7) + 8 → 5-6-W-8, coringa continua valendo 7
-        meld("5H 6H 2C").add(cards("8H")).shouldBeOk().wildRank shouldBe Rank.SEVEN
+    fun `4 natural em 5 a A com coringa solto deixa o coringa sem posicao`() {
+        // §6.3 o 4 completa 4..A: o coringa solto passa a ficar sem posição
+        val m = meld("5S 6S 7S 8S 9S TS JS QS KS AS 2H").add(cards("4S")).shouldBeOk()
+        m.wildState shouldBe WildState.Unplaced
+        m.cards.size shouldBe 12
+    }
+
+    @Test
+    fun `coringa acrescentado a sequencia completa limpa fica sem posicao`() {
+        // §6.3 estratégia: sujar a canastra limpa completa 4..A (ex.: para poder bater)
+        val m = meld("4S 5S 6S 7S 8S 9S TS JS QS KS AS").add(cards("2H")).shouldBeOk()
+        m.wildState shouldBe WildState.Unplaced
+        m.isDirtyCanasta().shouldBeTrue()
     }
 
     @Test
     fun `coringa acrescentado a canastra limpa a torna suja`() {
         // §6.3 / §7.3 canastra limpa pode receber coringa e passa a ser suja
         val seq = meld("4H 5H 6H 7H 8H 9H").add(cards("2C")).shouldBeOk()
-        seq.wildRank shouldBe Rank.TEN
+        seq.wildState shouldBe WildState.Loose
         seq.isDirtyCanasta().shouldBeTrue()
         meld("7H 7S 7C 7D 7H' 7S'").add(cards("2C")).shouldBeOk().isDirtyCanasta().shouldBeTrue()
     }

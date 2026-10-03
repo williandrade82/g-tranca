@@ -69,8 +69,6 @@ enum class MeldError : RuleError {
     REPEATED_RANK,
     /** §6.1/§6.2 sequência não consecutiva (inclui tentativa de passar do Ás para baixo). */
     NOT_CONSECUTIVE,
-    /** §6.2/§6.3 o coringa não cabe em nenhuma posição de 4 a Ás. */
-    WILD_DOES_NOT_FIT,
     /** §6.1 carta de outro naipe acrescentada a uma sequência. */
     WRONG_SUIT,
     /** §6.1 carta de outro número acrescentada a um grupo. */

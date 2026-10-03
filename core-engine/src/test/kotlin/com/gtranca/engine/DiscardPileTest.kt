@@ -4,7 +4,7 @@ import com.gtranca.engine.model.ActionError
 import com.gtranca.engine.model.MeldError
 import com.gtranca.engine.model.MeldId
 import com.gtranca.engine.model.Phase
-import com.gtranca.engine.model.Rank
+import com.gtranca.engine.model.WildState
 import com.gtranca.engine.model.cards
 import com.gtranca.engine.model.shouldBeOk
 import com.gtranca.engine.model.shouldFailWith
@@ -201,7 +201,7 @@ class DiscardPileTest {
         }.act(0, takeAdd(0))
         val meld = s.table(0).meld(MeldId(0))!!
         meld.cards shouldContainExactlyInAnyOrder cards("4H 5H 6H 2C")
-        meld.wildRank shouldBe Rank.SEVEN
+        meld.wildState shouldBe WildState.Loose
         s.hand(0) shouldContainExactlyInAnyOrder cards("KS QD 9C 7H")
         s.discardPile.shouldBeEmpty()
     }

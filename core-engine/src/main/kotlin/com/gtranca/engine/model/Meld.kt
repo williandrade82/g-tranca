@@ -19,42 +19,68 @@ sealed interface MeldKind {
 }
 
 /**
+ * Situação do coringa no conjunto (§6.3). Com no máximo 1 coringa, ela é determinada só pelas
+ * cartas naturais; o jogador nunca escolhe.
+ */
+sealed interface WildState {
+    /** Sem coringa. */
+    data object None : WildState
+
+    /** Coringa com valor fixo: o buraco entre as naturais da sequência, ou o número do grupo. */
+    data class Locked(val rank: Rank) : WildState
+
+    /** Sequência sem buraco: o coringa fica numa ponta, sem valor fixo, e serve dos dois lados. */
+    data object Loose : WildState
+
+    /** Sequência completa 4..Ás: o coringa permanece no conjunto sem representar nenhuma carta. */
+    data object Unplaced : WildState
+}
+
+/**
  * Conjunto válido (§6, §7). Imutável; só é obtido por [Meld.create] ou [Meld.add], que garantem
  * as regras de §6.1–§6.3.
  *
- * - [cards] está em ordem canônica: na sequência, do menor para o maior valor, com o coringa na
- *   posição que representa; no grupo, as naturais (por naipe e baralho) e o coringa por último.
- * - [wildRank] é o valor que o coringa representa (`null` se não houver coringa). Na sequência a
- *   posição é definida pelo motor (§6.3): buraco entre naturais; senão ponta de cima; se não couber
- *   acima do Ás, ponta de baixo.
+ * [cards] está em ordem canônica: na sequência, as naturais do menor para o maior valor, com o
+ * coringa no buraco que ocupa ([WildState.Locked]) ou numa ponta (de cima, se couber; senão de
+ * baixo); no grupo, as naturais (por naipe e baralho) e o coringa por último.
  */
 @Serializable
 @ConsistentCopyVisibility
 data class Meld internal constructor(
     val kind: MeldKind,
     val cards: List<Card>,
-    val wildRank: Rank?,
 ) {
-    val hasWild: Boolean get() = wildRank != null
+    val hasWild: Boolean get() = cards.any { it.isWild }
 
     /** Sem coringa. Uma canastra limpa é `isCanasta() && isClean` (§7.2). */
     val isClean: Boolean get() = !hasWild
 
-    /** Menor valor representado (no grupo, o próprio número). */
+    /** §6.3 situação do coringa, derivada das cartas naturais. */
+    val wildState: WildState
+        get() = when {
+            !hasWild -> WildState.None
+            kind is MeldKind.Group -> WildState.Locked(kind.rank)
+            else -> sequenceWildState(naturalRanks())
+        }
+
+    /** Valor que o coringa representa quando travado; `null` se não há coringa ou ele não tem valor fixo. */
+    val wildRank: Rank? get() = (wildState as? WildState.Locked)?.rank
+
+    /** Menor valor natural (no grupo, o próprio número). */
     val lowRank: Rank
         get() = when (kind) {
             is MeldKind.Group -> kind.rank
-            is MeldKind.Sequence -> representedRanks().min()
+            is MeldKind.Sequence -> naturalRanks().min()
         }
 
-    /** Maior valor representado (no grupo, o próprio número). */
+    /** Maior valor natural (no grupo, o próprio número). */
     val highRank: Rank
         get() = when (kind) {
             is MeldKind.Group -> kind.rank
-            is MeldKind.Sequence -> representedRanks().max()
+            is MeldKind.Sequence -> naturalRanks().max()
         }
 
-    private fun representedRanks(): List<Rank> = cards.filterNot { it.isWild }.map { it.rank } + listOfNotNull(wildRank)
+    private fun naturalRanks(): List<Rank> = cards.filterNot { it.isWild }.map { it.rank }
 
     /** §7.1 canastra: [RuleSet.minCanastaSize] (6) ou mais cartas. */
     fun isCanasta(rules: RuleSet = RuleSet.DEFAULT): Boolean = cards.size >= rules.minCanastaSize
@@ -68,8 +94,8 @@ data class Meld internal constructor(
     /**
      * Acrescenta [newCards] ao conjunto (§4.3), de uma vez. O tipo do conjunto é mantido.
      * - §6.1 sequência: mesmo naipe, consecutiva, sem repetição; grupo: mesmo número.
-     * - §6.3 máx. 1 coringa; o coringa corre conforme a mesma preferência da criação; natural é
-     *   rejeitada se o coringa não couber ([MeldError.WILD_DOES_NOT_FIT]).
+     * - §6.3 máx. 1 coringa; a situação do coringa é recalculada pelas naturais (a natural do
+     *   buraco libera o coringa travado, que fica solto ou, na sequência completa, sem posição).
      */
     fun add(newCards: List<Card>, rules: RuleSet = RuleSet.DEFAULT): RuleResult<Meld> {
         if (newCards.isEmpty()) return fail(MeldError.NO_CARDS)
@@ -111,36 +137,43 @@ data class Meld internal constructor(
         private fun buildGroup(rank: Rank, cards: List<Card>): RuleResult<Meld> {
             val naturals = cards.filterNot { it.isWild }.sortedWith(compareBy({ it.suit.ordinal }, { it.deck }))
             val wild = cards.firstOrNull { it.isWild }
-            return RuleResult.Ok(Meld(MeldKind.Group(rank), naturals + listOfNotNull(wild), wild?.let { rank }))
+            return RuleResult.Ok(Meld(MeldKind.Group(rank), naturals + listOfNotNull(wild)))
+        }
+
+        /** §6.3 situação do coringa de uma sequência com naturais de valores [ranks] (distintos). */
+        private fun sequenceWildState(ranks: List<Rank>): WildState {
+            val low = ranks.min()
+            val high = ranks.max()
+            val gaps = (high.ordinal - low.ordinal + 1) - ranks.size
+            return when {
+                gaps == 1 -> WildState.Locked(Rank.entries.first { it in low..high && it !in ranks })
+                low == Rank.FOUR && high == Rank.ACE -> WildState.Unplaced
+                else -> WildState.Loose
+            }
         }
 
         /**
          * Sequência (§6.1, §6.2, §6.3): naturais já conferidas como do naipe [suit].
-         * Faixa permitida 4..Ás (Ás só alto; o 2 nunca é natural e nenhum 3 entra).
+         * Faixa permitida 4..Ás (Ás só alto; o 2 nunca é natural e nenhum 3 entra). As naturais podem
+         * ter no máximo um buraco, e só se houver coringa para ocupá-lo.
          */
         private fun buildSequence(suit: Suit, cards: List<Card>): RuleResult<Meld> {
             val naturals = cards.filterNot { it.isWild }.sortedBy { it.rank }
             val wild = cards.firstOrNull { it.isWild }
-            val ords = naturals.map { it.rank.ordinal }
-            if (ords.toSet().size != ords.size) return fail(MeldError.REPEATED_RANK)
-            val low = ords.first()
-            val high = ords.last()
-            val gaps = (high - low + 1) - ords.size
-            val wildOrd: Int? = when {
-                wild == null -> if (gaps == 0) null else return fail(MeldError.NOT_CONSECUTIVE)
-                gaps == 1 -> (low..high).first { it !in ords } // §6.3 buraco
-                gaps > 1 -> return fail(MeldError.NOT_CONSECUTIVE)
-                high < Rank.ACE.ordinal -> high + 1 // §6.3 ponta de cima
-                low > Rank.FOUR.ordinal -> low - 1 // §6.3 ponta de baixo
-                else -> return fail(MeldError.WILD_DOES_NOT_FIT)
+            val ranks = naturals.map { it.rank }
+            if (ranks.toSet().size != ranks.size) return fail(MeldError.REPEATED_RANK)
+            val gaps = (ranks.last().ordinal - ranks.first().ordinal + 1) - ranks.size
+            if (gaps > (if (wild == null) 0 else 1)) return fail(MeldError.NOT_CONSECUTIVE)
+            val ordered = when {
+                wild == null -> naturals
+                gaps == 1 -> {
+                    val hole = (sequenceWildState(ranks) as WildState.Locked).rank
+                    naturals.filter { it.rank < hole } + wild + naturals.filter { it.rank > hole }
+                }
+                ranks.last() == Rank.ACE && ranks.first() > Rank.FOUR -> listOf(wild) + naturals // solto, só cabe embaixo
+                else -> naturals + wild // solto na ponta de cima, ou sem posição (4..Ás completa)
             }
-            val ordered = if (wild == null || wildOrd == null) {
-                naturals
-            } else {
-                val index = naturals.count { it.rank.ordinal < wildOrd }
-                naturals.subList(0, index) + wild + naturals.subList(index, naturals.size)
-            }
-            return RuleResult.Ok(Meld(MeldKind.Sequence(suit), ordered, wildOrd?.let { Rank.entries[it] }))
+            return RuleResult.Ok(Meld(MeldKind.Sequence(suit), ordered))
         }
     }
 }

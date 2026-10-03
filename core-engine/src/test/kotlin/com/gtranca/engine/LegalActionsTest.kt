@@ -165,6 +165,25 @@ class LegalActionsTest {
     }
 
     @Test
+    fun `lista coringa da mao e coringa do topo na sequencia completa limpa`() {
+        // §6.3 coringa pode sujar a 4..A completa, ficando sem posição (da mão ou do topo do lixo, §5.4)
+        val playing = round {
+            hand(0, "2C KD QD")
+            meld(0, "4S 5S 6S 7S 8S 9S TS JS QS KS AS")
+            phase = Phase.PLAYING
+        }
+        playing.legalActions(0).addPlans() shouldContain (0 to cards("2C").toSet())
+        playing.allLegalValidate(0)
+        val drawing = round {
+            hand(0, "KD QD JC")
+            meld(0, "4S 5S 6S 7S 8S 9S TS JS QS KS AS")
+            discard("2C")
+        }
+        drawing.legalActions(0).takeAddPlans() shouldContain (0 to emptySet())
+        drawing.allLegalValidate(0)
+    }
+
+    @Test
     fun `acoes que esvaziariam a mao ilegalmente nao sao listadas`() {
         // §8 / §9.5
         val s = round {
