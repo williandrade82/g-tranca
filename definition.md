@@ -42,7 +42,10 @@
 - O lixo começa **vazio**. O primeiro jogador, portanto, compra obrigatoriamente do monte.
 
 ### **3.5. Três vermelhos recebidos na distribuição**
-- Após a distribuição, seguindo a ordem de jogada, cada jogador baixa automaticamente os 3 vermelhos recebidos e repõe cada um com uma carta do monte (ver §6.5).
+- Após a distribuição, **antes de qualquer jogada**, os 3 vermelhos recebidos são trocados **seguindo a ordem de jogada**, para que cada jogador receba a carta correta do monte:
+  1. O primeiro jogador (§4.1) baixa automaticamente todos os seus 3 vermelhos e repõe cada um com uma carta do topo do monte, incluindo as reposições em cadeia (ver §6.5).
+  2. Só quando ele termina, o próximo jogador (sentido horário, §4.2) faz o mesmo, e assim por diante.
+  3. Quando todos tiverem trocado seus 3 vermelhos, o primeiro jogador inicia sua jogada (§4.3).
 
 ---
 

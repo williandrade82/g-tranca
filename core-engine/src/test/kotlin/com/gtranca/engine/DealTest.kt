@@ -3,6 +3,7 @@ package com.gtranca.engine
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.Deck
 import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
@@ -236,6 +237,29 @@ class DealTest {
         state.redThreesOf(Side(0)) shouldContainExactly listOf(c("3H"))
         state.redThreesOf(Side(1)) shouldContainExactly listOf(c("3H'"), c("3D"))
         state.stock shouldHaveSize 38 - 3
+    }
+
+    @Test
+    fun `cada jogador termina suas trocas antes do proximo e so depois o primeiro joga`() {
+        // §3.5 o primeiro jogador troca tudo (inclusive em cadeia), depois o próximo; ao fim,
+        // o primeiro jogador inicia a jogada (§4.3) comprando
+        val deck = orderedDeck(
+            mapOf(
+                0 to "3H",   // assento 3 (primeiro jogador) → lado 1
+                1 to "3D",   // assento 0 → lado 0
+                66 to "3H'", // reposição do assento 3, também 3 vermelho (cadeia)
+                67 to "KS",  // fim da cadeia do assento 3
+                68 to "QD",  // só então o assento 0 repõe
+            ),
+        )
+        val state = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(3))
+        state.redThreesOf(Side(1)) shouldContainExactly listOf(c("3H"), c("3H'"))
+        state.handOf(Seat(3)) shouldContain c("KS")
+        state.redThreesOf(Side(0)) shouldContainExactly listOf(c("3D"))
+        state.handOf(Seat(0)) shouldContain c("QD")
+        state.hands.flatten().none { it.isRedThree } shouldBe true
+        state.currentSeat shouldBe Seat(3)
+        state.phase shouldBe Phase.AWAITING_DRAW
     }
 
     @Test
