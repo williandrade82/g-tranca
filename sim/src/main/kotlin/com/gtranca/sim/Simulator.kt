@@ -13,6 +13,7 @@ import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleResult
+import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.play
 import com.gtranca.engine.startMatch
@@ -58,17 +59,33 @@ data class GameOutcome(
     val failure: Failure?,
 )
 
-/** Roda jogos completos bot × bot conforme o [config], verificando legalidade e invariantes a cada ação. */
-class Simulator(private val config: SimConfig) {
+/**
+ * Roda jogos completos bot × bot conforme o [config], verificando legalidade e invariantes a cada ação.
+ *
+ * O construtor interno permite aos testes injetar bots ([botFactory]), a fonte de ações legais
+ * ([legalActionsOf]) e a transição ([playAction]) para provocar as falhas que o motor e os bots
+ * corretos não produzem.
+ */
+class Simulator internal constructor(
+    private val config: SimConfig,
+    private val botFactory: (seat: Seat, random: Random) -> BotPlayer,
+    private val legalActionsOf: (RoundState, Seat) -> List<Action>,
+    private val playAction: (Match, Seat, Action) -> Match,
+) {
+
+    constructor(config: SimConfig) : this(
+        config,
+        botFactory = { seat, random -> createSimBot(config.sides[config.mode.sideOf(seat).index], random) },
+        legalActionsOf = { state, seat -> RoundEngine.legalActions(state, seat) },
+        playAction = { match, seat, action -> match.play(seat, action) },
+    )
 
     private class SimFailure(val kind: FailureKind, message: String) : RuntimeException(message)
 
     /** Joga o jogo de semente [gameSeed]. Nunca lança: falhas vêm em [GameOutcome.failure]. */
     fun runGame(gameSeed: Long): GameOutcome {
         val mode = config.mode
-        val bots: List<BotPlayer> = mode.seats.map { seat ->
-            createSimBot(config.sides[mode.sideOf(seat).index], Random(botSeed(gameSeed, seat.index)))
-        }
+        val bots: List<BotPlayer> = mode.seats.map { seat -> botFactory(seat, Random(botSeed(gameSeed, seat.index))) }
         val rounds = mutableListOf<RoundStats>()
         var match: Match? = null
         var actionIndex = 0
@@ -84,13 +101,13 @@ class Simulator(private val config: SimConfig) {
                 while (match!!.currentRound.phase != Phase.FINISHED) {
                     val round = match.currentRound
                     val seat = round.currentSeat
-                    val legal = RoundEngine.legalActions(round, seat)
+                    val legal = legalActionsOf(round, seat)
                     if (legal.isEmpty()) throw SimFailure(FailureKind.NO_LEGAL_ACTIONS, "assento ${seat.index} na fase ${round.phase}")
                     val action = bots[seat.index].chooseAction(round.viewFor(seat), legal)
                     lastAction = action
                     if (action !in legal) throw SimFailure(FailureKind.ILLEGAL_ACTION, "assento ${seat.index}: ação fora de legalActions")
                     val takenFromDiscard = if (action is Action.TakeDiscardPile) round.discardPile.dropLast(1) else emptyList()
-                    match = match.play(seat, action)
+                    match = playAction(match, seat, action)
                     if (action == Action.DrawFromStock || action is Action.TakeDiscardPile) turns++
                     actionIndex++
                     checkRoundInvariants(match.currentRound)
@@ -123,45 +140,59 @@ class Simulator(private val config: SimConfig) {
     private fun failed(gameSeed: Long, rounds: List<RoundStats>, match: Match?, failure: Failure) =
         GameOutcome(gameSeed, winner = null, rounds = rounds, totals = match?.totals.orEmpty(), failure = failure)
 
+    private fun checkRoundInvariants(state: RoundState) {
+        invariantViolation(state)?.let { throw SimFailure(FailureKind.INVARIANT, it) }
+    }
+
     /**
-     * Invariantes verificadas após cada ação:
+     * Primeira invariante violada em [state] (descrição), ou `null`. Verificada após cada ação:
      * - §1 conservação: as 104 cartas, sem repetição nem sumiço, entre mãos, monte, lixo, mortos e mesa;
      * - com [SimConfig.checkInvariants]: §9.1/§10 morto não disponível está vazio; conjuntos na mesa
      *   continuam válidos (§6); 3 vermelhos nunca ficam na mão nem nos conjuntos (§6.5); a partida
-     *   encerrada não oferece ações e a em andamento tem jogador com cartas ou recém-pegou o morto.
+     *   encerrada não oferece ações; e, na partida em andamento, **todo jogador tem cartas na mão**.
+     *
+     * Esta última vem de §8/§9/§11: ficar sem cartas só é permitido se resultar em pegar o morto ou em
+     * batida. A batida encerra a partida; ao pegar o morto (direto, §9.2, ou indireto, §9.3) o motor põe
+     * o morto na mão no mesmo passo, e um morto (11 cartas) nunca é só de 3 vermelhos (há 4 no baralho,
+     * §9.4). A mão também não esvazia por 3 vermelho sem reposição (§8: fica ao menos a carta que já
+     * estava nela).
+     *
+     * O motor garante o mesmo em `RoundSimulationPropertyTest` (§8 mão vazia só para quem bateu): se o
+     * motor passar a guardar o morto fora da mão, aquele teste falha primeiro e esta checagem deve ser
+     * ajustada junto.
      */
-    private fun checkRoundInvariants(state: RoundState) {
+    internal fun invariantViolation(state: RoundState): String? {
         val all = state.allCards()
-        if (all.size != Deck.SIZE) invariant("total de cartas ${all.size} ≠ ${Deck.SIZE}")
-        if (all.toSet() != STANDARD_DECK) invariant("cartas repetidas ou faltando")
-        if (!config.checkInvariants) return
+        if (all.size != Deck.SIZE) return "total de cartas ${all.size} ≠ ${Deck.SIZE}"
+        if (all.toSet() != STANDARD_DECK) return "cartas repetidas ou faltando"
+        if (!config.checkInvariants) return null
 
         state.mortoStatus.forEachIndexed { i, status ->
-            if (status != MortoStatus.Available && state.mortos[i].isNotEmpty()) invariant("morto $i $status com cartas")
+            if (status != MortoStatus.Available && state.mortos[i].isNotEmpty()) return "morto $i $status com cartas"
         }
         state.tables.forEachIndexed { sideIndex, table ->
             for (tableMeld in table.melds) {
                 val rebuilt = Meld.create(tableMeld.meld.cards)
                 if (rebuilt !is RuleResult.Ok || rebuilt.value.kind != tableMeld.meld.kind) {
-                    invariant("conjunto inválido na mesa do lado $sideIndex: ${tableMeld.meld.cards}")
+                    return "conjunto inválido na mesa do lado $sideIndex: ${tableMeld.meld.cards}"
                 }
-                if (tableMeld.meld.cards.any { it.rank.isThree }) invariant("3 em conjunto: ${tableMeld.meld.cards}")
+                if (tableMeld.meld.cards.any { it.rank.isThree }) return "3 em conjunto: ${tableMeld.meld.cards}"
             }
         }
         if (state.phase != Phase.FINISHED) {
             state.hands.forEachIndexed { seat, hand ->
-                if (hand.any { it.isRedThree }) invariant("3 vermelho na mão do assento $seat")
+                if (hand.isEmpty()) return "assento $seat sem cartas com a partida em andamento"
+                if (hand.any { it.isRedThree }) return "3 vermelho na mão do assento $seat"
             }
         }
         state.redThrees.forEachIndexed { sideIndex, threes ->
-            if (threes.any { !it.isRedThree }) invariant("carta que não é 3 vermelho entre os 3 vermelhos do lado $sideIndex")
+            if (threes.any { !it.isRedThree }) return "carta que não é 3 vermelho entre os 3 vermelhos do lado $sideIndex"
         }
         if (state.phase == Phase.FINISHED && RoundEngine.legalActions(state, state.currentSeat).isNotEmpty()) {
-            invariant("partida encerrada com ações legais")
+            return "partida encerrada com ações legais"
         }
+        return null
     }
-
-    private fun invariant(message: String): Nothing = throw SimFailure(FailureKind.INVARIANT, message)
 
     companion object {
         private val STANDARD_DECK = Deck.standard().toSet()

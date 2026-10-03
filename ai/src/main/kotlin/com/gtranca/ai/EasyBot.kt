@@ -21,7 +21,8 @@ import kotlin.random.Random
  * 2. Durante a jogada: baixa o conjunto ou acréscimo que leva mais cartas à mesa (bônus se forma
  *    canastra). O motor só oferece baixas que deixam ao menos 2 cartas na mão, exceto quando ficar
  *    sem cartas leva ao morto ou à batida (§8); o bot não refaz essa validação. Não suja canastra
- *    limpa (§7.2), a não ser que isso esvazie a mão.
+ *    limpa (§6.3/§7.3: a regra permite, sujar é escolha de estratégia; a suja vale 100 pontos a
+ *    menos, §7.2), a não ser que isso esvazie a mão.
  * 3. Descarte: a carta menos útil, isto é, a mais isolada (sem pares nem vizinhas de naipe e que não
  *    cabe nos conjuntos do lado). O 3 preto é descartado de preferência (trava o lixo, §5.3) e o
  *    coringa é evitado.
@@ -104,7 +105,7 @@ class EasyBot(
         return score
     }
 
-    /** §7.2 o acréscimo leva coringa a uma canastra limpa, que passa a ser suja. */
+    /** §6.3/§7.3 o acréscimo leva coringa a uma canastra limpa, que passa a ser suja. */
     private fun dirtiesCleanCanasta(target: Meld, added: List<Card>): Boolean =
         added.any { it.isWild } && target.isCleanCanasta()
 

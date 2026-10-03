@@ -46,7 +46,7 @@ class EasyBotTest {
 
     @Test
     fun `com coringa no topo prefere conjunto novo a sujar canastra limpa`() {
-        // §5.4 / §7.2 o coringa do topo sujaria a canastra limpa 4…9♥; o grupo de K com o coringa não
+        // §5.4 / §6.3 o coringa do topo sujaria a canastra limpa 4…9♥; o grupo de K com o coringa não
         val state = scenario(
             hand = "KS KD QC JD 5C",
             discard = "8C 2D",
@@ -69,7 +69,8 @@ class EasyBotTest {
 
     @Test
     fun `nao suja canastra limpa com coringa da mao`() {
-        // §7.2 sujar a canastra custa 100 pontos; o Fácil não faz isso se não for para esvaziar a mão
+        // §6.3 / §7.3 sujar a canastra limpa é escolha de estratégia (a suja vale 100 pontos a menos, §7.2);
+        // o Fácil não faz isso se não for para esvaziar a mão
         val state = scenario(
             hand = "2C KS QD 9C 5D",
             phase = Phase.PLAYING,
