@@ -166,6 +166,27 @@ class GameControllerTest {
     }
 
     @Test
+    fun `explain valida contra a situacao do pedido ao humano e nada responde fora dele`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val (controller, human, _) = humanGame(dispatcher)
+        val job = launch { controller.run() }
+        advanceUntilIdle()
+        human.waiting.value shouldBe true
+        human.submit(Action.DrawFromStock) shouldBe true
+        // Enviada a jogada, o humano já não está sendo esperado, mesmo antes de o controlador retomar.
+        human.waiting.value shouldBe false
+        advanceUntilIdle()
+        val hand = controller.state.value.view.hand
+        // Agora na fase de jogar: descartar uma carta da mão é válido; comprar de novo, não (§4.3).
+        controller.explain(Action.Discard(hand.first())).shouldBeNull()
+        controller.explain(Action.DrawFromStock).shouldNotBeNull()
+        job.cancel()
+        advanceUntilIdle()
+        // Sem pedido em aberto (jogo cancelado), não há situação a explicar.
+        controller.explain(Action.DrawFromStock).shouldBeNull()
+    }
+
+    @Test
     fun `fim de partida espera a confirmacao do humano`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val (controller, human, _) = humanGame(dispatcher, target = 1)

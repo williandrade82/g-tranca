@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
@@ -36,6 +37,7 @@ import com.gtranca.ui.cards.CardBack
 import com.gtranca.ui.cards.CardSize
 import com.gtranca.ui.cards.PlayingCard
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.GameMode
 
 /** Início (§14): modo, dificuldade (padrão médio) e pontuação-alvo (padrão 3000, inteiro positivo). */
 @Composable
@@ -53,11 +55,15 @@ fun HomeScreen(viewModel: HomeViewModel, onStart: (GameConfig) -> Unit) {
                 CardBack(size = CardSize.LARGE, describe = false)
             }
             Text(stringResource(R.string.home_title), style = MaterialTheme.typography.displayMedium)
-            Text(stringResource(R.string.home_subtitle), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.home_subtitle), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
 
             Section(stringResource(R.string.home_mode)) {
-                Choice(stringResource(R.string.mode_individual), selected = true, enabled = true, tag = "mode-individual") {}
-                Choice(stringResource(R.string.mode_duplas_soon), selected = false, enabled = false, tag = "mode-duplas") {}
+                Choice(stringResource(R.string.mode_individual), state.mode == GameMode.INDIVIDUAL, enabled = true, tag = "mode-individual") {
+                    viewModel.onModeChange(GameMode.INDIVIDUAL)
+                }
+                Choice(stringResource(R.string.mode_duplas), state.mode == GameMode.DUPLAS, enabled = true, tag = "mode-duplas") {
+                    viewModel.onModeChange(GameMode.DUPLAS)
+                }
             }
 
             Section(stringResource(R.string.home_difficulty)) {
@@ -75,11 +81,15 @@ fun HomeScreen(viewModel: HomeViewModel, onStart: (GameConfig) -> Unit) {
                 value = state.targetText,
                 onValueChange = viewModel::onTargetChange,
                 label = { Text(stringResource(R.string.home_target)) },
-                isError = state.targetError,
-                supportingText = if (state.targetError) {
-                    { Text(stringResource(R.string.home_target_error)) }
-                } else {
-                    null
+                isError = state.targetError != null,
+                supportingText = when (state.targetError) {
+                    null -> null
+                    TargetError.INVALID -> {
+                        { Text(stringResource(R.string.home_target_error)) }
+                    }
+                    TargetError.TOO_LARGE -> {
+                        { Text(stringResource(R.string.home_target_too_large, HomeUiState.MAX_TARGET)) }
+                    }
                 },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

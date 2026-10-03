@@ -178,10 +178,13 @@ class GameViewModel(
 
     private fun play(intent: PlayIntent) {
         // Lê as fontes (e não o uiState derivado, que só é recalculado na próxima coleta).
+        // Toque atrasado (ex.: toque duplo): se o controlador não espera mais o humano (a jogada anterior já foi
+        // enviada, a vez mudou), ignora em vez de mostrar um motivo de outra situação.
         val snapshot = controller.state.value
-        if (!snapshot.isHumanTurn) return
+        if (!snapshot.isHumanTurn || !human.waiting.value) return
         val selected = local.value.selected.filter { it in snapshot.view.hand }
         val resolution = HumanTurnResolver.resolve(intent, selected, snapshot.humanLegal, controller::explain)
+        if (resolution !is Resolution.Play && controller.state.value !== snapshot) return
         when (resolution) {
             is Resolution.Play -> submit(resolution.action)
             is Resolution.ChoosePlan -> local.update { it.copy(planChoice = resolution.options, message = null) }

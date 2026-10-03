@@ -22,10 +22,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -56,6 +55,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -64,14 +64,17 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldId
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.TableMeld
+import com.gtranca.game.SeatRole
 import com.gtranca.game.cardClass
 import com.gtranca.ui.cards.CardBack
+import com.gtranca.ui.cards.CardEmphasis
 import com.gtranca.ui.cards.CardSize
 import com.gtranca.ui.cards.PlayingCard
 import com.gtranca.ui.cards.cardDescription
@@ -98,7 +101,17 @@ interface TableEvents {
     fun onMessageShown()
 }
 
-/** Mesa: desenhada só a partir da vista do humano ([PlayerView]); controles habilitados por `legalActions`. */
+/** Texto claro para controles desabilitados sobre o verde (contraste ≥ 4,5:1 com o verde escuro e o da mesa). */
+private val DisabledOnTable = Color(0xFFB4C3B4)
+
+/**
+ * Mesa: desenhada só a partir da vista do humano ([PlayerView]); controles habilitados por `legalActions`.
+ *
+ * Layout em retrato (testado em 360dp): placar no topo; no meio, uma área com rolagem vertical (outros
+ * assentos, jogos do outro lado, monte/mortos/lixo e os jogos do seu lado, nessa ordem); embaixo, fixas, a barra
+ * de ações e a mão. A área do meio termina antes da barra (nada fica por baixo dela) e, no começo de cada etapa
+ * da sua vez, rola até o fim, deixando lixo e seus jogos logo acima dos botões.
+ */
 @Composable
 fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Modifier) {
     val snapshot = state.snapshot
@@ -112,6 +125,10 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
         }
     }
     var showDiscardPile by rememberSaveable { mutableStateOf(false) }
+    val tableScroll = rememberScrollState()
+    LaunchedEffect(state.isHumanTurn, view.phase) {
+        if (state.isHumanTurn) tableScroll.animateScrollTo(tableScroll.maxValue)
+    }
 
     Scaffold(
         modifier = modifier.testTag("table-screen"),
@@ -121,14 +138,12 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
         Column(Modifier.fillMaxSize().padding(padding)) {
             Header(state)
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(tableScroll).padding(horizontal = 8.dp).testTag("table-scroll"),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                view.mode.seats.filter { view.mode.sideOf(it) != view.side }.forEach { seat ->
-                    OpponentSeat(state, seat.index)
-                }
+                SeatsPanel(state)
                 SideArea(
-                    title = stringResource(R.string.opponent_melds),
+                    title = stringResource(meldsTitleRes(view.mode, own = false)),
                     view = view,
                     side = view.mode.sides.first { it != view.side },
                     onMeldClick = null,
@@ -136,12 +151,13 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                 )
                 CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
                 SideArea(
-                    title = stringResource(R.string.your_melds),
+                    title = stringResource(meldsTitleRes(view.mode, own = true)),
                     view = view,
                     side = view.side,
                     onMeldClick = if (state.playing) events::onAddToMeld else null,
                     sideTag = "own",
                 )
+                Spacer(Modifier.height(4.dp))
             }
             StatusAndActions(state, events)
             HandArea(state, events)
@@ -179,10 +195,10 @@ private fun Header(state: GameUiState) {
         Text(
             stringResource(
                 R.string.score_line,
-                sideName(view.mode, view.side, view.side),
+                shortSideName(view.mode, view.side, view.side),
                 snapshot.totals[view.side.index],
                 snapshot.totals[other.index],
-                sideName(view.mode, other, view.side),
+                shortSideName(view.mode, other, view.side),
             ),
             color = TableAccent,
             fontWeight = FontWeight.Bold,
@@ -192,36 +208,65 @@ private fun Header(state: GameUiState) {
     }
 }
 
+/**
+ * Os outros assentos, na ordem de jogada a partir do humano (§4.2): em duplas, adversário à esquerda,
+ * parceiro e adversário à direita. De cada um, só o tamanho da mão (nunca as cartas, nem as do parceiro),
+ * se está pensando e a última jogada.
+ */
 @Composable
-private fun OpponentSeat(state: GameUiState, seatIndex: Int) {
+private fun SeatsPanel(state: GameUiState) {
+    val snapshot = state.snapshot
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        snapshot.view.mode.seatsInPlayOrder(snapshot.viewerSeat).drop(1).forEach { seat -> SeatRow(state, seat) }
+    }
+}
+
+@Composable
+private fun SeatRow(state: GameUiState, seat: Seat) {
     val snapshot = state.snapshot
     val view = snapshot.view
-    val thinking = snapshot.thinkingSeat?.index == seatIndex
-    Column(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CardBack(size = CardSize.SMALL, describe = false)
-            Column(Modifier.weight(1f)) {
-                Text(
-                    sideName(view.mode, view.mode.sideOf(Seat(seatIndex)), view.side),
-                    color = OnTable,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    pluralStringResource(R.plurals.opponent_hand, view.handSizes[seatIndex], view.handSizes[seatIndex]),
-                    color = OnTable,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.testTag("opponent-hand-size"),
+    val role = SeatRole.of(view.mode, seat, snapshot.viewerSeat)
+    val thinking = snapshot.thinkingSeat == seat
+    val handSize = view.handSizes[seat.index]
+    val handText = pluralStringResource(R.plurals.opponent_hand, handSize, handSize)
+    val thinkingText = stringResource(R.string.seat_thinking)
+    val events = snapshot.turnEvents[seat.index]
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(if (thinking) TableGreenDark else Color.Transparent, RoundedCornerShape(6.dp))
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .testTag("seat-${seat.index}"),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                stringResource(role.nameRes()),
+                color = if (role == SeatRole.PARTNER) TableAccent else OnTable,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                "· $handText",
+                color = OnTable,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f).testTag("seat-hand-size-${seat.index}"),
+            )
+            if (thinking) {
+                CircularProgressIndicator(
+                    Modifier.size(16.dp).semantics { contentDescription = thinkingText }.testTag("seat-thinking-${seat.index}"),
+                    color = TableAccent,
+                    strokeWidth = 2.dp,
                 )
             }
-            if (thinking) CircularProgressIndicator(Modifier.size(20.dp), color = TableAccent, strokeWidth = 2.dp)
         }
-        val events = snapshot.turnEvents[seatIndex]
         if (events.isNotEmpty()) {
             Text(
                 stringResource(R.string.opponent_last_turn, turnText(events)),
                 color = OnTable,
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.testTag("opponent-last-turn"),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("seat-last-turn-${seat.index}"),
             )
         }
     }
@@ -239,8 +284,9 @@ private fun SideArea(
     val redThrees = view.redThrees[side.index]
     Column(
         Modifier.fillMaxWidth()
-            .border(1.dp, OnTable.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
-            .padding(6.dp),
+            .border(1.dp, OnTable.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .padding(6.dp)
+            .testTag("side-$sideTag"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -256,7 +302,7 @@ private fun SideArea(
             }
         }
         if (melds.isEmpty()) {
-            Text(stringResource(R.string.no_melds), color = OnTable.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
         } else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 melds.forEach { meld -> MeldView(meld, onMeldClick, Modifier.testTag("meld-$sideTag-${meld.id.value}")) }
@@ -275,9 +321,10 @@ private fun MeldView(tableMeld: TableMeld, onClick: ((MeldId) -> Unit)?, modifie
         else -> stringResource(R.string.canasta_dirty)
     }
     val borderColor = when {
-        !canasta -> Color.Transparent
-        meld.isClean -> TableAccent
-        else -> Color(0xFFB0BEC5)
+        canasta && meld.isClean -> TableAccent
+        canasta -> Color(0xFFB0BEC5)
+        onClick != null -> OnTable.copy(alpha = 0.6f) // tocável para acrescentar
+        else -> Color.Transparent
     }
     val descriptions = meld.cards.map { cardDescription(it) }
     val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
@@ -310,41 +357,47 @@ private fun OverlappedCards(cards: List<Card>, step: Dp, modifier: Modifier = Mo
 @Composable
 private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPile: () -> Unit) {
     val view = state.snapshot.view
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             // Monte
-            val stockLabel = stringResource(R.string.stock) + ", " + pluralStringResource(R.plurals.card_count, view.stockSize, view.stockSize)
-            Column(
+            val stockCount = pluralStringResource(R.plurals.card_count, view.stockSize, view.stockSize)
+            val stockLabel = stringResource(R.string.stock) + ", " + stockCount
+            Row(
                 Modifier
-                    .widthIn(min = 64.dp)
+                    .heightIn(min = 48.dp)
                     .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(6.dp))
                     .clickable(enabled = state.canDraw, onClick = events::onDraw)
                     .semantics(mergeDescendants = true) { contentDescription = stockLabel }
                     .testTag("stock")
                     .padding(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
-                if (view.stockSize > 0) CardBack(size = CardSize.MEDIUM, describe = false) else Spacer(Modifier.height(CardSize.MEDIUM.height))
-                Text(pluralStringResource(R.plurals.card_count, view.stockSize, view.stockSize), color = OnTable, style = MaterialTheme.typography.labelSmall)
+                if (view.stockSize > 0) CardBack(size = CardSize.SMALL, describe = false) else Spacer(Modifier.width(CardSize.SMALL.width))
+                Column {
+                    Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
+                    Text(stockCount, color = OnTable, style = MaterialTheme.typography.labelSmall)
+                }
             }
             // Mortos
             view.mortoStatus.forEachIndexed { i, status ->
                 val statusText = when (status) {
                     MortoStatus.Available -> pluralStringResource(R.plurals.card_count, view.mortoSizes[i], view.mortoSizes[i])
                     MortoStatus.BecameStock -> stringResource(R.string.morto_became_stock)
-                    is MortoStatus.Taken ->
-                        if (status.side == view.side) stringResource(R.string.morto_taken_you) else stringResource(R.string.morto_taken_opponent)
+                    is MortoStatus.Taken -> stringResource(mortoTakenRes(view.mode, own = status.side == view.side))
                 }
                 val title = stringResource(R.string.morto_title, i + 1)
-                Column(
-                    Modifier.width(64.dp).semantics(mergeDescendants = true) { contentDescription = "$title, $statusText" },
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Row(
+                    Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = "$title, $statusText" }
+                        .testTag("morto-$i"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(title, color = OnTable, style = MaterialTheme.typography.labelMedium)
                     if (status == MortoStatus.Available) CardBack(size = CardSize.SMALL, describe = false)
-                    else Spacer(Modifier.height(CardSize.SMALL.height))
-                    Text(statusText, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                    Column {
+                        Text(title, color = OnTable, style = MaterialTheme.typography.labelMedium)
+                        Text(statusText, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 2, textAlign = TextAlign.Start)
+                    }
                 }
             }
         }
@@ -360,7 +413,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                 modifier = Modifier.weight(1f),
             )
             if (pile.isNotEmpty()) {
-                TextButton(onShowDiscardPile, modifier = Modifier.testTag("show-discard-pile")) {
+                TextButton(onShowDiscardPile, modifier = Modifier.heightIn(min = 48.dp).testTag("show-discard-pile")) {
                     Text(stringResource(R.string.discard_pile_show_all), color = TableAccent)
                 }
             }
@@ -371,14 +424,14 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
-                .border(2.dp, if (state.canTakeDiscardPile) TableAccent else OnTable.copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+                .border(2.dp, if (state.canTakeDiscardPile) TableAccent else OnTable.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                 .clickable(enabled = state.awaitingDraw, onClick = events::onTakeDiscardPile)
                 .semantics(mergeDescendants = true) { contentDescription = pileLabel }
                 .testTag("discard-pile")
                 .padding(4.dp),
         ) {
             if (pile.isEmpty()) {
-                Text(stringResource(R.string.discard_pile_empty), color = OnTable.copy(alpha = 0.7f), modifier = Modifier.align(Alignment.CenterStart))
+                Text(stringResource(R.string.discard_pile_empty), color = OnTable, modifier = Modifier.align(Alignment.CenterStart))
             } else {
                 Box(Modifier.horizontalScroll(scroll)) { OverlappedCards(pile, step = 18.dp) }
             }
@@ -389,13 +442,16 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
 @Composable
 private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     val snapshot = state.snapshot
+    val thinking = snapshot.thinkingSeat
     val status = when {
         state.awaitingDraw -> stringResource(R.string.turn_draw)
         state.playing -> stringResource(R.string.turn_play)
-        snapshot.thinkingSeat != null -> stringResource(R.string.turn_bot)
+        thinking != null -> stringResource(SeatRole.of(snapshot.view.mode, thinking, snapshot.viewerSeat).turnRes())
         else -> stringResource(R.string.turn_waiting)
     }
-    Column(Modifier.fillMaxWidth().background(TableGreenDark).padding(horizontal = 8.dp, vertical = 4.dp)) {
+    Column(
+        Modifier.fillMaxWidth().background(TableGreenDark).padding(horizontal = 8.dp, vertical = 4.dp).testTag("action-bar"),
+    ) {
         Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (snapshot.view.phase != Phase.PLAYING || !state.isHumanTurn) {
@@ -406,33 +462,63 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld")
                 ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard")
             }
+            val clearEnabled = state.selected.isNotEmpty()
             OutlinedButton(
                 onClick = events::onClearSelection,
-                enabled = state.selected.isNotEmpty(),
-                modifier = Modifier.heightIn(min = 48.dp),
-            ) { Text(stringResource(R.string.action_clear), color = OnTable) }
+                enabled = clearEnabled,
+                border = BorderStroke(1.dp, if (clearEnabled) OnTable else DisabledOnTable),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnTable, disabledContentColor = DisabledOnTable),
+                modifier = Modifier.heightIn(min = 48.dp).testTag("action-clear"),
+            ) { Text(stringResource(R.string.action_clear)) }
         }
         // Fixo durante a vez (não depende da seleção) para os botões não pularem ao tocar nas cartas.
         if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
-            Text(stringResource(R.string.add_to_meld_hint), color = OnTable, style = MaterialTheme.typography.bodySmall)
+            Text(
+                stringResource(if (snapshot.view.mode == GameMode.DUPLAS) R.string.add_to_meld_hint_team else R.string.add_to_meld_hint),
+                color = OnTable,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
 
+/** Botão de ação. Desabilitado: só o contorno, sem preenchimento, com texto claro legível sobre o verde. */
 @Composable
 private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String) {
     Button(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier.heightIn(min = 48.dp).testTag(tag),
-        colors = ButtonDefaults.buttonColors(containerColor = TableAccent, contentColor = Color.Black),
+        border = if (enabled) null else BorderStroke(1.dp, DisabledOnTable),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = TableAccent,
+            contentColor = Color.Black,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = DisabledOnTable,
+        ),
     ) { Text(text) }
 }
+
+/**
+ * Realce de uma carta da mão. Sem seleção, só um realce discreto para as que participam de alguma jogada
+ * (no começo da vez quase toda a mão participa). Com seleção, destaque forte para as que completam jogada
+ * junto com a seleção e esmaecimento das demais. [highlighted] vem de `legalActions` (sem o descarte).
+ */
+internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection: Boolean, humanTurn: Boolean): CardEmphasis =
+    when {
+        selected -> CardEmphasis.SELECTED
+        !humanTurn -> CardEmphasis.NONE
+        !hasSelection -> if (highlighted) CardEmphasis.SUBTLE else CardEmphasis.NONE
+        highlighted -> CardEmphasis.STRONG
+        else -> CardEmphasis.DIMMED
+    }
 
 @Composable
 private fun HandArea(state: GameUiState, events: TableEvents) {
     val selectedText = stringResource(R.string.card_selected)
     val playableText = stringResource(R.string.card_playable)
+    val completesText = stringResource(R.string.card_completes_selection)
+    val notWithSelectionText = stringResource(R.string.card_not_with_selection)
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -454,24 +540,26 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
             horizontalArrangement = Arrangement.spacedBy(1.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val hasSelection = state.selected.isNotEmpty()
             state.hand.forEach { card ->
                 val selected = card in state.selected
-                val highlighted = card.cardClass in state.highlighted
+                val emphasis = handEmphasis(selected, card.cardClass in state.highlighted, hasSelection, state.isHumanTurn)
                 PlayingCard(
                     card,
                     Modifier
                         .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
                         .semantics {
-                            stateDescription = when {
-                                selected -> selectedText
-                                highlighted -> playableText
-                                else -> ""
+                            stateDescription = when (emphasis) {
+                                CardEmphasis.SELECTED -> selectedText
+                                CardEmphasis.SUBTLE -> playableText
+                                CardEmphasis.STRONG -> completesText
+                                CardEmphasis.DIMMED -> notWithSelectionText
+                                CardEmphasis.NONE -> ""
                             }
                         }
                         .testTag("hand-card-$card"),
                     size = CardSize.MEDIUM,
-                    selected = selected,
-                    highlighted = highlighted,
+                    emphasis = emphasis,
                 )
             }
         }
@@ -512,7 +600,11 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                             // §6.4 pode haver grupos repetidos: o número do jogo os distingue.
                             val melds = view.tables[view.side.index].melds
                             val index = melds.indexOfFirst { it.id == plan.meldId }
-                            stringResource(R.string.plan_add_to_meld, index + 1, melds.getOrNull(index)?.meld?.cards?.labels().orEmpty())
+                            stringResource(
+                                if (view.mode == GameMode.DUPLAS) R.string.plan_add_to_team_meld else R.string.plan_add_to_meld,
+                                index + 1,
+                                melds.getOrNull(index)?.meld?.cards?.labels().orEmpty(),
+                            )
                         }
                     }
                     OutlinedButton(

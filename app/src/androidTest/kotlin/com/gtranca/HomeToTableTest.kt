@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -58,6 +59,42 @@ class HomeToTableTest {
             rule.onAllNodesWithTag("action-discard").fetchSemanticsNodes().isNotEmpty()
         }
         handSize() shouldBeAtLeast before + 1
+    }
+
+    @Test
+    fun duplasAbreAMesaComParceiroEAdversariosEOHumanoJoga() {
+        rule.onNodeWithTag("mode-duplas").performClick()
+        rule.onNodeWithTag("difficulty-facil").performClick()
+        rule.onNodeWithTag("new-game").performClick()
+        rule.onNodeWithTag("table-screen").assertExists()
+        rule.onNodeWithText("Parceiro").assertExists()
+        rule.onNodeWithText("Adversário à esquerda").assertExists()
+        rule.onNodeWithText("Adversário à direita").assertExists()
+        rule.onNodeWithText("Jogos da sua dupla").assertExists()
+
+        rule.waitUntil(timeoutMillis = 30_000) {
+            rule.onAllNodes(hasTestTag("action-draw") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        // Só a mão do humano é desenhada (a do parceiro nunca aparece): 11 cartas no começo da partida,
+        // ou menos/mais conforme 3 vermelhos e compras já feitas — nunca as 44 da mesa.
+        handSize() shouldBeAtMost 20
+        val before = handSize()
+        rule.onNodeWithTag("action-draw").performClick()
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithTag("action-discard").fetchSemanticsNodes().isNotEmpty()
+        }
+        handSize() shouldBeAtLeast before + 1
+        // Descarta a primeira carta: a vez passa ao adversário à esquerda, depois ao parceiro.
+        rule.onAllNodes(isHandCard, useUnmergedTree = true)[0].performClick()
+        rule.onNodeWithTag("action-discard").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithText("Vez do parceiro…").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("seat-thinking-2", useUnmergedTree = true).assertExists()
+    }
+
+    private infix fun Int.shouldBeAtMost(max: Int) {
+        check(this <= max) { "Esperado ≤ $max, obtido $this" }
     }
 
     private infix fun Int.shouldBeAtLeast(min: Int) {

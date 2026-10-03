@@ -51,6 +51,8 @@ class HumanPlayer : SeatPlayer {
         val pending = request.value ?: return false
         if (action !in pending.legal) return false
         if (!request.compareAndSet(pending, null)) return false
+        // Já não espera: um segundo toque, antes de o controlador retomar, é ignorado pela interface.
+        _waiting.value = false
         return pending.answer.complete(action)
     }
 }

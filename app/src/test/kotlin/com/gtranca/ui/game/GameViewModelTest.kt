@@ -21,7 +21,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -40,12 +42,17 @@ class GameViewModelTest {
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun TestScope.newGame(seed: Long, target: Int = 3000): GameViewModel {
+    private fun TestScope.newGame(
+        seed: Long,
+        target: Int = 3000,
+        mode: GameMode = GameMode.INDIVIDUAL,
+        botDelayMillis: Long = 0,
+    ): GameViewModel {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, target),
+            GameConfig(mode, Difficulty.FACIL, target),
             gameSeed = seed,
             computeDispatcher = dispatcher,
-            botDelayMillis = 0,
+            botDelayMillis = botDelayMillis,
         )
         advanceUntilIdle()
         return vm
@@ -175,5 +182,71 @@ class GameViewModelTest {
             advanceUntilIdle()
             vm.uiState.value.showFinalResult shouldBe true
         }
+    }
+
+    /** Uma vez do humano: compra e descarta a primeira carta descartável. */
+    private fun TestScope.drawAndDiscard(vm: GameViewModel) {
+        vm.onDraw()
+        advanceUntilIdle()
+        val state = vm.uiState.value
+        val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+        vm.select(state.physical(listOf(discard.card)))
+        vm.onDiscard()
+    }
+
+    @Test
+    fun `duplas - humano no assento 0 ve so a propria mao e a jogada dos tres bots`() = runTest(dispatcher) {
+        val vm = newGame(seed = 4, mode = GameMode.DUPLAS)
+        val first = vm.uiState.value
+        first.isHumanTurn shouldBe true
+        first.snapshot.viewerSeat shouldBe Seat(0)
+        val view = first.snapshot.view
+        view.handSizes.size shouldBe 4
+        // §1.1 o parceiro (assento 2) é do mesmo lado; a mão dele nunca chega à interface, só o tamanho.
+        view.mode.sideOf(Seat(2)) shouldBe view.side
+        view.hand.size shouldBe view.handSizes[0]
+        first.hand.size shouldBe view.handSizes[0]
+
+        drawAndDiscard(vm)
+        advanceUntilIdle()
+        val after = vm.uiState.value
+        if (after.snapshot.stage == Stage.PLAYING) {
+            // A vez deu a volta: esquerda (1), parceiro (2) e direita (3) jogaram, nessa ordem (§4.2).
+            after.isHumanTurn shouldBe true
+            listOf(1, 2, 3).forEach { after.snapshot.turnEvents[it].shouldNotBeEmpty() }
+        }
+    }
+
+    @Test
+    fun `duplas - a vez passa a esquerda, ao parceiro e a direita com a pausa entre bots`() = runTest(dispatcher) {
+        val vm = newGame(seed = 4, mode = GameMode.DUPLAS, botDelayMillis = 700)
+        vm.uiState.value.isHumanTurn shouldBe true
+        drawAndDiscard(vm)
+        runCurrent()
+        val thinkingOrder = mutableListOf<Seat>()
+        var guard = 0
+        while (!vm.uiState.value.isHumanTurn && vm.uiState.value.snapshot.stage == Stage.PLAYING && guard++ < 500) {
+            vm.uiState.value.snapshot.thinkingSeat?.let { if (thinkingOrder.lastOrNull() != it) thinkingOrder += it }
+            advanceTimeBy(100)
+            runCurrent()
+        }
+        if (vm.uiState.value.snapshot.stage == Stage.PLAYING) {
+            thinkingOrder shouldContainExactly listOf(Seat(1), Seat(2), Seat(3))
+        }
+    }
+
+    @Test
+    fun `toque duplo - o segundo toque nao mostra motivo de outra situacao`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        vm.uiState.value.awaitingDraw shouldBe true
+        vm.select(vm.uiState.value.hand.take(3))
+        vm.onDraw()
+        // Antes de o controlador retomar, um toque em "Baixar" (que daria "compre primeiro") é ignorado.
+        vm.onCreateMeld()
+        vm.onDraw()
+        vm.uiState.value.message shouldBe null
+        advanceUntilIdle()
+        vm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
+        vm.uiState.value.message shouldBe null
     }
 }

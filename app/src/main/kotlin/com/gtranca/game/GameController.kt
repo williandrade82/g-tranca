@@ -10,6 +10,7 @@ import com.gtranca.engine.finishRound
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundRecord
+import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleError
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
@@ -120,6 +121,10 @@ class GameController(
     private var match: Match = startMatch(config.mode, config.targetScore, Random(gameSeed))
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }
 
+    /** Partida no momento em que o humano foi chamado a jogar; `null` fora da espera pelo humano. */
+    @Volatile
+    private var humanRound: RoundState? = null
+
     private val _state = MutableStateFlow(snapshot(Stage.PLAYING, humanLegal = emptyList(), thinkingSeat = null))
 
     /** Estado atual para a interface. */
@@ -157,8 +162,13 @@ class GameController(
                         player.bot.chooseAction(round.viewFor(seat), legal)
                     }
                     is HumanPlayer -> {
+                        humanRound = round
                         publish(Stage.PLAYING, humanLegal = legal)
-                        player.chooseAction(legal)
+                        try {
+                            player.chooseAction(legal)
+                        } finally {
+                            humanRound = null
+                        }
                     }
                 }
                 check(action in legal) { "Assento ${seat.index}: ação fora de legalActions: $action" }
@@ -190,11 +200,15 @@ class GameController(
     }
 
     /**
-     * Motivo pelo qual [action] do humano seria recusada na situação atual (`RoundEngine.validate`), ou `null`
-     * se ela é válida. Só devolve o motivo, nunca o estado oculto.
+     * Motivo pelo qual [action] do humano seria recusada (`RoundEngine.validate`), ou `null` se ela é válida ou se
+     * o controlador não está esperando o humano. Valida contra a partida do pedido em aberto, a mesma das ações
+     * publicadas em [GameSnapshot.humanLegal]: um toque atrasado nunca recebe o motivo de outra situação.
+     * Só devolve o motivo, nunca o estado oculto.
      */
-    fun explain(action: Action): RuleError? =
-        (RoundEngine.validate(match.currentRound, viewerSeat, action) as? RuleResult.Failure)?.error
+    fun explain(action: Action): RuleError? {
+        val round = humanRound ?: return null
+        return (RoundEngine.validate(round, viewerSeat, action) as? RuleResult.Failure)?.error
+    }
 
     private fun recordEvent(event: PublicEvent) {
         val index = event.seat.index

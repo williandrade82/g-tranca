@@ -55,7 +55,23 @@ private val CardRed = Color(0xFFC62828)
 private val CardBlack = Color(0xFF1B1B1B)
 private val CardBorder = Color(0xFF9E9E9E)
 private val SelectedBorder = Color(0xFF1565C0)
+private val SelectedFill = Color(0xFFDCEBFF)
 private val HighlightBorder = Color(0xFFFFB300)
+
+/** Marca discreta de "participa de jogada" sobre o branco da carta (contraste ≥ 3:1 com o branco). */
+private val PlayableMark = Color(0xFFE65100)
+private val DimOverlay = Color(0x66000000)
+
+/**
+ * Realce de uma carta da mão (derivado de `legalActions` pelo ViewModel; a carta não decide nada).
+ * - [NONE]: sem realce.
+ * - [SUBTLE]: participa de alguma jogada (sem seleção): só um ponto laranja no canto, para a mão cheia não
+ *   ficar toda contornada.
+ * - [STRONG]: completa uma jogada junto com a seleção atual: borda âmbar grossa e o ponto.
+ * - [SELECTED]: selecionada: borda azul, fundo azul-claro e marca de seleção.
+ * - [DIMMED]: há seleção e a carta não combina com ela: esmaecida (continua tocável).
+ */
+enum class CardEmphasis { NONE, SUBTLE, STRONG, SELECTED, DIMMED }
 
 /** Símbolo do naipe, com o seletor de apresentação em texto (evita a versão emoji). */
 val Suit.glyph: String
@@ -108,8 +124,7 @@ private fun Dp.asFont(): TextUnit = with(LocalDensity.current) { this@asFont.toS
  * nos cantos (o de baixo invertido) e o naipe grande no centro; copas e ouros em vermelho, espadas e paus
  * em preto. Isolada para poder ser trocada por imagens no futuro.
  *
- * @param selected realce de seleção (borda azul grossa).
- * @param highlighted realce de "participa de alguma jogada válida" (borda âmbar).
+ * @param emphasis realce na mão (ver [CardEmphasis]).
  * @param describe define o `contentDescription` (desligue quando o pai já descreve a carta).
  */
 @Composable
@@ -117,16 +132,15 @@ fun PlayingCard(
     card: Card,
     modifier: Modifier = Modifier,
     size: CardSize = CardSize.MEDIUM,
-    selected: Boolean = false,
-    highlighted: Boolean = false,
+    emphasis: CardEmphasis = CardEmphasis.NONE,
     describe: Boolean = true,
 ) {
     val description = cardDescription(card)
     val color = if (card.suit.isRed) CardRed else CardBlack
     val shape = RoundedCornerShape(size.width * 0.12f)
-    val border = when {
-        selected -> 3.dp to SelectedBorder
-        highlighted -> 2.5.dp to HighlightBorder
+    val border = when (emphasis) {
+        CardEmphasis.SELECTED -> 3.dp to SelectedBorder
+        CardEmphasis.STRONG -> 3.dp to HighlightBorder
         else -> 1.dp to CardBorder
     }
     val cornerStyle = TextStyle(
@@ -140,10 +154,28 @@ fun PlayingCard(
             .size(size.width, size.height)
             .then(if (describe) Modifier.semantics { contentDescription = description } else Modifier)
             .clip(shape)
-            .background(Color.White)
+            .background(if (emphasis == CardEmphasis.SELECTED) SelectedFill else Color.White)
             .border(border.first, border.second, shape),
     ) {
         CornerIndex(card, cornerStyle, Modifier.align(Alignment.TopStart).padding(start = 3.dp, top = 2.dp))
+        val badge = when (emphasis) {
+            CardEmphasis.SUBTLE, CardEmphasis.STRONG -> PlayableMark
+            CardEmphasis.SELECTED -> SelectedBorder
+            else -> null
+        }
+        if (badge != null) {
+            Canvas(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 5.dp).size(size.width * 0.2f)) {
+                drawCircle(badge)
+                if (emphasis == CardEmphasis.SELECTED) {
+                    // Marca de seleção (✓) branca dentro do círculo.
+                    val w = this.size.width
+                    val check = Path().apply {
+                        moveTo(w * 0.25f, w * 0.52f); lineTo(w * 0.43f, w * 0.7f); lineTo(w * 0.76f, w * 0.32f)
+                    }
+                    drawPath(check, Color.White, style = Stroke(width = w * 0.14f))
+                }
+            }
+        }
         if (size.showCenter) {
             Text(
                 card.suit.glyph,
@@ -155,6 +187,7 @@ fun PlayingCard(
         if (size != CardSize.SMALL) {
             CornerIndex(card, cornerStyle, Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 2.dp).rotate(180f))
         }
+        if (emphasis == CardEmphasis.DIMMED) Box(Modifier.matchParentSize().background(DimOverlay))
     }
 }
 

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
+import com.gtranca.game.SeatRole
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.ScoreLine
 import com.gtranca.engine.model.SideScore
@@ -40,11 +41,8 @@ fun RoundSummaryScreen(snapshot: GameSnapshot, onNextRound: () -> Unit, onShowFi
     val scores = sides.map { side -> record.scores.first { it.side == side } }
     val resultText = when (val result = record.result) {
         RoundResult.NoWinner -> stringResource(R.string.round_result_no_winner)
-        is RoundResult.GoOut -> when {
-            result.seat == snapshot.viewerSeat -> stringResource(R.string.round_result_you_went_out)
-            result.side == view.side -> stringResource(R.string.round_result_partner_went_out)
-            else -> stringResource(R.string.round_result_opponent_went_out)
-        }
+        // §11.1 quem bateu, pelo assento (em duplas: você, parceiro ou um dos adversários).
+        is RoundResult.GoOut -> stringResource(SeatRole.of(view.mode, result.seat, snapshot.viewerSeat).wentOutRes())
     }
     Surface(Modifier.fillMaxSize().testTag("round-summary")) {
         Column(

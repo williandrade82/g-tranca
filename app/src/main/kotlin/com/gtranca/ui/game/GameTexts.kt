@@ -15,6 +15,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldError
 import com.gtranca.engine.model.RuleError
 import com.gtranca.engine.model.Side
+import com.gtranca.game.SeatRole
 import com.gtranca.ui.cards.shortLabel
 
 /** Texto pt-BR de cada motivo de recusa do motor (um por valor de [ActionError] e [MeldError]). */
@@ -63,6 +64,70 @@ fun sideName(mode: GameMode, side: Side, viewerSide: Side): String = when {
     side == viewerSide -> stringResource(R.string.side_your_team)
     mode == GameMode.INDIVIDUAL -> stringResource(R.string.side_opponent)
     else -> stringResource(R.string.side_other_team)
+}
+
+/** Nome do assento do ponto de vista do humano (ex.: "Parceiro", "Adversário à esquerda"). */
+@StringRes
+fun SeatRole.nameRes(): Int = when (this) {
+    SeatRole.YOU -> R.string.side_you
+    SeatRole.OPPONENT -> R.string.side_opponent
+    SeatRole.PARTNER -> R.string.seat_partner
+    SeatRole.LEFT_OPPONENT -> R.string.seat_left_opponent
+    SeatRole.RIGHT_OPPONENT -> R.string.seat_right_opponent
+}
+
+/** "Vez de …" de um assento que não é o humano. */
+@StringRes
+fun SeatRole.turnRes(): Int = when (this) {
+    SeatRole.YOU, SeatRole.OPPONENT -> R.string.turn_opponent
+    SeatRole.PARTNER -> R.string.turn_partner
+    SeatRole.LEFT_OPPONENT -> R.string.turn_left_opponent
+    SeatRole.RIGHT_OPPONENT -> R.string.turn_right_opponent
+}
+
+/** Quem bateu (§11.1), pelo assento. */
+@StringRes
+fun SeatRole.wentOutRes(): Int = when (this) {
+    SeatRole.YOU -> R.string.round_result_you_went_out
+    SeatRole.OPPONENT -> R.string.round_result_opponent_went_out
+    SeatRole.PARTNER -> R.string.round_result_partner_went_out
+    SeatRole.LEFT_OPPONENT -> R.string.round_result_left_went_out
+    SeatRole.RIGHT_OPPONENT -> R.string.round_result_right_went_out
+}
+
+/** Título da área de jogos de um lado. */
+@StringRes
+fun meldsTitleRes(mode: GameMode, own: Boolean): Int = when {
+    mode == GameMode.INDIVIDUAL && own -> R.string.your_melds
+    mode == GameMode.INDIVIDUAL -> R.string.opponent_melds
+    own -> R.string.team_melds
+    else -> R.string.other_team_melds
+}
+
+/** Situação de morto pego por um lado. */
+@StringRes
+fun mortoTakenRes(mode: GameMode, own: Boolean): Int = when {
+    mode == GameMode.INDIVIDUAL && own -> R.string.morto_taken_you
+    mode == GameMode.INDIVIDUAL -> R.string.morto_taken_opponent
+    own -> R.string.morto_taken_your_team
+    else -> R.string.morto_taken_other_team
+}
+
+/** Resultado do jogo (§13) para o lado do humano. */
+@StringRes
+fun gameResultRes(mode: GameMode, won: Boolean): Int = when {
+    mode == GameMode.INDIVIDUAL && won -> R.string.game_over_you_won
+    mode == GameMode.INDIVIDUAL -> R.string.game_over_opponent_won
+    won -> R.string.game_over_team_won
+    else -> R.string.game_over_other_team_won
+}
+
+/** Nome curto do lado para o placar do topo ("Você"/"Adversário"; em duplas, "Nós"/"Eles"). */
+@Composable
+@ReadOnlyComposable
+fun shortSideName(mode: GameMode, side: Side, viewerSide: Side): String = when (mode) {
+    GameMode.INDIVIDUAL -> sideName(mode, side, viewerSide)
+    GameMode.DUPLAS -> stringResource(if (side == viewerSide) R.string.score_us else R.string.score_them)
 }
 
 fun List<Card>.labels(): String = joinToString(" ") { it.shortLabel }
