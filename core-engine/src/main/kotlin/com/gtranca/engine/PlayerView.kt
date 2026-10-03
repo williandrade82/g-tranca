@@ -49,7 +49,12 @@ data class PlayerView(
     val discardTop: Card? get() = discardPile.lastOrNull()
 }
 
-/** Projeção do estado para o jogador em [seat]: só a informação visível a ele na mesa. */
+/**
+ * Projeção do estado para o jogador em [seat]: só a informação visível a ele na mesa.
+ *
+ * As listas são cópias defensivas (inclusive as aninhadas): quem recebe a vista não consegue
+ * alterar o [RoundState] nem com cast para `MutableList`.
+ */
 fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
     mode = mode,
     seat = seat,
@@ -58,12 +63,16 @@ fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
     firstSeat = firstSeat,
     phase = phase,
     result = result,
-    hand = handOf(seat),
+    hand = handOf(seat).toList(),
     handSizes = hands.map { it.size },
-    discardPile = discardPile,
+    discardPile = discardPile.toList(),
     stockSize = stock.size,
-    mortoStatus = mortoStatus,
+    mortoStatus = mortoStatus.toList(),
     mortoSizes = mortos.map { it.size },
-    redThrees = redThrees,
-    tables = tables,
+    redThrees = redThrees.map { it.toList() },
+    tables = tables.map { it.defensiveCopy() },
 )
+
+/** Cópia de [SideTable] sem compartilhar nenhuma lista com o original. */
+private fun SideTable.defensiveCopy(): SideTable =
+    copy(melds = melds.map { it.copy(meld = it.meld.copy(cards = it.meld.cards.toList())) })

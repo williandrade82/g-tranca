@@ -9,6 +9,7 @@ import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.cards
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -172,19 +173,92 @@ class PlayerViewTest {
     }
 
     @Test
-    fun `vistas de partidas reais nunca expoem cartas ocultas`() {
-        // §3 distribuição real e jogadas aleatórias válidas, nos dois modos e várias sementes
-        listOf(GameMode.INDIVIDUAL, GameMode.DUPLAS).forEach { mode ->
-            repeat(10) { seed ->
-                val random = Random(seed)
-                var state = dealRound(mode, random)
-                repeat(40) {
-                    assertHidesEverythingHidden(state)
-                    if (state.phase == Phase.FINISHED) return@repeat
-                    val actions = RoundEngine.legalActions(state, state.currentSeat)
-                    state = RoundEngine.apply(state, state.currentSeat, actions[random.nextInt(actions.size)])
+    fun `alterar listas da vista por cast nao altera o estado`() {
+        // vista imutável: cópias defensivas das listas do estado (§3.2, §3.3, §5.6, §6.4, §6.5)
+        listOf(individual, duplas).forEach { original ->
+            original.mode.seats.forEach { seat ->
+                // cópia estrutural independente do estado, para comparar depois
+                val state = Json.decodeFromString(RoundState.serializer(), Json.encodeToString(RoundState.serializer(), original))
+                val view = state.viewFor(seat)
+                // tenta esvaziar cada lista; se a lista recusar (imutável), tanto melhor
+                fun tryClear(list: List<*>) = runCatching { (list as MutableList<*>).clear() }
+                tryClear(view.hand)
+                tryClear(view.discardPile)
+                tryClear(view.mortoStatus)
+                view.redThrees.forEach { tryClear(it) }
+                tryClear(view.redThrees)
+                view.tables.forEach { table ->
+                    table.melds.forEach { tryClear(it.meld.cards) }
+                    tryClear(table.melds)
                 }
+                tryClear(view.tables)
+                state shouldBe original
             }
         }
+    }
+
+    @Test
+    fun `morto que virou monte continua oculto`() {
+        // §10.1 monte vazio: o primeiro morto disponível vira monte; §3.2 / §3.3 suas cartas seguem ocultas
+        listOf(GameMode.INDIVIDUAL, GameMode.DUPLAS).forEach { mode ->
+            val before = round(mode) {
+                hand(0, "KS QD")
+                stock("")
+            }
+            val formerMorto = before.mortos[0]
+            val after = before.act(0, Action.DrawFromStock)
+            after.mortoStatus[0] shouldBe MortoStatus.BecameStock
+            assertHidesEverythingHidden(after)
+            mode.seats.forEach { seat ->
+                val view = after.viewFor(seat)
+                view.mortoStatus[0] shouldBe MortoStatus.BecameStock
+                view.mortoSizes[0] shouldBe 0
+                view.stockSize shouldBe formerMorto.size - 1
+                // só o comprador vê a carta que tirou do antigo morto
+                val drawn = formerMorto.first()
+                (drawn in view.hand) shouldBe (seat == Seat(0))
+                json(view).contains("\"${formerMorto.last()}\"") shouldBe false
+            }
+        }
+    }
+
+    /** Política aleatória que prefere baixar/acrescentar e às vezes pega o lixo, para a partida andar. */
+    private fun choose(legal: List<Action>, random: Random): Action {
+        val melds = legal.filter { it is Action.CreateMeld || it is Action.AddToMeld }
+        val takes = legal.filterIsInstance<Action.TakeDiscardPile>()
+        return when {
+            takes.isNotEmpty() && random.nextInt(3) == 0 -> takes.random(random)
+            melds.isNotEmpty() && random.nextInt(4) != 0 -> melds.random(random)
+            else -> legal.filterNot { it is Action.TakeDiscardPile }.ifEmpty { legal }.random(random)
+        }
+    }
+
+    @Test
+    fun `vistas de partidas reais nunca expoem cartas ocultas`() {
+        // §3 distribuição real e jogadas válidas até o fim da partida, nos dois modos e várias sementes;
+        // §3.2 mortos ocultos também depois de pegos (§9.1) ou de virarem monte (§10); §11 partida encerrada
+        val maxActions = 5_000
+        var mortosTaken = 0
+        var finished = 0
+        listOf(GameMode.INDIVIDUAL, GameMode.DUPLAS).forEach { mode ->
+            for (seed in 0L until 10L) {
+                val random = Random(seed)
+                var state = dealRound(mode, random)
+                var count = 0
+                assertHidesEverythingHidden(state)
+                while (state.phase != Phase.FINISHED && count < maxActions) {
+                    val legal = RoundEngine.legalActions(state, state.currentSeat)
+                    state = RoundEngine.apply(state, state.currentSeat, choose(legal, random))
+                    count++
+                    assertHidesEverythingHidden(state)
+                }
+                withClue("$mode semente $seed não terminou em $maxActions ações") { state.phase shouldBe Phase.FINISHED }
+                finished++
+                mortosTaken += state.mortoStatus.count { it is MortoStatus.Taken }
+            }
+        }
+        finished shouldBe 20
+        // a amostra passa por pelo menos um morto pego
+        (mortosTaken > 0) shouldBe true
     }
 }
