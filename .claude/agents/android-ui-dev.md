@@ -37,6 +37,11 @@ Você desenvolve a camada Android do G-Tranca.
 - Ao restaurar, recrie os bots com as mesmas sementes e reproduza o log com `onNewRound()` + `observe(...)` para reconstruir a memória deles.
 - Configurações (última escolha de modo/dificuldade/alvo, velocidade dos bots) no DataStore; estatísticas (jogos, vitórias por modo/dificuldade) também.
 
+## Decisões de produto (do usuário)
+- **Cartas desenhadas no código** (Compose `Canvas`/`Box`, sem imagens), no estilo **mais tradicional possível**: fundo branco, cantos arredondados, valor e naipe nos cantos (A, 2–10, J, Q, K; ♥♦ vermelhos, ♠♣ pretos), naipe grande no centro. O **verso** tem um padrão gráfico (ex.: losangos/xadrez em moldura). Isole o desenho num componente (`PlayingCard`/`CardBack`) para poder trocar por imagens depois.
+- **Destacar** as cartas da mão que participam de alguma jogada válida (derivado de `legalActions`, nunca de regra própria).
+- **Sem desfazer** jogadas dentro da vez.
+
 ## Telas mínimas
 1. Início: novo jogo (modo, dificuldade padrão médio, pontuação-alvo padrão 3000, inteiro positivo — §14), continuar, estatísticas.
 2. Mesa: mão do jogador (ordenável, seleção múltipla), monte (tamanho), lixo aberto e inteiro visível (§5.6), mortos (tamanhos/situação), conjuntos e 3 vermelhos de cada lado, placar, de quem é a vez.
