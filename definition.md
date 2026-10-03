@@ -166,7 +166,7 @@ Um conjunto pode ser:
 ### **6.5. Três vermelhos**
 - **3 vermelho (copas ou ouros)**:
   - É baixado **automaticamente**, sozinho, sempre que entra na mão (distribuição, compra do monte, morto ou reposição).
-  - Vale **100 pontos** na mesa.
+  - Vale **+100 ou –100 pontos** na mesa, conforme o lado tenha ou não canastra ao fim da partida (§12.1).
   - Ao ser baixado, o jogador recebe **uma carta do monte** como reposição. Se a reposição também for 3 vermelho, o processo se repete (**reposição em cadeia**).
   - Se o monte estiver vazio, a reposição segue §10. Se não houver monte nem morto, o 3 vermelho é baixado **sem reposição**.
   - **Não pode ser descartado.**
@@ -262,8 +262,10 @@ A partida termina sem vencedor apenas nos casos de:
 
 Ao final de cada partida (com ou sem vencedor), cada lado soma:
 
-### **12.1. Pontos na mesa (positivos)**
-- **3 vermelho**: +100 cada
+### **12.1. Pontos na mesa**
+- **3 vermelho** baixado na mesa: **+100** cada, **se o lado tiver pelo menos uma canastra (limpa ou suja) na mesa** ao fim da partida.
+  - Se o lado **não tiver canastra** na mesa, cada 3 vermelho baixado vale **–100** (penalidade).
+  - Vale com ou sem vencedor da partida.
 - **Canastra limpa**: +200 cada
 - **Canastra suja**: +100 cada
 - **Batida**: +100 (somente o lado vencedor; não se aplica a partidas sem vencedor)

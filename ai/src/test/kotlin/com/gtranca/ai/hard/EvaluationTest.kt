@@ -37,10 +37,36 @@ class EvaluationTest {
         return scores[side.index].total - scores[1 - side.index].total
     }
 
+    /** Partida em andamento (corte da simulação), com o lado 0 tendo [ownMelds] e [redThrees]. */
+    private fun midRound(ownMelds: List<String>, redThrees: String): RoundState = RoundState(
+        mode = GameMode.INDIVIDUAL,
+        hands = listOf(cards("4C 5D"), cards("KS QS")),
+        stock = cards("9H 9D"),
+        discardPile = emptyList(),
+        mortos = listOf(cards("JH"), cards("JD")),
+        redThrees = listOf(cards(redThrees), emptyList()),
+        tables = listOf(table(*ownMelds.toTypedArray()), SideTable()),
+        firstSeat = Seat(0),
+        currentSeat = Seat(0),
+    )
+
+    @Test
+    fun `estimativa da partida em andamento segue a regra do 3 vermelho`() {
+        // §12.1 cada 3 vermelho vale +100 com canastra do lado e −100 sem ela; a estimativa do Difícil segue isso
+        val canasta = listOf("4H 5H 6H 7H 8H 9H")
+        val gainWithCanasta = Evaluation.scoreDiff(midRound(canasta, "3D"), Side(0)) -
+            Evaluation.scoreDiff(midRound(canasta, ""), Side(0))
+        gainWithCanasta.shouldBeBetween(99.999, 100.001, 0.0)
+        val notCanasta = listOf("4H 5H 6H 7H 8H")
+        val gainWithout = Evaluation.scoreDiff(midRound(notCanasta, "3D"), Side(0)) -
+            Evaluation.scoreDiff(midRound(notCanasta, ""), Side(0))
+        gainWithout.shouldBeBetween(-100.001, -99.999, 0.0)
+    }
+
     @Test
     fun `partida encerrada no individual - diferenca exata, com sinal e lado corretos`() {
         // Lado 0 bateu (§11.1): canastra limpa +200 (§7.2), batida +100 (§12.1); 4♣ na mão −8 (§12.2) ⇒ 292.
-        // Lado 1: 3 vermelho +100 (§12.1); sem morto −100 e K♠ Q♠ na mão −20 (§12.2) ⇒ −20. Diferença 312.
+        // Lado 1: 3 vermelho sem canastra −100 (§12.1); sem morto −100 e K♠ Q♠ na mão −20 (§12.2) ⇒ −220. Diferença 512.
         val state = RoundState(
             mode = GameMode.INDIVIDUAL,
             hands = listOf(cards("4C"), cards("KS QS")),
@@ -55,11 +81,11 @@ class EvaluationTest {
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.BecameStock),
             result = RoundResult.GoOut(Side(0), Seat(0)),
         )
-        Evaluation.scoreDiff(state, Side(0)) shouldBe 312.0
-        Evaluation.scoreDiff(state, Side(1)) shouldBe -312.0
+        Evaluation.scoreDiff(state, Side(0)) shouldBe 512.0
+        Evaluation.scoreDiff(state, Side(1)) shouldBe -512.0
         Evaluation.scoreDiff(state, Side(0)) shouldBe engineDiff(state, Side(0)).toDouble()
-        Evaluation.reward(state, Side(0), scale = 600.0) shouldBe (0.5 + 312.0 / 1200.0)
-        Evaluation.reward(state, Side(1), scale = 600.0) shouldBe (0.5 - 312.0 / 1200.0)
+        Evaluation.reward(state, Side(0), scale = 600.0) shouldBe (0.5 + 512.0 / 1200.0)
+        Evaluation.reward(state, Side(1), scale = 600.0) shouldBe (0.5 - 512.0 / 1200.0)
     }
 
     @Test

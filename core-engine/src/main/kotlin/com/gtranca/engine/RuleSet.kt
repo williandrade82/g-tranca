@@ -17,8 +17,10 @@ data class RuleSet(
     val minCanastaSize: Int = 6,
     /** §6.3 máximo de coringas por conjunto. */
     val maxWildsPerMeld: Int = 1,
-    /** §12.1 cada 3 vermelho na mesa. */
+    /** §12.1 cada 3 vermelho na mesa, se o lado tiver pelo menos uma canastra (limpa ou suja). */
     val redThreePoints: Int = 100,
+    /** §12.1 cada 3 vermelho na mesa, se o lado não tiver canastra. */
+    val redThreeWithoutCanastaPoints: Int = -100,
     /** §12.1 cada canastra limpa. */
     val cleanCanastaPoints: Int = 200,
     /** §12.1 cada canastra suja. */

@@ -18,10 +18,15 @@ import kotlin.random.Random
 
 class MatchTest {
 
-    /** Partida encerrada sem vencedor em que cada lado só pontua seus 3 vermelhos (mortos pegos, mãos vazias). */
+    /**
+     * Partida encerrada sem vencedor em que cada lado pontua uma canastra limpa (+200) e seus 3 vermelhos (+100
+     * cada, §12.1, pois há canastra); mortos pegos, mãos vazias.
+     */
     private fun roundWith(side0RedThrees: String, side1RedThrees: String, mode: GameMode = GameMode.INDIVIDUAL) = round(mode) {
         redThrees(0, side0RedThrees)
         redThrees(1, side1RedThrees)
+        meld(0, "4H 5H 6H 7H 8H 9H")
+        meld(1, "4S 5S 6S 7S 8S 9S")
         mortoTaken(0, 0)
         mortoTaken(1, 1)
         result = RoundResult.NoWinner
@@ -56,11 +61,11 @@ class MatchTest {
     fun `encerrar a partida acumula os pontos e guarda o detalhamento`() {
         // §12 pontuação ao final da partida; §13 total acumulado
         val m = matchAt(listOf(100, 200), finishedRound = roundWith("3H", "3D 3H'")).finishRound()
-        m.totals shouldContainExactly listOf(200, 400)
+        m.totals shouldContainExactly listOf(400, 600)
         m.history shouldHaveSize 1
         m.history[0].number shouldBe 1
         m.history[0].result shouldBe RoundResult.NoWinner
-        m.history[0].scores.map { it.total } shouldContainExactly listOf(100, 200)
+        m.history[0].scores.map { it.total } shouldContainExactly listOf(300, 400)
         m.winner shouldBe null
         m.isAwaitingNextRound shouldBe true
     }
@@ -76,8 +81,8 @@ class MatchTest {
     @Test
     fun `atingir exatamente o alvo encerra o jogo`() {
         // §13 total maior ou igual (≥) à pontuação-alvo
-        val m = matchAt(listOf(2900, 0), finishedRound = roundWith("3H", "")).finishRound()
-        m.totals shouldContainExactly listOf(3000, 0)
+        val m = matchAt(listOf(2700, 0), finishedRound = roundWith("3H", "")).finishRound()
+        m.totals shouldContainExactly listOf(3000, 200)
         m.winner shouldBe Side(0)
         m.isOver shouldBe true
         shouldThrow<IllegalArgumentException> { m.startNextRound() }
@@ -86,7 +91,8 @@ class MatchTest {
     @Test
     fun `abaixo do alvo o jogo continua`() {
         // §13 só termina com algum lado ≥ alvo
-        val m = matchAt(listOf(2800, 0), finishedRound = roundWith("3H", "")).finishRound()
+        val m = matchAt(listOf(2600, 0), finishedRound = roundWith("3H", "")).finishRound()
+        m.totals shouldContainExactly listOf(2900, 200)
         m.winner shouldBe null
         val next = m.startNextRound()
         next.roundNumber shouldBe 2
@@ -97,7 +103,7 @@ class MatchTest {
     fun `dois lados acima do alvo vence o de maior total`() {
         // §13 se mais de um lado atingir o alvo, vence a maior pontuação
         val m = matchAt(listOf(2950, 2990), finishedRound = roundWith("3H 3D", "3H'")).finishRound()
-        m.totals shouldContainExactly listOf(3150, 3090)
+        m.totals shouldContainExactly listOf(3350, 3290)
         m.winner shouldBe Side(0)
     }
 
@@ -105,7 +111,7 @@ class MatchTest {
     fun `empate no maior total acima do alvo joga-se nova partida`() {
         // §13 empate na maior pontuação: nova partida até desempatar
         val tied = matchAt(listOf(2900, 2900), finishedRound = roundWith("3H", "3D")).finishRound()
-        tied.totals shouldContainExactly listOf(3000, 3000)
+        tied.totals shouldContainExactly listOf(3200, 3200)
         tied.winner shouldBe null
         tied.isOver shouldBe false
         val next = tied.startNextRound()
@@ -191,7 +197,7 @@ class MatchTest {
 
     @Test
     fun `Match faz ida e volta em JSON`() {
-        val m = matchAt(listOf(2800, 10), finishedRound = roundWith("3H", "3D")).finishRound().startNextRound()
+        val m = matchAt(listOf(2600, 10), finishedRound = roundWith("3H", "3D")).finishRound().startNextRound()
         val json = Json.encodeToString(Match.serializer(), m)
         Json.decodeFromString(Match.serializer(), json) shouldBe m
     }

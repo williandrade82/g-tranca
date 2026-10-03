@@ -11,7 +11,8 @@ import com.gtranca.engine.model.SideScore
 
 /**
  * Pontuação de uma partida encerrada (§12), com detalhamento por lado (indexado por `Side.index`).
- * - §12.1 3 vermelhos, canastras limpas e sujas, batida (só o lado vencedor; nunca sem vencedor);
+ * - §12.1 3 vermelhos (+100 cada se o lado tiver canastra, limpa ou suja; senão −100 cada, com ou sem
+ *   vencedor), canastras limpas e sujas, batida (só o lado vencedor; nunca sem vencedor);
  *   cartas em conjuntos não têm valor próprio.
  * - §12.2 morto não pego (inclusive o que virou monte) e cartas na mão de todos os jogadores do lado.
  * - §12.3 em duplas, os pontos dos parceiros são somados.
@@ -26,10 +27,11 @@ fun scoreRound(state: RoundState, rules: RuleSet = RuleSet.DEFAULT): List<SideSc
         val clean = melds.count { it.isCleanCanasta(rules) }
         val dirty = melds.count { it.isDirtyCanasta(rules) }
         val redThrees = state.redThreesOf(side).size
+        val redThreePoints = if (clean + dirty > 0) rules.redThreePoints else rules.redThreeWithoutCanastaPoints
         val handCards = state.mode.seatsOf(side).flatMap { state.handOf(it) }
         SideScore(
             side = side,
-            redThrees = ScoreLine(redThrees, redThrees * rules.redThreePoints),
+            redThrees = ScoreLine(redThrees, redThrees * redThreePoints),
             cleanCanastas = ScoreLine(clean, clean * rules.cleanCanastaPoints),
             dirtyCanastas = ScoreLine(dirty, dirty * rules.dirtyCanastaPoints),
             goOut = if (side == winner) rules.goOutPoints else 0,

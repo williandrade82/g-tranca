@@ -78,7 +78,7 @@ internal object Evaluation {
     }
 
     private fun estimate(state: RoundState, side: Side): Double {
-        var value = state.redThreesOf(side).size * RULES.redThreePoints.toDouble()
+        var value = 0.0
         var hasCanasta = false
         for (tableMeld in state.tableOf(side).melds) {
             val meld = tableMeld.meld
@@ -88,6 +88,9 @@ internal object Evaluation {
                 else -> value += (meld.cards.size - 2) * if (meld.hasWild) DIRTY_MELD_PROGRESS else CLEAN_MELD_PROGRESS
             }
         }
+        // §12.1 o 3 vermelho vale +100 só com canastra do lado; sem ela, −100.
+        val redThreePoints = if (hasCanasta) RULES.redThreePoints else RULES.redThreeWithoutCanastaPoints
+        value += state.redThreesOf(side).size * redThreePoints
         val hasMorto = state.hasTakenMorto(side)
         if (!hasMorto) value += RULES.mortoNotTakenPoints
         if (hasMorto && hasCanasta) value += READY_TO_GO_OUT_BONUS

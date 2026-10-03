@@ -31,7 +31,7 @@ Use o builder de estado `RoundStateBuilder` e os helpers `c("7H")`/`cards("7H 8H
 - §9.2 morto direto continua a jogada; §9.3 morto indireto só na próxima vez; duplas: só um morto por dupla.
 - §10 morto vira monte (apenas um, se houver dois); compra impossível → fim sem vencedor (salvo pegar o lixo).
 - §11 batida exige morto do lado + canastra do lado; baixando tudo ou descartando a última carta.
-- §12 –100 por morto não pego; cartas em conjuntos sem valor próprio; batida +100 só com vencedor.
+- §12 3 vermelho na mesa +100 só se o lado tiver canastra (limpa ou suja), senão –100 cada (com ou sem vencedor); –100 por morto não pego; cartas em conjuntos sem valor próprio; batida +100 só com vencedor.
 - §13 `>=` pontuação-alvo; empate no topo → nova partida.
 
 ## Invariantes (property-based tests com Kotest)

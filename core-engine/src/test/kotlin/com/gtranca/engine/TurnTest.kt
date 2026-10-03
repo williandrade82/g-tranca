@@ -100,7 +100,7 @@ class TurnTest {
     }
 
     @Test
-    fun `descarte encerra a jogada e passa a vez no sentido horario`() {
+    fun `descarte encerra a jogada e passa a vez no sentido anti-horario`() {
         // §4.2 sentido anti-horário; §4.3 etapa 3; §8 descarte vai para o topo do lixo
         val s = start.act(0, Action.DrawFromStock).act(0, discardCard("KS"))
         s.discardPile shouldContainExactly cards("KS")
