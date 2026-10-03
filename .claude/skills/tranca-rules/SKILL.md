@@ -15,7 +15,9 @@ A especificação é `definition.md`. Esta skill não a substitui: ela indica **
 5. Rode `.\gradlew.bat :core-engine:test`.
 
 ## Construção de cenários de teste
-Use o builder de estado (`GameStateBuilder`/DSL de teste) para montar mãos, lixo, mesa e monte exatos, em vez de embaralhar. Notação de cartas nos testes: `"7H"`, `"QS"`, `"AD"`, `"2C"` (naipes H, D, S, C; `10` como `"TH"`).
+Use o builder de estado `RoundStateBuilder` e os helpers `c("7H")`/`cards("7H 8H 9H")` de `core-engine/src/test/.../EngineTestSupport.kt` para montar mãos, lixo, mesa e monte exatos, em vez de embaralhar (monte: 1ª carta = topo; lixo: última = topo). Notação de cartas: `"7H"`, `"QS"`, `"AD"`, `"2C"` (naipes H, D, S, C; `10` como `"TH"`; `'` no fim marca a cópia do 2º baralho, ex.: `"7H'"`).
+
+`legalActions` é completa **a menos de cartas idênticas**: cada classe de jogada aparece uma vez com cartas representativas. Nos testes, compare ações por valor e naipe quando a cópia do baralho não importar.
 
 ## Casos difíceis (sempre testar)
 - §5.1 pegar o lixo: topo + 2 cartas da mão (incluindo coringa da mão), topo em conjunto existente; **proibido** combinar o topo com outras cartas do lixo.
