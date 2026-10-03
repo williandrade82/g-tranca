@@ -9,15 +9,21 @@ import com.gtranca.engine.model.SideTable
 import kotlin.random.Random
 
 /**
- * Inicia uma partida: embaralha (§1), sorteia o primeiro jogador (§4.1) com o mesmo [random]
- * e distribui as cartas (§3), baixando os 3 vermelhos recebidos (§3.5).
+ * Inicia uma partida: embaralha (§1) e distribui as cartas (§3), baixando os 3 vermelhos
+ * recebidos (§3.5). O primeiro jogador é [firstSeat] ou, se `null` (1ª partida do jogo, §4.1),
+ * sorteado com o mesmo [random].
  *
  * A mesma semente sempre produz o mesmo [RoundState].
  */
-fun dealRound(mode: GameMode, random: Random, rules: RuleSet = RuleSet.DEFAULT): RoundState {
+fun dealRound(
+    mode: GameMode,
+    random: Random,
+    rules: RuleSet = RuleSet.DEFAULT,
+    firstSeat: Seat? = null,
+): RoundState {
     val deck = Deck.shuffled(random)
-    val firstSeat = Seat(random.nextInt(mode.seatCount))
-    return dealFromOrderedDeck(mode, deck, firstSeat, rules)
+    val first = firstSeat ?: Seat(random.nextInt(mode.seatCount))
+    return dealFromOrderedDeck(mode, deck, first, rules)
 }
 
 /**

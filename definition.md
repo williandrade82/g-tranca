@@ -52,7 +52,8 @@
 # **4. Ordem de Jogada**
 
 ### **4.1. Primeiro jogador**
-- O jogador inicial é escolhido aleatoriamente.
+- Na **primeira partida** do jogo, o jogador inicial é escolhido aleatoriamente.
+- Nas partidas seguintes, depois que a partida anterior terminar (com ou sem vencedor) e seus pontos forem computados, a nova partida é iniciada pelo **próximo jogador, no sentido horário (§4.2), depois do que iniciou a partida anterior**.
 
 ### **4.2. Sentido**
 - A ordem de jogada segue **sentido horário**.

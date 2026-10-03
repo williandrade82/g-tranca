@@ -57,11 +57,15 @@ fun Match.finishRound(rules: RuleSet = RuleSet.DEFAULT): Match {
     )
 }
 
-/** Distribui a próxima partida (§3), com novo sorteio do primeiro jogador (§4.1). */
+/**
+ * Distribui a próxima partida (§3). §4.1 ela é iniciada pelo jogador seguinte (§4.2) ao que iniciou
+ * a partida anterior.
+ */
 fun Match.startNextRound(rules: RuleSet = RuleSet.DEFAULT): Match {
     require(isAwaitingNextRound) { "Só se inicia nova partida depois de registrar a atual e com o jogo em andamento" }
+    val firstSeat = mode.nextSeat(currentRound.firstSeat)
     return copy(
-        currentRound = dealRound(mode, roundRandom(seed, history.size), rules),
+        currentRound = dealRound(mode, roundRandom(seed, history.size), rules, firstSeat),
         currentRoundRecorded = false,
     )
 }

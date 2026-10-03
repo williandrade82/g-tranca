@@ -14,7 +14,8 @@ import kotlinx.serialization.Serializable
  *   A disponibilidade de cada morto (§9.1, §10) será modelada quando essas regras forem implementadas.
  * @property redThrees 3 vermelhos baixados na mesa (§6.5), indexados por [Side.index].
  * @property tables conjuntos na mesa de cada lado (§6.4), indexados por [Side.index].
- * @property firstSeat jogador inicial sorteado (§4.1).
+ * @property firstSeat jogador inicial (§4.1): sorteado na 1ª partida; nas seguintes, o próximo depois
+ *   de quem iniciou a partida anterior.
  * @property currentSeat assento da vez.
  * @property phase fase da jogada do assento da vez, ou partida encerrada.
  * @property mortoStatus situação de cada morto (§9.1, §10). Um morto que não está

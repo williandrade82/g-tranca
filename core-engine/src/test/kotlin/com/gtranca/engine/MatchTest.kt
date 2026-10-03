@@ -4,6 +4,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundResult
+import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -135,7 +136,7 @@ class MatchTest {
 
     @Test
     fun `jogo e reprodutivel pela semente inclusive nas partidas seguintes`() {
-        // §4.1 primeiro jogador sorteado a cada partida, com RNG semeado
+        // §1 / §4.1 embaralhamento e sorteio da 1ª partida com RNG semeado; depois, rodízio do primeiro jogador
         val a = startMatch(GameMode.DUPLAS, random = Random(99))
         val b = startMatch(GameMode.DUPLAS, random = Random(99))
         a shouldBe b
@@ -144,17 +145,39 @@ class MatchTest {
         val nextB = b.copy(currentRound = roundWith("3H", "", GameMode.DUPLAS)).finishRound().startNextRound()
         nextA shouldBe nextB
         nextA.currentRound shouldNotBe a.currentRound
-        nextA.currentRound shouldBe dealRound(GameMode.DUPLAS, roundRandom(a.seed, 1))
+        val nextFirst = GameMode.DUPLAS.nextSeat(roundWith("3H", "", GameMode.DUPLAS).firstSeat)
+        nextA.currentRound shouldBe dealRound(GameMode.DUPLAS, roundRandom(a.seed, 1), firstSeat = nextFirst)
         a.currentRound shouldBe dealRound(GameMode.DUPLAS, roundRandom(a.seed, 0))
     }
 
     @Test
-    fun `primeiro jogador e sorteado de novo a cada partida`() {
-        // §4.1 jogador inicial escolhido aleatoriamente (em cada partida)
-        val firsts = (0 until 30).map { roundIndex ->
-            dealRound(GameMode.DUPLAS, roundRandom(42L, roundIndex)).firstSeat
-        }.toSet()
-        firsts shouldHaveSize 4
+    fun `proxima partida comeca pelo jogador seguinte ao que iniciou a anterior`() {
+        // §4.1 sorteio só na 1ª partida; depois, o próximo no sentido horário (§4.2) inicia,
+        // com ou sem vencedor na partida anterior
+        var m = startMatch(GameMode.DUPLAS, random = Random(42))
+        val firsts = mutableListOf(m.currentRound.firstSeat)
+        repeat(5) {
+            val finished = roundWith("3H", "3D", GameMode.DUPLAS).copy(firstSeat = m.currentRound.firstSeat)
+            m = m.copy(currentRound = finished).finishRound().startNextRound()
+            firsts += m.currentRound.firstSeat
+            m.currentRound.currentSeat shouldBe m.currentRound.firstSeat
+        }
+        firsts.zipWithNext().forEach { (prev, next) -> next shouldBe GameMode.DUPLAS.nextSeat(prev) }
+    }
+
+    @Test
+    fun `no individual o primeiro jogador alterna mesmo apos batida`() {
+        // §4.1 rodízio 0→1→0 (ou 1→0→1), também quando a partida anterior teve vencedor (batida)
+        var m = startMatch(GameMode.INDIVIDUAL, random = Random(7))
+        val firsts = mutableListOf(m.currentRound.firstSeat)
+        repeat(3) {
+            val first = m.currentRound.firstSeat
+            val finished = roundWith("3H", "").copy(firstSeat = first, result = RoundResult.GoOut(Side(0), Seat(0)))
+            m = m.copy(currentRound = finished).finishRound().startNextRound()
+            firsts += m.currentRound.firstSeat
+        }
+        firsts.zipWithNext().forEach { (prev, next) -> next shouldNotBe prev }
+        firsts[2] shouldBe firsts[0]
     }
 
     @Test

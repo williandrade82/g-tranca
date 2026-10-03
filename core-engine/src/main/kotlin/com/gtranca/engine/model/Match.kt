@@ -18,7 +18,8 @@ data class RoundRecord(
  *
  * @property targetScore pontuação-alvo (§14), inteiro positivo, fixa durante o jogo.
  * @property seed semente do jogo; a partida de índice i (0, 1, …) é distribuída com o RNG
- *   `roundRandom(seed, i)`, o que torna o jogo reprodutível e retomável a partir do JSON.
+ *   `roundRandom(seed, i)`; o primeiro jogador das partidas seguintes vem da anterior (§4.1). Isso torna
+ *   o jogo reprodutível e retomável a partir do JSON.
  * @property totals total acumulado por lado, indexado por [Side.index]; pode ser negativo.
  * @property history partidas encerradas e pontuadas, em ordem.
  * @property currentRound partida atual (em andamento, ou encerrada).
