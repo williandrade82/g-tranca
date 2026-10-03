@@ -291,6 +291,10 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
 - Se mais de um lado atingir a pontuação-alvo, vence quem tiver a **maior pontuação**.
 - Se houver empate na maior pontuação, joga-se **nova partida** até desempatar.
 
+### **13.1. Desistência**
+- A qualquer momento do jogo, o jogador humano pode **desistir**, depois de confirmar a decisão (se cancelar, o jogo continua exatamente como estava).
+- Ao desistir, o jogo termina imediatamente e o **outro lado** (o jogador virtual ou a dupla adversária) é declarado **vencedor**. A partida em andamento não é pontuada.
+
 ---
 
 # **14. Parâmetros Configuráveis**
@@ -300,7 +304,7 @@ Definidos pelo jogador **antes do início do jogo**; não mudam durante o jogo.
 | Parâmetro | Valores | Padrão |
 |---|---|---|
 | Pontuação-alvo | número inteiro positivo | **3.000** |
-| Modo | individual / duplas | — |
+| Modo | individual / duplas | o último modo escolhido (individual na primeira vez) |
 | Dificuldade dos jogadores virtuais | fácil / médio / difícil | médio |
 
 Todas as demais regras deste documento são **fixas**. No código, elas ficam reunidas no `RuleSet` padrão (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de canastra = 6, máximo de coringas por conjunto = 1, valores de pontuação), para facilitar ajustes futuros, mas não são expostas ao jogador.
@@ -320,6 +324,7 @@ flowchart TD
     C --> D["Pontua a partida e soma aos totais de cada lado (§12)"]
     D --> E{"Algum lado tem total maior ou igual à pontuação-alvo? (§13)"}
     E -->|Não| F["Próxima partida, iniciada pelo jogador seguinte ao que iniciou a anterior (§4.1)"]
+    C -.->|"Desistência do jogador humano, confirmada (§13.1)"| I["Fim do jogo: vence o outro lado; a partida em andamento não é pontuada"]
     E -->|Sim| G{"Há um único lado com a maior pontuação? (§13)"}
     G -->|Sim| H["Fim do jogo: vence esse lado"]
     G -->|Não, há empate| F
