@@ -23,8 +23,10 @@ fun scenario(
     ownMelds: List<String> = emptyList(),
     opponentHand: String = "9C 9C' TC",
     stock: String = "5S 6S 7S 8S",
+    opponentMelds: List<String> = emptyList(),
+    mortoStatus: List<MortoStatus> = listOf(MortoStatus.Available, MortoStatus.Available),
 ): RoundState {
-    val ownTable = ownMelds.fold(SideTable()) { table, meld -> table.createMeld(cards(meld)).getOrThrow() }
+    val ownTable = table(ownMelds)
     return RoundState(
         mode = GameMode.INDIVIDUAL,
         hands = listOf(cards(hand), cards(opponentHand)),
@@ -32,13 +34,47 @@ fun scenario(
         discardPile = cards(discard),
         mortos = listOf(cards("4D' 5D' 6D'"), cards("4C' 5C' 6C'")),
         redThrees = listOf(emptyList(), emptyList()),
-        tables = listOf(ownTable, SideTable()),
+        tables = listOf(ownTable, table(opponentMelds)),
         firstSeat = Seat(0),
         currentSeat = Seat(0),
         phase = phase,
-        mortoStatus = listOf(MortoStatus.Available, MortoStatus.Available),
-    )
+        mortoStatus = mortoStatus,
+    ).withEmptyTakenMortos()
 }
+
+/**
+ * Cenário fixo no modo duplas, com o assento 0 da vez; o parceiro é o assento 2 (§1.1) e os conjuntos
+ * do lado 0 ([ownMelds]) são compartilhados por ele (§6.4). Não completa as 104 cartas.
+ */
+fun duplasScenario(
+    hand: String,
+    phase: Phase = Phase.PLAYING,
+    discard: String = "",
+    ownMelds: List<String> = emptyList(),
+    opponentMelds: List<String> = emptyList(),
+    otherHands: List<String> = listOf("9C 9C' TC", "JD JD' QD", "KC KC' AC"),
+    stock: String = "5S 6S 7S 8S",
+    mortoStatus: List<MortoStatus> = listOf(MortoStatus.Available, MortoStatus.Available),
+): RoundState = RoundState(
+    mode = GameMode.DUPLAS,
+    hands = listOf(cards(hand)) + otherHands.map(::cards),
+    stock = cards(stock),
+    discardPile = cards(discard),
+    mortos = listOf(cards("4D' 5D' 6D'"), cards("4C' 5C' 6C'")),
+    redThrees = listOf(emptyList(), emptyList()),
+    tables = listOf(table(ownMelds), table(opponentMelds)),
+    firstSeat = Seat(0),
+    currentSeat = Seat(0),
+    phase = phase,
+    mortoStatus = mortoStatus,
+).withEmptyTakenMortos()
+
+private fun table(melds: List<String>): SideTable =
+    melds.fold(SideTable()) { table, meld -> table.createMeld(cards(meld)).getOrThrow() }
+
+/** Morto que não está disponível fica vazio (invariante de [RoundState.mortoStatus]). */
+private fun RoundState.withEmptyTakenMortos(): RoundState =
+    copy(mortos = mortos.mapIndexed { i, morto -> if (mortoStatus[i] == MortoStatus.Available) morto else emptyList() })
 
 /** Escolha do [bot] para o assento da vez em [state], a partir da vista e das ações legais do motor. */
 fun BotPlayer.decide(state: RoundState): Action {

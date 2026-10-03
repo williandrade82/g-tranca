@@ -16,10 +16,11 @@ enum class Difficulty(val id: String) {
 
 /**
  * Cria o bot da [difficulty] com o RNG [random] (semente injetada).
- * Por enquanto só o nível [Difficulty.FACIL] está implementado.
+ * Implementados: [Difficulty.FACIL] e [Difficulty.MEDIO]; [Difficulty.DIFICIL] ainda não.
  */
 fun createBot(difficulty: Difficulty, random: Random): BotPlayer = when (difficulty) {
     Difficulty.FACIL -> EasyBot(random)
-    Difficulty.MEDIO, Difficulty.DIFICIL ->
+    Difficulty.MEDIO -> MediumBot(random)
+    Difficulty.DIFICIL ->
         throw UnsupportedOperationException("Bot de dificuldade '${difficulty.id}' ainda não implementado")
 }

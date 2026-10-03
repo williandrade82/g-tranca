@@ -48,6 +48,18 @@ class SimulatorTest {
     }
 
     @Test
+    fun `medio contra facil termina sem falhas nos dois modos`() {
+        SimConfig.parse(arrayOf("--sides", "medio,facil")).sides shouldBe listOf("medio", "facil")
+        for (mode in GameMode.entries) {
+            val config = SimConfig(games = 3, seed = 11, mode = mode, target = 600, sides = listOf("medio", "facil"), checkInvariants = true)
+            val simulator = Simulator(config)
+            val outcomes = (0 until config.games).map { simulator.runGame(config.seed + it) }
+            outcomes.mapNotNull { it.failure } shouldBe emptyList()
+            outcomes.forEach { it.winner shouldNotBe null }
+        }
+    }
+
+    @Test
     fun `mesma semente reproduz o mesmo jogo`() {
         val simulator = Simulator(SimConfig(target = 600, sides = listOf("facil", "aleatorio")))
         simulator.runGame(99) shouldBe simulator.runGame(99)
