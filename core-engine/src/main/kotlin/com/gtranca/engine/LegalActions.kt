@@ -19,7 +19,8 @@ import com.gtranca.engine.model.Suit
  * - grupo: quantas naturais de cada naipe daquele número (0..cópias na mão) + coringa opcional;
  * - sequência: faixa de valores (4..Ás) de um naipe, com no máximo um buraco preenchido por coringa,
  *   ou sem buraco e com coringa opcional (o motor posiciona na ponta, §6.3);
- * - acréscimo/plano de lixo: idem, com o resultado contendo o conjunto existente (e o topo do lixo).
+ * - acréscimo/plano de lixo: idem, com o resultado contendo o conjunto existente (e o topo do lixo);
+ * - coringa no topo do lixo (§5.4): ele ocupa a vaga do coringa, e a mão entra só com naturais.
  * Cada candidato é então conferido por [RoundEngine.step]; só os aceitos são devolvidos.
  */
 internal object LegalActions {
@@ -94,8 +95,12 @@ internal object LegalActions {
 
     private fun discardPileCandidates(state: RoundState, seat: Seat): Sequence<Action> = sequence {
         val top = state.discardTop ?: return@sequence
-        if (top.isWild || top.rank.isThree) return@sequence
+        if (top.rank.isThree) return@sequence
         val index = HandIndex(state.handOf(seat))
+        if (top.isWild) {
+            yieldAll(wildTopCandidates(state, seat, index))
+            return@sequence
+        }
 
         // conjunto novo: grupo do número do topo
         for (choice in index.groupChoices(top.rank)) {
@@ -118,6 +123,39 @@ internal object LegalActions {
             for (handCards in additions(tableMeld.meld, index, extra = top)) {
                 yield(Action.TakeDiscardPile(DiscardPlan.AddToMeld(tableMeld.id, handCards)))
             }
+        }
+    }
+
+    /**
+     * §5.4 coringa no topo: ele é o único coringa do conjunto (§6.3), então as cartas da mão são só
+     * naturais. Conjunto novo com ≥2 naturais da mão (grupo ou sequência); acréscimo a conjunto sem coringa.
+     */
+    private fun wildTopCandidates(state: RoundState, seat: Seat, index: HandIndex): Sequence<Action> = sequence {
+        for (rank in index.naturalRanks()) {
+            if (rank.isThree) continue
+            for (choice in index.groupChoices(rank)) {
+                if (choice.size >= 2) yield(Action.TakeDiscardPile(DiscardPlan.NewMeld(choice)))
+            }
+        }
+        for (suit in Suit.entries) {
+            for ((naturalRanks, _) in ranges()) {
+                val naturals = index.naturalsFor(naturalRanks, suit) ?: continue
+                if (naturals.size >= 2) yield(Action.TakeDiscardPile(DiscardPlan.NewMeld(naturals)))
+            }
+        }
+        for (tableMeld in state.tableOf(state.mode.sideOf(seat)).melds) {
+            val meld = tableMeld.meld
+            if (meld.hasWild) continue
+            val handChoices: Sequence<List<Card>> = when (val kind = meld.kind) {
+                is MeldKind.Group -> index.groupChoices(kind.rank).asSequence()
+                is MeldKind.Sequence -> {
+                    val existing = meld.cards.map { it.rank }.toSet()
+                    ranges().mapNotNull { (naturalRanks, _) ->
+                        if (naturalRanks.containsAll(existing)) index.naturalsFor(naturalRanks - existing, kind.suit) else null
+                    }
+                }
+            }
+            for (handCards in handChoices) yield(Action.TakeDiscardPile(DiscardPlan.AddToMeld(tableMeld.id, handCards)))
         }
     }
 

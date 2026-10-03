@@ -5,7 +5,7 @@ Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a m
 ## Fonte da verdade
 
 - **[definition.md](definition.md)** é a especificação das regras. Nunca invente regra: se algo não estiver lá, pare e pergunte ao usuário.
-- Toda regra implementada tem teste que cita a seção, ex.: `// §5.4 coringa no topo trava o lixo`.
+- Toda regra implementada tem teste que cita a seção, ex.: `// §5.3 3 preto no topo trava o lixo`.
 - Se uma regra mudar, atualize `definition.md` **antes** do código.
 
 ## Stack

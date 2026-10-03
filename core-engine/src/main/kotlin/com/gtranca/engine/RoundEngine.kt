@@ -95,12 +95,11 @@ object RoundEngine {
         return RuleResult.Ok(state.finish(RoundResult.NoWinner))
     }
 
-    /** §5.1 / §5.2 pegar o lixo levando o topo à mesa conforme o [plan]. */
+    /** §5.1 / §5.2 pegar o lixo levando o topo à mesa conforme o [plan]; §5.4 vale também com coringa no topo. */
     private fun takeDiscardPile(state: RoundState, seat: Seat, plan: DiscardPlan, rules: RuleSet): RuleResult<RoundState> {
         if (state.phase != Phase.AWAITING_DRAW) return fail(ActionError.ALREADY_DREW)
         val top = state.discardTop ?: return fail(ActionError.DISCARD_PILE_EMPTY) // §5.5
         if (top.isBlackThree) return fail(ActionError.DISCARD_PILE_LOCKED) // §5.3
-        if (top.isWild) return fail(ActionError.DISCARD_PILE_WILD_TOP) // §5.4
         val hand = state.handOf(seat)
         val handCards = when (plan) {
             is DiscardPlan.NewMeld -> plan.handCards

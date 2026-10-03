@@ -34,8 +34,6 @@ enum class ActionError : RuleError {
     DISCARD_PILE_EMPTY,
     /** §5.3 3 preto no topo trava o lixo. */
     DISCARD_PILE_LOCKED,
-    /** §5.4 coringa no topo: o lixo não pode ser pego. */
-    DISCARD_PILE_WILD_TOP,
     /** §5.1 conjunto novo com o topo exige pelo menos 2 cartas da mão. */
     DISCARD_TOP_NEEDS_TWO_HAND_CARDS,
     /** A carta indicada não está na mão do jogador. */

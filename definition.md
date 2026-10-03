@@ -95,7 +95,11 @@ Ao pegar o lixo de forma válida:
 - Depois que esse jogador descartar, o próximo pode pegar o lixo normalmente (se puder levar o novo topo à mesa), e o 3 preto vai para a mão junto com as demais cartas.
 
 ### **5.4. Coringa no topo**
-- Se o topo do lixo for um **coringa (2)**, o lixo **não pode ser pego**.
+- Se o topo do lixo for um **coringa (2)**, o lixo **pode ser pego** normalmente, seguindo §5.1, §5.2 e todas as regras de conjuntos com coringa (§6.3):
+  - **Conjunto novo:** o coringa do topo com **pelo menos 2 cartas naturais da mão** (como o conjunto só pode ter 1 coringa, as cartas da mão não podem incluir outro coringa); ou
+  - **Acréscimo:** o coringa do topo a um conjunto do seu lado **que ainda não tenha coringa**, sozinho ou junto com cartas da mão. Se o conjunto for uma canastra limpa, ela passa a ser **suja**.
+- O jogador leva **todas as demais cartas do lixo** para a mão (§5.2).
+- Pegar ou não esse lixo, sabendo que o coringa pode sujar um jogo limpo, é decisão de estratégia do jogador.
 
 ### **5.5. Lixo vazio**
 - Não é possível pegar o lixo quando ele está vazio.

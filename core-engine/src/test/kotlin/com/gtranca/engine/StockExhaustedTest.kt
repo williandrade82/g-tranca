@@ -113,4 +113,34 @@ class StockExhaustedTest {
         s.legalActions(1) shouldContain Action.DeclineDraw
         s.legalActions(1).takeNewPlans() shouldContain cards("KC KH").toSet()
     }
+
+    @Test
+    fun `partida continua se o proximo pode pegar o lixo com coringa no topo`() {
+        // §10.2 + §5.4 o coringa no topo pode ser levado à mesa com 2 naturais da mão
+        val s = round {
+            hand(0, "2C QD")
+            hand(1, "5H 6H 9D 8C")
+            stock("")
+            mortoTaken(0, 0)
+            mortoTaken(1, 1)
+            phase = Phase.PLAYING
+        }.act(0, discardCard("2C"))
+        s.phase shouldBe Phase.AWAITING_DRAW
+        s.legalActions(1).takeNewPlans() shouldContain cards("5H 6H").toSet()
+    }
+
+    @Test
+    fun `fim sem vencedor se o proximo nao consegue usar o coringa do topo`() {
+        // §10.2 + §5.4 cartas soltas na mão: o coringa do topo não vai à mesa
+        val s = round {
+            hand(0, "2C QD")
+            hand(1, "5H 9D")
+            stock("")
+            mortoTaken(0, 0)
+            mortoTaken(1, 1)
+            phase = Phase.PLAYING
+        }.act(0, discardCard("2C"))
+        s.phase shouldBe Phase.FINISHED
+        s.result shouldBe RoundResult.NoWinner
+    }
 }

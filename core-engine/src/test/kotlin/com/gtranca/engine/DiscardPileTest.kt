@@ -4,6 +4,7 @@ import com.gtranca.engine.model.ActionError
 import com.gtranca.engine.model.MeldError
 import com.gtranca.engine.model.MeldId
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.cards
 import com.gtranca.engine.model.shouldBeOk
 import com.gtranca.engine.model.shouldFailWith
@@ -191,14 +192,72 @@ class DiscardPileTest {
     }
 
     @Test
-    fun `coringa no topo impede pegar o lixo`() {
-        // §5.4 coringa no topo: o lixo não pode ser pego
+    fun `coringa no topo acrescentado a conjunto sem coringa leva todo o lixo`() {
+        // §5.4 coringa no topo pode ser pego; §5.2 as demais cartas do lixo vão para a mão
         val s = round {
+            hand(0, "KS QD")
+            meld(0, "4H 5H 6H")
+            discard("9C 7H 2C")
+        }.act(0, takeAdd(0))
+        val meld = s.table(0).meld(MeldId(0))!!
+        meld.cards shouldContainExactlyInAnyOrder cards("4H 5H 6H 2C")
+        meld.wildRank shouldBe Rank.SEVEN
+        s.hand(0) shouldContainExactlyInAnyOrder cards("KS QD 9C 7H")
+        s.discardPile.shouldBeEmpty()
+    }
+
+    @Test
+    fun `coringa no topo forma conjunto novo com 2 naturais da mao`() {
+        // §5.4 + §5.1 conjunto novo: coringa do topo + pelo menos 2 naturais da mão
+        val seq = round {
             hand(0, "5H 6H KS")
-            meld(0, "7S 7D 7C")
-            discard("4H 2C")
+            discard("4C 2C")
+        }.act(0, takeNew("5H 6H"))
+        seq.table(0).melds.single().meld.cards shouldContainExactlyInAnyOrder cards("5H 6H 2C")
+        seq.hand(0) shouldContainExactlyInAnyOrder cards("KS 4C")
+        val group = round {
+            hand(0, "KS KD 5H")
+            discard("2C")
+        }.act(0, takeNew("KS KD"))
+        group.table(0).melds.single().meld.cards shouldContainExactlyInAnyOrder cards("KS KD 2C")
+    }
+
+    @Test
+    fun `coringa no topo suja canastra limpa se o jogador escolher`() {
+        // §5.4 + §6.3 o coringa do topo pode entrar na canastra limpa, que passa a ser suja
+        val s = round {
+            hand(0, "KS QD")
+            meld(0, "4H 5H 6H 7H 8H 9H")
+            discard("TS 2C")
+        }.act(0, takeAdd(0))
+        s.table(0).meld(MeldId(0))!!.isDirtyCanasta() shouldBe true
+        s.hand(0) shouldContainExactlyInAnyOrder cards("KS QD TS")
+    }
+
+    @Test
+    fun `coringa no topo ao lado de canastra limpa pode formar conjunto separado ou suja-la`() {
+        // §5.4 + §6.4 exceção: 10♥-J♥ da mão com o coringa do topo, separado ou na canastra limpa 4..9♥
+        val s = round {
+            hand(0, "TH JH KS")
+            meld(0, "4H 5H 6H 7H 8H 9H")
+            discard("2C")
         }
-        s.check(0, takeAdd(0)) shouldFailWith ActionError.DISCARD_PILE_WILD_TOP
-        s.check(0, takeNew("5H 6H")) shouldFailWith ActionError.DISCARD_PILE_WILD_TOP
+        val separate = s.act(0, takeNew("TH JH"))
+        separate.table(0).melds.size shouldBe 2
+        separate.table(0).meld(MeldId(0))!!.isCleanCanasta() shouldBe true
+        s.act(0, takeAdd(0, "TH JH")).table(0).meld(MeldId(0))!!.isDirtyCanasta() shouldBe true
+    }
+
+    @Test
+    fun `coringa no topo respeita as regras de coringa`() {
+        // §5.4 + §6.3 máx. 1 coringa por conjunto; §5.1 conjunto novo exige 2 cartas da mão
+        val s = round {
+            hand(0, "5H 6H 2S KS")
+            meld(0, "7S 2D 9S")
+            discard("4C 2C")
+        }
+        s.check(0, takeAdd(0)) shouldFailWith MeldError.TOO_MANY_WILDS
+        s.check(0, takeNew("5H 2S")) shouldFailWith MeldError.TOO_MANY_WILDS
+        s.check(0, takeNew("5H")) shouldFailWith ActionError.DISCARD_TOP_NEEDS_TWO_HAND_CARDS
     }
 }

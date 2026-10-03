@@ -10,6 +10,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class LegalActionsTest {
@@ -114,6 +115,56 @@ class LegalActionsTest {
         s.allLegalValidate(0)
     }
 
+    @Test
+    fun `lista planos de lixo com coringa no topo`() {
+        // §5.4 coringa no topo: acréscimo a conjunto sem coringa ou conjunto novo com 2 naturais da mão
+        val s = round {
+            hand(0, "5H 6H KS KD 2S")
+            meld(0, "4C 5C 6C")
+            meld(0, "7S 2D 9S")
+            discard("TD 2C")
+        }
+        val legal = s.legalActions(0)
+        legal.takeAddPlans() shouldContain (0 to emptySet())
+        legal.takeAddPlans().map { it.first } shouldNotContain 1
+        legal.takeNewPlans() shouldContain cards("5H 6H").toSet()
+        legal.takeNewPlans() shouldContain cards("KS KD").toSet()
+        legal.takeNewPlans().none { plan -> plan.any { it.isWild } } shouldBe true
+        s.allLegalValidate(0)
+    }
+
+    @Test
+    fun `lista coringa do topo preenchendo buraco e sozinho em grupo`() {
+        // §5.4 + §6.3 coringa do topo no buraco (5-2-7, 4-5-6-2-8) e sozinho em grupo sem coringa
+        val s = round {
+            hand(0, "5H 7H 8C KS")
+            meld(0, "4C 5C 6C")
+            meld(0, "KC KD KH")
+            discard("2C")
+        }
+        val legal = s.legalActions(0)
+        legal.takeNewPlans() shouldContain cards("5H 7H").toSet()
+        legal.takeAddPlans() shouldContain (0 to cards("8C").toSet())
+        legal.takeAddPlans() shouldContain (1 to emptySet())
+        legal.takeAddPlans() shouldContain (1 to cards("KS").toSet())
+        s.allLegalValidate(0)
+    }
+
+    @Test
+    fun `lista conjunto separado e acrescimo com coringa do topo ao lado de canastra limpa`() {
+        // §5.4 + §6.4 exceção: as duas escolhas aparecem
+        val s = round {
+            hand(0, "TH JH KS")
+            meld(0, "4H 5H 6H 7H 8H 9H")
+            discard("2C")
+        }
+        val legal = s.legalActions(0)
+        legal.takeNewPlans() shouldContain cards("TH JH").toSet()
+        legal.takeAddPlans() shouldContain (0 to cards("TH JH").toSet())
+        s.allLegalValidate(0)
+    }
+
+    @Test
     fun `acoes que esvaziariam a mao ilegalmente nao sao listadas`() {
         // §8 / §9.5
         val s = round {
