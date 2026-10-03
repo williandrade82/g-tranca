@@ -129,14 +129,25 @@ class DiscardPileTest {
 
     @Test
     fun `regras de mesa valem ao pegar o lixo`() {
-        // §6.4 um grupo de cada número por lado
+        // §6.4 sequência nova não pode ser continuação de outra do mesmo naipe
+        val s = round {
+            hand(0, "8H 9H KS")
+            meld(0, "4H 5H 6H")
+            discard("7H")
+        }
+        s.check(0, takeNew("8H 9H")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
+        s.check(0, takeAdd(0, "8H 9H")).shouldBeOk()
+    }
+
+    @Test
+    fun `pegar o lixo abrindo segundo grupo do mesmo numero`() {
+        // §6.4 mais de um grupo do mesmo número é permitido
         val s = round {
             hand(0, "7S 7D KS")
             meld(0, "7C 7C' 7S'")
             discard("7H")
-        }
-        s.check(0, takeNew("7S 7D")) shouldFailWith MeldError.DUPLICATE_GROUP
-        s.check(0, takeAdd(0)).shouldBeOk()
+        }.act(0, takeNew("7S 7D"))
+        s.table(0).melds.size shouldBe 2
     }
 
     @Test

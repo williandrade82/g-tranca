@@ -73,8 +73,6 @@ enum class MeldError : RuleError {
     WRONG_SUIT,
     /** §6.1 carta de outro número acrescentada a um grupo. */
     WRONG_RANK,
-    /** §6.4 o lado já tem um grupo desse número. */
-    DUPLICATE_GROUP,
     /** §6.4 nova sequência seria continuação de outra do mesmo naipe do lado. */
     CONTIGUOUS_SEQUENCE,
     /** §6.4 conjunto de destino não existe na mesa do lado. */

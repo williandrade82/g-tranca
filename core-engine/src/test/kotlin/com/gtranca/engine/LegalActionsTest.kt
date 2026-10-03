@@ -165,6 +165,21 @@ class LegalActionsTest {
     }
 
     @Test
+    fun `lista segundo grupo do mesmo numero e natural que completa 4 a A`() {
+        // §6.4 grupos repetidos permitidos; §6.3 natural aceita mesmo deixando o coringa sem posição
+        val s = round {
+            hand(0, "7S 7H' 7D' 7C' KD")
+            meld(0, "7H 7D 7C")
+            meld(0, "4S 5S 6S 2H 8S 9S TS JS QS KS AS")
+            phase = Phase.PLAYING
+        }
+        val legal = s.legalActions(0)
+        legal.createPlans() shouldContain cards("7H' 7D' 7C'").toSet()
+        legal.addPlans() shouldContain (1 to cards("7S").toSet())
+        s.allLegalValidate(0)
+    }
+
+    @Test
     fun `lista coringa da mao e coringa do topo na sequencia completa limpa`() {
         // §6.3 coringa pode sujar a 4..A completa, ficando sem posição (da mão ou do topo do lixo, §5.4)
         val playing = round {

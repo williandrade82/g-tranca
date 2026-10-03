@@ -27,10 +27,11 @@ data class SideTable(
 
     /**
      * Baixa um conjunto novo (§6.1–§6.3), aplicando as regras de mesa de §6.4:
-     * - no máximo um grupo de cada número por lado;
+     * - grupos do mesmo número podem se repetir;
      * - uma sequência nova não pode ser continuação de outra do mesmo naipe do lado, isto é,
      *   suas cartas não podem caber, de uma vez, numa sequência existente (§6.2, §6.3), salvo se a nova
-     *   tiver coringa e a existente for canastra limpa (exceção de §6.4).
+     *   tiver coringa e a existente for canastra limpa, ou se caber exigiria mudar a situação do coringa da
+     *   existente (exceções de §6.4).
      *
      * O novo conjunto entra no fim de [melds] com id [nextMeldId].
      */
@@ -39,13 +40,10 @@ data class SideTable(
             is RuleResult.Failure -> return created
             is RuleResult.Ok -> created.value
         }
-        when (val kind = meld.kind) {
-            is MeldKind.Group ->
-                if (melds.any { it.meld.kind == kind }) return RuleResult.Failure(MeldError.DUPLICATE_GROUP)
-            is MeldKind.Sequence ->
-                if (melds.any { it.meld.kind == kind && isContinuation(meld, it.meld, rules) }) {
-                    return RuleResult.Failure(MeldError.CONTIGUOUS_SEQUENCE)
-                }
+        if (meld.kind is MeldKind.Sequence &&
+            melds.any { it.meld.kind == meld.kind && isContinuation(meld, it.meld, rules) }
+        ) {
+            return RuleResult.Failure(MeldError.CONTIGUOUS_SEQUENCE)
         }
         return RuleResult.Ok(copy(melds = melds + TableMeld(MeldId(nextMeldId), meld), nextMeldId = nextMeldId + 1))
     }
@@ -64,9 +62,16 @@ data class SideTable(
     private companion object {
         /**
          * §6.4 todas as cartas da nova sequência poderiam ser acrescentadas, de uma vez, à existente.
-         * Exceção: não se considera sujar uma canastra limpa com o coringa da nova sequência.
+         * Exceções: não se considera sujar uma canastra limpa com o coringa da nova sequência, nem
+         * mudar a situação do coringa da existente (travá-lo ou mudar seu valor, §6.3).
          */
-        fun isContinuation(new: Meld, existing: Meld, rules: RuleSet): Boolean =
-            !(new.hasWild && existing.isCleanCanasta(rules)) && existing.add(new.cards, rules) is RuleResult.Ok
+        fun isContinuation(new: Meld, existing: Meld, rules: RuleSet): Boolean {
+            if (new.hasWild && existing.isCleanCanasta(rules)) return false
+            val joined = when (val added = existing.add(new.cards, rules)) {
+                is RuleResult.Failure -> return false
+                is RuleResult.Ok -> added.value
+            }
+            return !existing.hasWild || joined.wildState == existing.wildState
+        }
     }
 }

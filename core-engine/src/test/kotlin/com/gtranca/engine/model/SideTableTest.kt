@@ -29,16 +29,25 @@ class SideTableTest {
     }
 
     @Test
-    fun `um grupo de cada numero por lado`() {
-        // §6.4 no máximo um grupo de cada número
+    fun `mais de um grupo do mesmo numero por lado`() {
+        // §6.4 o lado pode ter vários grupos do mesmo número, mesmo que as cartas coubessem no existente
         val t = table("7H 7S 7C")
-        t.createMeld(cards("7D 7H' 7S'")) shouldFailWith MeldError.DUPLICATE_GROUP
-        t.createMeld(cards("8D 8H 8S")).shouldBeOk().melds shouldHaveSize 2
+        val two = t.createMeld(cards("7D 7H' 7S'")).shouldBeOk()
+        two.melds shouldHaveSize 2
+        two.createMeld(cards("7C' 7D' 2C")).shouldBeOk().melds shouldHaveSize 3
+    }
+
+    @Test
+    fun `segundo grupo permite baixar coringa quando o primeiro ja tem coringa`() {
+        // §6.4 estratégia: 7-7-2 na mesa e 7-7-2 na mão → segundo grupo de 7
+        val t = table("7H 7S 2C")
+        t.addToMeld(MeldId(0), cards("2D")) shouldFailWith MeldError.TOO_MANY_WILDS
+        t.createMeld(cards("7C 7D 2D")).shouldBeOk().melds shouldHaveSize 2
     }
 
     @Test
     fun `grupo e sequencia com o mesmo numero convivem`() {
-        // §6.4 o limite é de um grupo por número; sequências não contam
+        // §6.4 grupos e sequências com o mesmo número convivem
         table("7H 7S 7C", "6D 7D 8D").melds shouldHaveSize 2
     }
 
@@ -101,6 +110,20 @@ class SideTableTest {
     fun `excecao da canastra limpa nao vale para sequencia que ainda nao e canastra`() {
         // §6.4 4-5-6-7-8♥ não é canastra: 9♥-10♥-2 caberia (4..8-9-10-2) → proibido
         table("4H 5H 6H 7H 8H").createMeld(cards("9H TH 2C")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
+    }
+
+    @Test
+    fun `continuacao nao considera mudar a situacao do coringa da sequencia existente`() {
+        // §6.4 exceção: 4-5-6-2♥ (solto) + 8-9-10♥ exigiria travar o coringa no 7 → permitido
+        table("4H 5H 6H 2C").createMeld(cards("8H 9H TH")).shouldBeOk().melds shouldHaveSize 2
+        // §6.4 exceção: K-A-2♥ + 9-10-J♥ exigiria travar o coringa na Q → permitido
+        table("KH AH 2C").createMeld(cards("9H TH JH")).shouldBeOk().melds shouldHaveSize 2
+        // §6.4 4-5-6-2♥ (solto) + 7-8-9♥ cabe e o coringa continua solto → proibido
+        table("4H 5H 6H 2C").createMeld(cards("7H 8H 9H")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
+        // §6.4 5-2-7♥ (travado no 6) + 8-9-10♥ cabe e o coringa continua no 6 → proibido
+        table("5H 2C 7H").createMeld(cards("8H 9H TH")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
+        // 4..A + coringa sem posição: 5-6-7♥ do 2º baralho repetiria números → permitido
+        table("4H 5H 6H 7H 8H 9H TH JH QH KH AH 2C").createMeld(cards("5H' 6H' 7H'")).shouldBeOk().melds shouldHaveSize 2
     }
 
     @Test
