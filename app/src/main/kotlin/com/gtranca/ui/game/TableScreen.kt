@@ -1,0 +1,528 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
+package com.gtranca.ui.game
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.gtranca.R
+import com.gtranca.engine.Action
+import com.gtranca.engine.DiscardPlan
+import com.gtranca.engine.PlayerView
+import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.MeldId
+import com.gtranca.engine.model.MortoStatus
+import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.Side
+import com.gtranca.engine.model.TableMeld
+import com.gtranca.game.cardClass
+import com.gtranca.ui.cards.CardBack
+import com.gtranca.ui.cards.CardSize
+import com.gtranca.ui.cards.PlayingCard
+import com.gtranca.ui.cards.cardDescription
+import com.gtranca.ui.theme.OnTable
+import com.gtranca.ui.theme.TableAccent
+import com.gtranca.ui.theme.TableGreen
+import com.gtranca.ui.theme.TableGreenDark
+
+/** Gestos da mesa, emitidos para o [GameViewModel]. */
+interface TableEvents {
+    fun onCardClick(card: Card)
+    fun onClearSelection()
+    fun onToggleSort()
+    fun onDraw()
+    fun onTakeDiscardPile()
+    fun onCreateMeld()
+    fun onAddToMeld(meldId: MeldId)
+    fun onDiscard()
+    fun onDeclineDraw()
+    fun onConfirmDecline()
+    fun onDismissDecline()
+    fun onPlanChosen(action: Action.TakeDiscardPile)
+    fun onDismissPlanChoice()
+    fun onMessageShown()
+}
+
+/** Mesa: desenhada só a partir da vista do humano ([PlayerView]); controles habilitados por `legalActions`. */
+@Composable
+fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Modifier) {
+    val snapshot = state.snapshot
+    val view = snapshot.view
+    val snackbar = remember { SnackbarHostState() }
+    val messageText = state.message?.let { stringResource(it.messageRes()) }
+    LaunchedEffect(state.message) {
+        if (messageText != null) {
+            snackbar.showSnackbar(messageText)
+            events.onMessageShown()
+        }
+    }
+    var showDiscardPile by rememberSaveable { mutableStateOf(false) }
+
+    Scaffold(
+        modifier = modifier.testTag("table-screen"),
+        containerColor = TableGreen,
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Header(state)
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                view.mode.seats.filter { view.mode.sideOf(it) != view.side }.forEach { seat ->
+                    OpponentSeat(state, seat.index)
+                }
+                SideArea(
+                    title = stringResource(R.string.opponent_melds),
+                    view = view,
+                    side = view.mode.sides.first { it != view.side },
+                    onMeldClick = null,
+                    sideTag = "opponent",
+                )
+                CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
+                SideArea(
+                    title = stringResource(R.string.your_melds),
+                    view = view,
+                    side = view.side,
+                    onMeldClick = if (state.playing) events::onAddToMeld else null,
+                    sideTag = "own",
+                )
+            }
+            StatusAndActions(state, events)
+            HandArea(state, events)
+        }
+    }
+
+    if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
+    state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
+    if (state.confirmDecline) {
+        AlertDialog(
+            onDismissRequest = events::onDismissDecline,
+            title = { Text(stringResource(R.string.decline_title)) },
+            text = { Text(stringResource(R.string.decline_text)) },
+            confirmButton = { TextButton(events::onConfirmDecline) { Text(stringResource(R.string.decline_confirm)) } },
+            dismissButton = { TextButton(events::onDismissDecline) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun Header(state: GameUiState) {
+    val snapshot = state.snapshot
+    val view = snapshot.view
+    val other = view.mode.sides.first { it != view.side }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.table_round, snapshot.roundNumber, snapshot.config.targetScore),
+            color = OnTable,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            stringResource(
+                R.string.score_line,
+                sideName(view.mode, view.side, view.side),
+                snapshot.totals[view.side.index],
+                snapshot.totals[other.index],
+                sideName(view.mode, other, view.side),
+            ),
+            color = TableAccent,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.testTag("score"),
+        )
+    }
+}
+
+@Composable
+private fun OpponentSeat(state: GameUiState, seatIndex: Int) {
+    val snapshot = state.snapshot
+    val view = snapshot.view
+    val thinking = snapshot.thinkingSeat?.index == seatIndex
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CardBack(size = CardSize.SMALL, describe = false)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    sideName(view.mode, view.mode.sideOf(Seat(seatIndex)), view.side),
+                    color = OnTable,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    pluralStringResource(R.plurals.opponent_hand, view.handSizes[seatIndex], view.handSizes[seatIndex]),
+                    color = OnTable,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("opponent-hand-size"),
+                )
+            }
+            if (thinking) CircularProgressIndicator(Modifier.size(20.dp), color = TableAccent, strokeWidth = 2.dp)
+        }
+        val events = snapshot.turnEvents[seatIndex]
+        if (events.isNotEmpty()) {
+            Text(
+                stringResource(R.string.opponent_last_turn, turnText(events)),
+                color = OnTable,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("opponent-last-turn"),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SideArea(
+    title: String,
+    view: PlayerView,
+    side: Side,
+    onMeldClick: ((MeldId) -> Unit)?,
+    sideTag: String,
+) {
+    val melds = view.tables[side.index].melds
+    val redThrees = view.redThrees[side.index]
+    Column(
+        Modifier.fillMaxWidth()
+            .border(1.dp, OnTable.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+            .padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = OnTable, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            if (redThrees.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.red_threes, redThrees.size),
+                    color = OnTable,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(end = 4.dp),
+                )
+                OverlappedCards(redThrees, step = 12.dp)
+            }
+        }
+        if (melds.isEmpty()) {
+            Text(stringResource(R.string.no_melds), color = OnTable.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                melds.forEach { meld -> MeldView(meld, onMeldClick, Modifier.testTag("meld-$sideTag-${meld.id.value}")) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeldView(tableMeld: TableMeld, onClick: ((MeldId) -> Unit)?, modifier: Modifier) {
+    val meld = tableMeld.meld
+    val canasta = meld.isCanasta()
+    val label = when {
+        !canasta -> null
+        meld.isClean -> stringResource(R.string.canasta_clean)
+        else -> stringResource(R.string.canasta_dirty)
+    }
+    val borderColor = when {
+        !canasta -> Color.Transparent
+        meld.isClean -> TableAccent
+        else -> Color(0xFFB0BEC5)
+    }
+    val descriptions = meld.cards.map { cardDescription(it) }
+    val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
+        (label?.let { ". $it" } ?: "")
+    Column(
+        modifier
+            .heightIn(min = 48.dp)
+            .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(6.dp))
+            .then(if (onClick != null) Modifier.clickable { onClick(tableMeld.id) } else Modifier)
+            .semantics(mergeDescendants = true) { contentDescription = description }
+            .padding(3.dp),
+    ) {
+        OverlappedCards(meld.cards, step = 14.dp)
+        if (label != null) {
+            Text(label, color = borderColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** Cartas pequenas sobrepostas, cada uma deslocada [step] para a direita (o índice de cada uma fica visível). */
+@Composable
+private fun OverlappedCards(cards: List<Card>, step: Dp, modifier: Modifier = Modifier, size: CardSize = CardSize.SMALL) {
+    Box(modifier.width(size.width + step * (cards.size - 1).coerceAtLeast(0)).height(size.height)) {
+        cards.forEachIndexed { i, card ->
+            PlayingCard(card, Modifier.offset(x = step * i), size = size, describe = false)
+        }
+    }
+}
+
+@Composable
+private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPile: () -> Unit) {
+    val view = state.snapshot.view
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+            // Monte
+            val stockLabel = stringResource(R.string.stock) + ", " + pluralStringResource(R.plurals.card_count, view.stockSize, view.stockSize)
+            Column(
+                Modifier
+                    .widthIn(min = 64.dp)
+                    .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(6.dp))
+                    .clickable(enabled = state.canDraw, onClick = events::onDraw)
+                    .semantics(mergeDescendants = true) { contentDescription = stockLabel }
+                    .testTag("stock")
+                    .padding(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
+                if (view.stockSize > 0) CardBack(size = CardSize.MEDIUM, describe = false) else Spacer(Modifier.height(CardSize.MEDIUM.height))
+                Text(pluralStringResource(R.plurals.card_count, view.stockSize, view.stockSize), color = OnTable, style = MaterialTheme.typography.labelSmall)
+            }
+            // Mortos
+            view.mortoStatus.forEachIndexed { i, status ->
+                val statusText = when (status) {
+                    MortoStatus.Available -> pluralStringResource(R.plurals.card_count, view.mortoSizes[i], view.mortoSizes[i])
+                    MortoStatus.BecameStock -> stringResource(R.string.morto_became_stock)
+                    is MortoStatus.Taken ->
+                        if (status.side == view.side) stringResource(R.string.morto_taken_you) else stringResource(R.string.morto_taken_opponent)
+                }
+                val title = stringResource(R.string.morto_title, i + 1)
+                Column(
+                    Modifier.width(64.dp).semantics(mergeDescendants = true) { contentDescription = "$title, $statusText" },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(title, color = OnTable, style = MaterialTheme.typography.labelMedium)
+                    if (status == MortoStatus.Available) CardBack(size = CardSize.SMALL, describe = false)
+                    else Spacer(Modifier.height(CardSize.SMALL.height))
+                    Text(statusText, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                }
+            }
+        }
+        // Lixo: aberto, todas as cartas visíveis (§5.6); topo à direita.
+        val pile = view.discardPile
+        val pileLabel = stringResource(R.string.discard_pile) + ": " +
+            if (pile.isEmpty()) stringResource(R.string.discard_pile_empty) else pile.map { cardDescription(it) }.joinToString(", ")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.discard_pile) + " (" + pile.size + ")",
+                color = OnTable,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (pile.isNotEmpty()) {
+                TextButton(onShowDiscardPile, modifier = Modifier.testTag("show-discard-pile")) {
+                    Text(stringResource(R.string.discard_pile_show_all), color = TableAccent)
+                }
+            }
+        }
+        val scroll = rememberScrollState()
+        LaunchedEffect(pile.size) { scroll.scrollTo(scroll.maxValue) }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp)
+                .border(2.dp, if (state.canTakeDiscardPile) TableAccent else OnTable.copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+                .clickable(enabled = state.awaitingDraw, onClick = events::onTakeDiscardPile)
+                .semantics(mergeDescendants = true) { contentDescription = pileLabel }
+                .testTag("discard-pile")
+                .padding(4.dp),
+        ) {
+            if (pile.isEmpty()) {
+                Text(stringResource(R.string.discard_pile_empty), color = OnTable.copy(alpha = 0.7f), modifier = Modifier.align(Alignment.CenterStart))
+            } else {
+                Box(Modifier.horizontalScroll(scroll)) { OverlappedCards(pile, step = 18.dp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusAndActions(state: GameUiState, events: TableEvents) {
+    val snapshot = state.snapshot
+    val status = when {
+        state.awaitingDraw -> stringResource(R.string.turn_draw)
+        state.playing -> stringResource(R.string.turn_play)
+        snapshot.thinkingSeat != null -> stringResource(R.string.turn_bot)
+        else -> stringResource(R.string.turn_waiting)
+    }
+    Column(Modifier.fillMaxWidth().background(TableGreenDark).padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (snapshot.view.phase != Phase.PLAYING || !state.isHumanTurn) {
+                ActionButton(stringResource(R.string.action_draw), state.canDraw, events::onDraw, "action-draw")
+                ActionButton(stringResource(R.string.action_take_discard), state.awaitingDraw, events::onTakeDiscardPile, "action-take-discard")
+                if (state.canDecline) ActionButton(stringResource(R.string.action_decline), true, events::onDeclineDraw, "action-decline")
+            } else {
+                ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld")
+                ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard")
+            }
+            OutlinedButton(
+                onClick = events::onClearSelection,
+                enabled = state.selected.isNotEmpty(),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(stringResource(R.string.action_clear), color = OnTable) }
+        }
+        // Fixo durante a vez (não depende da seleção) para os botões não pularem ao tocar nas cartas.
+        if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
+            Text(stringResource(R.string.add_to_meld_hint), color = OnTable, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.heightIn(min = 48.dp).testTag(tag),
+        colors = ButtonDefaults.buttonColors(containerColor = TableAccent, contentColor = Color.Black),
+    ) { Text(text) }
+}
+
+@Composable
+private fun HandArea(state: GameUiState, events: TableEvents) {
+    val selectedText = stringResource(R.string.card_selected)
+    val playableText = stringResource(R.string.card_playable)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.your_hand, state.hand.size),
+                color = OnTable,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(events::onToggleSort, modifier = Modifier.testTag("sort")) {
+                Text(
+                    stringResource(if (state.sort == HandSort.BY_SUIT) R.string.action_sort_rank else R.string.action_sort_suit),
+                    color = TableAccent,
+                )
+            }
+        }
+        // 7 cartas de 48dp por linha em 360dp; com 20+ cartas, a área rola.
+        FlowRow(
+            Modifier.fillMaxWidth().heightIn(max = 74.dp * 3).verticalScroll(rememberScrollState()).testTag("hand"),
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            state.hand.forEach { card ->
+                val selected = card in state.selected
+                val highlighted = card.cardClass in state.highlighted
+                PlayingCard(
+                    card,
+                    Modifier
+                        .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
+                        .semantics {
+                            stateDescription = when {
+                                selected -> selectedText
+                                highlighted -> playableText
+                                else -> ""
+                            }
+                        }
+                        .testTag("hand-card-$card"),
+                    size = CardSize.MEDIUM,
+                    selected = selected,
+                    highlighted = highlighted,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscardPileDialog(pile: List<Card>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(pluralStringResource(R.plurals.discard_pile_dialog_title, pile.size, pile.size)) },
+        text = {
+            FlowRow(
+                Modifier.verticalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                pile.forEach { PlayingCard(it, size = CardSize.MEDIUM) }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+@Composable
+private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: PlayerView, events: TableEvents) {
+    val top = view.discardTop
+    AlertDialog(
+        onDismissRequest = events::onDismissPlanChoice,
+        title = { Text(stringResource(R.string.plan_choice_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                options.forEach { option ->
+                    val text = when (val plan = option.plan) {
+                        is DiscardPlan.NewMeld ->
+                            stringResource(R.string.plan_new_meld, (plan.handCards + listOfNotNull(top)).labels())
+                        is DiscardPlan.AddToMeld -> {
+                            // §6.4 pode haver grupos repetidos: o número do jogo os distingue.
+                            val melds = view.tables[view.side.index].melds
+                            val index = melds.indexOfFirst { it.id == plan.meldId }
+                            stringResource(R.string.plan_add_to_meld, index + 1, melds.getOrNull(index)?.meld?.cards?.labels().orEmpty())
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { events.onPlanChosen(option) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text(text, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(events::onDismissPlanChoice) { Text(stringResource(R.string.cancel)) } },
+    )
+}

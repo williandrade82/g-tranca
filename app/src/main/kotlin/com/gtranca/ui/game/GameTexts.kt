@@ -1,0 +1,93 @@
+package com.gtranca.ui.game
+
+import androidx.annotation.StringRes
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.gtranca.R
+import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.Action
+import com.gtranca.engine.DiscardPlan
+import com.gtranca.engine.model.ActionError
+import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.MeldError
+import com.gtranca.engine.model.RuleError
+import com.gtranca.engine.model.Side
+import com.gtranca.ui.cards.shortLabel
+
+/** Texto pt-BR de cada motivo de recusa do motor (um por valor de [ActionError] e [MeldError]). */
+@StringRes
+fun RuleError?.messageRes(): Int = when (this) {
+    null -> R.string.msg_invalid_generic
+    ActionError.ROUND_FINISHED -> R.string.error_round_finished
+    ActionError.NOT_YOUR_TURN -> R.string.error_not_your_turn
+    ActionError.MUST_DRAW_FIRST -> R.string.error_must_draw_first
+    ActionError.ALREADY_DREW -> R.string.error_already_drew
+    ActionError.STOCK_EXHAUSTED -> R.string.error_stock_exhausted
+    ActionError.DECLINE_NOT_ALLOWED -> R.string.error_decline_not_allowed
+    ActionError.DISCARD_PILE_EMPTY -> R.string.error_discard_pile_empty
+    ActionError.DISCARD_PILE_LOCKED -> R.string.error_discard_pile_locked
+    ActionError.DISCARD_TOP_NEEDS_TWO_HAND_CARDS -> R.string.error_discard_top_needs_two
+    ActionError.CARD_NOT_IN_HAND -> R.string.error_card_not_in_hand
+    ActionError.CANNOT_DISCARD_RED_THREE -> R.string.error_cannot_discard_red_three
+    ActionError.NO_MORTO_AVAILABLE -> R.string.error_no_morto_available
+    ActionError.NO_CANASTA_TO_GO_OUT -> R.string.error_no_canasta_to_go_out
+    ActionError.MUST_KEEP_CARD_TO_DISCARD -> R.string.error_must_keep_card
+    MeldError.TOO_FEW_CARDS -> R.string.error_too_few_cards
+    MeldError.NO_CARDS -> R.string.error_no_cards
+    MeldError.DUPLICATE_CARD -> R.string.error_duplicate_card
+    MeldError.CONTAINS_THREE -> R.string.error_contains_three
+    MeldError.TOO_MANY_WILDS -> R.string.error_too_many_wilds
+    MeldError.NOT_A_SEQUENCE_OR_GROUP -> R.string.error_not_sequence_or_group
+    MeldError.REPEATED_RANK -> R.string.error_repeated_rank
+    MeldError.NOT_CONSECUTIVE -> R.string.error_not_consecutive
+    MeldError.WRONG_SUIT -> R.string.error_wrong_suit
+    MeldError.WRONG_RANK -> R.string.error_wrong_rank
+    MeldError.CONTIGUOUS_SEQUENCE -> R.string.error_contiguous_sequence
+    MeldError.MELD_NOT_FOUND -> R.string.error_meld_not_found
+}
+
+@StringRes
+fun UiMessage.messageRes(): Int = when (this) {
+    is UiMessage.Rejected -> error.messageRes()
+    UiMessage.SelectOneCardToDiscard -> R.string.msg_select_one_to_discard
+}
+
+/** Nome do lado do ponto de vista do humano. */
+@Composable
+@ReadOnlyComposable
+fun sideName(mode: GameMode, side: Side, viewerSide: Side): String = when {
+    side == viewerSide && mode == GameMode.INDIVIDUAL -> stringResource(R.string.side_you)
+    side == viewerSide -> stringResource(R.string.side_your_team)
+    mode == GameMode.INDIVIDUAL -> stringResource(R.string.side_opponent)
+    else -> stringResource(R.string.side_other_team)
+}
+
+fun List<Card>.labels(): String = joinToString(" ") { it.shortLabel }
+
+/** Descrição de uma ação pública (ex.: "baixou 7♥ 8♥ 9♥"). */
+@Composable
+@ReadOnlyComposable
+fun eventText(event: PublicEvent): String = when (val action = event.action) {
+    Action.DrawFromStock -> stringResource(R.string.event_draw)
+    Action.DeclineDraw -> stringResource(R.string.event_decline)
+    is Action.TakeDiscardPile -> {
+        val plan = action.plan
+        val handCards = when (plan) {
+            is DiscardPlan.NewMeld -> plan.handCards
+            is DiscardPlan.AddToMeld -> plan.handCards
+        }
+        pluralStringResource(R.plurals.event_take_discard, event.takenFromDiscard.size, event.takenFromDiscard.size) +
+            if (handCards.isNotEmpty()) " (" + handCards.labels() + ")" else ""
+    }
+    is Action.CreateMeld -> stringResource(R.string.event_create_meld, action.cards.labels())
+    is Action.AddToMeld -> stringResource(R.string.event_add_to_meld, action.cards.labels())
+    is Action.Discard -> stringResource(R.string.event_discard, action.card.shortLabel)
+}
+
+@Composable
+@ReadOnlyComposable
+fun turnText(events: List<PublicEvent>): String =
+    events.map { eventText(it) }.joinToString(stringResource(R.string.event_separator))

@@ -1,6 +1,174 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">G-Tranca</string>
+
+    <!-- Início -->
     <string name="home_title">Tranca</string>
-    <string name="home_subtitle">Em construção</string>
+    <string name="home_subtitle">Você contra a máquina</string>
+    <string name="home_mode">Modo</string>
+    <string name="mode_individual">Individual</string>
+    <string name="mode_duplas_soon">Duplas (em breve)</string>
+    <string name="home_difficulty">Dificuldade</string>
+    <string name="difficulty_facil">Fácil</string>
+    <string name="difficulty_medio">Médio</string>
+    <string name="difficulty_dificil">Difícil</string>
+    <string name="home_target">Pontuação-alvo</string>
+    <string name="home_target_error">Informe um número inteiro positivo</string>
+    <string name="home_new_game">Novo jogo</string>
+
+    <!-- Cartas -->
+    <string name="card_description">%1$s de %2$s</string>
+    <string name="rank_ace">Ás</string>
+    <string name="rank_jack">Valete</string>
+    <string name="rank_queen">Dama</string>
+    <string name="rank_king">Rei</string>
+    <string name="suit_hearts">copas</string>
+    <string name="suit_diamonds">ouros</string>
+    <string name="suit_spades">espadas</string>
+    <string name="suit_clubs">paus</string>
+    <string name="card_back">Carta virada</string>
+    <string name="card_selected">selecionada</string>
+    <string name="card_playable">pode ser usada numa jogada</string>
+
+    <!-- Mesa -->
+    <string name="table_round">Partida %1$d · alvo %2$d</string>
+    <string name="side_you">Você</string>
+    <string name="side_opponent">Adversário</string>
+    <string name="side_your_team">Sua dupla</string>
+    <string name="side_other_team">Dupla adversária</string>
+    <string name="score_line">%1$s %2$d × %3$d %4$s</string>
+    <string name="turn_draw">Sua vez: compre do monte ou pegue o lixo</string>
+    <string name="turn_play">Sua vez: baixe, acrescente ou descarte</string>
+    <string name="turn_bot">Vez do adversário…</string>
+    <string name="turn_waiting">Aguarde…</string>
+    <string name="opponent_last_turn">Última jogada: %1$s</string>
+    <string name="stock">Monte</string>
+    <string name="discard_pile">Lixo</string>
+    <string name="discard_pile_empty">vazio</string>
+    <string name="discard_pile_show_all">Ver todo o lixo</string>
+    <string name="morto_title">Morto %1$d</string>
+    <string name="morto_taken_you">pego por você</string>
+    <string name="morto_taken_opponent">pego pelo adversário</string>
+    <string name="morto_became_stock">virou monte</string>
+    <string name="red_threes">3 vermelhos: %1$d</string>
+    <string name="no_melds">Nenhum conjunto na mesa</string>
+    <string name="your_melds">Seus jogos</string>
+    <string name="opponent_melds">Jogos do adversário</string>
+    <string name="meld_description">Conjunto: %1$s</string>
+    <string name="canasta_clean">Canastra limpa</string>
+    <string name="canasta_dirty">Canastra suja</string>
+    <string name="add_to_meld_hint">Toque num dos seus jogos para acrescentar as cartas selecionadas</string>
+    <string name="action_draw">Comprar</string>
+    <string name="action_take_discard">Pegar lixo</string>
+    <string name="action_decline">Recusar compra</string>
+    <string name="action_meld">Baixar</string>
+    <string name="action_discard">Descartar</string>
+    <string name="action_clear">Limpar</string>
+    <string name="action_sort_suit">Ordenar por naipe</string>
+    <string name="action_sort_rank">Ordenar por valor</string>
+    <string name="your_hand">Sua mão (%1$d)</string>
+    <string name="cancel">Cancelar</string>
+    <string name="close">Fechar</string>
+
+    <!-- Escolha de plano / recusa -->
+    <string name="plan_choice_title">Como levar o topo do lixo à mesa?</string>
+    <string name="plan_new_meld">Novo conjunto com %1$s</string>
+    <string name="plan_add_to_meld">Acrescentar ao seu jogo %1$d (%2$s)</string>
+    <string name="decline_title">Recusar a compra?</string>
+    <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem vencedor.</string>
+    <string name="decline_confirm">Recusar e encerrar</string>
+    <string name="exit_title">Sair do jogo?</string>
+    <string name="exit_text">O jogo em andamento será perdido.</string>
+    <string name="exit_confirm">Sair</string>
+
+    <!-- Eventos públicos -->
+    <string name="event_draw">comprou do monte</string>
+    <string name="event_decline">recusou a compra</string>
+    <string name="event_create_meld">baixou %1$s</string>
+    <string name="event_add_to_meld">acrescentou %1$s</string>
+    <string name="event_discard">descartou %1$s</string>
+    <string name="event_separator">"; "</string>
+
+    <!-- Mensagens -->
+    <string name="msg_select_one_to_discard">Selecione exatamente uma carta para descartar.</string>
+    <string name="msg_invalid_generic">Essa jogada não é válida agora.</string>
+
+    <!-- Motivos de recusa (ActionError) -->
+    <string name="error_round_finished">A partida já terminou.</string>
+    <string name="error_not_your_turn">Não é a sua vez.</string>
+    <string name="error_must_draw_first">Primeiro compre do monte ou pegue o lixo.</string>
+    <string name="error_already_drew">Você já comprou nesta jogada.</string>
+    <string name="error_stock_exhausted">O monte acabou e não há morto disponível.</string>
+    <string name="error_decline_not_allowed">Só é possível recusar a compra quando o monte acabou e não há morto disponível.</string>
+    <string name="error_discard_pile_empty">O lixo está vazio.</string>
+    <string name="error_discard_pile_locked">O lixo está travado por um 3 preto.</string>
+    <string name="error_discard_top_needs_two">Para pegar o lixo, o topo vai à mesa: forme um conjunto novo com ele e pelo menos 2 cartas da mão, ou acrescente-o a um conjunto do seu lado (com ou sem cartas da mão).</string>
+    <string name="error_card_not_in_hand">Essa carta não está na sua mão.</string>
+    <string name="error_cannot_discard_red_three">O 3 vermelho não pode ser descartado.</string>
+    <string name="error_no_morto_available">Você não pode ficar sem cartas: não há morto disponível.</string>
+    <string name="error_no_canasta_to_go_out">Você não pode ficar sem cartas: para bater é preciso ter uma canastra.</string>
+    <string name="error_must_keep_card">É preciso ficar com pelo menos 2 cartas na mão (uma para descartar).</string>
+
+    <!-- Motivos de recusa (MeldError) -->
+    <string name="error_too_few_cards">Um conjunto precisa de pelo menos 3 cartas.</string>
+    <string name="error_no_cards">Selecione as cartas para acrescentar.</string>
+    <string name="error_duplicate_card">A mesma carta foi usada duas vezes.</string>
+    <string name="error_contains_three">Nenhum 3 pode fazer parte de um conjunto.</string>
+    <string name="error_too_many_wilds">Um conjunto só pode ter 1 coringa.</string>
+    <string name="error_not_sequence_or_group">As cartas não formam sequência do mesmo naipe nem grupo do mesmo número.</string>
+    <string name="error_repeated_rank">A sequência não pode repetir um número.</string>
+    <string name="error_not_consecutive">As cartas da sequência não são consecutivas (o Ás só vale como carta alta).</string>
+    <string name="error_wrong_suit">Essa sequência é de outro naipe.</string>
+    <string name="error_wrong_rank">Esse grupo é de outro número.</string>
+    <string name="error_contiguous_sequence">Essa sequência continua outra do mesmo naipe na mesa: acrescente as cartas a ela.</string>
+    <string name="error_meld_not_found">Esse conjunto não está na mesa do seu lado.</string>
+
+    <!-- Fim de partida (§12) -->
+    <string name="round_over_title">Fim da partida %1$d</string>
+    <string name="round_result_you_went_out">Você bateu!</string>
+    <string name="round_result_opponent_went_out">O adversário bateu.</string>
+    <string name="round_result_partner_went_out">Seu parceiro bateu!</string>
+    <string name="round_result_no_winner">Partida sem vencedor.</string>
+    <string name="round_tie_notice">Empate na maior pontuação: joga-se nova partida para desempatar.</string>
+    <string name="score_item">Item</string>
+    <string name="score_red_threes">3 vermelhos na mesa</string>
+    <string name="score_clean_canastas">Canastras limpas</string>
+    <string name="score_dirty_canastas">Canastras sujas</string>
+    <string name="score_go_out">Batida</string>
+    <string name="score_morto_not_taken">Morto não pego</string>
+    <string name="score_hand_header">Cartas na mão</string>
+    <string name="score_hand_red_threes">3 vermelhos</string>
+    <string name="score_hand_black_threes">3 pretos</string>
+    <string name="score_hand_four_to_ten">4 a 10</string>
+    <string name="score_hand_faces">J, Q, K, A</string>
+    <string name="score_hand_wilds">Coringas</string>
+    <string name="score_round_total">Total da partida</string>
+    <string name="score_cumulative">Total acumulado</string>
+    <string name="score_points_with_count">%1$s (%2$d)</string>
+    <string name="next_round">Próxima partida</string>
+    <string name="see_final_result">Ver resultado do jogo</string>
+
+    <!-- Fim de jogo (§13) -->
+    <string name="game_over_title">Fim de jogo</string>
+    <string name="game_over_you_won">Você venceu!</string>
+    <string name="game_over_opponent_won">O adversário venceu.</string>
+    <string name="game_over_rounds">Partidas jogadas: %1$d</string>
+    <string name="game_over_round_line">Partida %1$d: %2$s × %3$s</string>
+    <string name="back_to_home">Voltar ao início</string>
+    <plurals name="opponent_hand">
+        <item quantity="one">%1$d carta na mão</item>
+        <item quantity="other">%1$d cartas na mão</item>
+    </plurals>
+    <plurals name="card_count">
+        <item quantity="one">%1$d carta</item>
+        <item quantity="other">%1$d cartas</item>
+    </plurals>
+    <plurals name="discard_pile_dialog_title">
+        <item quantity="one">Lixo (%1$d carta, topo à direita)</item>
+        <item quantity="other">Lixo (%1$d cartas, topo à direita)</item>
+    </plurals>
+    <plurals name="event_take_discard">
+        <item quantity="one">pegou o lixo (%1$d carta para a mão)</item>
+        <item quantity="other">pegou o lixo (%1$d cartas para a mão)</item>
+    </plurals>
 </resources>
