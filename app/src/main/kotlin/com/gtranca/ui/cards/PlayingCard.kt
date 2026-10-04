@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -41,6 +43,9 @@ import com.gtranca.engine.model.Suit
  * preferência de fonte do sistema, para o desenho não estourar a carta.
  */
 enum class CardSize(val width: Dp, val height: Dp, val cornerFont: Dp, val centerFont: Dp, val showCenter: Boolean) {
+    /** Versos das mãos dos outros assentos (só [CardBack]). */
+    TINY(16.dp, 24.dp, 8.dp, 10.dp, false),
+
     /** Conjuntos na mesa e lixo. */
     SMALL(30.dp, 44.dp, 11.dp, 15.dp, true),
 
@@ -61,6 +66,7 @@ private val HighlightBorder = Color(0xFFFFB300)
 /** Marca discreta de "participa de jogada" sobre o branco da carta (contraste ≥ 3:1 com o branco). */
 private val PlayableMark = Color(0xFFE65100)
 private val DimOverlay = Color(0x66000000)
+private val NewBadge = Color(0xFF1B5E20)
 
 /**
  * Realce de uma carta da mão (derivado de `legalActions` pelo ViewModel; a carta não decide nada).
@@ -133,6 +139,7 @@ fun PlayingCard(
     modifier: Modifier = Modifier,
     size: CardSize = CardSize.MEDIUM,
     emphasis: CardEmphasis = CardEmphasis.NONE,
+    badge: String? = null,
     describe: Boolean = true,
 ) {
     val description = cardDescription(card)
@@ -158,14 +165,14 @@ fun PlayingCard(
             .border(border.first, border.second, shape),
     ) {
         CornerIndex(card, cornerStyle, Modifier.align(Alignment.TopStart).padding(start = 3.dp, top = 2.dp))
-        val badge = when (emphasis) {
+        val mark = when (emphasis) {
             CardEmphasis.SUBTLE, CardEmphasis.STRONG -> PlayableMark
             CardEmphasis.SELECTED -> SelectedBorder
             else -> null
         }
-        if (badge != null) {
+        if (mark != null) {
             Canvas(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 5.dp).size(size.width * 0.2f)) {
-                drawCircle(badge)
+                drawCircle(mark)
                 if (emphasis == CardEmphasis.SELECTED) {
                     // Marca de seleção (✓) branca dentro do círculo.
                     val w = this.size.width
@@ -188,6 +195,15 @@ fun PlayingCard(
             CornerIndex(card, cornerStyle, Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 2.dp).rotate(180f))
         }
         if (emphasis == CardEmphasis.DIMMED) Box(Modifier.matchParentSize().background(DimOverlay))
+        if (badge != null) {
+            // Rótulo (ex.: "nova") sobre a parte de baixo da carta, branco sobre verde-escuro (contraste ≥ 7:1).
+            Text(
+                badge,
+                style = TextStyle(color = Color.White, fontSize = 10.dp.asFont(), lineHeight = 11.dp.asFont(), fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(NewBadge).padding(vertical = 1.dp),
+            )
+        }
     }
 }
 

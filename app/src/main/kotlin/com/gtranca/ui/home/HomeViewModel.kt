@@ -5,6 +5,7 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
+import com.gtranca.game.isAsciiDigits
 import com.gtranca.game.parseTargetScore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +35,7 @@ data class HomeUiState(
         get() {
             if (targetScore != null) return null
             val digits = targetText.trim()
-            val onlyDigits = digits.isNotEmpty() && digits.all(Char::isDigit)
+            val onlyDigits = digits.isAsciiDigits()
             return if (onlyDigits && digits.trimStart('0').isNotEmpty() && digits.toIntOrNull() == null) {
                 TargetError.TOO_LARGE
             } else {

@@ -21,7 +21,7 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `alvo deve ser inteiro positivo, e o texto nunca e truncado`() {
+    fun `§14 alvo deve ser inteiro positivo, e o texto nunca e truncado`() {
         val vm = HomeViewModel()
         vm.onTargetChange("0")
         vm.uiState.value.targetError shouldBe TargetError.INVALID
@@ -45,7 +45,7 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `duplas pode ser escolhido`() {
+    fun `§14 duplas pode ser escolhido`() {
         val vm = HomeViewModel()
         vm.onModeChange(GameMode.DUPLAS)
         vm.uiState.value.canStart shouldBe true
@@ -53,10 +53,17 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `leitura da pontuacao alvo`() {
+    fun `§14 leitura da pontuacao alvo - so digitos ASCII`() {
         parseTargetScore(" 2500 ") shouldBe 2500
         parseTargetScore("-5").shouldBeNull()
         parseTargetScore("99999999999").shouldBeNull()
         parseTargetScore("1.5").shouldBeNull()
+        // Sem sinal e sem dígitos de outros sistemas de escrita (ex.: árabe-índicos, de largura total).
+        parseTargetScore("+3000").shouldBeNull()
+        parseTargetScore("٣٠٠٠").shouldBeNull()
+        parseTargetScore("３０００").shouldBeNull()
+        val vm = HomeViewModel()
+        vm.onTargetChange("+3000")
+        vm.uiState.value.targetError shouldBe TargetError.INVALID
     }
 }

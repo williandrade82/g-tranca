@@ -20,6 +20,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -85,7 +86,17 @@ class GameControllerTest {
         override fun onNewRound() { newRounds++ }
     }
 
-    private fun humanGame(
+    /**
+     * Faz as vezes da interface na encenação das trocas de 3 vermelho da distribuição (§3.5): sem ela, o
+     * controlador com humano não libera a 1ª jogada.
+     */
+    private fun TestScope.acknowledgeDeals(controller: GameController) {
+        backgroundScope.launch {
+            controller.state.collect { if (it.stage == Stage.PLAYING) controller.dealPresentationDone(it.roundNumber) }
+        }
+    }
+
+    private fun TestScope.humanGame(
         dispatcher: TestDispatcher,
         delay: Long = 0,
         seed: Long = 5,
@@ -97,6 +108,7 @@ class GameControllerTest {
             GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, target), seed, listOf(human, BotSeatPlayer(spy)),
             computeDispatcher = dispatcher, botDelayMillis = delay,
         )
+        acknowledgeDeals(controller)
         return Triple(controller, human, spy)
     }
 
@@ -160,8 +172,9 @@ class GameControllerTest {
         advanceUntilIdle()
         val hand = controller.state.value.view.hand
         // §4.3 antes de comprar não se baixa.
-        controller.explain(Action.CreateMeld(hand.take(3))).shouldNotBeNull()
-        controller.explain(Action.DrawFromStock).shouldBeNull()
+        val id = controller.state.value.humanRequestId
+        controller.explain(Action.CreateMeld(hand.take(3)), id).shouldNotBeNull()
+        controller.explain(Action.DrawFromStock, id).shouldBeNull()
         job.cancel()
     }
 
@@ -178,12 +191,15 @@ class GameControllerTest {
         advanceUntilIdle()
         val hand = controller.state.value.view.hand
         // Agora na fase de jogar: descartar uma carta da mão é válido; comprar de novo, não (§4.3).
-        controller.explain(Action.Discard(hand.first())).shouldBeNull()
-        controller.explain(Action.DrawFromStock).shouldNotBeNull()
+        val id = controller.state.value.humanRequestId
+        controller.explain(Action.Discard(hand.first()), id).shouldBeNull()
+        controller.explain(Action.DrawFromStock, id).shouldNotBeNull()
+        // Pedido antigo (o da compra): nada a explicar, mesmo sendo a vez do humano.
+        controller.explain(Action.DrawFromStock, id - 1).shouldBeNull()
         job.cancel()
         advanceUntilIdle()
         // Sem pedido em aberto (jogo cancelado), não há situação a explicar.
-        controller.explain(Action.DrawFromStock).shouldBeNull()
+        controller.explain(Action.DrawFromStock, id).shouldBeNull()
     }
 
     @Test
@@ -248,5 +264,161 @@ class GameControllerTest {
         advanceUntilIdle()
         spy.newRounds shouldBe 2
         job.cancel()
+    }
+
+    @Test
+    fun `cada pedido ao humano tem identificador e respostas a pedido antigo sao recusadas`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val (controller, _, _) = humanGame(dispatcher)
+        val job = launch { controller.run() }
+        advanceUntilIdle()
+        val first = controller.state.value.humanRequestId
+        (first > 0) shouldBe true
+        controller.submit(Action.DrawFromStock, first) shouldBe true
+        advanceUntilIdle()
+        val second = controller.state.value.humanRequestId
+        (second > first) shouldBe true
+        // §4.3 a resposta ao pedido da compra, chegando atrasada, não é aplicada ao pedido seguinte.
+        val discard = controller.state.value.humanLegal.filterIsInstance<Action.Discard>().first()
+        controller.submit(discard, first) shouldBe false
+        controller.submit(discard, second) shouldBe true
+        job.cancel()
+    }
+
+    @Test
+    fun `§13_1 desistencia na vez do humano - outro lado vence e a partida nao e pontuada`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val (controller, _, _) = humanGame(dispatcher)
+        val job = launch { controller.run() }
+        advanceUntilIdle()
+        controller.state.value.isHumanTurn shouldBe true
+        val roundBefore = controller.currentMatch.currentRound
+
+        controller.resign() shouldBe true
+        val ended = controller.state.value
+        ended.stage shouldBe Stage.GAME_OVER
+        ended.resigned shouldBe true
+        ended.winner shouldBe Side(1)
+        ended.totals shouldBe listOf(0, 0)
+        ended.history shouldBe emptyList()
+        ended.humanLegal shouldBe emptyList()
+        advanceUntilIdle()
+        job.isCompleted shouldBe true
+        // Nada mais acontece depois: nem jogada, nem nova partida, nem segunda desistência.
+        controller.currentMatch.currentRound shouldBe roundBefore
+        controller.submit(Action.DrawFromStock, ended.humanRequestId) shouldBe false
+        controller.continueToNextRound() shouldBe false
+        controller.resign() shouldBe false
+        controller.state.value shouldBe ended
+    }
+
+    @Test
+    fun `§13_1 desistencia com bot pensando descarta a decisao dele e encerra o laco`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        lateinit var controller: GameController
+        var decisions = 0
+        // Bot que, no meio da decisão (busca de CPU), vê o humano desistir.
+        val resigningBot = object : BotPlayer {
+            private val delegate = createBot(Difficulty.FACIL, Random(1))
+            override fun chooseAction(view: PlayerView, legal: List<Action>): Action {
+                decisions++
+                controller.resign()
+                return delegate.chooseAction(view, legal)
+            }
+        }
+        val human = HumanPlayer()
+        controller = GameController(
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), 5, listOf(human, BotSeatPlayer(resigningBot)),
+            computeDispatcher = dispatcher, botDelayMillis = 0,
+        )
+        acknowledgeDeals(controller)
+        val job = launch { controller.run() }
+        advanceUntilIdle()
+        if (controller.state.value.isHumanTurn) {
+            controller.submit(Action.DrawFromStock, controller.state.value.humanRequestId) shouldBe true
+            advanceUntilIdle()
+            val discard = controller.state.value.humanLegal.filterIsInstance<Action.Discard>().first()
+            controller.submit(discard, controller.state.value.humanRequestId) shouldBe true
+        }
+        advanceUntilIdle()
+        decisions shouldBe 1
+        job.isCompleted shouldBe true
+        controller.state.value.stage shouldBe Stage.GAME_OVER
+        controller.state.value.winner shouldBe Side(1)
+        // A jogada escolhida pelo bot depois da desistência não foi aplicada: ainda é a vez dele, antes de comprar.
+        controller.currentMatch.currentRound.currentSeat shouldBe Seat(1)
+        controller.currentMatch.currentRound.phase shouldBe Phase.AWAITING_DRAW
+    }
+
+    @Test
+    fun `§3_5 e §6_5 trocas lidas do registro publico - so as novas, uma vez cada, com quem trocou`() = runTest {
+        // Jogo só de bots: acumulando as trocas novas de cada snapshot, cada partida mostra exatamente o registro do
+        // motor, na ordem; cada carta é um 3 vermelho do lado de quem trocou.
+        val mode = GameMode.DUPLAS
+        val seed = 21L
+        val controller = GameController(
+            GameConfig(mode, Difficulty.MEDIO, targetScore = 1000), seed,
+            simLikePlayers(mode, listOf(Difficulty.MEDIO, Difficulty.FACIL), seed),
+            computeDispatcher = StandardTestDispatcher(testScheduler), botDelayMillis = 0,
+        )
+        var previous: GameSnapshot? = null
+        val shown = mutableListOf<RedThreeNotice>()
+        var checks = 0
+        val collector = launch {
+            controller.state.collect { snapshot ->
+                if (previous?.roundNumber != snapshot.roundNumber) shown.clear()
+                shown += LogRedThreeSource.newSwaps(previous, snapshot)
+                previous = snapshot
+                val log = snapshot.view.redThreeLog
+                shown.map { it.seat to it.cards.single() } shouldBe log.map { it.seat to it.card }
+                shown.map { it.atDeal } shouldBe log.map { it.atDeal }
+                shown.forEach { notice ->
+                    notice.cards.single().isRedThree shouldBe true
+                    notice.side shouldBe mode.sideOf(notice.seat)
+                }
+                shown.map { it.id }.distinct().size shouldBe shown.size
+                checks++
+            }
+        }
+        controller.run()
+        collector.cancel()
+        controller.state.value.stage shouldBe Stage.GAME_OVER
+        (checks > 1) shouldBe true
+    }
+
+    @Test
+    fun `§3_5 com humano, a 1a jogada espera a encenacao das trocas da distribuicao`() = runTest {
+        // Procura uma semente com 3 vermelho na distribuição.
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var checked = false
+        for (seed in 1L..40L) {
+            val human = HumanPlayer()
+            val spy = SpyBot(seed)
+            val controller = GameController(
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), seed, listOf(human, BotSeatPlayer(spy)),
+                computeDispatcher = dispatcher, botDelayMillis = 0,
+            )
+            val job = launch { controller.run() }
+            advanceUntilIdle()
+            val state = controller.state.value
+            if (state.view.redThreeLog.none { it.atDeal }) {
+                job.cancel()
+                continue
+            }
+            // Ninguém jogou nem foi chamado a jogar.
+            state.isHumanTurn shouldBe false
+            spy.views shouldBe emptyList()
+            state.turnEvents.all { it.isEmpty() } shouldBe true
+            // Confirmação de outra partida é ignorada; a da partida atual libera o jogo.
+            controller.dealPresentationDone(state.roundNumber + 1) shouldBe false
+            controller.dealPresentationDone(state.roundNumber) shouldBe true
+            controller.dealPresentationDone(state.roundNumber) shouldBe false
+            advanceUntilIdle()
+            (controller.state.value.isHumanTurn || spy.views.isNotEmpty()) shouldBe true
+            job.cancel()
+            checked = true
+            break
+        }
+        checked shouldBe true
     }
 }

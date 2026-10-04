@@ -25,10 +25,12 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
         if (snapshot.stage == Stage.GAME_OVER) onExit() else confirmExit = true
     }
 
-    when {
-        snapshot.stage == Stage.GAME_OVER && state.showFinalResult -> GameOverScreen(snapshot, onExit)
-        snapshot.stage != Stage.PLAYING -> RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onShowFinalResult)
-        else -> TableScreen(state, viewModel)
+    when (state.endScreen) {
+        null -> TableScreen(state, viewModel)
+        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext)
+        EndScreen.ROUND_POINTS -> RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext)
+        EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext)
+        EndScreen.FINAL -> GameOverScreen(snapshot, onExit)
     }
 
     if (confirmExit) {

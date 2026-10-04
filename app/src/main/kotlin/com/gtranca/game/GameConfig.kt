@@ -21,10 +21,15 @@ data class GameConfig(
 }
 
 /**
- * Lê a pontuação-alvo digitada (§14: inteiro positivo). Devolve `null` se o texto não for um inteiro
- * positivo representável.
+ * Lê a pontuação-alvo digitada (§14: inteiro positivo). Aceita só dígitos ASCII `0`–`9` (com espaços nas pontas):
+ * sem sinal (`+`/`-`), separadores ou dígitos de outros sistemas de escrita. Devolve `null` se o texto não for um
+ * inteiro positivo representável em `Int`.
  */
-fun parseTargetScore(text: String): Int? = text.trim().toIntOrNull()?.takeIf { it > 0 }
+fun parseTargetScore(text: String): Int? =
+    text.trim().takeIf { it.isAsciiDigits() }?.toIntOrNull()?.takeIf { it > 0 }
+
+/** Não vazio e só com dígitos ASCII `0`–`9`. */
+fun String.isAsciiDigits(): Boolean = isNotEmpty() && all { it in '0'..'9' }
 
 /**
  * Semente do RNG do bot do assento [seatIndex] no jogo de semente [gameSeed].

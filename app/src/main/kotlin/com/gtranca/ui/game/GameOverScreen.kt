@@ -34,7 +34,9 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit) {
         ) {
             Text(stringResource(R.string.game_over_title), style = MaterialTheme.typography.headlineMedium)
             Text(
-                stringResource(gameResultRes(view.mode, won = snapshot.winner == view.side)),
+                stringResource(
+                    if (snapshot.resigned) resignedRes(view.mode) else gameResultRes(view.mode, won = snapshot.winner == view.side),
+                ),
                 style = MaterialTheme.typography.titleLarge,
             )
             sides.forEach { side ->

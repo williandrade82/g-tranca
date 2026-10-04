@@ -29,7 +29,9 @@
     <string name="suit_clubs">paus</string>
     <string name="card_back">Carta virada</string>
     <string name="card_selected">selecionada</string>
-    <string name="card_playable">pode ser usada numa jogada</string>
+    <string name="card_playable">pode ser baixada ou acrescentada</string>
+    <string name="card_new">nova</string>
+    <string name="card_new_description">recebida agora</string>
     <string name="card_completes_selection">combina com a seleção</string>
     <string name="card_not_with_selection">não combina com a seleção</string>
 
@@ -81,8 +83,14 @@
     <string name="action_meld">Baixar</string>
     <string name="action_discard">Descartar</string>
     <string name="action_clear">Limpar</string>
-    <string name="action_sort_suit">Ordenar por naipe</string>
-    <string name="action_sort_rank">Ordenar por valor</string>
+    <string name="hand_order">Ordem:</string>
+    <string name="sort_rank">Ordenar por valor</string>
+    <string name="sort_suit">Ordenar por naipe</string>
+    <string name="sort_custom">Ordem personalizada: 3 pretos e coringas à esquerda; soltas, sequências e cartas de mesmo valor</string>
+    <string name="action_resign">Desistir</string>
+    <string name="resign_title">Desistir do jogo?</string>
+    <string name="resign_text">O outro lado será declarado vencedor.</string>
+    <string name="resign_confirm">Desistir</string>
     <string name="your_hand">Sua mão (%1$d)</string>
     <string name="cancel">Cancelar</string>
     <string name="close">Fechar</string>
@@ -162,11 +170,13 @@
     <string name="score_hand_four_to_ten">4 a 10</string>
     <string name="score_hand_faces">J, Q, K, A</string>
     <string name="score_hand_wilds">Coringas</string>
+    <string name="score_hand_subtotal">Subtotal da mão</string>
+    <string name="score_red_threes_no_canasta">sem canastra</string>
+    <string name="score_red_threes_note">Sem canastra na mesa, cada 3 vermelho vale −100.</string>
     <string name="score_round_total">Total da partida</string>
     <string name="score_cumulative">Total acumulado</string>
     <string name="score_points_with_count">%1$s (%2$d)</string>
     <string name="next_round">Próxima partida</string>
-    <string name="see_final_result">Ver resultado do jogo</string>
 
     <!-- Fim de jogo (§13) -->
     <string name="game_over_title">Fim de jogo</string>
@@ -174,6 +184,19 @@
     <string name="game_over_opponent_won">O adversário venceu.</string>
     <string name="game_over_team_won">Sua dupla venceu!</string>
     <string name="game_over_other_team_won">A dupla adversária venceu.</string>
+    <string name="game_over_resigned_individual">Você desistiu. O adversário venceu.</string>
+    <string name="game_over_resigned_duplas">Você desistiu. A dupla adversária venceu.</string>
+
+    <!-- Anúncios antes dos pontos -->
+    <string name="announce_team_won_round">Sua dupla venceu a partida!</string>
+    <string name="announce_other_team_won_round">A dupla adversária venceu a partida.</string>
+    <string name="announce_no_winner">Partida sem vencedor: o monte acabou.</string>
+    <string name="announce_see_points">Ver pontos</string>
+    <string name="announce_continue">Continuar</string>
+    <string name="announce_see_result">Ver resultado</string>
+
+    <!-- 3 vermelhos (§6.5) -->
+    <string name="red_three_value_note">Cada 3 vermelho vale +100 se o seu lado tiver canastra ao fim da partida; sem canastra, −100.</string>
     <string name="game_over_rounds">Partidas jogadas: %1$d</string>
     <string name="game_over_round_line">Partida %1$d: %2$s × %3$s</string>
     <string name="back_to_home">Voltar ao início</string>
@@ -192,6 +215,15 @@
         <item quantity="other">Lixo (%1$d cartas, topo à direita)</item>
         <item quantity="many">Lixo (%1$d cartas, topo à direita)</item>
     </plurals>
+    <string name="red_three_you_drew">Você tirou %1$s!</string>
+    <string name="red_three_deal_you">Você recebeu %1$s na distribuição</string>
+    <string name="red_three_banner">%1$s baixou %2$s e recebeu uma carta</string>
+    <string name="red_three_banner_deal">%1$s baixou %2$s na distribuição e recebeu uma carta</string>
+    <string name="red_three_button">Baixar 3 vermelho</string>
+    <!-- Zero tratado à parte: em pt, a forma "one" cobre o 0 ("0 carta"). -->
+    <string name="card_count_zero">nenhuma carta</string>
+    <string name="opponent_hand_zero">nenhuma carta na mão</string>
+    <string name="event_take_discard_zero">pegou o lixo (só o topo, levado à mesa)</string>
     <plurals name="event_take_discard">
         <item quantity="one">pegou o lixo (%1$d carta para a mão)</item>
         <item quantity="other">pegou o lixo (%1$d cartas para a mão)</item>

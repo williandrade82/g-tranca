@@ -134,14 +134,29 @@ class HumanTurnResolverTest {
     @Test
     fun `destaque vem das jogadas legais e acompanha a selecao`() {
         val legal = RoundEngine.legalActions(state(hand), Seat(0))
-        val all = HumanTurnResolver.highlightedClasses(legal, emptyList())
-        all shouldContain Card.parse("7H").cardClass
-        all shouldContain Card.parse("QS").cardClass
+        val all = HumanTurnResolver.highlightCounts(legal, emptyList())
+        all.keys shouldContain Card.parse("7H").cardClass
+        all.keys shouldContain Card.parse("QS").cardClass
         // 5D não forma conjunto com nenhuma carta da mão.
         (Card.parse("5D").cardClass in all) shouldBe false
         // Selecionando QS, só cartas que completam algum conjunto com ela.
-        val withQueen = HumanTurnResolver.highlightedClasses(legal, cards("QS"))
+        val withQueen = HumanTurnResolver.highlightCounts(legal, cards("QS"))
         (Card.parse("7H").cardClass in withQueen) shouldBe false
-        withQueen shouldContain Card.parse("QC").cardClass
+        withQueen.keys shouldContain Card.parse("QC").cardClass
+    }
+
+    @Test
+    fun `destaque por copias - a 2a copia de uma carta selecionada so acende se alguma jogada usa as duas`() {
+        // §6.1 8-9-10♥ usa um só 8♥; não há grupo de 8 (só dois 8 e nenhum coringa).
+        val hand2 = cards("8H", "8H'", "9H", "TH", "KS", "KC", "5D", "6C", "4S", "AS")
+        val legal = RoundEngine.legalActions(state(hand2), Seat(0))
+        val sorted = hand2
+        HumanTurnResolver.highlightedCards(sorted, legal, cards("8H")) shouldBe cards("9H", "TH").toSet()
+        // Sem seleção, também por contagem: um só 8♥ é destacado (o primeiro na ordem da mão).
+        HumanTurnResolver.highlightedCards(sorted, legal, emptyList()) shouldBe cards("8H", "9H", "TH").toSet()
+        // Com o coringa na mão, o grupo 8♥ 8♥' 2♣ usa as duas cópias: a 2ª acende com a 1ª selecionada.
+        val hand3 = hand2 + cards("2C")
+        val legal3 = RoundEngine.legalActions(state(hand3), Seat(0))
+        HumanTurnResolver.highlightedCards(hand3, legal3, cards("8H")) shouldContain Card.parse("8H'")
     }
 }

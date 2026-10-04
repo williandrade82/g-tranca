@@ -1,5 +1,6 @@
 package com.gtranca.ui.game
 
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
@@ -13,8 +14,11 @@ import com.gtranca.engine.model.ActionError
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldError
+import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RuleError
+import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
+import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.cards.shortLabel
 
@@ -144,7 +148,7 @@ fun eventText(event: PublicEvent): String = when (val action = event.action) {
             is DiscardPlan.NewMeld -> plan.handCards
             is DiscardPlan.AddToMeld -> plan.handCards
         }
-        pluralStringResource(R.plurals.event_take_discard, event.takenFromDiscard.size, event.takenFromDiscard.size) +
+        countText(R.plurals.event_take_discard, R.string.event_take_discard_zero, event.takenFromDiscard.size) +
             if (handCards.isNotEmpty()) " (" + handCards.labels() + ")" else ""
     }
     is Action.CreateMeld -> stringResource(R.string.event_create_meld, action.cards.labels())
@@ -156,3 +160,48 @@ fun eventText(event: PublicEvent): String = when (val action = event.action) {
 @ReadOnlyComposable
 fun turnText(events: List<PublicEvent>): String =
     events.map { eventText(it) }.joinToString(stringResource(R.string.event_separator))
+
+/**
+ * Texto com quantidade: [zeroRes] para 0 (em pt, a forma `one` dos plurais cobre o 0 e daria "0 carta"); o plural
+ * [pluralsRes] (com a quantidade como 1º argumento) para os demais.
+ */
+@Composable
+@ReadOnlyComposable
+fun countText(@PluralsRes pluralsRes: Int, @StringRes zeroRes: Int, count: Int): String =
+    if (count == 0) stringResource(zeroRes) else pluralStringResource(pluralsRes, count, count)
+
+/** §11 anúncio do resultado da partida, antes dos pontos. */
+@StringRes
+fun roundAnnouncementRes(mode: GameMode, result: RoundResult, viewerSeat: Seat): Int = when (result) {
+    RoundResult.NoWinner -> R.string.announce_no_winner
+    is RoundResult.GoOut -> SeatRole.of(mode, result.seat, viewerSeat).wentOutRes()
+}
+
+/** Em duplas, a frase complementar do anúncio ("Sua dupla venceu a partida!"); `null` no individual ou sem vencedor. */
+@StringRes
+fun roundTeamAnnouncementRes(mode: GameMode, result: RoundResult, viewerSide: Side): Int? = when {
+    mode != GameMode.DUPLAS || result !is RoundResult.GoOut -> null
+    result.side == viewerSide -> R.string.announce_team_won_round
+    else -> R.string.announce_other_team_won_round
+}
+
+/** §13.1 texto do fim de jogo por desistência. */
+@StringRes
+fun resignedRes(mode: GameMode): Int =
+    if (mode == GameMode.DUPLAS) R.string.game_over_resigned_duplas else R.string.game_over_resigned_individual
+
+/** §3.5/§6.5 título da encenação de troca de 3 vermelho do próprio humano. */
+@Composable
+@ReadOnlyComposable
+fun revealTitle(notice: RedThreeNotice): String {
+    val cards = notice.cards.labels()
+    return stringResource(if (notice.atDeal) R.string.red_three_deal_you else R.string.red_three_you_drew, cards)
+}
+
+/** §3.5/§6.5 aviso da troca de 3 vermelho de outro assento: quem, qual carta e se foi na distribuição. */
+@Composable
+@ReadOnlyComposable
+fun bannerText(mode: GameMode, notice: RedThreeNotice, viewerSeat: Seat): String {
+    val name = stringResource(SeatRole.of(mode, notice.seat, viewerSeat).nameRes())
+    return stringResource(if (notice.atDeal) R.string.red_three_banner_deal else R.string.red_three_banner, name, notice.cards.labels())
+}

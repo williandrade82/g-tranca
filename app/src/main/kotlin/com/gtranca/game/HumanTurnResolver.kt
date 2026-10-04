@@ -114,18 +114,39 @@ object HumanTurnResolver {
     }
 
     /**
-     * Classes de cartas a destacar na mão: as que participam de alguma jogada de baixar, acrescentar ou pegar o
-     * lixo em `legal` compatível com a [selection] (cujas cartas cabem, com multiplicidade, na jogada). O
+     * Quantas cópias de cada classe ainda podem ser destacadas na mão: para cada jogada de baixar, acrescentar ou
+     * pegar o lixo em `legal` compatível com a [selection] (cujas cartas cabem, com multiplicidade, na jogada), as
+     * cópias que ela usa além das já selecionadas (contagem na ação − contagem na seleção); o máximo entre as
+     * jogadas. Assim a 2ª cópia de uma carta já selecionada só é destacada se alguma jogada usa as duas. O
      * descarte fica de fora: qualquer carta (exceto 3 vermelho) pode ser descartada e destacaria a mão toda.
      */
-    fun highlightedClasses(legal: List<Action>, selection: List<Card>): Set<CardClass> {
+    fun highlightCounts(legal: List<Action>, selection: List<Card>): Map<CardClass, Int> {
         val wanted = selection.classCounts()
-        val result = mutableSetOf<CardClass>()
+        val result = mutableMapOf<CardClass, Int>()
         for (action in legal) {
             if (action !is Action.CreateMeld && action !is Action.AddToMeld && action !is Action.TakeDiscardPile) continue
             val counts = handCardsOf(action).classCounts()
-            if (wanted.all { (cls, n) -> (counts[cls] ?: 0) >= n }) result += counts.keys
+            if (!wanted.all { (cls, n) -> (counts[cls] ?: 0) >= n }) continue
+            for ((cls, n) in counts) {
+                val extra = n - (wanted[cls] ?: 0)
+                if (extra > (result[cls] ?: 0)) result[cls] = extra
+            }
         }
         return result
+    }
+
+    /**
+     * Cartas físicas da [hand] a destacar: para cada classe, até [highlightCounts] cópias ainda não selecionadas,
+     * na ordem da mão.
+     */
+    fun highlightedCards(hand: List<Card>, legal: List<Action>, selection: List<Card>): Set<Card> {
+        val remaining = highlightCounts(legal, selection).toMutableMap()
+        val selected = selection.toSet()
+        return hand.filter { card ->
+            if (card in selected) return@filter false
+            val left = remaining[card.cardClass] ?: 0
+            if (left > 0) remaining[card.cardClass] = left - 1
+            left > 0
+        }.toSet()
     }
 }

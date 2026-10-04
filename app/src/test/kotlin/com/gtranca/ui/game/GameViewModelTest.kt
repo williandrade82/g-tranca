@@ -7,24 +7,31 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldError
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.Side
 import com.gtranca.game.GameConfig
+import com.gtranca.game.HandOrder
+import com.gtranca.game.HandSort
 import com.gtranca.game.HumanTurnResolver
+import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.Stage
 import com.gtranca.game.cardClass
-import io.kotest.matchers.collections.shouldBeSortedWith
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldBeSortedWith
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
@@ -47,15 +54,27 @@ class GameViewModelTest {
         target: Int = 3000,
         mode: GameMode = GameMode.INDIVIDUAL,
         botDelayMillis: Long = 0,
+        settleReveals: Boolean = true,
+        swapMillis: Long = 0,
     ): GameViewModel {
         val vm = GameViewModel(
             GameConfig(mode, Difficulty.FACIL, target),
             gameSeed = seed,
             computeDispatcher = dispatcher,
             botDelayMillis = botDelayMillis,
+            swapAnimationMillis = swapMillis,
         )
         advanceUntilIdle()
+        if (settleReveals) settle(vm)
         return vm
+    }
+
+    /** Confirma as encenações de 3 vermelho pendentes (elas bloqueiam a mesa). */
+    private fun TestScope.settle(vm: GameViewModel) {
+        while (vm.uiState.value.reveal != null) {
+            vm.onRevealConfirmed()
+            advanceUntilIdle()
+        }
     }
 
     private fun GameViewModel.select(cards: List<Card>) = cards.forEach(::onCardClick)
@@ -66,24 +85,39 @@ class GameViewModelTest {
         return wanted.map { w -> available.first { it.cardClass == w.cardClass }.also { available.remove(it) } }
     }
 
+    /** Uma vez do humano: compra e descarta a primeira carta descartável (sem confirmar encenações). */
+    private fun TestScope.drawAndDiscard(vm: GameViewModel) {
+        vm.onDraw()
+        advanceUntilIdle()
+        settle(vm)
+        val state = vm.uiState.value
+        if (!state.playing) return
+        val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+        vm.select(state.physical(listOf(discard.card)))
+        vm.onDiscard()
+        advanceUntilIdle()
+    }
+
     @Test
-    fun `comeca na vez do humano com a mao ordenada e so a compra habilitada`() = runTest(dispatcher) {
+    fun `comeca na vez do humano com a mao na ordem personalizada e so a compra habilitada`() = runTest(dispatcher) {
         val vm = newGame(seed = 3)
         val state = vm.uiState.value
         state.isHumanTurn shouldBe true
         state.awaitingDraw shouldBe true
         state.canDraw shouldBe true
         state.canMeld shouldBe false
-        state.hand.size shouldBe state.snapshot.view.hand.size
-        state.hand shouldBe GameViewModel.sortHand(state.snapshot.view.hand, HandSort.BY_SUIT)
-        vm.onToggleSort()
+        state.sort shouldBe HandSort.CUSTOM
+        state.hand shouldBe HandOrder.sort(state.snapshot.view.hand, HandSort.CUSTOM)
+        state.customHand shouldBe HandOrder.custom(state.snapshot.view.hand)
+        vm.onSortChange(HandSort.BY_RANK)
         advanceUntilIdle()
         vm.uiState.value.sort shouldBe HandSort.BY_RANK
+        vm.uiState.value.customHand.shouldBeNull()
         vm.uiState.value.hand.map { it.rank }.shouldBeSortedWith(compareBy { it.ordinal })
     }
 
     @Test
-    fun `comprar, recusa explicada, baixar com a outra copia e descartar`() = runTest(dispatcher) {
+    fun `comprar, recusa explicada, baixar com a outra copia e descartar tocando no lixo`() = runTest(dispatcher) {
         // Procura uma semente em que o humano possa baixar depois de comprar.
         var vm: GameViewModel? = null
         var meld: Action.CreateMeld? = null
@@ -91,6 +125,7 @@ class GameViewModelTest {
             val candidate = newGame(seed)
             candidate.onDraw()
             advanceUntilIdle()
+            settle(candidate)
             val found = candidate.uiState.value.snapshot.humanLegal.filterIsInstance<Action.CreateMeld>().firstOrNull()
             if (candidate.uiState.value.playing && found != null) {
                 vm = candidate
@@ -103,8 +138,7 @@ class GameViewModelTest {
         vm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
 
         // Seleção inválida: o motivo vem do motor.
-        val single = vm.uiState.value.physical(meld.cards.take(1))
-        vm.select(single)
+        vm.select(vm.uiState.value.physical(meld.cards.take(1)))
         vm.onCreateMeld()
         advanceUntilIdle()
         vm.uiState.value.message shouldBe UiMessage.Rejected(MeldError.TOO_FEW_CARDS)
@@ -121,43 +155,190 @@ class GameViewModelTest {
         afterMeld.snapshot.view.tables[afterMeld.snapshot.viewerSide.index].melds.size shouldBe 1
         afterMeld.selected.shouldBeEmpty()
 
-        // Descartar com 2 cartas selecionadas pede uma só.
-        val two = afterMeld.hand.take(2)
-        vm.select(two)
-        vm.onDiscard()
+        // §8 tocar no lixo com 2 cartas selecionadas pede uma só.
+        vm.select(afterMeld.hand.take(2))
+        vm.onDiscardPileClick()
         advanceUntilIdle()
         vm.uiState.value.message shouldBe UiMessage.SelectOneCardToDiscard
         vm.onClearSelection()
 
+        // Com uma carta (e o Discard dela em legal), tocar no lixo descarta.
         val discard = vm.uiState.value.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
         vm.select(vm.uiState.value.physical(listOf(discard.card)))
-        vm.onDiscard()
+        vm.onDiscardPileClick()
         advanceUntilIdle()
-        val after = vm.uiState.value
-        if (after.snapshot.stage == Stage.PLAYING) {
-            // O bot jogou a vez inteira e a vez voltou ao humano; a última jogada dele está visível.
-            after.isHumanTurn shouldBe true
-            after.snapshot.turnEvents[1].shouldNotBeEmpty()
-        }
+        vm.uiState.value.snapshot.history.size + vm.uiState.value.snapshot.turnEvents[0].size shouldBe
+            vm.uiState.value.snapshot.history.size + 3 // compra, baixa e descarte
+        vm.uiState.value.snapshot.turnEvents[0].last().action.shouldBeDiscardOf(discard.card)
+    }
+
+    private fun Action.shouldBeDiscardOf(card: Card) {
+        (this as Action.Discard).card.cardClass shouldBe card.cardClass
     }
 
     @Test
-    fun `destaque vem de legalActions e recusa da compra so quando legal`() = runTest(dispatcher) {
+    fun `destaque por copias vem de legalActions e recusa da compra so quando legal`() = runTest(dispatcher) {
         val vm = newGame(seed = 7)
         vm.onDraw()
         advanceUntilIdle()
+        settle(vm)
         val state = vm.uiState.value
-        state.highlighted shouldBe HumanTurnResolver.highlightedClasses(state.snapshot.humanLegal, emptyList())
+        state.highlighted shouldBe HumanTurnResolver.highlightedCards(state.hand, state.snapshot.humanLegal, emptyList())
         vm.onDeclineDraw()
         advanceUntilIdle()
         vm.uiState.value.confirmDecline shouldBe false
     }
 
     @Test
-    fun `jogo inteiro pela interface ate o fim de jogo`() = runTest(dispatcher) {
+    fun `carta comprada fica destacada como nova ate a proxima jogada`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        val before = vm.uiState.value.snapshot.view.hand.toSet()
+        vm.onDraw()
+        advanceUntilIdle()
+        settle(vm)
+        val state = vm.uiState.value
+        val gained = state.snapshot.view.hand.toSet() - before
+        gained.shouldNotBeEmpty()
+        state.newCards shouldBe gained
+        // Na próxima jogada (descarte), o destaque some.
+        val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+        vm.select(state.physical(listOf(discard.card)))
+        vm.onDiscard()
+        advanceUntilIdle()
+        vm.uiState.value.newCards.shouldBeEmpty()
+    }
+
+    @Test
+    fun `§5_3 e §5_5 pegar lixo so habilitado com TakeDiscardPile em legal`() = runTest(dispatcher) {
+        // Joga várias vezes em várias sementes; em toda etapa de compra o botão segue legalActions, e encontra ao
+        // menos um lixo travado por 3 preto ou vazio.
+        var blockedSeen = false
+        for (seed in 1L..20L) {
+            val vm = newGame(seed)
+            repeat(15) {
+                val state = vm.uiState.value
+                if (state.awaitingDraw) {
+                    state.canTakeDiscardPile shouldBe state.snapshot.humanLegal.any { it is Action.TakeDiscardPile }
+                    val top = state.snapshot.view.discardTop
+                    if (top == null || top.isBlackThree) {
+                        state.canTakeDiscardPile shouldBe false
+                        blockedSeen = true
+                    }
+                    drawAndDiscard(vm)
+                }
+            }
+            if (blockedSeen) break
+        }
+        blockedSeen shouldBe true
+    }
+
+    @Test
+    fun `§6_5 3 vermelho comprado pelo humano e encenado antes da reposicao aparecer`() = runTest(dispatcher) {
+        var found: Pair<GameViewModel, RedThreeReveal>? = null
+        seeds@ for (seed in 1L..40L) {
+            val vm = newGame(seed)
+            repeat(25) {
+                if (vm.uiState.value.snapshot.stage != Stage.PLAYING || !vm.uiState.value.awaitingDraw) return@repeat
+                vm.onDraw()
+                advanceUntilIdle()
+                val reveal = vm.uiState.value.reveal
+                if (reveal != null && !reveal.notice.atDeal) {
+                    found = vm to reveal
+                    break@seeds
+                }
+                settle(vm)
+                val state = vm.uiState.value
+                if (state.playing) {
+                    val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+                    vm.select(state.physical(listOf(discard.card)))
+                    vm.onDiscard()
+                    advanceUntilIdle()
+                }
+            }
+        }
+        val (vm, first) = found.shouldNotBeNull()
+        first.notice.seat shouldBe Seat(0)
+        val own = vm.uiState.value.snapshot.viewerSide.index
+        // Uma encenação por 3 vermelho (reposição em cadeia = várias); a reposição aparece só depois da última.
+        val hiddenSeen = mutableSetOf<Card>()
+        var current: RedThreeReveal? = first
+        while (current != null) {
+            val state = vm.uiState.value
+            current.notice.cards.all { it.isRedThree } shouldBe true
+            // Durante a encenação: a mesa ainda não mostra esse 3 vermelho, a mão não mostra a reposição e nada se joga.
+            state.redThrees[own].any { it in current!!.notice.cards } shouldBe false
+            state.hand.any { it in current!!.hiddenHandCards } shouldBe false
+            state.isHumanTurn shouldBe false
+            vm.onCreateMeld()
+            advanceUntilIdle()
+            vm.uiState.value.message.shouldBeNull()
+            hiddenSeen += current.hiddenHandCards
+            // "Baixar 3 vermelho": ele vai à mesa.
+            vm.onRevealConfirmed()
+            advanceUntilIdle()
+            vm.uiState.value.redThrees[own] shouldContainAll current.notice.cards
+            current = vm.uiState.value.reveal
+        }
+        hiddenSeen.shouldNotBeEmpty()
+        val after = vm.uiState.value
+        after.hand shouldContainAll hiddenSeen
+        after.newCards shouldContainAll hiddenSeen
+        after.isHumanTurn shouldBe true
+    }
+
+    @Test
+    fun `§3_5 trocas da distribuicao encenadas uma a uma na ordem do registro, antes da 1a jogada`() = runTest(dispatcher) {
+        var dealChecked = false
+        var playBanner: RedThreeNotice? = null
+        for (seed in 1L..60L) {
+            // Sem avançar o tempo antes de começar a observar (as animações dos bots duram 1 s cada).
+            val vm = GameViewModel(
+                GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+                gameSeed = seed,
+                computeDispatcher = dispatcher,
+                botDelayMillis = 0,
+                swapAnimationMillis = 1_000,
+            )
+            val presented = mutableListOf<RedThreeNotice>()
+            backgroundScope.launch {
+                vm.uiState.collect { state ->
+                    val head = state.reveal?.notice ?: state.banner
+                    if (head != null && presented.none { it.id == head.id }) presented += head
+                }
+            }
+            advanceUntilIdle()
+            val deal = vm.uiState.value.snapshot.view.redThreeLog.filter { it.atDeal }
+            val ownDeal = vm.uiState.value.reveal?.notice?.takeIf { it.atDeal }
+            if (ownDeal != null && deal.size >= 2 && !dealChecked) {
+                // O controlador espera a encenação: ninguém jogou ainda.
+                vm.uiState.value.snapshot.turnEvents.all { it.isEmpty() } shouldBe true
+                vm.uiState.value.snapshot.thinkingSeat.shouldBeNull()
+                ownDeal.seat shouldBe Seat(0)
+                settle(vm)
+                // Todas as trocas da distribuição foram mostradas, uma a uma, na ordem do registro, com quem trocou.
+                presented.filter { it.atDeal }.map { it.seat to it.cards.single() } shouldBe deal.map { it.seat to it.card }
+                dealChecked = true
+            } else {
+                settle(vm)
+            }
+            repeat(10) {
+                if (vm.uiState.value.awaitingDraw) drawAndDiscard(vm)
+                settle(vm)
+            }
+            presented.firstOrNull { !it.atDeal && it.seat != Seat(0) }?.let { playBanner = it }
+            if (dealChecked && playBanner != null) break
+        }
+        dealChecked shouldBe true
+        // Troca de outro assento durante o jogo: aviso com quem trocou (a reposição dele não é revelada).
+        playBanner.shouldNotBeNull().cards.single().isRedThree shouldBe true
+    }
+
+    @Test
+    fun `fim de partida - anuncio, pontos e proxima partida, ou anuncio do jogo e tela final`() = runTest(dispatcher) {
         val vm = newGame(seed = 9, target = 1)
         var guard = 0
         while (vm.uiState.value.snapshot.stage == Stage.PLAYING && guard++ < 2_000) {
+            settle(vm)
             val state = vm.uiState.value
             when {
                 state.awaitingDraw -> if (state.canDraw) vm.onDraw() else vm.onTakeDiscardPile()
@@ -169,29 +350,53 @@ class GameViewModelTest {
             }
             advanceUntilIdle()
         }
-        val ended = vm.uiState.value.snapshot
-        ended.history.size shouldBe 1
-        ended.view.seat shouldBe Seat(0)
-        if (ended.stage == Stage.ROUND_OVER) {
-            vm.onNextRound()
-            advanceUntilIdle()
-            vm.uiState.value.snapshot.roundNumber shouldBe 2
-        } else {
-            ended.stage shouldBe Stage.GAME_OVER
-            vm.onShowFinalResult()
-            advanceUntilIdle()
-            vm.uiState.value.showFinalResult shouldBe true
+        val ended = vm.uiState.value
+        ended.snapshot.history.size shouldBe 1
+        // §11 primeiro o anúncio do resultado, depois os pontos (§12).
+        ended.endScreen shouldBe EndScreen.ANNOUNCE_ROUND
+        vm.onEndNext()
+        advanceUntilIdle()
+        vm.uiState.value.endScreen shouldBe EndScreen.ROUND_POINTS
+        when (ended.snapshot.stage) {
+            Stage.ROUND_OVER -> {
+                vm.onNextRound()
+                advanceUntilIdle()
+                vm.uiState.value.snapshot.roundNumber shouldBe 2
+                vm.uiState.value.endScreen.shouldBeNull()
+            }
+            else -> {
+                ended.snapshot.stage shouldBe Stage.GAME_OVER
+                vm.onEndNext()
+                advanceUntilIdle()
+                vm.uiState.value.endScreen shouldBe EndScreen.ANNOUNCE_GAME
+                vm.onEndNext()
+                advanceUntilIdle()
+                vm.uiState.value.endScreen shouldBe EndScreen.FINAL
+            }
         }
     }
 
-    /** Uma vez do humano: compra e descarta a primeira carta descartável. */
-    private fun TestScope.drawAndDiscard(vm: GameViewModel) {
-        vm.onDraw()
+    @Test
+    fun `§13_1 desistir pede confirmacao, cancelar nao muda nada e confirmar vai ao fim com o outro lado vencedor`() = runTest(dispatcher) {
+        val vm = newGame(seed = 5, mode = GameMode.DUPLAS)
+        val before = vm.uiState.value
+        vm.onResign()
         advanceUntilIdle()
-        val state = vm.uiState.value
-        val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
-        vm.select(state.physical(listOf(discard.card)))
-        vm.onDiscard()
+        vm.uiState.value.confirmResign shouldBe true
+        vm.onDismissResign()
+        advanceUntilIdle()
+        vm.uiState.value shouldBe before
+
+        vm.onResign()
+        vm.onConfirmResign()
+        advanceUntilIdle()
+        val after = vm.uiState.value
+        after.snapshot.stage shouldBe Stage.GAME_OVER
+        after.snapshot.resigned shouldBe true
+        after.snapshot.winner shouldBe Side(1)
+        after.snapshot.totals shouldBe before.snapshot.totals
+        after.endScreen shouldBe EndScreen.FINAL
+        after.confirmResign shouldBe false
     }
 
     @Test
@@ -208,20 +413,25 @@ class GameViewModelTest {
         first.hand.size shouldBe view.handSizes[0]
 
         drawAndDiscard(vm)
-        advanceUntilIdle()
+        settle(vm)
         val after = vm.uiState.value
-        if (after.snapshot.stage == Stage.PLAYING) {
-            // A vez deu a volta: direita (1), parceiro (2) e esquerda (3) jogaram, nessa ordem (§4.2, anti-horário).
-            after.isHumanTurn shouldBe true
-            listOf(1, 2, 3).forEach { after.snapshot.turnEvents[it].shouldNotBeEmpty() }
-        }
+        // A semente 4 mantém a partida em andamento: a vez deu a volta e os três bots jogaram (§4.2, anti-horário).
+        after.snapshot.stage shouldBe Stage.PLAYING
+        after.isHumanTurn shouldBe true
+        listOf(1, 2, 3).forEach { after.snapshot.turnEvents[it].shouldNotBeEmpty() }
     }
 
     @Test
     fun `§4_2 duplas - a vez passa a direita, ao parceiro e a esquerda com a pausa entre bots`() = runTest(dispatcher) {
         val vm = newGame(seed = 4, mode = GameMode.DUPLAS, botDelayMillis = 700)
         vm.uiState.value.isHumanTurn shouldBe true
-        drawAndDiscard(vm)
+        vm.onDraw()
+        advanceUntilIdle()
+        settle(vm)
+        val drawn = vm.uiState.value
+        val discard = drawn.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+        vm.select(drawn.physical(listOf(discard.card)))
+        vm.onDiscard()
         runCurrent()
         val thinkingOrder = mutableListOf<Seat>()
         var guard = 0
@@ -229,14 +439,14 @@ class GameViewModelTest {
             vm.uiState.value.snapshot.thinkingSeat?.let { if (thinkingOrder.lastOrNull() != it) thinkingOrder += it }
             advanceTimeBy(100)
             runCurrent()
+            settle(vm)
         }
-        if (vm.uiState.value.snapshot.stage == Stage.PLAYING) {
-            thinkingOrder shouldContainExactly listOf(Seat(1), Seat(2), Seat(3))
-        }
+        vm.uiState.value.snapshot.stage shouldBe Stage.PLAYING
+        thinkingOrder shouldContainExactly listOf(Seat(1), Seat(2), Seat(3))
     }
 
     @Test
-    fun `toque duplo - o segundo toque nao mostra motivo de outra situacao`() = runTest(dispatcher) {
+    fun `§4_3 toque duplo - o segundo toque nao mostra motivo de outra situacao`() = runTest(dispatcher) {
         val vm = newGame(seed = 3)
         vm.uiState.value.awaitingDraw shouldBe true
         vm.select(vm.uiState.value.hand.take(3))

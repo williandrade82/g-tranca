@@ -1,5 +1,9 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,7 +38,7 @@ fun signed(points: Int): String = if (points > 0) "+$points" else points.toStrin
 
 /** Fim de partida: detalhamento §12 por lado, a partir de [SideScore] do histórico. */
 @Composable
-fun RoundSummaryScreen(snapshot: GameSnapshot, onNextRound: () -> Unit, onShowFinalResult: () -> Unit) {
+fun RoundSummaryScreen(snapshot: GameSnapshot, onNextRound: () -> Unit, onContinue: () -> Unit) {
     val record = snapshot.history.last()
     val view = snapshot.view
     val sides = listOf(view.side) + view.mode.sides.filter { it != view.side }
@@ -54,17 +58,48 @@ fun RoundSummaryScreen(snapshot: GameSnapshot, onNextRound: () -> Unit, onShowFi
 
             ScoreRow(stringResource(R.string.score_item), sides.map { sideName(view.mode, it, view.side) }, bold = true)
             HorizontalDivider()
-            ScoreRow(stringResource(R.string.score_red_threes), scores.map { it.redThrees.text() })
+            // §12.1 sem canastra na mesa, cada 3 vermelho vale −100: a célula diz o motivo.
+            val noCanasta = stringResource(R.string.score_red_threes_no_canasta)
+            ScoreRow(
+                stringResource(R.string.score_red_threes),
+                scores.map { score -> score.redThrees.text() + if (score.redThrees.points < 0) "\n$noCanasta" else "" },
+                tag = "red-threes-row",
+            )
+            if (scores.any { it.redThrees.points < 0 }) {
+                Text(stringResource(R.string.score_red_threes_note), style = MaterialTheme.typography.bodySmall)
+            }
             ScoreRow(stringResource(R.string.score_clean_canastas), scores.map { it.cleanCanastas.text() })
             ScoreRow(stringResource(R.string.score_dirty_canastas), scores.map { it.dirtyCanastas.text() })
             ScoreRow(stringResource(R.string.score_go_out), scores.map { signed(it.goOut) })
             ScoreRow(stringResource(R.string.score_morto_not_taken), scores.map { signed(it.mortoNotTaken) })
-            Text(stringResource(R.string.score_hand_header), style = MaterialTheme.typography.labelLarge)
-            ScoreRow(stringResource(R.string.score_hand_red_threes), scores.map { it.hand.redThrees.text() })
-            ScoreRow(stringResource(R.string.score_hand_black_threes), scores.map { it.hand.blackThrees.text() })
-            ScoreRow(stringResource(R.string.score_hand_four_to_ten), scores.map { it.hand.fourToTen.text() })
-            ScoreRow(stringResource(R.string.score_hand_faces), scores.map { it.hand.faceCardsAndAces.text() })
-            ScoreRow(stringResource(R.string.score_hand_wilds), scores.map { it.hand.wilds.text() })
+            // §12.2 cartas na mão: seção destacada, com subtotal.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .testTag("hand-section"),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    stringResource(R.string.score_hand_header),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.semantics { heading() },
+                )
+                ScoreRow(stringResource(R.string.score_hand_red_threes), scores.map { it.hand.redThrees.text() })
+                ScoreRow(stringResource(R.string.score_hand_black_threes), scores.map { it.hand.blackThrees.text() })
+                ScoreRow(stringResource(R.string.score_hand_four_to_ten), scores.map { it.hand.fourToTen.text() })
+                ScoreRow(stringResource(R.string.score_hand_faces), scores.map { it.hand.faceCardsAndAces.text() })
+                ScoreRow(stringResource(R.string.score_hand_wilds), scores.map { it.hand.wilds.text() })
+                HorizontalDivider()
+                ScoreRow(
+                    stringResource(R.string.score_hand_subtotal),
+                    scores.map { signed(it.hand.points) },
+                    bold = true,
+                    tag = "hand-subtotal",
+                )
+            }
             HorizontalDivider()
             ScoreRow(stringResource(R.string.score_round_total), scores.map { signed(it.total) }, bold = true)
             ScoreRow(
@@ -78,8 +113,8 @@ fun RoundSummaryScreen(snapshot: GameSnapshot, onNextRound: () -> Unit, onShowFi
             if (tie) Text(stringResource(R.string.round_tie_notice), style = MaterialTheme.typography.bodyMedium)
 
             if (snapshot.stage == Stage.GAME_OVER) {
-                Button(onShowFinalResult, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("show-final")) {
-                    Text(stringResource(R.string.see_final_result))
+                Button(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("show-final")) {
+                    Text(stringResource(R.string.announce_continue))
                 }
             } else {
                 Button(onNextRound, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("next-round")) {
