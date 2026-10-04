@@ -16,6 +16,26 @@
     <string name="home_target_error">Informe um número inteiro positivo</string>
     <string name="home_target_too_large">Número grande demais (máximo %1$d)</string>
     <string name="home_new_game">Novo jogo</string>
+    <string name="home_continue">Continuar</string>
+    <string name="home_saved_summary">%1$s · %2$s · partida %3$d · %4$s %5$s × %6$s %7$s</string>
+    <string name="mode_duplas_short">Duplas</string>
+    <string name="home_stats">Estatísticas</string>
+    <string name="new_game_confirm_title">Começar um novo jogo?</string>
+    <string name="new_game_confirm_text">O jogo salvo será perdido.</string>
+    <string name="new_game_confirm">Começar</string>
+
+    <!-- Estatísticas -->
+    <string name="stats_title">Estatísticas</string>
+    <string name="stats_difficulty">Dificuldade</string>
+    <string name="stats_games">Jogos</string>
+    <string name="stats_wins">Vitórias</string>
+    <string name="stats_percent">%</string>
+    <string name="stats_defeats_note">Desistências contam como derrota.</string>
+    <string name="stats_reset">Zerar estatísticas</string>
+    <string name="stats_reset_title">Zerar estatísticas?</string>
+    <string name="stats_reset_text">Todas as contagens voltam a zero.</string>
+    <string name="stats_reset_confirm">Zerar</string>
+    <string name="back">Voltar</string>
 
     <!-- Cartas -->
     <string name="card_description">%1$s de %2$s</string>
@@ -104,8 +124,8 @@
     <string name="decline_title">Recusar a compra?</string>
     <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem vencedor.</string>
     <string name="decline_confirm">Recusar e encerrar</string>
-    <string name="exit_title">Sair do jogo?</string>
-    <string name="exit_text">O jogo em andamento será perdido.</string>
+    <string name="exit_title">Voltar ao início?</string>
+    <string name="exit_text">O jogo fica salvo: você pode continuar depois, pela tela inicial.</string>
     <string name="exit_confirm">Sair</string>
 
     <!-- Eventos públicos -->

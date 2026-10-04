@@ -6,6 +6,23 @@ import com.gtranca.game.GameConfig
 import com.gtranca.game.parseTargetScore
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import com.gtranca.data.SavedConfig
+import com.gtranca.data.SavedGame
+import com.gtranca.data.SavedGameStore
+import com.gtranca.data.Settings
+import com.gtranca.data.SettingsRepository
+import com.gtranca.engine.startMatch
+import io.kotest.matchers.nulls.shouldNotBeNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlin.random.Random
 import org.junit.jupiter.api.Test
 
 class HomeViewModelTest {
@@ -66,4 +83,77 @@ class HomeViewModelTest {
         vm.onTargetChange("+3000")
         vm.uiState.value.targetError shouldBe TargetError.INVALID
     }
+
+    private class FakeSettings(initial: Settings = Settings()) : SettingsRepository {
+        val state = MutableStateFlow(initial)
+        override val settings: Flow<Settings> = state
+        override suspend fun setLastMode(mode: GameMode) = state.update { it.copy(lastMode = mode) }
+        override suspend fun setHandSort(id: String) = state.update { it.copy(handSortId = id) }
+    }
+
+    private class FakeStore(var game: SavedGame? = null) : SavedGameStore {
+        override suspend fun load(): SavedGame? = game
+        override suspend fun save(game: SavedGame) {
+            this.game = game
+        }
+        override suspend fun clear() {
+            game = null
+        }
+    }
+
+    private fun saved(): SavedGame {
+        val match = startMatch(GameMode.DUPLAS, targetScore = 2000, random = Random(1))
+        return SavedGame(gameId = "g", config = SavedConfig(GameMode.DUPLAS, "dificil", 2000), gameSeed = 1, match = match, events = emptyList())
+    }
+
+    @Test
+    fun `§14 modo vem pre-selecionado com o ultimo escolhido e e lembrado ao comecar`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val settings = FakeSettings(Settings(lastMode = GameMode.DUPLAS))
+            val vm = HomeViewModel(settings, FakeStore())
+            advanceUntilIdle()
+            vm.uiState.value.mode shouldBe GameMode.DUPLAS
+            // Dificuldade e alvo continuam com os padrões de §14.
+            vm.uiState.value.difficulty shouldBe Difficulty.MEDIO
+            vm.uiState.value.targetScore shouldBe 3000
+            vm.onModeChange(GameMode.INDIVIDUAL)
+            vm.onNewGame() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000)
+            advanceUntilIdle()
+            settings.state.value.lastMode shouldBe GameMode.INDIVIDUAL
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `com jogo salvo, continuar aparece com o resumo e novo jogo pede confirmacao`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val store = FakeStore(saved())
+            val vm = HomeViewModel(FakeSettings(), store)
+            advanceUntilIdle()
+            val summary = vm.uiState.value.saved.shouldNotBeNull()
+            summary.mode shouldBe GameMode.DUPLAS
+            summary.difficulty shouldBe Difficulty.DIFICIL
+            summary.roundNumber shouldBe 1
+            summary.ownTotal shouldBe 0
+            // Novo jogo: primeiro a confirmação; cancelar não começa nada.
+            vm.onNewGame().shouldBeNull()
+            vm.uiState.value.confirmNewGame shouldBe true
+            vm.onDismissNewGame()
+            vm.uiState.value.confirmNewGame shouldBe false
+            vm.onNewGame().shouldBeNull()
+            vm.onConfirmNewGame() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000)
+            // Ao voltar para a tela, o salvo é relido (ex.: o jogo terminou e foi apagado).
+            store.game = null
+            vm.refresh()
+            advanceUntilIdle()
+            vm.uiState.value.saved.shouldBeNull()
+            vm.onNewGame() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
 }
+

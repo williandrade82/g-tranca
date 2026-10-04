@@ -23,7 +23,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HomeToTableTest {
 
-    @get:Rule
+    @get:Rule(order = 0)
+    val clean = CleanDataRule()
+
+    @get:Rule(order = 1)
     val rule = createAndroidComposeRule<MainActivity>()
 
     private val isHandCard = SemanticsMatcher("carta da mão") {

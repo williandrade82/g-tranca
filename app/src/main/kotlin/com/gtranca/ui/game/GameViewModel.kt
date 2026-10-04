@@ -27,6 +27,15 @@ import com.gtranca.game.Resolution
 import com.gtranca.game.Stage
 import com.gtranca.game.cardClass
 import kotlinx.coroutines.CoroutineDispatcher
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
+import kotlinx.coroutines.channels.Channel
+import com.gtranca.game.toSaved
+import com.gtranca.game.savedGameOf
+import com.gtranca.game.SaveSnapshot
+import com.gtranca.game.RestoredGame
+import com.gtranca.game.GamePersistence
+import com.gtranca.data.GameResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -137,7 +146,29 @@ class GameViewModel(
      * São só da interface: o laço do controlador não espera por elas.
      */
     private val animationMillis: Long = DEFAULT_ANIMATION_MILLIS,
+    /** Jogo salvo a retomar (então [config] e [gameSeed] devem ser os dele), ou `null` para um jogo novo. */
+    restored: RestoredGame? = null,
+    /** Identificador do jogo (estatísticas contam cada jogo uma vez); o do jogo salvo, ao retomar. */
+    private val gameId: String = UUID.randomUUID().toString(),
+    /** Onde gravar o jogo, a estatística e as preferências; `null` = não grava (testes). */
+    private val persistence: GamePersistence? = null,
+    /** Ordem da mão inicial (a preferida do jogador). */
+    initialSort: HandSort = HandSort.CUSTOM,
+    /** Onde a gravação roda (nunca na thread principal nem no laço do jogo). */
+    ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel(), TableEvents {
+
+    private val config = config
+    private val gameSeed = gameSeed
+
+    /** Gravações em ordem (salvar, e no fim registrar a estatística e apagar o salvo), consumidas em [ioDispatcher]. */
+    private sealed interface PersistCommand {
+        data class Save(val snapshot: SaveSnapshot) : PersistCommand
+        data class Finish(val result: GameResult) : PersistCommand
+    }
+
+    private val persistCommands = Channel<PersistCommand>(Channel.UNLIMITED)
+    private val finishSent = AtomicBoolean(false)
 
     private data class Local(
         val snapshot: GameSnapshot,
@@ -172,15 +203,54 @@ class GameViewModel(
         viewerSeat = humanSeat,
         computeDispatcher = computeDispatcher,
         botDelayMillis = botDelayMillis,
+        restored = restored,
+        // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
+        onSave = if (persistence == null) null else { snapshot -> persistCommands.trySend(PersistCommand.Save(snapshot)) },
     )
     private val animationIds = AtomicLong(0)
-    private val local = MutableStateFlow(controller.state.value.let { absorb(Local(it), it, previous = null) })
+    private val local = MutableStateFlow(
+        controller.state.value.let { initial ->
+            // Retomada: o registro de 3 vermelhos já aconteceu (nada se reencena) e, se o jogo parou no fim de uma
+            // partida, volta à tela de pontos dela.
+            val base = Local(
+                initial,
+                sort = initialSort,
+                endStep = if (restored != null && initial.stage == Stage.ROUND_OVER) 1 else 0,
+            )
+            absorb(base, initial, previous = if (restored != null) initial else null)
+        },
+    )
 
     val uiState: StateFlow<GameUiState> = local.map(::build)
         .stateIn(viewModelScope, SharingStarted.Eagerly, build(local.value))
 
     init {
-        viewModelScope.launch { controller.state.collect { snapshot -> local.update { absorb(it, snapshot, it.snapshot) } } }
+        viewModelScope.launch {
+            controller.state.collect { snapshot ->
+                local.update { absorb(it, snapshot, it.snapshot) }
+                // §13/§13.1 fim do jogo: estatística (uma vez) e o jogo salvo apagado.
+                if (snapshot.stage == Stage.GAME_OVER && persistence != null && finishSent.compareAndSet(false, true)) {
+                    val result = when {
+                        snapshot.resigned -> GameResult.RESIGNATION
+                        snapshot.winner == snapshot.viewerSide -> GameResult.WIN
+                        else -> GameResult.LOSS
+                    }
+                    persistCommands.trySend(PersistCommand.Finish(result))
+                }
+            }
+        }
+        if (persistence != null) {
+            viewModelScope.launch(ioDispatcher) {
+                for (command in persistCommands) {
+                    when (command) {
+                        is PersistCommand.Save -> persistence.save(savedGameOf(gameId, config, gameSeed, command.snapshot))
+                        is PersistCommand.Finish -> persistence.finish(gameId, config.toSaved(), command.result)
+                    }
+                }
+            }
+            // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
+            if (restored == null) persistCommands.trySend(PersistCommand.Save(controller.saveSnapshot()))
+        }
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
             local.map { state -> state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) } }
@@ -350,7 +420,10 @@ class GameViewModel(
 
     override fun onClearSelection() = local.update { it.copy(selected = emptyList()) }
 
-    override fun onSortChange(sort: HandSort) = local.update { it.copy(sort = sort) }
+    override fun onSortChange(sort: HandSort) {
+        local.update { it.copy(sort = sort) }
+        persistence?.let { store -> viewModelScope.launch { store.saveHandSort(sort.name) } }
+    }
 
     override fun onDraw() = play(PlayIntent.Draw)
 

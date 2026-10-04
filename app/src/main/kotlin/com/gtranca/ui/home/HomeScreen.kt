@@ -31,6 +31,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
+import com.gtranca.ui.game.plainPoints
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.AlertDialog
 import com.gtranca.ai.Difficulty
 import com.gtranca.game.GameConfig
 import com.gtranca.ui.cards.CardBack
@@ -41,8 +46,15 @@ import com.gtranca.engine.model.GameMode
 
 /** Início (§14): modo, dificuldade (padrão médio) e pontuação-alvo (padrão 3000, inteiro positivo). */
 @Composable
-fun HomeScreen(viewModel: HomeViewModel, onStart: (GameConfig) -> Unit) {
+fun HomeScreen(
+    viewModel: HomeViewModel,
+    onStart: (GameConfig) -> Unit,
+    onContinue: () -> Unit = {},
+    onStats: () -> Unit = {},
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Ao voltar para esta tela, o jogo salvo pode ter mudado (jogado, terminado).
+    LaunchedEffect(Unit) { viewModel.refresh() }
     Surface(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -56,6 +68,20 @@ fun HomeScreen(viewModel: HomeViewModel, onStart: (GameConfig) -> Unit) {
             }
             Text(stringResource(R.string.home_title), style = MaterialTheme.typography.displayMedium)
             Text(stringResource(R.string.home_subtitle), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+
+            // Jogo salvo: "Continuar" em destaque, com modo, dificuldade e placar.
+            state.saved?.let { saved ->
+                val description = savedDescription(saved)
+                Button(
+                    onClick = onContinue,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("continue"),
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.home_continue), style = MaterialTheme.typography.titleMedium)
+                        Text(description, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                    }
+                }
+            }
 
             Section(stringResource(R.string.home_mode)) {
                 Choice(stringResource(R.string.mode_individual), state.mode == GameMode.INDIVIDUAL, enabled = true, tag = "mode-individual") {
@@ -96,13 +122,55 @@ fun HomeScreen(viewModel: HomeViewModel, onStart: (GameConfig) -> Unit) {
                 modifier = Modifier.fillMaxWidth().testTag("target-field"),
             )
 
-            Button(
-                onClick = { state.toConfig()?.let(onStart) },
-                enabled = state.canStart,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("new-game"),
-            ) { Text(stringResource(R.string.home_new_game)) }
+            val newGameModifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("new-game")
+            val startNew = { viewModel.onNewGame()?.let(onStart) }
+            if (state.saved == null) {
+                Button(onClick = { startNew() }, enabled = state.canStart, modifier = newGameModifier) {
+                    Text(stringResource(R.string.home_new_game))
+                }
+            } else {
+                OutlinedButton(onClick = { startNew() }, enabled = state.canStart, modifier = newGameModifier) {
+                    Text(stringResource(R.string.home_new_game))
+                }
+            }
+            TextButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats")) {
+                Text(stringResource(R.string.home_stats))
+            }
         }
     }
+
+    if (state.confirmNewGame) {
+        AlertDialog(
+            modifier = Modifier.testTag("new-game-dialog"),
+            onDismissRequest = viewModel::onDismissNewGame,
+            title = { Text(stringResource(R.string.new_game_confirm_title)) },
+            text = { Text(stringResource(R.string.new_game_confirm_text)) },
+            confirmButton = {
+                TextButton({ viewModel.onConfirmNewGame()?.let(onStart) }, Modifier.testTag("new-game-confirm")) {
+                    Text(stringResource(R.string.new_game_confirm))
+                }
+            },
+            dismissButton = { TextButton(viewModel::onDismissNewGame) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+}
+
+/** "Duplas · Médio · partida 2 · Nós 214 × 700 Eles" (individual: "Você … Adversário"). */
+@Composable
+private fun savedDescription(saved: SavedSummary): String {
+    val mode = stringResource(if (saved.mode == GameMode.DUPLAS) R.string.mode_duplas_short else R.string.mode_individual)
+    val own = stringResource(if (saved.mode == GameMode.DUPLAS) R.string.score_us else R.string.side_you)
+    val other = stringResource(if (saved.mode == GameMode.DUPLAS) R.string.score_them else R.string.side_opponent)
+    return stringResource(
+        R.string.home_saved_summary,
+        mode,
+        stringResource(saved.difficulty.labelRes()),
+        saved.roundNumber,
+        own,
+        plainPoints(saved.ownTotal),
+        plainPoints(saved.otherTotal),
+        other,
+    )
 }
 
 fun Difficulty.labelRes(): Int = when (this) {

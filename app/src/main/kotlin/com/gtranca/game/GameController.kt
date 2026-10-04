@@ -117,6 +117,13 @@ class GameController(
     private val viewerSeat: Seat = Seat(0),
     private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val botDelayMillis: Long = DEFAULT_BOT_DELAY_MILLIS,
+    /** Jogo salvo a retomar (mesmo `Match` e os eventos públicos da partida atual), ou `null` para um jogo novo. */
+    private val restored: RestoredGame? = null,
+    /**
+     * Chamado sob a trava, sem suspender, a cada ponto de salvamento: depois de cada ação aplicada, ao pontuar a
+     * partida e ao distribuir a próxima. Deve só repassar a foto (a gravação fica fora do laço).
+     */
+    private val onSave: ((SaveSnapshot) -> Unit)? = null,
 ) {
     init {
         require(players.size == config.mode.seatCount) { "Um jogador por assento: ${config.mode.seatCount}" }
@@ -150,13 +157,25 @@ class GameController(
     private val lock = Any()
 
     @Volatile
-    private var match: Match = startMatch(config.mode, config.targetScore, Random(gameSeed))
+    private var match: Match = restored?.match ?: startMatch(config.mode, config.targetScore, Random(gameSeed))
 
     @Volatile
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }
+
+    /** Eventos públicos da partida atual, em ordem (vão para o jogo salvo). */
+    @Volatile
+    private var roundEvents: List<PublicEvent> = emptyList()
+
     init {
-        // §3.5 com humano, a 1ª jogada espera a encenação das trocas da distribuição (ver [dealPresentationDone]).
-        if (human != null && hasDealSwaps()) awaitingPresentation.set(PresentationKey(1, match.currentRound.redThreeLog.size))
+        require(restored == null || restored.match.mode == config.mode) { "Jogo salvo de outro modo" }
+        if (restored != null) {
+            // Retomada: a vista da última vez de cada assento vem do log; trocas já passadas não se reencenam.
+            roundEvents = restored.events
+            restored.events.forEach(::recordEvent)
+        } else if (human != null && hasDealSwaps()) {
+            // §3.5 com humano, a 1ª jogada espera a encenação das trocas da distribuição (ver [dealPresentationDone]).
+            awaitingPresentation.set(PresentationKey(1, match.currentRound.redThreeLog.size))
+        }
     }
 
     /** Partida e identificador do pedido em aberto ao humano; `null` fora da espera pelo humano. */
@@ -170,7 +189,7 @@ class GameController(
     @Volatile
     private var loopJob: Job? = null
 
-    private val _state = MutableStateFlow(snapshot(Stage.PLAYING, humanLegal = emptyList(), thinkingSeat = null))
+    private val _state = MutableStateFlow(snapshot(initialStage(), humanLegal = emptyList(), thinkingSeat = null))
 
     /** Estado atual para a interface. */
     val state: StateFlow<GameSnapshot> = _state.asStateFlow()
@@ -197,11 +216,38 @@ class GameController(
     }
 
     private suspend fun loop() {
+        var resuming = restored != null
         while (true) {
+            // §13 partida já pontuada sem a próxima distribuída (fim de partida, ou jogo retomado nesse ponto): espera a
+            // confirmação do humano e distribui a próxima (§4.1).
+            val awaitNext = synchronized(lock) {
+                if (match.isOver || resigned) return
+                if (!match.isAwaitingNextRound) return@synchronized false
+                if (human != null) awaitingNextRound.set(true)
+                publishLocked(Stage.ROUND_OVER)
+                true
+            }
+            if (awaitNext) {
+                if (human != null) nextRoundSignal.receive()
+                synchronized(lock) {
+                    if (resigned) return
+                    match = match.startNextRound()
+                    roundEvents = emptyList()
+                    save()
+                }
+                resuming = false
+            }
             val waitDeal = synchronized(lock) {
                 if (match.isOver || resigned) return
                 bots.forEach { it.onNewRound() }
+                if (resuming) {
+                    // Retomada no meio da partida: os bots reconstroem a memória com os eventos públicos já aplicados.
+                    roundEvents.forEach { event -> bots.forEach { it.observe(event) } }
+                    publishLocked(Stage.PLAYING)
+                    return@synchronized false
+                }
                 turnEvents = List(config.mode.seatCount) { emptyList() }
+                roundEvents = emptyList()
                 // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho da
                 // distribuição (§3.5), na ordem. Sem humano (bots, :sim), não há espera.
                 val wait = human != null && hasDealSwaps()
@@ -212,6 +258,7 @@ class GameController(
                 publishLocked(Stage.PLAYING)
                 wait
             }
+            resuming = false
             if (waitDeal) presentationSignal.receive()
             while (true) {
                 val round = synchronized(lock) {
@@ -249,7 +296,9 @@ class GameController(
                     val event = PublicEvent.of(round.discardPile, seat, action)
                     match = match.play(seat, action)
                     recordEvent(event)
+                    roundEvents = roundEvents + event
                     bots.forEach { it.observe(event) }
+                    save()
                     // §4.3/§6.5 com humano, uma ação que fez alguém trocar 3 vermelho (compra, reposição em cadeia,
                     // morto) só é seguida da próxima depois de a interface encenar essas trocas: assim a ordem vista é a
                     // real (compra/troca → baixas → descarte) e o descarte é sempre o último movimento de quem joga.
@@ -262,7 +311,7 @@ class GameController(
                 }
                 if (waitSwaps) presentationSignal.receive()
             }
-            val waitNext = synchronized(lock) {
+            synchronized(lock) {
                 // §13.1 a partida que terminou depois da desistência nunca é pontuada.
                 if (resigned) return
                 match = match.finishRound()
@@ -270,17 +319,26 @@ class GameController(
                     publishLocked(Stage.GAME_OVER)
                     return
                 }
-                if (human != null) awaitingNextRound.set(true)
-                publishLocked(Stage.ROUND_OVER)
-                human != null
+                save()
             }
-            if (waitNext) nextRoundSignal.receive()
-            synchronized(lock) {
-                if (resigned) return
-                match = match.startNextRound()
-            }
+            // A espera da próxima partida fica no começo do laço (mesmo caminho do jogo retomado em ROUND_OVER).
         }
     }
+
+    /** Ponto de salvamento: repassa a foto do jogo (sob a trava; a gravação fica fora do laço). */
+    private fun save() {
+        onSave?.invoke(SaveSnapshot(match, roundEvents))
+    }
+
+    /** Etapa do primeiro snapshot (o jogo retomado pode estar no fim de uma partida). */
+    private fun initialStage(): Stage = when {
+        match.isOver -> Stage.GAME_OVER
+        match.isAwaitingNextRound -> Stage.ROUND_OVER
+        else -> Stage.PLAYING
+    }
+
+    /** Foto atual do jogo para salvar (mesmo conteúdo dos pontos de salvamento). */
+    fun saveSnapshot(): SaveSnapshot = synchronized(lock) { SaveSnapshot(match, roundEvents) }
 
     /**
      * Confirmação do humano para distribuir a próxima partida (tela de fim de partida). Ignorada fora da
@@ -428,3 +486,10 @@ class GameController(
         }
     }
 }
+
+/** Jogo salvo a retomar: o `Match` e os eventos públicos da partida atual, em ordem. */
+data class RestoredGame(val match: Match, val events: List<PublicEvent>)
+
+/** O que salvar: o jogo completo e os eventos públicos da partida atual (para reconstruir a memória dos bots). */
+data class SaveSnapshot(val match: Match, val events: List<PublicEvent>)
+
