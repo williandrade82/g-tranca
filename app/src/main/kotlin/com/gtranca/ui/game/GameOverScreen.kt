@@ -41,7 +41,7 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit) {
             )
             sides.forEach { side ->
                 Text(
-                    sideName(view.mode, side, view.side) + ": " + snapshot.totals[side.index],
+                    sideName(view.mode, side, view.side) + ": " + plainPoints(snapshot.totals[side.index]),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }

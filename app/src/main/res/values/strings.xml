@@ -41,7 +41,7 @@
     <string name="side_opponent">Adversário</string>
     <string name="side_your_team">Sua dupla</string>
     <string name="side_other_team">Dupla adversária</string>
-    <string name="score_line">%1$s %2$d × %3$d %4$s</string>
+    <string name="score_line">%1$s %2$s × %3$s %4$s</string>
     <string name="turn_draw">Sua vez: compre do monte ou pegue o lixo</string>
     <string name="turn_play">Sua vez: baixe, acrescente ou descarte</string>
     <string name="turn_opponent">Vez do adversário…</string>

@@ -693,4 +693,68 @@ class GameViewModelTest {
         }
         checked shouldBe true
     }
+
+    @Test
+    fun `§9_4 3 vermelho que veio no morto pego pelo humano - nada oculto e as cartas do morto aparecem como novas`() = runTest(dispatcher) {
+        var checked = false
+        seeds@ for (seed in 1L..200L) {
+            val vm = newGame(seed, target = 1_000_000)
+            repeat(60) {
+                val before = vm.uiState.value
+                if (before.snapshot.stage != Stage.PLAYING) return@repeat
+                if (!before.awaitingDraw) {
+                    settle(vm)
+                    return@repeat
+                }
+                val mortoBefore = before.snapshot.view.mortoStatus
+                playMeldingNoSettle(vm)
+                val after = vm.uiState.value
+                val tookMorto = after.snapshot.view.mortoStatus.indices.any { i ->
+                    after.snapshot.view.mortoStatus[i] == com.gtranca.engine.model.MortoStatus.Taken(Side(0)) &&
+                        mortoBefore[i] != com.gtranca.engine.model.MortoStatus.Taken(Side(0))
+                }
+                val reveal = after.reveal
+                if (tookMorto && reveal != null && !reveal.notice.atDeal) {
+                    // As cartas do morto não ficam ocultas como "reposição" (§9.4).
+                    reveal.hiddenHandCards.shouldBeEmpty()
+                    (after.newCards.size >= 2) shouldBe true
+                    after.hand.containsAll(after.newCards) shouldBe true
+                    checked = true
+                    break@seeds
+                }
+                settle(vm)
+            }
+        }
+        checked shouldBe true
+    }
+
+    /** Uma vez do humano que baixa o que puder e descarta, sem confirmar a encenação final. */
+    private fun TestScope.playMeldingNoSettle(vm: GameViewModel) {
+        vm.onDraw()
+        advanceUntilIdle()
+        settle(vm)
+        var guard = 0
+        while (vm.uiState.value.playing && guard++ < 12) {
+            val state = vm.uiState.value
+            val legal = state.snapshot.humanLegal
+            val meld = legal.filterIsInstance<Action.CreateMeld>().firstOrNull()
+                ?: legal.filterIsInstance<Action.AddToMeld>().firstOrNull()
+            val cards = when (meld) {
+                is Action.CreateMeld -> meld.cards
+                is Action.AddToMeld -> meld.cards
+                else -> null
+            }
+            if (cards != null) {
+                vm.select(state.physical(cards))
+                if (meld is Action.AddToMeld) vm.onAddToMeld(meld.meldId) else vm.onCreateMeld()
+            } else {
+                val discard = legal.filterIsInstance<Action.Discard>().first()
+                vm.select(state.physical(listOf(discard.card)))
+                vm.onDiscard()
+            }
+            advanceUntilIdle()
+            if (vm.uiState.value.reveal != null) return
+        }
+    }
 }
+

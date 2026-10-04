@@ -39,4 +39,15 @@ class ScoreBreakdownTest {
         }
         (checked > 10) shouldBe true
     }
+
+    @Test
+    fun `pontos usam o sinal de menos tipografico em todo lugar`() {
+        signed(200) shouldBe "+200"
+        signed(-95) shouldBe "\u221295"
+        signed(0) shouldBe "0"
+        plainPoints(1704) shouldBe "1704"
+        plainPoints(-61) shouldBe "\u221261"
+        plainPoints(Int.MIN_VALUE) shouldBe "\u22122147483648"
+    }
 }
+

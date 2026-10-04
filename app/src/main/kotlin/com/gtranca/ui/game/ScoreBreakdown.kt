@@ -68,3 +68,16 @@ object ScoreBreakdown {
 
     private fun ScoreLine.line() = Line(count, points)
 }
+
+/** Sinal de menos tipográfico (U+2212), usado em todos os pontos da interface. */
+const val MINUS: Char = '\u2212'
+
+/** Pontos com sinal: "+200", "−95", "0". */
+fun signed(points: Int): String = when {
+    points > 0 -> "+$points"
+    points < 0 -> "$MINUS${-points.toLong()}"
+    else -> "0"
+}
+
+/** Pontos sem "+" (totais acumulados): "1704", "−61". */
+fun plainPoints(points: Int): String = if (points < 0) "$MINUS${-points.toLong()}" else points.toString()

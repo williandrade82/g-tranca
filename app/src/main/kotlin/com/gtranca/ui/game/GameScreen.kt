@@ -13,6 +13,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalContext
 import com.gtranca.R
 import com.gtranca.game.Stage
 
@@ -20,6 +27,7 @@ import com.gtranca.game.Stage
 @Composable
 fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    ObserveAnimationScale(viewModel::onAnimationScaleChanged)
     val snapshot = state.snapshot
     var confirmExit by rememberSaveable { mutableStateOf(false) }
 
@@ -68,4 +76,24 @@ fun ResignDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onConfirm, Modifier.testTag("resign-confirm")) { Text(stringResource(R.string.resign_confirm)) } },
         dismissButton = { TextButton(onDismiss, Modifier.testTag("resign-cancel")) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/**
+ * Observa a escala de duração das animações do sistema (`Settings.Global.ANIMATOR_DURATION_SCALE`, "remover
+ * animações" = 0) e avisa [onChange] na entrada e a cada mudança, enquanto a tela estiver na composição.
+ */
+@Composable
+private fun ObserveAnimationScale(onChange: (Float) -> Unit) {
+    val context = LocalContext.current
+    val current by rememberUpdatedState(onChange)
+    DisposableEffect(context) {
+        val resolver = context.contentResolver
+        fun read() = Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        current(read())
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) = current(read())
+        }
+        resolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, observer)
+        onDispose { resolver.unregisterContentObserver(observer) }
+    }
 }

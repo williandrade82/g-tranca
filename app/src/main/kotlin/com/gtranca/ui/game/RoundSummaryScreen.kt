@@ -36,7 +36,6 @@ import com.gtranca.engine.model.SideScore
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.Stage
 
-fun signed(points: Int): String = if (points > 0) "+$points" else points.toString()
 
 /** Fim de partida: detalhamento §12 por lado, a partir de [SideScore] do histórico. */
 @Composable
@@ -102,7 +101,7 @@ fun RoundSummaryScreen(
             ScoreRow(stringResource(R.string.score_round_total), scores.map { signed(it.total) }, bold = true)
             ScoreRow(
                 stringResource(R.string.score_cumulative),
-                sides.map { snapshot.totals[it.index].toString() },
+                sides.map { plainPoints(snapshot.totals[it.index]) },
                 bold = true,
                 tag = "cumulative",
             )

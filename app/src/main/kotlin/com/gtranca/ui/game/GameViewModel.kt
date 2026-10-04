@@ -7,6 +7,7 @@ import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.MeldId
+import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RuleError
 import com.gtranca.engine.model.Seat
@@ -93,7 +94,10 @@ data class GameUiState(
     val flights: List<CardFlight> = emptyList(),
     /** §7 conjuntos que acabaram de virar canastra (destaque curto). */
     val canastaFlashes: List<CanastaFlash> = emptyList(),
-    /** Duração de cada voo (0 = sem animação). */
+    /**
+     * Duração efetiva de cada voo, já multiplicada pela escala de animação do sistema (0 = sem animação: com
+     * "remover animações", nenhum voo é gerado).
+     */
     val animationMillis: Long = 0,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
@@ -146,6 +150,10 @@ class GameViewModel(
         val hidden: Map<Long, Set<Card>> = emptyMap(),
         val flights: List<CardFlight> = emptyList(),
         val flashes: List<CanastaFlash> = emptyList(),
+        /** Escala de duração das animações do sistema (`ANIMATOR_DURATION_SCALE`; 0 = desligadas). */
+        val animationScale: Float = 1f,
+        /** §9.4 trocas de 3 vermelho que vieram no morto (id da troca → morto). */
+        val mortoSwaps: Map<Long, Int> = emptyMap(),
         val planChoice: List<Action.TakeDiscardPile>? = null,
         /** Pedido ([GameSnapshot.humanRequestId]) em que os planos de [planChoice] foram resolvidos. */
         val planRequestId: Long = 0,
@@ -182,7 +190,7 @@ class GameViewModel(
                         delay(swapAnimationMillis)
                         local.update { state ->
                             if (state.swaps.firstOrNull()?.id == head.id) {
-                                state.copy(swaps = state.swaps.drop(1), flights = state.flights + swapFlights(head, state, emptySet()))
+                                state.copy(swaps = state.swaps.drop(1), flights = state.flights + swapFlights(head, state))
                             } else {
                                 state
                             }
@@ -198,7 +206,8 @@ class GameViewModel(
                 .collect { items ->
                     items.filter { (id, _) -> scheduled.add(id) }.forEach { (id, delayMillis) ->
                         launch {
-                            delay(delayMillis + animationMillis * 2)
+                            // O desenho dura no máximo 2 × a duração efetiva (pulso: sobe e desce) após o atraso.
+                            delay(delayMillis + effectiveMillis(local.value) * 2 + EXPIRY_MARGIN_MILLIS)
                             local.update { state ->
                                 state.copy(flights = state.flights.filterNot { it.id == id }, flashes = state.flashes.filterNot { it.id == id })
                             }
@@ -242,7 +251,20 @@ class GameViewModel(
         var hidden = if (sameRound) state.hidden else emptyMap()
         // A reposição (ou o morto) da troca do próprio humano só aparece depois do "Baixar 3 vermelho" da última
         // troca dele nesta ação.
-        fresh.lastOrNull { !it.atDeal && it.seat == snapshot.viewerSeat }?.let { hidden = hidden + (it.id to gained) }
+        // §9.4 3 vermelhos que vieram no morto pego agora: as cartas do morto aparecem como novas (nada oculto),
+        // e a troca anima do morto à área de 3 vermelhos.
+        val mortoTaken = if (sameRound) {
+            snapshot.view.mortoStatus.indices.firstOrNull { i ->
+                snapshot.view.mortoStatus[i] is MortoStatus.Taken && old.view.mortoStatus.getOrNull(i) !is MortoStatus.Taken
+            }
+        } else {
+            null
+        }
+        val takenBy = mortoTaken?.let { (snapshot.view.mortoStatus[it] as MortoStatus.Taken).side }
+        val fromMorto = fresh.filter { !it.atDeal && takenBy != null && it.side == takenBy }
+        val mortoSwaps = (if (sameRound) state.mortoSwaps else emptyMap()) + fromMorto.associate { it.id to mortoTaken!! }
+        fresh.lastOrNull { !it.atDeal && it.seat == snapshot.viewerSeat && it !in fromMorto }
+            ?.let { hidden = hidden + (it.id to gained) }
         // §3.5 na distribuição, as reposições do humano (informação privada da vista dele) ficam ocultas até a
         // última troca dele ser confirmada, e então aparecem como novas. Não se casa reposição com troca: numa
         // reposição em cadeia a carta intermediária era outro 3 vermelho, que não está mais na mão.
@@ -252,8 +274,9 @@ class GameViewModel(
             newCards = newCards + replacements
         }
         // Animações da mesa a partir das diferenças com o último snapshot incorporado.
-        val (newFlights, newFlashes) = if (animationMillis > 0 && previous != null && snapshot.stage == Stage.PLAYING) {
+        val (newFlights, newFlashes) = if (effectiveMillis(state) > 0 && previous != null && snapshot.stage == Stage.PLAYING) {
             TableAnimations.derive(old, snapshot, hidden.values.flatten().toSet(), animationIds::incrementAndGet)
+                .let { (flights, flashes) -> flights.map { it.scaled(state.animationScale) } to flashes }
         } else {
             emptyList<CardFlight>() to emptyList()
         }
@@ -265,6 +288,7 @@ class GameViewModel(
             selected = state.selected.filter { it in hand },
             newCards = newCards,
             swaps = if (playing) swaps else emptyList(),
+            mortoSwaps = if (playing) mortoSwaps.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             flights = if (playing && sameRound) state.flights + newFlights else emptyList(),
             flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
@@ -305,7 +329,7 @@ class GameViewModel(
             endScreen = endScreen(snapshot, state.endStep),
             flights = state.flights,
             canastaFlashes = state.flashes,
-            animationMillis = animationMillis,
+            animationMillis = effectiveMillis(state),
         )
     }
 
@@ -375,7 +399,7 @@ class GameViewModel(
         state.copy(
             swaps = state.swaps.drop(1),
             hidden = state.hidden - head.id,
-            flights = state.flights + swapFlights(head, state, state.hidden[head.id].orEmpty()),
+            flights = state.flights + swapFlights(head, state),
         )
     }
 
@@ -416,15 +440,51 @@ class GameViewModel(
         }
     }
 
-    /** §6.5 voos da troca encenada (3 vermelho à área do lado; reposição do monte), se as animações estão ligadas. */
-    private fun swapFlights(notice: RedThreeNotice, state: Local, revealed: Set<Card>): List<CardFlight> =
-        if (animationMillis > 0) {
-            TableAnimations.redThreeSwap(notice, state.snapshot.viewerSeat, revealed, animationIds::incrementAndGet)
+    /** Escala de animação do sistema mudou (a tela observa `ANIMATOR_DURATION_SCALE`); 0 desliga os voos. */
+    fun onAnimationScaleChanged(scale: Float) = local.update { state ->
+        if (scale == state.animationScale) {
+            state
         } else {
-            emptyList()
+            state.copy(animationScale = scale, flights = if (scale <= 0f) emptyList() else state.flights, flashes = if (scale <= 0f) emptyList() else state.flashes)
         }
+    }
+
+    /** Duração efetiva de cada animação (configurada × escala do sistema). */
+    private fun effectiveMillis(state: Local): Long = (animationMillis * state.animationScale).toLong().coerceAtLeast(0)
+
+    private fun CardFlight.scaled(scale: Float): CardFlight = copy(delayMillis = (delayMillis * scale).toLong())
+
+    /**
+     * §6.5 voos da troca encenada [notice] (que está saindo da fila de [state]): o 3 vermelho vai à área do lado e a
+     * reposição chega do monte. Do humano: numa cadeia (mesma compra), a reposição de uma troca é o 3 vermelho da troca
+     * seguinte, e a da última é a carta revelada agora; vindo do morto (§9.4), sem reposição do monte. De outro assento,
+     * a reposição chega virada.
+     */
+    private fun swapFlights(notice: RedThreeNotice, state: Local): List<CardFlight> {
+        if (effectiveMillis(state) <= 0) return emptyList()
+        val viewer = state.snapshot.viewerSeat
+        val fromMorto = state.mortoSwaps[notice.id]
+        val replacement = when {
+            fromMorto != null -> TableAnimations.Replacement.None
+            notice.seat != viewer -> TableAnimations.Replacement.FaceDown
+            notice.id in state.hidden -> TableAnimations.Replacement.Revealed(state.hidden.getValue(notice.id).toList())
+            else -> {
+                val next = state.swaps.getOrNull(1)
+                if (!notice.atDeal && next != null && next.seat == viewer && !next.atDeal && next.id !in state.mortoSwaps) {
+                    TableAnimations.Replacement.Revealed(next.cards)
+                } else {
+                    TableAnimations.Replacement.None
+                }
+            }
+        }
+        return TableAnimations.redThreeSwap(notice, viewer, replacement, animationIds::incrementAndGet, fromMorto)
+            .map { it.scaled(state.animationScale) }
+    }
 
     companion object {
+        /** Folga para a limpeza de uma animação depois do fim do desenho. */
+        private const val EXPIRY_MARGIN_MILLIS: Long = 150
+
         /** Duração padrão de cada animação da mesa (300–600 ms). */
         const val DEFAULT_ANIMATION_MILLIS: Long = 450
 

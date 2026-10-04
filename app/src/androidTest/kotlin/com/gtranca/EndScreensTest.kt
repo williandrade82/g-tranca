@@ -42,6 +42,12 @@ import com.gtranca.ui.game.RoundAnnouncement
 import com.gtranca.ui.game.RoundSummaryScreen
 import com.gtranca.ui.game.TableEvents
 import com.gtranca.ui.game.TableScreen
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.gtranca.engine.model.RuleResult
+import com.gtranca.ui.game.CanastaFlash
+import com.gtranca.ui.game.CanastaPulseKey
 import com.gtranca.ui.theme.GTrancaTheme
 import org.junit.Rule
 import org.junit.Test
@@ -101,7 +107,7 @@ class EndScreensTest {
         var resigned = false
         rule.setContent { GTrancaTheme { RoundSummaryScreen(snapshot(), {}, {}, onResign = { resigned = true }) } }
         // §12.1 sem canastra, 3 vermelho vale −100 cada: a célula diz o motivo e a nota explica.
-        rule.onNodeWithText("-200 (2)\nsem canastra").assertExists()
+        rule.onNodeWithText("\u2212200 (2)\nsem canastra").assertExists()
         rule.onNodeWithText("Sem canastra na mesa, cada 3 vermelho vale −100 aqui e +5 em “Cartas na mesa”: −95 no total.").assertExists()
         // §12.1 seção "Cartas na mesa" com subtotal, depois dos pontos especiais.
         rule.onNodeWithTag("table-section").assertExists()
@@ -111,13 +117,13 @@ class EndScreensTest {
         rule.onNodeWithText("+53").assertExists()
         // As linhas somam o total da partida: −200 −100 +34 −59 = −325; 100 + 200 + 100 + 53 = +453.
         // −325 aparece no total da partida e no acumulado (1ª partida).
-        rule.onAllNodesWithText("-325").assertCountEquals(2)
+        rule.onAllNodesWithText("\u2212325").assertCountEquals(2)
         rule.onNodeWithText("+453").assertExists()
         // §12.2 seção "Cartas na mão" destacada, com subtotal: −5 −24 −20 −10 = −59.
         rule.onNodeWithTag("hand-section").assertExists()
         rule.onNodeWithText("Cartas na mão").assertExists()
         rule.onNode(hasText("Subtotal da mão")).assertExists()
-        rule.onNodeWithText("-59").assertExists()
+        rule.onNodeWithText("\u221259").assertExists()
         // §13.1 desistir também daqui.
         rule.onNodeWithTag("action-resign").performClick()
         check(resigned) { "Desistir não chamou a ação" }
@@ -176,4 +182,35 @@ class EndScreensTest {
         rule.onNodeWithTag("red-three-banner").assertIsDisplayed()
         rule.onNodeWithText("Parceiro baixou 3♥︎ na distribuição", useUnmergedTree = true).assertExists()
     }
+
+    @Test
+    fun pulsoDeCanastraVoltaAZeroQuandoODestaqueExpiraNoMeio() {
+        // Canastra limpa da sua dupla (§7) com destaque de "fechou agora".
+        val cards = listOf("4H", "5H", "6H", "7H", "8H", "9H").map(Card::parse)
+        val table = (SideTable().createMeld(cards) as RuleResult.Ok).value
+        val base = view(phase = Phase.PLAYING, result = null).copy(tables = listOf(table, SideTable()))
+        val snapshot = GameSnapshot(
+            GameConfig(mode, Difficulty.MEDIO, 3000), Seat(0), base, 1, listOf(0, 0), emptyList(), Stage.PLAYING,
+            null, emptyList(), Seat(1), List(4) { emptyList() },
+        )
+        val flash = CanastaFlash(1, side = 0, meldId = table.melds.single().id.value, clean = true)
+        val withFlash = GameUiState(
+            snapshot = snapshot, hand = HandOrder.sort(base.hand, HandSort.BY_SUIT), customHand = null,
+            selected = emptyList(), highlighted = emptySet(), newCards = emptySet(), sort = HandSort.BY_SUIT,
+            redThrees = base.redThrees, reveal = null, ownSwapPending = false, banner = null, planChoice = null,
+            confirmDecline = false, confirmResign = false, message = null, endScreen = null,
+            canastaFlashes = listOf(flash), animationMillis = 400,
+        )
+        var state by mutableStateOf(withFlash)
+        rule.mainClock.autoAdvance = false
+        rule.setContent { GTrancaTheme { Box(Modifier.width(360.dp).height(760.dp)) { TableScreen(state, noEvents) } } }
+        fun pulse() = rule.onNodeWithTag("meld-own-0").fetchSemanticsNode().config[CanastaPulseKey]
+        rule.mainClock.advanceTimeBy(250)
+        check(pulse() > 0f) { "o pulso deveria estar subindo: ${pulse()}" }
+        // O ViewModel remove o destaque (expirou) com o pulso no meio: ele volta a 0, não fica preso.
+        state = withFlash.copy(canastaFlashes = emptyList())
+        rule.mainClock.advanceTimeBy(100)
+        check(pulse() == 0f) { "o pulso ficou preso em ${pulse()}" }
+    }
 }
+

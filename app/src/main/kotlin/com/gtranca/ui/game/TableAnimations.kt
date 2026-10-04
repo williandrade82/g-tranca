@@ -108,7 +108,16 @@ object TableAnimations {
                         is DiscardPlan.AddToMeld -> AnimAnchor.Meld(side, plan.meldId.value)
                         is DiscardPlan.NewMeld -> meldFor(old, new, side, plan.handCards)
                     }
-                    old.view.discardTop?.let { flights += CardFlight(nextId(), AnimAnchor.DiscardPile, target, it) }
+                    val handCards = when (val plan = action.plan) {
+                        is DiscardPlan.AddToMeld -> plan.handCards
+                        is DiscardPlan.NewMeld -> plan.handCards
+                    }
+                    // §5.1 o topo vai do lixo ao conjunto (derivado do conjunto, não do snapshot anterior, que pode
+                    // ter sido pulado), e as cartas da mão do plano vão junto da mão até lá.
+                    takenTop(old, new, target, handCards)?.let { flights += CardFlight(nextId(), AnimAnchor.DiscardPile, target, it) }
+                    handCards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
+                        flights += CardFlight(nextId(), from, target, card, STAGGER_MILLIS * i)
+                    }
                     event.takenFromDiscard.takeLast(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
                         flights += CardFlight(nextId(), AnimAnchor.DiscardPile, from, card, STAGGER_MILLIS * (i + 1))
                     }
@@ -125,6 +134,19 @@ object TableAnimations {
             }
         }
         return flights to canastaFlashes(old, new, nextId)
+    }
+
+    /**
+     * Topo do lixo levado ao conjunto [target] (§5.1): as cartas que entraram no conjunto, menos as da mão do plano
+     * (por valor e naipe). `null` se não der para identificar uma só.
+     */
+    private fun takenTop(old: GameSnapshot, new: GameSnapshot, target: AnimAnchor, handCards: List<Card>): Card? {
+        val meld = target as? AnimAnchor.Meld ?: return null
+        val before = old.view.tables[meld.side].melds.firstOrNull { it.id.value == meld.meldId }?.meld?.cards.orEmpty()
+        val after = new.view.tables[meld.side].melds.firstOrNull { it.id.value == meld.meldId }?.meld?.cards ?: return null
+        val added = after.filter { it !in before }.toMutableList()
+        for (card in handCards) added.firstOrNull { it.cardClass == card.cardClass }?.let { added.remove(it) }
+        return added.singleOrNull()
     }
 
     /** Conjunto novo do lado que contém as cartas (por valor e naipe); se não achar, a área do lado. */
@@ -152,19 +174,38 @@ object TableAnimations {
         }
     }
 
+    /** De onde vem a reposição de uma troca de 3 vermelho encenada (§6.5). */
+    sealed interface Replacement {
+        /** Sem voo de reposição (ex.: 3 vermelho que veio no morto, §9.4: as cartas do morto aparecem como novas). */
+        data object None : Replacement
+
+        /** Carta virada do monte até o assento (reposição de outro assento: oculta). */
+        data object FaceDown : Replacement
+
+        /** Cartas reveladas do monte até a mão do humano (a reposição dele, ou o próximo 3 vermelho da cadeia). */
+        data class Revealed(val cards: List<Card>) : Replacement
+    }
+
     /**
-     * §6.5 troca de 3 vermelho encenada: o 3 vermelho vai da mão de quem trocou à área de 3 vermelhos do lado e a
-     * reposição chega do monte (virada para os outros; para o humano, as cartas reveladas agora, [revealed]).
+     * §6.5 troca de 3 vermelho encenada: o 3 vermelho vai de [fromMorto] (se veio no morto, §9.4) ou da mão de quem
+     * trocou até a área de 3 vermelhos do lado, e a reposição chega do monte conforme [replacement].
      */
-    fun redThreeSwap(notice: RedThreeNotice, viewer: Seat, revealed: Collection<Card>, nextId: () -> Long): List<CardFlight> {
-        val from = holder(notice.seat, viewer)
-        val flights = notice.cards.map { CardFlight(nextId(), from, AnimAnchor.RedThrees(notice.side.index), it) }.toMutableList()
-        if (notice.seat == viewer) {
-            revealed.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
-                flights += CardFlight(nextId(), AnimAnchor.Stock, AnimAnchor.OwnHand, card, STAGGER_MILLIS * (i + 2))
+    fun redThreeSwap(
+        notice: RedThreeNotice,
+        viewer: Seat,
+        replacement: Replacement,
+        nextId: () -> Long,
+        fromMorto: Int? = null,
+    ): List<CardFlight> {
+        val holder = holder(notice.seat, viewer)
+        val origin = fromMorto?.let { AnimAnchor.Morto(it) } ?: holder
+        val flights = notice.cards.map { CardFlight(nextId(), origin, AnimAnchor.RedThrees(notice.side.index), it) }.toMutableList()
+        when (replacement) {
+            Replacement.None -> Unit
+            Replacement.FaceDown -> flights += CardFlight(nextId(), AnimAnchor.Stock, holder, null, STAGGER_MILLIS * 2)
+            is Replacement.Revealed -> replacement.cards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
+                flights += CardFlight(nextId(), AnimAnchor.Stock, holder, card, STAGGER_MILLIS * (i + 2))
             }
-        } else {
-            flights += CardFlight(nextId(), AnimAnchor.Stock, from, null, STAGGER_MILLIS * 2)
         }
         return flights
     }

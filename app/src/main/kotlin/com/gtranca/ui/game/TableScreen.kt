@@ -64,6 +64,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -75,7 +77,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import android.annotation.SuppressLint
-import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -89,11 +90,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.toSize
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -271,8 +273,8 @@ private fun Header(state: GameUiState, events: TableEvents) {
             stringResource(
                 R.string.score_line,
                 shortSideName(view.mode, view.side, view.side),
-                snapshot.totals[view.side.index],
-                snapshot.totals[other.index],
+                plainPoints(snapshot.totals[view.side.index]),
+                plainPoints(snapshot.totals[other.index]),
                 shortSideName(view.mode, other, view.side),
             ),
             color = TableAccent,
@@ -443,14 +445,20 @@ private fun MeldView(
     flash: CanastaFlash? = null,
     animationMillis: Long = 0,
 ) {
-    // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em azul-claro).
+    // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em azul-claro). [animationMillis] já vem
+    // escalado; se o destaque for removido no meio, o pulso volta a 0 (nunca fica preso maior/colorido).
     val pulse = remember(tableMeld.id) { Animatable(0f) }
-    val scale = animationScale()
     LaunchedEffect(flash?.id) {
-        if (flash != null && animationMillis > 0 && scale > 0f) {
-            val half = (animationMillis * scale).toInt().coerceAtLeast(1)
+        if (flash == null || animationMillis <= 0) {
+            pulse.snapTo(0f)
+            return@LaunchedEffect
+        }
+        try {
+            val half = animationMillis.toInt().coerceAtLeast(1)
             pulse.animateTo(1f, tween(half))
             pulse.animateTo(0f, tween(half))
+        } finally {
+            withContext(NonCancellable) { pulse.snapTo(0f) }
         }
     }
     val meld = tableMeld.meld
@@ -477,6 +485,7 @@ private fun MeldView(
                 scaleX = grow
                 scaleY = grow
             }
+            .semantics { canastaPulse = pulse.value }
             .heightIn(min = 48.dp)
             .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(6.dp))
             .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(6.dp))
@@ -935,6 +944,10 @@ private fun SwapBanner(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat)
     }
 }
 
+/** Intensidade atual do pulso de canastra (0 = em repouso); exposta na semântica para os testes. */
+val CanastaPulseKey = SemanticsPropertyKey<Float>("CanastaPulse")
+var SemanticsPropertyReceiver.canastaPulse by CanastaPulseKey
+
 /** Cor do destaque de canastra suja fechada (§7). */
 private val CanastaDirtyFlash = Color(0xFF90CAF9)
 
@@ -950,23 +963,14 @@ private fun Modifier.anchor(key: AnimAnchor): Modifier = composed {
     if (anchors == null) this else this.onGloballyPositioned { anchors[key] = Rect(it.positionInRoot(), it.size.toSize()) }
 }
 
-/** Escala de duração das animações do sistema ("remover animações" = 0). */
-@Composable
-private fun animationScale(): Float {
-    val context = LocalContext.current
-    return remember {
-        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
-    }
-}
-
 /**
  * Camada por cima da mesa com as cartas voando ([CardFlight]). Não recebe toques nem aparece para o leitor de tela;
  * com animações desligadas (duração 0 ou escala do sistema 0) não desenha nada.
  */
 @Composable
 private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rect>, durationMillis: Long) {
-    val scale = animationScale()
-    if (durationMillis <= 0 || scale <= 0f || flights.isEmpty()) return
+    // [durationMillis] e os atrasos dos voos já vêm escalados pelo ViewModel (escala 0 = nenhum voo).
+    if (durationMillis <= 0 || flights.isEmpty()) return
     var origin by remember { mutableStateOf(Offset.Zero) }
     Box(
         Modifier
@@ -976,7 +980,7 @@ private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rec
             .testTag("flights-layer"),
     ) {
         flights.forEach { flight ->
-            key(flight.id) { FlyingCard(flight, anchors, { origin }, (durationMillis * scale).toLong(), (flight.delayMillis * scale).toLong()) }
+            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis) }
         }
     }
 }
