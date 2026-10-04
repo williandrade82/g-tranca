@@ -26,6 +26,12 @@ import kotlinx.serialization.Serializable
  *   do registro baixadas pelos assentos do lado são as de [redThrees] do lado, na mesma ordem. Vazio por padrão
  *   para que o JSON salvo antes do registro existir continue legível (nesse caso o registro só tem as trocas
  *   posteriores à leitura).
+ * @property dealReplacements §3.5 / §6.5 cartas que **ficaram na mão** de cada assento como reposição de 3 vermelho
+ *   durante a distribuição, indexadas por [Seat.index], na ordem em que entraram. Reposições em cadeia que também eram
+ *   3 vermelho foram baixadas e não entram (estão no [redThreeLog]). Vale só até a **primeira ação** do assento
+ *   (o motor zera a lista dele nessa ação): depois, uma carta pode sair da mão e voltar (ex.: pelo lixo). **Informação privada** de cada assento (a reposição é oculta para
+ *   os outros, §3.5): só chega ao próprio assento por [com.gtranca.engine.PlayerView.ownDealReplacements]. Só
+ *   informativo (interface): não afeta ações válidas nem efeitos. Vazio por padrão (JSON salvo antes do campo existir).
  */
 @Serializable
 data class RoundState(
@@ -42,8 +48,12 @@ data class RoundState(
     val mortoStatus: List<MortoStatus> = List(2) { MortoStatus.Available },
     val result: RoundResult? = null,
     val redThreeLog: List<RedThreeLaid> = emptyList(),
+    val dealReplacements: List<List<Card>> = List(mode.seatCount) { emptyList() },
 ) {
     init {
+        require(dealReplacements.size == mode.seatCount) {
+            "Esperadas ${mode.seatCount} listas de reposições da distribuição, recebidas ${dealReplacements.size}"
+        }
         require(mortoStatus.size == mortos.size) { "Uma situação por morto" }
         require((phase == Phase.FINISHED) == (result != null)) { "Resultado existe só com a partida encerrada" }
         require(hands.size == mode.seatCount) { "Esperadas ${mode.seatCount} mãos, recebidas ${hands.size}" }
@@ -61,6 +71,12 @@ data class RoundState(
     }
 
     fun redThreesOf(side: Side): List<Card> = redThrees[side.index]
+
+    /** §3.5 / §6.5 reposições de 3 vermelho da distribuição que ficaram na mão de [seat] (privadas do assento). */
+    fun dealReplacementsOf(seat: Seat): List<Card> {
+        mode.requireSeat(seat)
+        return dealReplacements[seat.index]
+    }
 
     fun tableOf(side: Side): SideTable = tables[side.index]
 

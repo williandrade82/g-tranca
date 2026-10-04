@@ -61,7 +61,7 @@ object RoundEngine {
     internal fun step(state: RoundState, seat: Seat, action: Action, rules: RuleSet): RuleResult<RoundState> {
         if (state.phase == Phase.FINISHED) return fail(ActionError.ROUND_FINISHED)
         if (seat != state.currentSeat) return fail(ActionError.NOT_YOUR_TURN)
-        return when (action) {
+        val result = when (action) {
             Action.DrawFromStock -> drawFromStock(state, seat, rules)
             Action.DeclineDraw -> declineDraw(state)
             is Action.TakeDiscardPile -> takeDiscardPile(state, seat, action.plan, rules)
@@ -70,6 +70,17 @@ object RoundEngine {
                 meldFromHand(state, seat, action.cards, rules) { it.addToMeld(action.meldId, action.cards, rules) }
             is Action.Discard -> discard(state, seat, action.card, rules)
         }
+        return result.clearingDealReplacements(seat)
+    }
+
+    /**
+     * §3.5 / §6.5 as reposições da distribuição só valem até a primeira ação do assento: a partir daí uma carta
+     * pode sair da mão e voltar (ex.: pelo lixo) e deixaria de ser "reposição da distribuição".
+     */
+    private fun RuleResult<RoundState>.clearingDealReplacements(seat: Seat): RuleResult<RoundState> {
+        val next = (this as? RuleResult.Ok)?.value ?: return this
+        if (next.dealReplacementsOf(seat).isEmpty()) return this
+        return RuleResult.Ok(next.copy(dealReplacements = next.dealReplacements.replaceAt(seat.index, emptyList())))
     }
 
     // ---------- ações ----------

@@ -34,6 +34,11 @@ import kotlin.random.Random
  *   `(1 - p)^MAX_DETERMINIZATION_ATTEMPTS`. Isso não afeta o bot Difícil, que só busca na própria vez: aí a
  *   mão do assento da vez é a própria, conhecida, e a condição é conferida uma única vez, sem sorteio.
  *
+ * §3.5 reposições de 3 vermelho da distribuição ([RoundState.dealReplacements]): as do próprio assento são as de
+ * [PlayerView.ownDealReplacements]; as dos demais assentos são ocultas e ficam vazias no mundo sorteado. O campo é só
+ * informativo (não afeta ações válidas nem efeitos), então isso não muda a simulação, e `viewFor(seat) == this` continua
+ * valendo para o próprio assento.
+ *
  * A ordem do monte (índice 0 = topo) e dos mortos também é sorteada. A ordem das mãos alheias não tem
  * significado: primeiro as cartas de [known], depois as sorteadas.
  *
@@ -44,7 +49,7 @@ import kotlin.random.Random
  * @throws IllegalArgumentException se a vista for incoerente (lado que não é o do assento, cartas visíveis
  *   repetidas, contagens que não somam 104, 3 vermelho na própria mão, no lixo ou num conjunto da mesa, carta
  *   que não é 3 vermelho na área de 3 vermelhos, conjunto da mesa diferente do que [Meld.create] produz com
- *   as mesmas cartas, morto indisponível com cartas, registro de 3 vermelhos que não corresponde à área de 3 vermelhos, 3 vermelho oculto sem lugar fora das mãos, assento da
+ *   as mesmas cartas, morto indisponível com cartas, registro de 3 vermelhos que não corresponde à área de 3 vermelhos, reposições da distribuição repetidas ou fora da própria mão, 3 vermelho oculto sem lugar fora das mãos, assento da
  *   vez sem monte nem morto que não pode pegar o lixo) ou se [known] for incoerente (assento fora do modo ou o próprio, carta visível, carta repetida,
  *   3 vermelho, mais cartas do que o tamanho da mão).
  */
@@ -137,6 +142,8 @@ private fun PlayerView.sample(
         mortoStatus = mortoStatus.toList(),
         result = result,
         redThreeLog = redThreeLog.toList(), // §3.5 / §6.5 público: o mundo sorteado tem o mesmo registro
+        // §3.5 reposições: as do próprio assento são conhecidas; as alheias são ocultas e ficam vazias
+        dealReplacements = List(mode.seatCount) { if (it == seat.index) ownDealReplacements.toList() else emptyList() },
     )
 }
 
@@ -180,7 +187,23 @@ private fun PlayerView.hiddenCardsOrThrow(): List<Card> {
     }
     // depois das demais conferências, para que os 3 vermelhos da mesa já estejam validados
     validateRedThreeLog()
+    validateOwnDealReplacements()
     return hidden
+}
+
+/**
+ * §3.5 / §6.5 as reposições da distribuição do próprio assento ([PlayerView.ownDealReplacements]) são cartas distintas
+ * da própria mão (a vista só mostra as que ainda estão nela; como a mão não tem 3 vermelho, elas também não têm).
+ * Não se confere a contagem contra o [PlayerView.redThreeLog], que pode ser parcial (JSON antigo).
+ */
+private fun PlayerView.validateOwnDealReplacements() {
+    require(ownDealReplacements.toSet().size == ownDealReplacements.size) {
+        "Vista incoerente: carta repetida nas reposições da distribuição ($ownDealReplacements)"
+    }
+    val notInHand = ownDealReplacements.filterNot { it in hand }
+    require(notInHand.isEmpty()) {
+        "Vista incoerente: reposições da distribuição fora da própria mão ($notInHand) (§3.5)"
+    }
 }
 
 /**

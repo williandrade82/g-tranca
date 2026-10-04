@@ -39,7 +39,8 @@ fun dealRound(
  * 5. §3.5 / §6.5 na ordem de jogada a partir de [firstSeat], cada 3 vermelho da mão vai para a mesa
  *    do lado do jogador e é reposto com a carta do topo do monte; se a reposição também for
  *    3 vermelho, repete (reposição em cadeia). Cada troca entra no registro público [RoundState.redThreeLog],
- *    na ordem em que acontece, com `atDeal = true`.
+ *    na ordem em que acontece, com `atDeal = true`. As reposições que ficam na mão (não as que eram 3 vermelho e
+ *    foram baixadas na cadeia) vão para [RoundState.dealReplacements] do assento, na ordem em que entraram.
  */
 internal fun dealFromOrderedDeck(
     mode: GameMode,
@@ -67,18 +68,23 @@ internal fun dealFromOrderedDeck(
 
     val redThrees = List(mode.sideCount) { mutableListOf<Card>() }
     val log = mutableListOf<RedThreeLaid>()
+    val replacements = List(mode.seatCount) { mutableListOf<Card>() }
     for (seat in playOrder) {
         val hand = hands[seat.index]
         val side = mode.sideOf(seat)
         var redThree = hand.firstOrNull { it.isRedThree }
         while (redThree != null) {
             hand -= redThree
+            // §6.5 cadeia: o 3 vermelho que tinha vindo como reposição foi baixado, então deixa de ser reposição
+            replacements[seat.index] -= redThree
             redThrees[side.index] += redThree
             log += RedThreeLaid(seat, redThree, atDeal = true) // §3.5 troca pública, na ordem real
             // §6.5 reposição do topo do monte. Na distribuição o monte nunca se esgota
             // (no máximo 4 reposições contra 38+ cartas), por isso §10 não se aplica aqui.
             check(stock.isNotEmpty()) { "Monte vazio durante a reposição de 3 vermelho da distribuição" }
-            hand += stock.removeFirst()
+            val replacement = stock.removeFirst()
+            hand += replacement
+            replacements[seat.index] += replacement // §3.5 oculta para os outros; privada do assento
             redThree = hand.firstOrNull { it.isRedThree }
         }
     }
@@ -94,5 +100,6 @@ internal fun dealFromOrderedDeck(
         firstSeat = firstSeat,
         currentSeat = firstSeat,
         redThreeLog = log.toList(),
+        dealReplacements = replacements.map { it.toList() },
     )
 }

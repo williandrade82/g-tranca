@@ -8,6 +8,7 @@ import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
+import com.gtranca.engine.ownDealReplacementsInHand
 import com.gtranca.engine.scoreRound
 import com.gtranca.engine.tableCardPoints
 
@@ -44,6 +45,7 @@ internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
     redThrees = redThrees,
     tables = tables,
     redThreeLog = redThreeLog,
+    ownDealReplacements = ownDealReplacementsInHand(seat), // §3.5 privadas: só as do próprio assento, ainda na mão
 )
 
 /**

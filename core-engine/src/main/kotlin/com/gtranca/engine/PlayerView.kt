@@ -29,6 +29,13 @@ import kotlinx.serialization.Serializable
  * @property tables conjuntos na mesa de cada lado (§6.4), indexados por [Side.index].
  * @property redThreeLog registro público (§3.5, §6.5) de quem baixou cada 3 vermelho, em ordem cronológica, igual
  *   ao [RoundState.redThreeLog]. Não contém as cartas de reposição (ocultas). Vazio por padrão (JSON antigo).
+ * @property ownDealReplacements **informação privada do [seat]**: as cartas que entraram na mão dele como reposição
+ *   de 3 vermelho na distribuição (§3.5 / §6.5) e **ainda estão na mão**, na ordem em que entraram
+ *   ([RoundState.dealReplacements] do próprio assento, filtrado por [hand]). Sempre ⊆ [hand]: a carta que saiu da
+ *   mão (descartada, baixada) sai da lista, para a vista nunca carregar carta que hoje possa estar oculta (ex.: levada
+ *   por outro com o lixo). Nunca contém reposições de outros assentos (ocultas, §3.5), nem do parceiro. Só informativo
+ *   (a interface pode escondê-las até o jogador ver a troca e depois destacá-las); não afeta o jogo. Vazio a
+ *   partir da primeira ação do assento na partida, e por padrão (JSON antigo).
  */
 @Serializable
 data class PlayerView(
@@ -48,6 +55,7 @@ data class PlayerView(
     val redThrees: List<List<Card>>,
     val tables: List<SideTable>,
     val redThreeLog: List<RedThreeLaid> = emptyList(),
+    val ownDealReplacements: List<Card> = emptyList(),
 ) {
     /** Topo do lixo (último elemento), ou `null` se vazio. */
     val discardTop: Card? get() = discardPile.lastOrNull()
@@ -76,7 +84,17 @@ fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
     redThrees = redThrees.map { it.toList() },
     tables = tables.map { it.defensiveCopy() },
     redThreeLog = redThreeLog.toList(),
+    ownDealReplacements = ownDealReplacementsInHand(seat), // §3.5 só as do próprio assento
 )
+
+/**
+ * §3.5 / §6.5 reposições da distribuição de [seat] que ainda estão na mão dele, na ordem em que entraram: o que
+ * [PlayerView.ownDealReplacements] mostra. Lista nova (cópia).
+ */
+fun RoundState.ownDealReplacementsInHand(seat: Seat): List<Card> {
+    val hand = handOf(seat)
+    return dealReplacementsOf(seat).filter { it in hand }
+}
 
 /** Cópia de [SideTable] sem compartilhar nenhuma lista com o original. */
 internal fun SideTable.defensiveCopy(): SideTable =
