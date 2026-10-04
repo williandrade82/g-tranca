@@ -121,6 +121,7 @@ class TableLayoutTest {
             sort = sort,
             redThrees = view.redThrees,
             reveal = null,
+            ownSwapPending = false,
             banner = null,
             planChoice = null,
             confirmDecline = false,

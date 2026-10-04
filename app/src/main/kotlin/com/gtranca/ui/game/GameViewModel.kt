@@ -24,6 +24,7 @@ import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.RedThreeSwapSource
 import com.gtranca.game.Resolution
 import com.gtranca.game.Stage
+import com.gtranca.game.cardClass
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -79,6 +80,8 @@ data class GameUiState(
     val sort: HandSort,
     val redThrees: List<List<Card>>,
     val reveal: RedThreeReveal?,
+    /** §6.5 há troca de 3 vermelho do humano ainda não confirmada ("Baixar 3 vermelho"): a mesa fica bloqueada. */
+    val ownSwapPending: Boolean,
     val banner: RedThreeNotice?,
     val planChoice: List<Action.TakeDiscardPile>?,
     val confirmDecline: Boolean,
@@ -86,8 +89,8 @@ data class GameUiState(
     val message: UiMessage?,
     val endScreen: EndScreen?,
 ) {
-    val isHumanTurn: Boolean get() = snapshot.isHumanTurn && reveal == null
-    private val legal: List<Action> get() = if (reveal == null) snapshot.humanLegal else emptyList()
+    val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
+    private val legal: List<Action> get() = if (ownSwapPending) emptyList() else snapshot.humanLegal
     val awaitingDraw: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW
     val playing: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.PLAYING
     val canDraw: Boolean get() = Action.DrawFromStock in legal
@@ -97,6 +100,10 @@ data class GameUiState(
     val canDecline: Boolean get() = Action.DeclineDraw in legal
     val canMeld: Boolean get() = playing && selected.isNotEmpty()
     val canDiscard: Boolean get() = playing && selected.size == 1
+
+    /** A carta selecionada pode ser descartada agora (há um `Discard` dela em `legalActions`). */
+    val canDiscardSelected: Boolean
+        get() = canDiscard && legal.any { it is Action.Discard && it.card.cardClass == selected.single().cardClass }
 }
 
 /**
@@ -126,6 +133,8 @@ class GameViewModel(
         /** Cartas da mão escondidas até a troca do humano ([RedThreeNotice.id]) ser confirmada. */
         val hidden: Map<Long, Set<Card>> = emptyMap(),
         val planChoice: List<Action.TakeDiscardPile>? = null,
+        /** Pedido ([GameSnapshot.humanRequestId]) em que os planos de [planChoice] foram resolvidos. */
+        val planRequestId: Long = 0,
         val confirmDecline: Boolean = false,
         val confirmResign: Boolean = false,
         val message: UiMessage? = null,
@@ -209,7 +218,7 @@ class GameViewModel(
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
             confirmDecline = state.confirmDecline && snapshot.isHumanTurn,
-            confirmResign = state.confirmResign && snapshot.stage != Stage.GAME_OVER,
+            confirmResign = state.confirmResign && snapshot.stage == old.stage && sameRound,
             endStep = endStep,
         )
     }
@@ -223,7 +232,8 @@ class GameViewModel(
         val staged = state.swaps.flatMap { it.cards }.toSet()
         val visibleHand = snapshot.view.hand.filter { it !in hidden }
         val hand = HandOrder.sort(visibleHand, state.sort)
-        val legal = if (reveal == null) snapshot.humanLegal else emptyList()
+        val ownSwapPending = state.swaps.any { isOwn(it, snapshot) }
+        val legal = if (ownSwapPending) emptyList() else snapshot.humanLegal
         return GameUiState(
             snapshot = snapshot,
             hand = hand,
@@ -234,6 +244,7 @@ class GameViewModel(
             sort = state.sort,
             redThrees = snapshot.view.redThrees.map { side -> side.filter { it !in staged } },
             reveal = reveal,
+            ownSwapPending = ownSwapPending,
             banner = head?.takeIf { reveal == null },
             planChoice = state.planChoice,
             confirmDecline = state.confirmDecline,
@@ -294,8 +305,9 @@ class GameViewModel(
 
     /** Escolha entre planos de pegar o lixo (todos vindos de `legal`). */
     override fun onPlanChosen(action: Action.TakeDiscardPile) {
+        val requestId = local.value.planRequestId
         local.update { it.copy(planChoice = null) }
-        submit(action, controller.state.value.humanRequestId)
+        submit(action, requestId)
     }
 
     override fun onDismissPlanChoice() = local.update { it.copy(planChoice = null) }
@@ -330,15 +342,16 @@ class GameViewModel(
         // enviada, a vez mudou), ignora em vez de mostrar um motivo de outra situação. Durante a encenação de 3
         // vermelho a mesa está bloqueada.
         val snapshot = controller.state.value
-        val ownSwapShowing = local.value.let { l -> l.swaps.firstOrNull()?.let { isOwn(it, l.snapshot) } == true }
-        if (!snapshot.isHumanTurn || !human.waiting.value || ownSwapShowing) return
+        val ownSwapPending = local.value.let { l -> l.swaps.any { isOwn(it, l.snapshot) } }
+        if (!snapshot.isHumanTurn || !human.waiting.value || ownSwapPending) return
         val requestId = snapshot.humanRequestId
         val selected = local.value.selected.filter { it in snapshot.view.hand }
         val resolution = HumanTurnResolver.resolve(intent, selected, snapshot.humanLegal) { controller.explain(it, requestId) }
         if (resolution !is Resolution.Play && controller.state.value !== snapshot) return
         when (resolution) {
             is Resolution.Play -> submit(resolution.action, requestId)
-            is Resolution.ChoosePlan -> local.update { it.copy(planChoice = resolution.options, message = null) }
+            is Resolution.ChoosePlan ->
+                local.update { it.copy(planChoice = resolution.options, planRequestId = requestId, message = null) }
             is Resolution.Rejected -> local.update { it.copy(message = UiMessage.Rejected(resolution.reason)) }
             Resolution.SelectOneCardToDiscard -> local.update { it.copy(message = UiMessage.SelectOneCardToDiscard) }
         }

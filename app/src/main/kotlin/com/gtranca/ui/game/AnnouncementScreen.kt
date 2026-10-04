@@ -24,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Box
 import com.gtranca.game.GameSnapshot
 import com.gtranca.ui.theme.OnTable
 import com.gtranca.ui.theme.TableAccent
@@ -34,8 +36,15 @@ import com.gtranca.ui.theme.TableGreen
  * botão para seguir.
  */
 @Composable
-fun AnnouncementScreen(title: String, subtitle: String?, button: String, onContinue: () -> Unit) {
+fun AnnouncementScreen(title: String, subtitle: String?, button: String, onContinue: () -> Unit, onResign: (() -> Unit)? = null) {
     Surface(Modifier.fillMaxSize().testTag("announcement"), color = TableGreen) {
+        if (onResign != null) {
+            Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) {
+                TextButton(onResign, Modifier.heightIn(min = 48.dp).testTag("action-resign")) {
+                    Text(stringResource(R.string.action_resign), color = OnTable)
+                }
+            }
+        }
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
@@ -63,7 +72,7 @@ fun AnnouncementScreen(title: String, subtitle: String?, button: String, onConti
 
 /** §11 anúncio da partida que acabou de terminar (a última do histórico). */
 @Composable
-fun RoundAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit) {
+fun RoundAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, onResign: (() -> Unit)? = null) {
     val record = snapshot.history.last()
     val mode = snapshot.view.mode
     AnnouncementScreen(
@@ -71,6 +80,7 @@ fun RoundAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit) {
         subtitle = roundTeamAnnouncementRes(mode, record.result, snapshot.viewerSide)?.let { stringResource(it) },
         button = stringResource(R.string.announce_see_points),
         onContinue = onContinue,
+        onResign = onResign,
     )
 }
 

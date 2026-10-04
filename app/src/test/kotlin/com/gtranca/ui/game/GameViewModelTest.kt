@@ -13,6 +13,8 @@ import com.gtranca.game.HandOrder
 import com.gtranca.game.HandSort
 import com.gtranca.game.HumanTurnResolver
 import com.gtranca.game.RedThreeNotice
+import com.gtranca.game.RedThreeSwapSource
+import com.gtranca.game.classCounts
 import com.gtranca.game.Stage
 import com.gtranca.game.cardClass
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -99,7 +101,7 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `comeca na vez do humano com a mao na ordem personalizada e so a compra habilitada`() = runTest(dispatcher) {
+    fun `§4_3 comeca na vez do humano com a mao na ordem personalizada e so a compra habilitada`() = runTest(dispatcher) {
         val vm = newGame(seed = 3)
         val state = vm.uiState.value
         state.isHumanTurn shouldBe true
@@ -167,9 +169,12 @@ class GameViewModelTest {
         vm.select(vm.uiState.value.physical(listOf(discard.card)))
         vm.onDiscardPileClick()
         advanceUntilIdle()
-        vm.uiState.value.snapshot.history.size + vm.uiState.value.snapshot.turnEvents[0].size shouldBe
-            vm.uiState.value.snapshot.history.size + 3 // compra, baixa e descarte
-        vm.uiState.value.snapshot.turnEvents[0].last().action.shouldBeDiscardOf(discard.card)
+        // A vez do humano teve exatamente compra, baixa e descarte (este pelo toque no lixo).
+        val ownTurn = vm.uiState.value.snapshot.turnEvents[0].map { it.action }
+        ownTurn.size shouldBe 3
+        ownTurn[0] shouldBe Action.DrawFromStock
+        (ownTurn[1] is Action.CreateMeld) shouldBe true
+        ownTurn[2].shouldBeDiscardOf(discard.card)
     }
 
     private fun Action.shouldBeDiscardOf(card: Card) {
@@ -190,7 +195,7 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `carta comprada fica destacada como nova ate a proxima jogada`() = runTest(dispatcher) {
+    fun `§4_3 carta comprada fica destacada como nova ate a proxima jogada`() = runTest(dispatcher) {
         val vm = newGame(seed = 3)
         val before = vm.uiState.value.snapshot.view.hand.toSet()
         vm.onDraw()
@@ -334,7 +339,7 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `fim de partida - anuncio, pontos e proxima partida, ou anuncio do jogo e tela final`() = runTest(dispatcher) {
+    fun `§11 §12 §13 fim de partida - anuncio, pontos e proxima partida, ou anuncio do jogo e tela final`() = runTest(dispatcher) {
         val vm = newGame(seed = 9, target = 1)
         var guard = 0
         while (vm.uiState.value.snapshot.stage == Stage.PLAYING && guard++ < 2_000) {
@@ -458,5 +463,204 @@ class GameViewModelTest {
         advanceUntilIdle()
         vm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
         vm.uiState.value.message shouldBe null
+    }
+
+    /**
+     * Fonte de trocas falsa: no 1º snapshot, uma troca de outro assento seguida de uma do humano (§6.5), nessa
+     * ordem; depois, nenhuma. Simula a fila com a faixa de um bot à frente da encenação do humano.
+     */
+    private val botThenOwnSwap = RedThreeSwapSource { previous, current ->
+        if (previous != null) {
+            emptyList()
+        } else {
+            listOf(
+                RedThreeNotice(1, Side(1), Seat(1), listOf(Card.parse("3H")), atDeal = false),
+                RedThreeNotice(2, Side(0), Seat(0), listOf(Card.parse("3D")), atDeal = false),
+            )
+        }
+    }
+
+    private fun TestScope.gameWithSwaps(seed: Long, source: RedThreeSwapSource, swapMillis: Long): GameViewModel {
+        val vm = GameViewModel(
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+            gameSeed = seed,
+            computeDispatcher = dispatcher,
+            botDelayMillis = 0,
+            redThreeSource = source,
+            swapAnimationMillis = swapMillis,
+        )
+        // Sem avançar o relógio: a faixa do bot fica na tela (dura swapMillis).
+        runCurrent()
+        return vm
+    }
+
+    @Test
+    fun `§6_5 troca do humano atras da faixa de um bot ainda bloqueia a mesa ate o Baixar`() = runTest(dispatcher) {
+        // Procura uma semente em que o humano começa (para haver jogadas legais a bloquear).
+        var vm: GameViewModel? = null
+        for (seed in 1L..40L) {
+            val candidate = gameWithSwaps(seed, botThenOwnSwap, swapMillis = 5_000)
+            if (candidate.uiState.value.snapshot.isHumanTurn) {
+                vm = candidate
+                break
+            }
+        }
+        vm.shouldNotBeNull()
+        val withBanner = vm.uiState.value
+        withBanner.banner?.seat shouldBe Seat(1)
+        withBanner.reveal.shouldBeNull()
+        // A troca do humano está na fila, atrás da faixa: nada se joga, nada se destaca.
+        withBanner.ownSwapPending shouldBe true
+        withBanner.isHumanTurn shouldBe false
+        withBanner.canDraw shouldBe false
+        withBanner.highlighted.shouldBeEmpty()
+        vm.onDraw()
+        runCurrent()
+        vm.uiState.value.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
+        vm.uiState.value.snapshot.turnEvents[0].shouldBeEmpty()
+
+        // Passa a faixa: agora a encenação do humano, ainda bloqueando.
+        advanceTimeBy(5_001)
+        runCurrent()
+        vm.uiState.value.reveal?.notice?.seat shouldBe Seat(0)
+        vm.uiState.value.isHumanTurn shouldBe false
+        vm.onRevealConfirmed()
+        runCurrent()
+        vm.uiState.value.ownSwapPending shouldBe false
+        vm.uiState.value.isHumanTurn shouldBe true
+        vm.uiState.value.canDraw shouldBe true
+    }
+
+    @Test
+    fun `§13_1 desistir durante a encenacao do 3 vermelho vai ao fim de jogo`() = runTest(dispatcher) {
+        val vm = gameWithSwaps(seed = 3, source = botThenOwnSwap, swapMillis = 0)
+        advanceUntilIdle()
+        vm.uiState.value.reveal.shouldNotBeNull()
+        vm.onResign()
+        runCurrent()
+        vm.uiState.value.confirmResign shouldBe true
+        vm.onConfirmResign()
+        advanceUntilIdle()
+        vm.uiState.value.endScreen shouldBe EndScreen.FINAL
+        vm.uiState.value.snapshot.resigned shouldBe true
+        vm.uiState.value.reveal.shouldBeNull()
+    }
+
+    @Test
+    fun `§13_1 desistir no fim de partida e o dialogo nao reaparece na partida seguinte`() = runTest(dispatcher) {
+        val vm = newGame(seed = 9, target = 1_000_000)
+        var guard = 0
+        while (vm.uiState.value.snapshot.stage == Stage.PLAYING && guard++ < 2_000) {
+            settle(vm)
+            val state = vm.uiState.value
+            when {
+                state.awaitingDraw -> if (state.canDraw) vm.onDraw() else vm.onTakeDiscardPile()
+                state.playing -> {
+                    val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+                    vm.select(state.physical(listOf(discard.card)))
+                    vm.onDiscard()
+                }
+            }
+            advanceUntilIdle()
+        }
+        vm.uiState.value.snapshot.stage shouldBe Stage.ROUND_OVER
+        // Abre o diálogo e, sem responder, segue para a próxima partida: ele não volta sozinho.
+        vm.onResign()
+        runCurrent()
+        vm.uiState.value.confirmResign shouldBe true
+        vm.onNextRound()
+        advanceUntilIdle()
+        vm.uiState.value.snapshot.roundNumber shouldBe 2
+        vm.uiState.value.confirmResign shouldBe false
+        // Desistir no fim de partida também vale (§13.1 "a qualquer momento").
+        settle(vm)
+        vm.onResign()
+        vm.onConfirmResign()
+        advanceUntilIdle()
+        vm.uiState.value.endScreen shouldBe EndScreen.FINAL
+    }
+
+    @Test
+    fun `§8 o lixo so acende para descarte com Discard da carta selecionada em legal`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        vm.onDraw()
+        advanceUntilIdle()
+        settle(vm)
+        val card = vm.uiState.value.hand.first()
+        vm.select(listOf(card))
+        advanceUntilIdle()
+        val state = vm.uiState.value
+        state.canDiscardSelected shouldBe state.snapshot.humanLegal.any {
+            it is Action.Discard && it.card.cardClass == card.cardClass
+        }
+        state.canDiscardSelected shouldBe true
+        // Sem o Discard dessa carta em legal, o lixo não acende, mesmo com uma carta selecionada.
+        val withoutDiscard = state.copy(
+            snapshot = state.snapshot.copy(
+                humanLegal = state.snapshot.humanLegal.filterNot { it is Action.Discard && it.card.cardClass == card.cardClass },
+            ),
+        )
+        withoutDiscard.canDiscard shouldBe true
+        withoutDiscard.canDiscardSelected shouldBe false
+    }
+
+    @Test
+    fun `§5_1 escolha de plano do lixo e enviada com o pedido em que foi resolvida`() = runTest(dispatcher) {
+        // Procura uma situação com mais de um plano para as mesmas cartas da mão.
+        var chosen = false
+        seeds@ for (seed in 1L..150L) {
+            val vm = newGame(seed)
+            repeat(40) {
+                val state = vm.uiState.value
+                if (state.snapshot.stage != Stage.PLAYING) return@repeat
+                if (state.awaitingDraw) {
+                    val groups = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
+                        .groupBy { HumanTurnResolver.handCardsOf(it).classCounts() }
+                    val multi = groups.values.firstOrNull { it.size > 1 }
+                    if (multi != null) {
+                        val requestId = state.snapshot.humanRequestId
+                        vm.select(state.physical(HumanTurnResolver.handCardsOf(multi.first())))
+                        vm.onTakeDiscardPile()
+                        advanceUntilIdle()
+                        val options = vm.uiState.value.planChoice.shouldNotBeNull()
+                        options.size shouldBe multi.size
+                        vm.onPlanChosen(options.last())
+                        advanceUntilIdle()
+                        val after = vm.uiState.value
+                        after.planChoice.shouldBeNull()
+                        after.snapshot.turnEvents[0].first().action shouldBe options.last()
+                        (after.snapshot.humanRequestId != requestId) shouldBe true
+                        chosen = true
+                        break@seeds
+                    }
+                }
+                playMelding(vm)
+            }
+        }
+        chosen shouldBe true
+    }
+
+    /** Uma vez do humano que baixa o que puder (para haver jogos do lado na mesa) e descarta. */
+    private fun TestScope.playMelding(vm: GameViewModel) {
+        if (!vm.uiState.value.awaitingDraw) return
+        vm.onDraw()
+        advanceUntilIdle()
+        settle(vm)
+        var guard = 0
+        while (vm.uiState.value.playing && guard++ < 10) {
+            val state = vm.uiState.value
+            val meld = state.snapshot.humanLegal.filterIsInstance<Action.CreateMeld>().firstOrNull()
+                ?.takeIf { state.hand.size - it.cards.size >= 2 }
+            if (meld != null) {
+                vm.select(state.physical(meld.cards))
+                vm.onCreateMeld()
+            } else {
+                val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+                vm.select(state.physical(listOf(discard.card)))
+                vm.onDiscard()
+            }
+            advanceUntilIdle()
+            settle(vm)
+        }
     }
 }

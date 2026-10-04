@@ -201,7 +201,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
 
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
-    state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed) }
+    state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed, events::onResign) }
     if (state.confirmDecline) {
         AlertDialog(
             onDismissRequest = events::onDismissDecline,
@@ -209,20 +209,6 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
             text = { Text(stringResource(R.string.decline_text)) },
             confirmButton = { TextButton(events::onConfirmDecline) { Text(stringResource(R.string.decline_confirm)) } },
             dismissButton = { TextButton(events::onDismissDecline) { Text(stringResource(R.string.cancel)) } },
-        )
-    }
-    if (state.confirmResign) {
-        AlertDialog(
-            modifier = Modifier.testTag("resign-dialog"),
-            onDismissRequest = events::onDismissResign,
-            title = { Text(stringResource(R.string.resign_title)) },
-            text = { Text(stringResource(R.string.resign_text)) },
-            confirmButton = {
-                TextButton(events::onConfirmResign, Modifier.testTag("resign-confirm")) { Text(stringResource(R.string.resign_confirm)) }
-            },
-            dismissButton = {
-                TextButton(events::onDismissResign, Modifier.testTag("resign-cancel")) { Text(stringResource(R.string.cancel)) }
-            },
         )
     }
 }
@@ -511,7 +497,8 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
         }
         val scroll = rememberScrollState()
         LaunchedEffect(pile.size) { scroll.scrollTo(scroll.maxValue) }
-        val pileActive = state.canTakeDiscardPile || state.canDiscard
+        // Aceso só se tocar faz algo agora: pegar o lixo, ou descartar a carta selecionada (Discard em legal).
+        val pileActive = state.canTakeDiscardPile || state.canDiscardSelected
         Box(
             Modifier
                 .fillMaxWidth()
@@ -758,7 +745,7 @@ private fun FlagIcon(modifier: Modifier) {
  * baixou e repôs; ao tocar, eles aparecem na mesa e a reposição aparece na mão, destacada como nova.
  */
 @Composable
-private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit) {
+private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit, onResign: () -> Unit) {
     AlertDialog(
         modifier = Modifier.testTag("red-three-dialog"),
         onDismissRequest = {},
@@ -775,6 +762,12 @@ private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit) {
         confirmButton = {
             Button(onConfirm, Modifier.heightIn(min = 48.dp).testTag("red-three-confirm")) {
                 Text(stringResource(R.string.red_three_button))
+            }
+        },
+        // §13.1 desistir "a qualquer momento", inclusive durante a encenação.
+        dismissButton = {
+            TextButton(onResign, Modifier.heightIn(min = 48.dp).testTag("red-three-resign")) {
+                Text(stringResource(R.string.action_resign))
             }
         },
     )

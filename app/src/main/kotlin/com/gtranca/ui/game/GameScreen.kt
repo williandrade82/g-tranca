@@ -9,6 +9,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
@@ -25,13 +27,19 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
         if (snapshot.stage == Stage.GAME_OVER) onExit() else confirmExit = true
     }
 
+    // Depois do fim do jogo (§13) não há mais o que desistir.
+    val canResign = snapshot.stage != Stage.GAME_OVER
     when (state.endScreen) {
         null -> TableScreen(state, viewModel)
-        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext)
-        EndScreen.ROUND_POINTS -> RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext)
+        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign })
+        EndScreen.ROUND_POINTS ->
+            RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, viewModel::onResign.takeIf { canResign })
         EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext)
         EndScreen.FINAL -> GameOverScreen(snapshot, onExit)
     }
+
+    // §13.1 desistência: disponível na mesa, na encenação e nas telas de anúncio e de pontos.
+    if (state.confirmResign) ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign)
 
     if (confirmExit) {
         AlertDialog(
@@ -47,4 +55,17 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
             dismissButton = { TextButton({ confirmExit = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
+}
+
+/** §13.1 confirmação da desistência; cancelar volta exatamente ao estado anterior. */
+@Composable
+fun ResignDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        modifier = Modifier.testTag("resign-dialog"),
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.resign_title)) },
+        text = { Text(stringResource(R.string.resign_text)) },
+        confirmButton = { TextButton(onConfirm, Modifier.testTag("resign-confirm")) { Text(stringResource(R.string.resign_confirm)) } },
+        dismissButton = { TextButton(onDismiss, Modifier.testTag("resign-cancel")) { Text(stringResource(R.string.cancel)) } },
+    )
 }

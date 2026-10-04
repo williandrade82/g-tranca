@@ -217,8 +217,8 @@
     </plurals>
     <string name="red_three_you_drew">Você tirou %1$s!</string>
     <string name="red_three_deal_you">Você recebeu %1$s na distribuição</string>
-    <string name="red_three_banner">%1$s baixou %2$s e recebeu uma carta</string>
-    <string name="red_three_banner_deal">%1$s baixou %2$s na distribuição e recebeu uma carta</string>
+    <string name="red_three_banner">%1$s baixou %2$s</string>
+    <string name="red_three_banner_deal">%1$s baixou %2$s na distribuição</string>
     <string name="red_three_button">Baixar 3 vermelho</string>
     <!-- Zero tratado à parte: em pt, a forma "one" cobre o 0 ("0 carta"). -->
     <string name="card_count_zero">nenhuma carta</string>

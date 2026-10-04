@@ -135,8 +135,18 @@ class GameController(
     /** Partida (número) cuja encenação das trocas da distribuição o controlador espera; 0 se nenhuma. */
     private val awaitingDealRound = AtomicLong(0)
 
+    /**
+     * Trava única do estado do jogo: aplicar uma ação, encerrar/iniciar partida, publicar o snapshot e desistir
+     * (§13.1) acontecem sob ela. Assim a desistência, vinda da thread principal, nunca intercala com o laço (que
+     * roda em [computeDispatcher]): ou a ação/pontuação já aconteceu antes, ou não acontece mais. Nunca suspender
+     * com a trava.
+     */
+    private val lock = Any()
+
     @Volatile
     private var match: Match = startMatch(config.mode, config.targetScore, Random(gameSeed))
+
+    @Volatile
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }
     init {
         // §3.5 com humano, a 1ª jogada espera a encenação das trocas da distribuição (ver [dealPresentationDone]).
@@ -181,18 +191,26 @@ class GameController(
     }
 
     private suspend fun loop() {
-        while (!match.isOver && !resigned) {
-            bots.forEach { it.onNewRound() }
-            turnEvents = List(config.mode.seatCount) { emptyList() }
-            // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho da
-            // distribuição (§3.5), na ordem. Sem humano (bots, :sim), não há espera.
-            val waitDeal = human != null && hasDealSwaps()
-            // Na 1ª partida a espera já foi armada na construção (o 1º snapshot pode ser igual ao inicial).
-            if (waitDeal && match.roundNumber > 1) awaitingDealRound.set(match.roundNumber.toLong())
-            publish(Stage.PLAYING)
+        while (true) {
+            val waitDeal = synchronized(lock) {
+                if (match.isOver || resigned) return
+                bots.forEach { it.onNewRound() }
+                turnEvents = List(config.mode.seatCount) { emptyList() }
+                // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho da
+                // distribuição (§3.5), na ordem. Sem humano (bots, :sim), não há espera.
+                val wait = human != null && hasDealSwaps()
+                // Na 1ª partida a espera já foi armada na construção (o 1º snapshot pode ser igual ao inicial).
+                if (wait && match.roundNumber > 1) awaitingDealRound.set(match.roundNumber.toLong())
+                publishLocked(Stage.PLAYING)
+                wait
+            }
             if (waitDeal) dealShownSignal.receive()
-            while (match.currentRound.phase != Phase.FINISHED) {
-                val round = match.currentRound
+            while (true) {
+                val round = synchronized(lock) {
+                    if (resigned) return
+                    match.currentRound
+                }
+                if (round.phase == Phase.FINISHED) break
                 val seat = round.currentSeat
                 val legal = RoundEngine.legalActions(round, seat)
                 check(legal.isNotEmpty()) { "Assento ${seat.index} sem ações legais na fase ${round.phase}" }
@@ -204,8 +222,11 @@ class GameController(
                     }
                     is HumanPlayer -> {
                         val requestId = requestCounter.incrementAndGet()
-                        humanRequest = requestId to round
-                        publish(Stage.PLAYING, humanLegal = legal, requestId = requestId)
+                        synchronized(lock) {
+                            if (resigned) return
+                            humanRequest = requestId to round
+                            publishLocked(Stage.PLAYING, humanLegal = legal, requestId = requestId)
+                        }
                         try {
                             player.chooseAction(legal, requestId)
                         } finally {
@@ -213,23 +234,32 @@ class GameController(
                         }
                     }
                 }
-                // §13.1 desistência durante a decisão (ex.: bot pensando): nada mais é aplicado.
-                if (resigned) return
                 check(action in legal) { "Assento ${seat.index}: ação fora de legalActions: $action" }
-                val event = PublicEvent.of(round.discardPile, seat, action)
-                match = match.play(seat, action)
-                recordEvent(event)
-                bots.forEach { it.observe(event) }
-                publish(Stage.PLAYING)
+                synchronized(lock) {
+                    // §13.1 desistência durante a decisão (ex.: bot pensando): nada mais é aplicado.
+                    if (resigned) return
+                    val event = PublicEvent.of(round.discardPile, seat, action)
+                    match = match.play(seat, action)
+                    recordEvent(event)
+                    bots.forEach { it.observe(event) }
+                    publishLocked(Stage.PLAYING)
+                }
             }
-            if (resigned) return
-            match = match.finishRound()
-            if (match.isOver) {
-                publish(Stage.GAME_OVER)
-            } else {
+            val waitNext = synchronized(lock) {
+                // §13.1 a partida que terminou depois da desistência nunca é pontuada.
+                if (resigned) return
+                match = match.finishRound()
+                if (match.isOver) {
+                    publishLocked(Stage.GAME_OVER)
+                    return
+                }
                 if (human != null) awaitingNextRound.set(true)
-                publish(Stage.ROUND_OVER)
-                if (human != null) nextRoundSignal.receive()
+                publishLocked(Stage.ROUND_OVER)
+                human != null
+            }
+            if (waitNext) nextRoundSignal.receive()
+            synchronized(lock) {
+                if (resigned) return
                 match = match.startNextRound()
             }
         }
@@ -281,14 +311,20 @@ class GameController(
      * estiver pensando (a decisão dele é descartada). Devolve `false` se o jogo já tinha terminado.
      */
     fun resign(): Boolean {
-        if (match.isOver || resigned) return false
-        val winner = config.mode.sides.first { it != config.mode.sideOf(viewerSeat) }
-        resignedWinner = winner
-        awaitingNextRound.set(false)
-        awaitingDealRound.set(0)
-        loopJob?.cancel()
-        _state.value = snapshot(Stage.GAME_OVER, humanLegal = emptyList(), thinkingSeat = null)
-        return true
+        val accepted = synchronized(lock) {
+            if (match.isOver || resigned) return@synchronized false
+            resignedWinner = config.mode.sides.first { it != config.mode.sideOf(viewerSeat) }
+            awaitingNextRound.set(false)
+            awaitingDealRound.set(0)
+            // Sob a trava, `match` não está no meio de uma ação nem de uma pontuação: os totais e o histórico são
+            // os de antes da partida em andamento (ela nunca é pontuada).
+            _state.value = snapshot(Stage.GAME_OVER, humanLegal = emptyList(), thinkingSeat = null)
+            true
+        }
+        // Interrompe esperas (humano, distribuição, próxima partida, pausa); decisões de CPU em curso terminam e
+        // são descartadas na próxima seção sob a trava.
+        if (accepted) loopJob?.cancel()
+        return accepted
     }
 
     private fun recordEvent(event: PublicEvent) {
@@ -308,7 +344,12 @@ class GameController(
     /** §3.5 houve troca de 3 vermelho na distribuição da partida atual (registro público do motor). */
     private fun hasDealSwaps(): Boolean = match.currentRound.redThreeLog.any { it.atDeal }
 
-    private fun publish(
+    private fun publish(stage: Stage, thinkingSeat: Seat? = null) {
+        synchronized(lock) { publishLocked(stage, thinkingSeat = thinkingSeat) }
+    }
+
+    /** Publica o snapshot; chamar só com a trava. Depois da desistência, o fim de jogo nunca é sobrescrito. */
+    private fun publishLocked(
         stage: Stage,
         humanLegal: List<Action> = emptyList(),
         thinkingSeat: Seat? = null,
