@@ -216,12 +216,13 @@ class GameViewModel(
                     }
                 }
         }
-        // §3.5 encenadas as trocas da distribuição, libera a 1ª jogada da partida.
+        // §3.5/§6.5 encenadas todas as trocas de 3 vermelho já vistas (fila vazia), libera a próxima ação do controlador.
+        // A confirmação leva o tamanho do registro visto: só vale para a espera exata (as trocas que acabamos de mostrar).
         viewModelScope.launch {
             local.collect { state ->
                 val snapshot = state.snapshot
-                if (snapshot.stage == Stage.PLAYING && state.swaps.none { it.atDeal } && snapshot.view.redThreeLog.any { it.atDeal }) {
-                    controller.dealPresentationDone(snapshot.roundNumber)
+                if (snapshot.stage == Stage.PLAYING && state.swaps.isEmpty() && snapshot.view.redThreeLog.isNotEmpty()) {
+                    controller.presentationDone(snapshot.roundNumber, snapshot.view.redThreeLog.size)
                 }
             }
         }

@@ -119,6 +119,7 @@ import com.gtranca.ui.cards.CardEmphasis
 import com.gtranca.ui.cards.CardSize
 import com.gtranca.ui.cards.PlayingCard
 import com.gtranca.ui.cards.cardDescription
+import com.gtranca.ui.cards.shortLabel
 import com.gtranca.ui.theme.OnTable
 import com.gtranca.ui.theme.TableAccent
 import com.gtranca.ui.theme.TableGreen
@@ -887,17 +888,22 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
         onDismissRequest = events::onDismissPlanChoice,
         title = { Text(stringResource(R.string.plan_choice_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Todos os planos, com rolagem; cada um diz o destino e as cartas da mão que usa (§5.1).
+            Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).testTag("plan-choice"),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 options.forEach { option ->
                     val text = when (val plan = option.plan) {
                         is DiscardPlan.NewMeld ->
-                            stringResource(R.string.plan_new_meld, (plan.handCards + listOfNotNull(top)).labels())
+                            stringResource(R.string.plan_new_meld, (listOfNotNull(top) + plan.handCards).joinToString(" + ") { it.shortLabel })
                         is DiscardPlan.AddToMeld -> {
                             // §6.4 pode haver grupos repetidos: o número do jogo os distingue.
                             val melds = view.tables[view.side.index].melds
                             val index = melds.indexOfFirst { it.id == plan.meldId }
                             stringResource(
                                 if (view.mode == GameMode.DUPLAS) R.string.plan_add_to_team_meld else R.string.plan_add_to_meld,
+                                (listOfNotNull(top) + plan.handCards).joinToString(" + ") { it.shortLabel },
                                 index + 1,
                                 melds.getOrNull(index)?.meld?.cards?.labels().orEmpty(),
                             )
@@ -906,8 +912,9 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                     OutlinedButton(
                         onClick = { events.onPlanChosen(option) },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text(text, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                    ) { Text(text) }
                 }
+                Text(stringResource(R.string.plan_choice_hint), style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {},

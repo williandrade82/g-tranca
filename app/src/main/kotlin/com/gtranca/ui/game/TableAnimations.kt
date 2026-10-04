@@ -87,6 +87,10 @@ object TableAnimations {
         val mode = new.view.mode
         val flights = mutableListOf<CardFlight>()
         val gained = (new.view.hand.toSet() - old.view.hand.toSet()) - hiddenFromView
+        // §6.5 3 vermelhos baixados nestas ações (públicos: estão no registro). Se a compra trouxe um 3 vermelho, a carta
+        // que chega do monte é ele, aberto; a reposição chega depois, na encenação da troca (redThreeSwap). Assim a
+        // compra não aparece duas vezes (antes: uma carta virada aqui e a reposição de novo na troca).
+        val laidNow = new.view.redThreeLog.drop(old.view.redThreeLog.size).filter { !it.atDeal }
 
         for (event in events) {
             val from = holder(event.seat, viewer)
@@ -98,7 +102,8 @@ object TableAnimations {
                         new.view.mortoStatus[i] == MortoStatus.BecameStock && old.view.mortoStatus.getOrNull(i) != MortoStatus.BecameStock
                     }
                     val source = becameStock?.let { AnimAnchor.Morto(it) } ?: AnimAnchor.Stock
-                    val card = if (event.seat == viewer) gained.singleOrNull() else null
+                    val drawnRedThree = laidNow.firstOrNull { it.seat == event.seat }?.card
+                    val card = drawnRedThree ?: if (event.seat == viewer) gained.singleOrNull() else null
                     flights += CardFlight(nextId(), source, from, card)
                 }
                 Action.DeclineDraw -> Unit

@@ -10,6 +10,7 @@ import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.MortoStatus
+import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
@@ -29,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -81,9 +83,14 @@ class TableAnimationsTest {
             }
             for (flight in flights) {
                 when {
-                    // §3.3 compra: carta do monte nunca aparece para outro assento (o assento 0 é a vista).
+                    // §3.3 compra: carta do monte nunca aparece para outro assento (o assento 0 é a vista), exceto o
+                    // 3 vermelho comprado, que é público ao ser baixado (§6.5, registro).
                     (flight.from == AnimAnchor.Stock || flight.from is AnimAnchor.Morto) && flight.to is AnimAnchor.SeatHand -> {
-                        flight.card shouldBe null
+                        val card = flight.card
+                        if (card != null) {
+                            card.isRedThree shouldBe true
+                            (card in new.view.redThreeLog.map { it.card }) shouldBe true
+                        }
                         kinds += "compra"
                     }
                     flight.to == AnimAnchor.DiscardPile -> {
@@ -158,12 +165,17 @@ class TableAnimationsTest {
 
     private fun c(text: String) = Card.parse(text)
 
-    private fun view(hand: List<Card>, mortoStatus: List<MortoStatus> = listOf(MortoStatus.Available, MortoStatus.Available)) =
+    private fun view(
+        hand: List<Card>,
+        mortoStatus: List<MortoStatus> = listOf(MortoStatus.Available, MortoStatus.Available),
+        redThreeLog: List<RedThreeLaid> = emptyList(),
+    ) =
         PlayerView(
             mode = GameMode.DUPLAS, seat = Seat(0), side = Side(0), currentSeat = Seat(0), firstSeat = Seat(0),
             phase = Phase.PLAYING, result = null, hand = hand, handSizes = listOf(hand.size, 9, 9, 9),
             discardPile = listOf(c("5S")), stockSize = 30, mortoStatus = mortoStatus, mortoSizes = listOf(11, 11),
-            redThrees = listOf(emptyList(), emptyList()), tables = listOf(SideTable(), SideTable()),
+            redThrees = List(2) { side -> redThreeLog.filter { it.seat.index % 2 == side }.map { it.card } },
+            tables = listOf(SideTable(), SideTable()), redThreeLog = redThreeLog,
         )
 
     private fun snapshot(view: PlayerView, events: List<List<PublicEvent>>) = GameSnapshot(
@@ -172,18 +184,43 @@ class TableAnimationsTest {
     )
 
     @Test
-    fun `§6_5 compra do humano que trouxe 3 vermelho voa virada enquanto a reposicao esta oculta`() {
+    fun `§6_5 compra que trouxe 3 vermelho mostra o proprio 3 vermelho chegando, uma vez so`() {
+        // §6.5 quem compra um 3 vermelho recebe do monte o 3 vermelho (público ao ser baixado) e, na troca, a
+        // reposição. A compra anima o 3 vermelho aberto; a reposição só voa depois, na encenação da troca
+        // (redThreeSwap). Antes, uma carta virada voava aqui e a reposição voava de novo na troca: o humano via
+        // duas cartas chegando por uma compra.
         val hand = listOf(c("4S"), c("7H"))
         val old = snapshot(view(hand), List(4) { emptyList() })
         val replacement = c("KD")
-        val new = snapshot(view(hand + replacement), listOf(listOf(PublicEvent(Seat(0), Action.DrawFromStock))) + List(3) { emptyList() })
+        val laid = RedThreeLaid(Seat(0), c("3H"), atDeal = false)
+        val new = snapshot(
+            view(hand + replacement, redThreeLog = listOf(laid)),
+            listOf(listOf(PublicEvent(Seat(0), Action.DrawFromStock))) + List(3) { emptyList() },
+        )
         var id = 0L
-        // Reposição oculta (encenação em curso): a compra voa virada.
-        val (hidden, _) = TableAnimations.derive(old, new, setOf(replacement)) { ++id }
-        hidden.single().card shouldBe null
-        hidden.single().to shouldBe AnimAnchor.OwnHand
-        // Sem nada oculto, a carta comprada voa aberta.
-        TableAnimations.derive(old, new, emptySet()) { ++id }.first.single().card shouldBe replacement
+        // Reposição oculta (encenação em curso): voa só o 3 vermelho comprado, aberto, até a mão.
+        val (flights, _) = TableAnimations.derive(old, new, setOf(replacement)) { ++id }
+        flights.single().card shouldBe c("3H")
+        flights.single().from shouldBe AnimAnchor.Stock
+        flights.single().to shouldBe AnimAnchor.OwnHand
+        // Compra comum (sem 3 vermelho), sem nada oculto: voa a carta comprada.
+        val plain = snapshot(view(hand + replacement), listOf(listOf(PublicEvent(Seat(0), Action.DrawFromStock))) + List(3) { emptyList() })
+        TableAnimations.derive(old, plain, emptySet()) { ++id }.first.single().card shouldBe replacement
+    }
+
+    @Test
+    fun `§6_5 compra de outro assento que trouxe 3 vermelho mostra o 3 vermelho e nunca a reposicao`() {
+        val hand = listOf(c("4S"), c("7H"))
+        val old = snapshot(view(hand), List(4) { emptyList() })
+        val laid = RedThreeLaid(Seat(1), c("3D"), atDeal = false)
+        val new = snapshot(
+            view(hand, redThreeLog = listOf(laid)),
+            listOf(emptyList<PublicEvent>(), listOf(PublicEvent(Seat(1), Action.DrawFromStock))) + List(2) { emptyList() },
+        )
+        var id = 0L
+        val flight = TableAnimations.derive(old, new, emptySet()) { ++id }.first.single()
+        flight.card shouldBe c("3D")
+        flight.from shouldBe AnimAnchor.Stock
     }
 
     @Test
@@ -321,6 +358,54 @@ class TableAnimationsTest {
         flights.single { it.from == AnimAnchor.DiscardPile && it.to == target }.card shouldBe c("8H'")
         flights.filter { it.from == AnimAnchor.OwnHand && it.to == target }.map { it.card } shouldBe listOf(c("8C"), c("8D"))
         flights.filter { it.from == AnimAnchor.DiscardPile && it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe listOf(c("5S"), c("QS"))
+    }
+
+    @Test
+    fun `§4_3 §6_5 troca de 3 vermelho do bot anima antes do descarte dele`() = runTest(dispatcher) {
+        val bot = AnimAnchor.SeatHand(1)
+        var checked = false
+        seeds@ for (seed in 1L..150L) {
+            val vm = GameViewModel(
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000), gameSeed = seed, computeDispatcher = dispatcher,
+                botDelayMillis = 0, swapAnimationMillis = 1_000, animationMillis = 300,
+            )
+            // Voos na ordem em que aparecem na tela.
+            val shown = mutableListOf<CardFlight>()
+            val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                vm.uiState.collect { state -> state.flights.forEach { f -> if (shown.none { it.id == f.id }) shown += f } }
+            }
+            repeat(40) {
+                advanceUntilIdle()
+                val state = vm.uiState.value
+                if (state.snapshot.stage != Stage.PLAYING) return@repeat
+                when {
+                    state.reveal != null -> vm.onRevealConfirmed()
+                    state.awaitingDraw -> vm.onDraw()
+                    state.playing -> {
+                        val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+                        vm.onCardClick(state.hand.first { it.cardClass == discard.card.cardClass })
+                        vm.onDiscard()
+                    }
+                }
+                advanceUntilIdle()
+                // Troca do bot durante a partida: o 3 vermelho dele indo à área de 3 vermelhos, já encenado.
+                val midGame = vm.uiState.value.snapshot.view.redThreeLog.filter { !it.atDeal && it.seat == Seat(1) }.map { it.card }
+                val swap = shown.indexOfFirst { it.from == bot && it.to == AnimAnchor.RedThrees(1) && it.card in midGame }
+                val discardAfter = shown.indexOfLast { it.from == bot && it.to == AnimAnchor.DiscardPile }
+                if (swap >= 0 && discardAfter > swap) {
+                    // A compra que trouxe o 3 vermelho é o último voo do monte para o bot antes da troca; entre ela e
+                    // a troca não há descarte do bot: o descarte vem depois.
+                    val draw = shown.subList(0, swap).indexOfLast { it.to == bot && (it.from == AnimAnchor.Stock || it.from is AnimAnchor.Morto) }
+                    (draw >= 0) shouldBe true
+                    shown.subList(draw, swap).none { it.from == bot && it.to == AnimAnchor.DiscardPile } shouldBe true
+                    checked = true
+                    collector.cancel()
+                    break@seeds
+                }
+            }
+            collector.cancel()
+        }
+        checked shouldBe true
     }
 }
 

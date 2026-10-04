@@ -97,9 +97,10 @@
 
     <!-- Escolha de plano / recusa -->
     <string name="plan_choice_title">Como levar o topo do lixo à mesa?</string>
-    <string name="plan_new_meld">Novo conjunto com %1$s</string>
-    <string name="plan_add_to_meld">Acrescentar ao seu jogo %1$d (%2$s)</string>
-    <string name="plan_add_to_team_meld">Acrescentar ao jogo %1$d da sua dupla (%2$s)</string>
+    <string name="plan_new_meld">Novo conjunto: %1$s</string>
+    <string name="plan_add_to_meld">Acrescentar %1$s ao seu jogo %2$d (%3$s)</string>
+    <string name="plan_add_to_team_meld">Acrescentar %1$s ao jogo %2$d da sua dupla (%3$s)</string>
+    <string name="plan_choice_hint">Ou selecione as cartas da mão antes de tocar no lixo.</string>
     <string name="decline_title">Recusar a compra?</string>
     <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem vencedor.</string>
     <string name="decline_confirm">Recusar e encerrar</string>

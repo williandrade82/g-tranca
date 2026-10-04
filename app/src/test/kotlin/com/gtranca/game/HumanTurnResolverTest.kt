@@ -109,9 +109,13 @@ class HumanTurnResolverTest {
             nextMeldId = 2,
         )
         val s = state(hand, Phase.AWAITING_DRAW, discardPile = cards("5C", "8H'"), table = table)
-        // Sem cartas da mão: o topo sozinho cabe no grupo de 8 (único plano sem cartas da mão).
-        val alone = resolve(s, PlayIntent.TakeDiscardPile, emptyList()).shouldBeInstanceOf<Resolution.Play>()
-        alone.action shouldBe Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1)))
+        // Sem seleção: nunca executa sozinho; mostra todos os planos legais, do que usa menos cartas da mão ao que usa
+        // mais (o topo sozinho no grupo de 8 vem primeiro).
+        val all = RoundEngine.legalActions(s, Seat(0)).filterIsInstance<Action.TakeDiscardPile>()
+        val choice0 = resolve(s, PlayIntent.TakeDiscardPile, emptyList()).shouldBeInstanceOf<Resolution.ChoosePlan>()
+        choice0.options shouldContainExactlyInAnyOrder all
+        choice0.options.first() shouldBe Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1)))
+        choice0.options.map { HumanTurnResolver.handCardsOf(it).size } shouldBe choice0.options.map { HumanTurnResolver.handCardsOf(it).size }.sorted()
         // 7H: só o acréscimo à sequência 4-5-6H com o topo (7-8 sozinhos não formam conjunto novo).
         val withSeven = resolve(s, PlayIntent.TakeDiscardPile, cards("7H'"))
         withSeven.shouldBeInstanceOf<Resolution.Play>().action shouldBe
@@ -159,4 +163,38 @@ class HumanTurnResolverTest {
         val legal3 = RoundEngine.legalActions(state(hand3), Seat(0))
         HumanTurnResolver.highlightedCards(hand3, legal3, cards("8H")) shouldContain Card.parse("8H'")
     }
+
+    @Test
+    fun `§5_1 cenario do usuario - sem selecao pede escolha entre acrescentar ao grupo e sequencia nova com coringa`() {
+        // Na mesa, um grupo de 8 que aceita o topo 8♥ sozinho; na mão, 2♣ e 9♥, que com o topo formam 8♥ 9♥ 2♣.
+        val hand = cards("2C", "9H", "QS", "QC", "5D", "AS", "KD")
+        val table = SideTable(listOf(TableMeld(MeldId(1), meld("8C", "8D", "8S"))), nextMeldId = 2)
+        val s = state(hand, Phase.AWAITING_DRAW, discardPile = cards("5C", "8H"), table = table)
+        val legal = RoundEngine.legalActions(s, Seat(0))
+        val addToGroup = Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1)))
+        val sequence = legal.filterIsInstance<Action.TakeDiscardPile>().single {
+            it.plan is DiscardPlan.NewMeld && HumanTurnResolver.handCardsOf(it).classCounts() == cards("2C", "9H").classCounts()
+        }
+        // Seleção vazia: escolha com os dois planos; nada é aplicado.
+        val choice = resolve(s, PlayIntent.TakeDiscardPile, emptyList()).shouldBeInstanceOf<Resolution.ChoosePlan>()
+        choice.options shouldContain addToGroup
+        choice.options shouldContain sequence
+        // Escolher a sequência aplica a sequência.
+        val after = RoundEngine.apply(s, Seat(0), sequence)
+        after.tables[0].melds.last().meld.cards.classCounts() shouldBe cards("8H", "9H", "2C").classCounts()
+        // Com 2♣ e 9♥ selecionados, só a sequência usa exatamente essas cartas: executa direto.
+        resolve(s, PlayIntent.TakeDiscardPile, cards("9H", "2C")) shouldBe Resolution.Play(sequence)
+    }
+
+    @Test
+    fun `§5_1 plano unico no total com selecao vazia ainda pede confirmacao`() {
+        // Só o grupo de 8 aceita o topo; nenhuma combinação da mão forma conjunto com ele.
+        val hand = cards("QS", "QC", "5D", "AS", "KD", "4S", "7C")
+        val table = SideTable(listOf(TableMeld(MeldId(1), meld("8C", "8D", "8S"))), nextMeldId = 2)
+        val s = state(hand, Phase.AWAITING_DRAW, discardPile = cards("5C", "8H"), table = table)
+        val only = Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1)))
+        RoundEngine.legalActions(s, Seat(0)).filterIsInstance<Action.TakeDiscardPile>() shouldBe listOf(only)
+        resolve(s, PlayIntent.TakeDiscardPile, emptyList()) shouldBe Resolution.ChoosePlan(listOf(only))
+    }
 }
+

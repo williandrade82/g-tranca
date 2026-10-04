@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 
 /** Etapa do jogo, do ponto de vista de quem acompanha. */
@@ -130,10 +131,15 @@ class GameController(
     private val nextRoundSignal = Channel<Unit>(Channel.CONFLATED)
     private val awaitingNextRound = AtomicBoolean(false)
     private val requestCounter = AtomicLong(0)
-    private val dealShownSignal = Channel<Unit>(Channel.CONFLATED)
+    private val presentationSignal = Channel<Unit>(Channel.CONFLATED)
 
-    /** Partida (número) cuja encenação das trocas da distribuição o controlador espera; 0 se nenhuma. */
-    private val awaitingDealRound = AtomicLong(0)
+    /**
+     * Encenação de trocas de 3 vermelho que o controlador espera (§3.5, §6.5): a partida e o tamanho do registro
+     * (`redThreeLog`) depois das trocas a encenar; `null` se nenhuma. Ver [presentationDone].
+     */
+    private data class PresentationKey(val roundNumber: Int, val logSize: Int)
+
+    private val awaitingPresentation = AtomicReference<PresentationKey?>(null)
 
     /**
      * Trava única do estado do jogo: aplicar uma ação, encerrar/iniciar partida, publicar o snapshot e desistir
@@ -150,7 +156,7 @@ class GameController(
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }
     init {
         // §3.5 com humano, a 1ª jogada espera a encenação das trocas da distribuição (ver [dealPresentationDone]).
-        if (human != null && hasDealSwaps()) awaitingDealRound.set(1)
+        if (human != null && hasDealSwaps()) awaitingPresentation.set(PresentationKey(1, match.currentRound.redThreeLog.size))
     }
 
     /** Partida e identificador do pedido em aberto ao humano; `null` fora da espera pelo humano. */
@@ -200,11 +206,13 @@ class GameController(
                 // distribuição (§3.5), na ordem. Sem humano (bots, :sim), não há espera.
                 val wait = human != null && hasDealSwaps()
                 // Na 1ª partida a espera já foi armada na construção (o 1º snapshot pode ser igual ao inicial).
-                if (wait && match.roundNumber > 1) awaitingDealRound.set(match.roundNumber.toLong())
+                if (wait && match.roundNumber > 1) {
+                    awaitingPresentation.set(PresentationKey(match.roundNumber, match.currentRound.redThreeLog.size))
+                }
                 publishLocked(Stage.PLAYING)
                 wait
             }
-            if (waitDeal) dealShownSignal.receive()
+            if (waitDeal) presentationSignal.receive()
             while (true) {
                 val round = synchronized(lock) {
                     if (resigned) return
@@ -235,15 +243,24 @@ class GameController(
                     }
                 }
                 check(action in legal) { "Assento ${seat.index}: ação fora de legalActions: $action" }
-                synchronized(lock) {
+                val waitSwaps = synchronized(lock) {
                     // §13.1 desistência durante a decisão (ex.: bot pensando): nada mais é aplicado.
                     if (resigned) return
                     val event = PublicEvent.of(round.discardPile, seat, action)
                     match = match.play(seat, action)
                     recordEvent(event)
                     bots.forEach { it.observe(event) }
+                    // §4.3/§6.5 com humano, uma ação que fez alguém trocar 3 vermelho (compra, reposição em cadeia,
+                    // morto) só é seguida da próxima depois de a interface encenar essas trocas: assim a ordem vista é a
+                    // real (compra/troca → baixas → descarte) e o descarte é sempre o último movimento de quem joga.
+                    val after = match.currentRound
+                    val wait = human != null && after.phase != Phase.FINISHED &&
+                        after.redThreeLog.drop(round.redThreeLog.size).any { !it.atDeal }
+                    if (wait) awaitingPresentation.set(PresentationKey(match.roundNumber, after.redThreeLog.size))
                     publishLocked(Stage.PLAYING)
+                    wait
                 }
+                if (waitSwaps) presentationSignal.receive()
             }
             val waitNext = synchronized(lock) {
                 // §13.1 a partida que terminou depois da desistência nunca é pontuada.
@@ -280,8 +297,21 @@ class GameController(
      * jogada. Ignorada se o controlador não espera essa partida; devolve se foi aceita.
      */
     fun dealPresentationDone(roundNumber: Int): Boolean {
-        if (!awaitingDealRound.compareAndSet(roundNumber.toLong(), 0)) return false
-        return dealShownSignal.trySend(Unit).isSuccess
+        val key = awaitingPresentation.get() ?: return false
+        return key.roundNumber == roundNumber && hasDealSwaps() && presentationDone(roundNumber, key.logSize)
+    }
+
+    /**
+     * A interface terminou de encenar as trocas de 3 vermelho da partida [roundNumber] até o registro ter [logSize]
+     * entradas (§3.5, §6.5): libera a próxima ação. Aceita só a espera exata em aberto; confirmação tardia, de outra
+     * partida, de um registro menor ou depois da desistência é recusada. Devolve se foi aceita.
+     */
+    fun presentationDone(roundNumber: Int, logSize: Int): Boolean {
+        if (resigned) return false
+        val key = PresentationKey(roundNumber, logSize)
+        val current = awaitingPresentation.get() ?: return false
+        if (current != key || !awaitingPresentation.compareAndSet(current, null)) return false
+        return presentationSignal.trySend(Unit).isSuccess
     }
 
     /**
@@ -315,7 +345,7 @@ class GameController(
             if (match.isOver || resigned) return@synchronized false
             resignedWinner = config.mode.sides.first { it != config.mode.sideOf(viewerSeat) }
             awaitingNextRound.set(false)
-            awaitingDealRound.set(0)
+            awaitingPresentation.set(null)
             // Sob a trava, `match` não está no meio de uma ação nem de uma pontuação: os totais e o histórico são
             // os de antes da partida em andamento (ela nunca é pontuada).
             _state.value = snapshot(Stage.GAME_OVER, humanLegal = emptyList(), thinkingSeat = null)

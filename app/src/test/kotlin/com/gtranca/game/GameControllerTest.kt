@@ -19,6 +19,7 @@ import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -92,8 +93,9 @@ class GameControllerTest {
      * controlador com humano não libera a 1ª jogada.
      */
     private fun TestScope.acknowledgeDeals(controller: GameController) {
-        backgroundScope.launch {
-            controller.state.collect { if (it.stage == Stage.PLAYING) controller.dealPresentationDone(it.roundNumber) }
+        // Sem confinamento: roda a cada emissão (o `advanceUntilIdle` não espera tarefas do backgroundScope).
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            controller.state.collect { if (it.stage == Stage.PLAYING) controller.presentationDone(it.roundNumber, it.view.redThreeLog.size) }
         }
     }
 

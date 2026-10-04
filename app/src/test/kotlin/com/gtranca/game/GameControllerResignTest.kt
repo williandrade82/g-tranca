@@ -15,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
@@ -185,8 +186,9 @@ class GameControllerResignTest {
             listOf(human, BotSeatPlayer(createBot(Difficulty.FACIL, Random(5)))),
             computeDispatcher = dispatcher, botDelayMillis = 0,
         )
-        backgroundScope.launch {
-            controller.state.collect { if (it.stage == Stage.PLAYING) controller.dealPresentationDone(it.roundNumber) }
+        // Sem confinamento: roda a cada emissão (o `advanceUntilIdle` não espera tarefas do backgroundScope).
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            controller.state.collect { if (it.stage == Stage.PLAYING) controller.presentationDone(it.roundNumber, it.view.redThreeLog.size) }
         }
         val job = launch { controller.run() }
         var guard = 0
@@ -222,8 +224,9 @@ class GameControllerResignTest {
         val controller = GameController(
             GameConfig(mode, Difficulty.FACIL, 3000), 9, players, computeDispatcher = dispatcher, botDelayMillis = 0,
         )
-        backgroundScope.launch {
-            controller.state.collect { if (it.stage == Stage.PLAYING) controller.dealPresentationDone(it.roundNumber) }
+        // Sem confinamento: roda a cada emissão (o `advanceUntilIdle` não espera tarefas do backgroundScope).
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            controller.state.collect { if (it.stage == Stage.PLAYING) controller.presentationDone(it.roundNumber, it.view.redThreeLog.size) }
         }
         val job = launch { controller.run() }
         advanceUntilIdle()

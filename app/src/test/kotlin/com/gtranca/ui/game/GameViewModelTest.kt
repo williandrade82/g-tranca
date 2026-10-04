@@ -272,8 +272,8 @@ class GameViewModelTest {
             val state = vm.uiState.value
             current.notice.cards.all { it.isRedThree } shouldBe true
             // Durante a encenação: a mesa ainda não mostra esse 3 vermelho, a mão não mostra a reposição e nada se joga.
-            state.redThrees[own].any { it in current!!.notice.cards } shouldBe false
-            state.hand.any { it in current!!.hiddenHandCards } shouldBe false
+            state.redThrees[own].any { it in current.notice.cards } shouldBe false
+            state.hand.any { it in current.hiddenHandCards } shouldBe false
             state.isHumanTurn shouldBe false
             vm.onCreateMeld()
             advanceUntilIdle()
@@ -755,6 +755,45 @@ class GameViewModelTest {
             advanceUntilIdle()
             if (vm.uiState.value.reveal != null) return
         }
+    }
+
+    @Test
+    fun `§5_1 tocar no lixo sem selecao abre a escolha com todos os planos e nada e aplicado ate escolher`() = runTest(dispatcher) {
+        var checked = false
+        seeds@ for (seed in 1L..120L) {
+            val vm = newGame(seed, target = 1_000_000)
+            repeat(30) {
+                val state = vm.uiState.value
+                if (state.snapshot.stage != Stage.PLAYING) return@repeat
+                if (state.awaitingDraw && state.canTakeDiscardPile) {
+                    val plans = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
+                    vm.onClearSelection()
+                    vm.onDiscardPileClick()
+                    advanceUntilIdle()
+                    val choice = vm.uiState.value.planChoice.shouldNotBeNull()
+                    // Todos os planos, mesmo que haja um só; nada aplicado ainda.
+                    choice.toSet() shouldBe plans.toSet()
+                    vm.uiState.value.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
+                    vm.uiState.value.snapshot.turnEvents[0].none { it.action is Action.TakeDiscardPile } shouldBe true
+                    // O botão "Pegar lixo" segue a mesma regra.
+                    vm.onDismissPlanChoice()
+                    vm.onTakeDiscardPile()
+                    advanceUntilIdle()
+                    vm.uiState.value.planChoice.shouldNotBeNull().toSet() shouldBe plans.toSet()
+                    // Escolher um plano aplica exatamente esse plano.
+                    val chosen = choice.last()
+                    vm.onPlanChosen(chosen)
+                    advanceUntilIdle()
+                    settle(vm)
+                    vm.uiState.value.snapshot.turnEvents[0].first().action shouldBe chosen
+                    checked = true
+                    break@seeds
+                }
+                drawAndDiscard(vm)
+                settle(vm)
+            }
+        }
+        checked shouldBe true
     }
 }
 

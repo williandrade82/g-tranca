@@ -90,11 +90,20 @@ object HumanTurnResolver {
             PlayIntent.DeclineDraw ->
                 if (Action.DeclineDraw in legal) Resolution.Play(Action.DeclineDraw) else reject(Action.DeclineDraw)
             PlayIntent.TakeDiscardPile -> {
-                val options = legal.filterIsInstance<Action.TakeDiscardPile>().filter(::sameCards)
-                when (options.size) {
-                    0 -> reject(Action.TakeDiscardPile(DiscardPlan.NewMeld(selection)))
-                    1 -> Resolution.Play(options.single())
-                    else -> Resolution.ChoosePlan(options)
+                val all = legal.filterIsInstance<Action.TakeDiscardPile>()
+                if (selection.isEmpty()) {
+                    // §5.1 sem seleção não há intenção expressa: nunca executa sozinho (jogadas não se desfazem). Mostra
+                    // todos os planos, inclusive um só (como confirmação), do que usa menos cartas da mão ao que usa mais.
+                    if (all.isEmpty()) reject(Action.TakeDiscardPile(DiscardPlan.NewMeld(selection)))
+                    else Resolution.ChoosePlan(all.sortedBy { handCardsOf(it).size })
+                } else {
+                    // Com seleção: o plano que usa exatamente essas cartas da mão expressa a intenção.
+                    val options = all.filter(::sameCards)
+                    when (options.size) {
+                        0 -> reject(Action.TakeDiscardPile(DiscardPlan.NewMeld(selection)))
+                        1 -> Resolution.Play(options.single())
+                        else -> Resolution.ChoosePlan(options)
+                    }
                 }
             }
             PlayIntent.CreateMeld ->
