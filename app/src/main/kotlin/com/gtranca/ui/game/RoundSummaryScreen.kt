@@ -28,8 +28,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
 import androidx.annotation.StringRes
-import androidx.compose.ui.Alignment
-import androidx.compose.material3.TextButton
 import com.gtranca.game.SeatRole
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.SideScore
@@ -37,13 +35,15 @@ import com.gtranca.game.GameSnapshot
 import com.gtranca.game.Stage
 
 
-/** Fim de partida: detalhamento §12 por lado, a partir de [SideScore] do histórico. */
+/**
+ * Fim de partida: detalhamento §12 por lado, a partir de [SideScore] do histórico. Sem a opção de desistir (decisão do
+ * usuário, §13.1): a desistência fica na mesa, na encenação e no anúncio do resultado.
+ */
 @Composable
 fun RoundSummaryScreen(
     snapshot: GameSnapshot,
     onNextRound: () -> Unit,
     onContinue: () -> Unit,
-    onResign: (() -> Unit)? = null,
 ) {
     val record = snapshot.history.last()
     val view = snapshot.view
@@ -59,19 +59,7 @@ fun RoundSummaryScreen(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.round_over_title, record.number),
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                // §13.1 desistir também daqui.
-                if (onResign != null) {
-                    TextButton(onResign, Modifier.heightIn(min = 48.dp).testTag("action-resign")) {
-                        Text(stringResource(R.string.action_resign))
-                    }
-                }
-            }
+            Text(stringResource(R.string.round_over_title, record.number), style = MaterialTheme.typography.headlineSmall)
             Text(resultText, style = MaterialTheme.typography.titleMedium)
 
             ScoreRow(stringResource(R.string.score_item), sides.map { sideName(view.mode, it, view.side) }, bold = true)

@@ -41,12 +41,12 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
         null -> TableScreen(state, viewModel)
         EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign })
         EndScreen.ROUND_POINTS ->
-            RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, viewModel::onResign.takeIf { canResign })
+            RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext)
         EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext)
         EndScreen.FINAL -> GameOverScreen(snapshot, onExit)
     }
 
-    // §13.1 desistência: disponível na mesa, na encenação e nas telas de anúncio e de pontos.
+    // §13.1 desistência: disponível na mesa, na encenação e na tela de anúncio (não na de pontos, decisão do usuário).
     if (state.confirmResign) ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign)
 
     if (confirmExit) {

@@ -301,7 +301,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
 - Se houver empate na maior pontuação, joga-se **nova partida** até desempatar.
 
 ### **13.1. Desistência**
-- A qualquer momento do jogo, o jogador humano pode **desistir**, depois de confirmar a decisão (se cancelar, o jogo continua exatamente como estava).
+- Durante o jogo, o jogador humano pode **desistir**, depois de confirmar a decisão (se cancelar, o jogo continua exatamente como estava). A opção não é oferecida na tela de pontuação da partida (§12).
 - Ao desistir, o jogo termina imediatamente e o **outro lado** (o jogador virtual ou a dupla adversária) é declarado **vencedor**. A partida em andamento não é pontuada.
 
 ---

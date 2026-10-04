@@ -104,8 +104,7 @@ class EndScreensTest {
 
     @Test
     fun pontosMostram3VermelhoSemCanastraESecaoDaMaoComSubtotal() {
-        var resigned = false
-        rule.setContent { GTrancaTheme { RoundSummaryScreen(snapshot(), {}, {}, onResign = { resigned = true }) } }
+        rule.setContent { GTrancaTheme { RoundSummaryScreen(snapshot(), {}, {}) } }
         // §12.1 sem canastra, 3 vermelho vale −100 cada: a célula diz o motivo e a nota explica.
         rule.onNodeWithText("\u2212200 (2)\nsem canastra").assertExists()
         rule.onNodeWithText("Sem canastra na mesa, cada 3 vermelho vale −100 aqui e +5 em “Cartas na mesa”: −95 no total.").assertExists()
@@ -124,9 +123,8 @@ class EndScreensTest {
         rule.onNodeWithText("Cartas na mão").assertExists()
         rule.onNode(hasText("Subtotal da mão")).assertExists()
         rule.onNodeWithText("\u221259").assertExists()
-        // §13.1 desistir também daqui.
-        rule.onNodeWithTag("action-resign").performClick()
-        check(resigned) { "Desistir não chamou a ação" }
+        // A tela de pontos não oferece desistir (decisão do usuário; §13.1 fica na mesa e no anúncio).
+        rule.onNodeWithTag("action-resign").assertDoesNotExist()
     }
 
     @Test
