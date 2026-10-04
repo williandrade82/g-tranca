@@ -15,6 +15,8 @@ import com.gtranca.engine.startMatch
 import io.kotest.matchers.nulls.shouldNotBeNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import java.io.IOException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -144,7 +146,16 @@ class HomeViewModelTest {
             vm.onDismissNewGame()
             vm.uiState.value.confirmNewGame shouldBe false
             vm.onNewGame().shouldBeNull()
-            vm.onConfirmNewGame() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000)
+            // Confirmar apaga o salvo antigo antes de liberar o novo jogo (sem janela para retomar o antigo).
+            vm.onConfirmNewGame()
+            vm.uiState.value.pendingStart.shouldBeNull()
+            vm.uiState.value.canStart shouldBe false
+            advanceUntilIdle()
+            store.game.shouldBeNull()
+            vm.uiState.value.pendingStart shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000)
+            vm.onStartHandled()
+            vm.uiState.value.pendingStart.shouldBeNull()
+            store.game = saved()
             // Ao voltar para a tela, o salvo é relido (ex.: o jogo terminou e foi apagado).
             store.game = null
             vm.refresh()
@@ -155,5 +166,48 @@ class HomeViewModelTest {
             Dispatchers.resetMain()
         }
     }
-}
 
+    @Test
+    fun `botoes de jogo so ficam ativos depois de ler o salvo e o ultimo modo`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val vm = HomeViewModel(FakeSettings(Settings(lastMode = GameMode.DUPLAS)), FakeStore(saved()))
+            vm.uiState.value.ready shouldBe false
+            vm.uiState.value.canStart shouldBe false
+            vm.onNewGame().shouldBeNull()
+            vm.uiState.value.confirmNewGame shouldBe false
+            advanceUntilIdle()
+            vm.uiState.value.ready shouldBe true
+            vm.uiState.value.mode shouldBe GameMode.DUPLAS
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `preferencias e jogo salvo ilegiveis viram valores padrao, sem derrubar a tela`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val broken = object : SettingsRepository {
+                override val settings: Flow<Settings> = flow { throw IOException("arquivo corrompido") }
+                override suspend fun setLastMode(mode: GameMode) = throw IOException("disco cheio")
+                override suspend fun setHandSort(id: String) = throw IOException("disco cheio")
+            }
+            val brokenStore = object : SavedGameStore {
+                override suspend fun load(): SavedGame? = throw IOException("sem leitura")
+                override suspend fun save(game: SavedGame) = throw IOException("disco cheio")
+                override suspend fun clear() = throw IOException("disco cheio")
+            }
+            val vm = HomeViewModel(broken, brokenStore)
+            advanceUntilIdle()
+            vm.uiState.value.mode shouldBe GameMode.INDIVIDUAL
+            vm.uiState.value.saved.shouldBeNull()
+            vm.uiState.value.ready shouldBe true
+            // Gravar o último modo falha em silêncio: o jogo começa mesmo assim.
+            vm.onNewGame() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000)
+            advanceUntilIdle()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+}

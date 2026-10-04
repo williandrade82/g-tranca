@@ -29,7 +29,7 @@ import com.gtranca.game.cardClass
 import kotlinx.coroutines.CoroutineDispatcher
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.UUID
-import kotlinx.coroutines.channels.Channel
+import com.gtranca.game.WriteQueue
 import com.gtranca.game.toSaved
 import com.gtranca.game.savedGameOf
 import com.gtranca.game.SaveSnapshot
@@ -154,21 +154,22 @@ class GameViewModel(
     private val persistence: GamePersistence? = null,
     /** Ordem da mão inicial (a preferida do jogador). */
     initialSort: HandSort = HandSort.CUSTOM,
-    /** Onde a gravação roda (nunca na thread principal nem no laço do jogo). */
-    ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Fila das gravações (fora da thread principal e do laço do jogo; sobrevive ao fim desta tela). */
+    private val writes: WriteQueue = WriteQueue.app,
 ) : ViewModel(), TableEvents {
 
     private val config = config
     private val gameSeed = gameSeed
 
-    /** Gravações em ordem (salvar, e no fim registrar a estatística e apagar o salvo), consumidas em [ioDispatcher]. */
-    private sealed interface PersistCommand {
-        data class Save(val snapshot: SaveSnapshot) : PersistCommand
-        data class Finish(val result: GameResult) : PersistCommand
-    }
-
-    private val persistCommands = Channel<PersistCommand>(Channel.UNLIMITED)
+    /** O fim do jogo já foi para a fila: nenhuma gravação depois dele (recriaria o salvo apagado). */
     private val finishSent = AtomicBoolean(false)
+
+    /** Grava a foto do jogo (na fila, em ordem; falha só é registrada). */
+    private fun enqueueSave(snapshot: SaveSnapshot) {
+        val store = persistence ?: return
+        if (finishSent.get()) return
+        writes.enqueue { store.save(savedGameOf(gameId, config, gameSeed, snapshot)) }
+    }
 
     private data class Local(
         val snapshot: GameSnapshot,
@@ -205,7 +206,7 @@ class GameViewModel(
         botDelayMillis = botDelayMillis,
         restored = restored,
         // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
-        onSave = if (persistence == null) null else { snapshot -> persistCommands.trySend(PersistCommand.Save(snapshot)) },
+        onSave = if (persistence == null) null else ::enqueueSave,
     )
     private val animationIds = AtomicLong(0)
     private val local = MutableStateFlow(
@@ -235,22 +236,13 @@ class GameViewModel(
                         snapshot.winner == snapshot.viewerSide -> GameResult.WIN
                         else -> GameResult.LOSS
                     }
-                    persistCommands.trySend(PersistCommand.Finish(result))
+                    // Na fila durável: sair da tela não interrompe o fim (apagar o salvo e contar o jogo).
+                    writes.enqueue { persistence.finish(gameId, config.toSaved(), result) }
                 }
             }
         }
-        if (persistence != null) {
-            viewModelScope.launch(ioDispatcher) {
-                for (command in persistCommands) {
-                    when (command) {
-                        is PersistCommand.Save -> persistence.save(savedGameOf(gameId, config, gameSeed, command.snapshot))
-                        is PersistCommand.Finish -> persistence.finish(gameId, config.toSaved(), command.result)
-                    }
-                }
-            }
-            // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
-            if (restored == null) persistCommands.trySend(PersistCommand.Save(controller.saveSnapshot()))
-        }
+        // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
+        if (restored == null) enqueueSave(controller.saveSnapshot())
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
             local.map { state -> state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) } }
@@ -422,7 +414,7 @@ class GameViewModel(
 
     override fun onSortChange(sort: HandSort) {
         local.update { it.copy(sort = sort) }
-        persistence?.let { store -> viewModelScope.launch { store.saveHandSort(sort.name) } }
+        persistence?.let { store -> writes.enqueue { store.saveHandSort(sort.name) } }
     }
 
     override fun onDraw() = play(PlayIntent.Draw)

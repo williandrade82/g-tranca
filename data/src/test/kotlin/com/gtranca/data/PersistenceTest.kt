@@ -13,6 +13,10 @@ import com.gtranca.engine.startMatch
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import androidx.datastore.core.CorruptionException
+import io.kotest.assertions.throwables.shouldThrow
+import java.io.IOException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -138,5 +142,46 @@ class PersistenceTest {
         stats.stats.first().lines shouldBe emptyMap()
         // Zerar não faz um jogo já contado contar de novo.
         stats.record("a", GameMode.INDIVIDUAL, "medio", GameResult.WIN) shouldBe false
+    }
+
+    @Test
+    fun `jogo salvo incoerente vira sem jogo salvo - dificuldade desconhecida, modo, alvo ou assento fora do modo`() {
+        val game = savedGame(GameMode.DUPLAS)
+        val known: (String) -> Boolean = { it in setOf("facil", "medio", "dificil") }
+        fun decoded(g: SavedGame) = FileSavedGameStore.decode(FileSavedGameStore.encode(g), known)
+        decoded(game) shouldBe game
+        decoded(game.copy(config = game.config.copy(difficultyId = "impossivel"))).shouldBeNull()
+        decoded(game.copy(config = game.config.copy(mode = GameMode.INDIVIDUAL))).shouldBeNull()
+        decoded(game.copy(config = game.config.copy(targetScore = 3000))).shouldBeNull()
+        decoded(game.copy(events = game.events + game.events.last().copy(seat = 4))).shouldBeNull()
+        decoded(game.copy(events = game.events + game.events.last().copy(seat = -1))).shouldBeNull()
+    }
+
+    @Test
+    fun `falha de disco ao gravar lanca IOException e preserva o jogo salvo anterior`() = runBlocking<Unit> {
+        val file = File(dir, "saved.json")
+        val store = FileSavedGameStore(file)
+        val game = savedGame()
+        store.save(game)
+        // O temporário não pode ser criado (no lugar dele há uma pasta).
+        val blocker = File(dir, "saved.json.tmp").apply { mkdir() }
+        shouldThrow<IOException> { store.save(game.copy(gameId = "jogo-2")) }
+        store.load() shouldBe game
+        blocker.delete()
+        store.save(game.copy(gameId = "jogo-2"))
+        store.load()?.gameId shouldBe "jogo-2"
+    }
+
+    /** DataStore cujo arquivo não pode ser lido (corrompido). */
+    private class CorruptDataStore : DataStore<Preferences> {
+        override val data: Flow<Preferences> = flow { throw CorruptionException("arquivo corrompido") }
+        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
+            throw IOException("arquivo corrompido")
+    }
+
+    @Test
+    fun `preferencias e estatisticas ilegiveis viram valores padrao`() = runBlocking<Unit> {
+        DataStoreSettingsRepository(CorruptDataStore()).settings.first() shouldBe Settings()
+        DataStoreStatsRepository(CorruptDataStore()).stats.first().lines shouldBe emptyMap()
     }
 }

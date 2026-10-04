@@ -41,17 +41,30 @@ import com.gtranca.data.GameStats
 import com.gtranca.data.StatsRepository
 import com.gtranca.engine.model.GameMode
 import com.gtranca.ui.home.labelRes
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** Estatísticas por modo e dificuldade (jogos, vitórias, %); zerar com confirmação. */
 class StatsViewModel(private val repository: StatsRepository) : ViewModel() {
-    val stats: StateFlow<GameStats> = repository.stats.stateIn(viewModelScope, SharingStarted.Eagerly, GameStats())
+    /** Estatísticas ilegíveis aparecem zeradas (nunca derrubam o app). */
+    val stats: StateFlow<GameStats> = repository.stats
+        .catch { emit(GameStats()) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, GameStats())
 
     fun onReset() {
-        viewModelScope.launch { repository.reset() }
+        viewModelScope.launch {
+            try {
+                repository.reset()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Falha de disco: os números continuam os de antes.
+            }
+        }
     }
 }
 

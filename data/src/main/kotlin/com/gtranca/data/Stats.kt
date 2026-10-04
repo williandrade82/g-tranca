@@ -3,6 +3,9 @@ package com.gtranca.data
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import kotlinx.coroutines.flow.catch
+import java.io.IOException
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.gtranca.engine.model.GameMode
@@ -43,7 +46,10 @@ interface StatsRepository {
 /** Estatísticas no DataStore Preferences: um contador por (modo, dificuldade, campo) e os ids recentes já contados. */
 class DataStoreStatsRepository(private val store: DataStore<Preferences>) : StatsRepository {
 
-    override val stats: Flow<GameStats> = store.data.map { prefs ->
+    /** Arquivo ilegível: estatísticas zeradas (nunca derruba o app). */
+    override val stats: Flow<GameStats> = store.data.catch { error ->
+        if (error is IOException) emit(emptyPreferences()) else throw error
+    }.map { prefs ->
         val lines = mutableMapOf<StatsKey, StatsLine>()
         prefs.asMap().forEach { (key, value) ->
             val parts = key.name.split(':')

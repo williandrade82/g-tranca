@@ -7,6 +7,9 @@ import com.gtranca.data.GameResult
 import com.gtranca.data.SavedConfig
 import com.gtranca.data.SavedEvent
 import com.gtranca.data.SavedGame
+import com.gtranca.data.SavedGameStore
+import com.gtranca.data.SettingsRepository
+import com.gtranca.data.StatsRepository
 import com.gtranca.engine.model.Seat
 
 /** Conversões entre os tipos do jogo e os DTOs do `:data` (que não depende do `:ai`). */
@@ -33,7 +36,10 @@ interface GamePersistence {
     /** Grava (substitui) o jogo salvo. */
     suspend fun save(game: SavedGame)
 
-    /** Fim do jogo (§13, §13.1): registra a estatística (uma vez por [gameId]) e apaga o jogo salvo. */
+    /**
+     * Fim do jogo (§13, §13.1): apaga o jogo salvo e depois registra a estatística (uma vez por [gameId]). Nessa
+     * ordem, repetir (ex.: o processo morreu no meio e o jogo foi retomado) nunca conta o jogo duas vezes.
+     */
     suspend fun finish(gameId: String, config: SavedConfig, result: GameResult)
 
     /** Ordem da mão preferida. */
@@ -41,13 +47,19 @@ interface GamePersistence {
 }
 
 /** Persistência real, no `:data`. */
-class DataGamePersistence(private val data: GameData) : GamePersistence {
-    override suspend fun save(game: SavedGame) = data.savedGames.save(game)
+class DataGamePersistence(
+    private val savedGames: SavedGameStore,
+    private val stats: StatsRepository,
+    private val settings: SettingsRepository,
+) : GamePersistence {
+    constructor(data: GameData) : this(data.savedGames, data.stats, data.settings)
+
+    override suspend fun save(game: SavedGame) = savedGames.save(game)
 
     override suspend fun finish(gameId: String, config: SavedConfig, result: GameResult) {
-        data.stats.record(gameId, config.mode, config.difficultyId, result)
-        data.savedGames.clear()
+        savedGames.clear()
+        stats.record(gameId, config.mode, config.difficultyId, result)
     }
 
-    override suspend fun saveHandSort(id: String) = data.settings.setHandSort(id)
+    override suspend fun saveHandSort(id: String) = settings.setHandSort(id)
 }

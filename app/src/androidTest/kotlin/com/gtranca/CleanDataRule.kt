@@ -1,7 +1,8 @@
 package com.gtranca
 
 import androidx.test.platform.app.InstrumentationRegistry
-import com.gtranca.data.GameData
+import com.gtranca.game.WriteQueue
+import com.gtranca.game.appData
 import com.gtranca.engine.model.GameMode
 import kotlinx.coroutines.runBlocking
 import org.junit.rules.ExternalResource
@@ -12,10 +13,13 @@ import org.junit.rules.ExternalResource
  */
 class CleanDataRule : ExternalResource() {
     override fun before() {
-        val data = GameData.get(InstrumentationRegistry.getInstrumentation().targetContext)
+        val data = appData(InstrumentationRegistry.getInstrumentation().targetContext)
         runBlocking {
-            data.savedGames.clear()
-            data.settings.setLastMode(GameMode.INDIVIDUAL)
+            // Pela fila do app: depois das gravações que um teste anterior deixou pendentes.
+            WriteQueue.app.run {
+                data.savedGames.clear()
+                data.settings.setLastMode(GameMode.INDIVIDUAL)
+            }
         }
     }
 }

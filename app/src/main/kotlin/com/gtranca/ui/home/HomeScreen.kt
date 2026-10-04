@@ -55,6 +55,13 @@ fun HomeScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Ao voltar para esta tela, o jogo salvo pode ter mudado (jogado, terminado).
     LaunchedEffect(Unit) { viewModel.refresh() }
+    // Novo jogo confirmado: o salvo antigo já foi apagado.
+    LaunchedEffect(state.pendingStart) {
+        state.pendingStart?.let { config ->
+            viewModel.onStartHandled()
+            onStart(config)
+        }
+    }
     Surface(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -74,6 +81,7 @@ fun HomeScreen(
                 val description = savedDescription(saved)
                 Button(
                     onClick = onContinue,
+                    enabled = state.ready,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("continue"),
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -146,7 +154,7 @@ fun HomeScreen(
             title = { Text(stringResource(R.string.new_game_confirm_title)) },
             text = { Text(stringResource(R.string.new_game_confirm_text)) },
             confirmButton = {
-                TextButton({ viewModel.onConfirmNewGame()?.let(onStart) }, Modifier.testTag("new-game-confirm")) {
+                TextButton(viewModel::onConfirmNewGame, Modifier.testTag("new-game-confirm")) {
                     Text(stringResource(R.string.new_game_confirm))
                 }
             },

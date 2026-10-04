@@ -3,6 +3,10 @@ package com.gtranca.ui.home
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.CancellationException
+import com.gtranca.game.WriteQueue
 import com.gtranca.data.SettingsRepository
 import com.gtranca.data.SavedGameStore
 import com.gtranca.data.SavedGame
@@ -36,7 +40,17 @@ data class HomeUiState(
     val saved: SavedSummary? = null,
     /** "Novo jogo" com jogo salvo: pedindo confirmação (o salvo será perdido). */
     val confirmNewGame: Boolean = false,
+    /** Já leu o jogo salvo e o último modo (antes disso, "Novo jogo"/"Continuar" ficam desativados). */
+    val loadedSaved: Boolean = true,
+    val loadedMode: Boolean = true,
+    /** Apagando o salvo antigo para começar um novo jogo (botões desativados). */
+    val starting: Boolean = false,
+    /** Jogo novo pronto para abrir (o salvo antigo já foi apagado): a tela navega e avisa [HomeViewModel.onStartHandled]. */
+    val pendingStart: GameConfig? = null,
 ) {
+    /** Pode agir nos botões de jogo (tudo carregado, nada em andamento). */
+    val ready: Boolean get() = loadedSaved && loadedMode && !starting && pendingStart == null
+
     /** Pontuação-alvo válida (inteiro positivo), ou `null`. */
     val targetScore: Int? get() = parseTargetScore(targetText)
 
@@ -53,7 +67,7 @@ data class HomeUiState(
             }
         }
 
-    val canStart: Boolean get() = targetScore != null
+    val canStart: Boolean get() = targetScore != null && ready
 
     fun toConfig(): GameConfig? = targetScore?.let { GameConfig(mode, difficulty, it) }
 
@@ -89,8 +103,10 @@ data class SavedSummary(
 class HomeViewModel(
     private val settings: SettingsRepository? = null,
     private val savedGames: SavedGameStore? = null,
+    /** Fila de gravações do app: ler e apagar o salvo depois das gravações pendentes do jogo que acabou de sair. */
+    private val writes: WriteQueue? = null,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(HomeUiState())
+    private val _uiState = MutableStateFlow(HomeUiState(loadedSaved = savedGames == null, loadedMode = settings == null))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     /** O jogador já mexeu no modo nesta tela: a preferência salva não o sobrescreve. */
@@ -99,8 +115,9 @@ class HomeViewModel(
     init {
         settings?.let { repo ->
             viewModelScope.launch {
-                val lastMode = repo.settings.first().lastMode
-                if (!modeTouched) _uiState.update { it.copy(mode = lastMode) }
+                // Preferências ilegíveis: modo padrão (nunca derruba o app).
+                val lastMode = repo.settings.map { it.lastMode }.catch { emit(GameMode.INDIVIDUAL) }.first()
+                _uiState.update { if (modeTouched) it.copy(loadedMode = true) else it.copy(mode = lastMode, loadedMode = true) }
             }
         }
         refresh()
@@ -109,9 +126,13 @@ class HomeViewModel(
     /** Relê o jogo salvo (ao voltar para a tela, ele pode ter mudado ou terminado). */
     fun refresh() {
         val store = savedGames ?: return
+        _uiState.update { it.copy(loadedSaved = false) }
         viewModelScope.launch {
-            val summary = store.load()?.let(SavedSummary::of)
-            _uiState.update { it.copy(saved = summary, confirmNewGame = it.confirmNewGame && summary != null) }
+            val game = if (writes != null) writes.read { store.load() } else safely { store.load() }
+            val summary = game?.let(SavedSummary::of)
+            _uiState.update {
+                it.copy(saved = summary, confirmNewGame = it.confirmNewGame && summary != null, loadedSaved = true)
+            }
         }
     }
 
@@ -130,6 +151,7 @@ class HomeViewModel(
      */
     fun onNewGame(): GameConfig? {
         val state = _uiState.value
+        if (!state.ready) return null
         if (state.saved != null) {
             _uiState.update { it.copy(confirmNewGame = true) }
             return null
@@ -137,17 +159,41 @@ class HomeViewModel(
         return start(state)
     }
 
-    /** Confirmou que o jogo salvo será perdido: devolve a configuração para começar. */
-    fun onConfirmNewGame(): GameConfig? {
+    /**
+     * Confirmou que o jogo salvo será perdido: apaga-o primeiro (assim a morte do processo nunca retoma o antigo) e
+     * só então publica [HomeUiState.pendingStart].
+     */
+    fun onConfirmNewGame() {
+        val state = _uiState.value
         _uiState.update { it.copy(confirmNewGame = false) }
-        return start(_uiState.value)
+        if (!state.ready) return
+        val config = start(state) ?: return
+        _uiState.update { it.copy(starting = true) }
+        viewModelScope.launch {
+            savedGames?.let { store -> if (writes != null) writes.run { store.clear() } else safely { store.clear() } }
+            _uiState.update { it.copy(starting = false, saved = null, pendingStart = config) }
+        }
     }
+
+    /** A tela abriu o jogo de [HomeUiState.pendingStart]. */
+    fun onStartHandled() = _uiState.update { it.copy(pendingStart = null) }
 
     fun onDismissNewGame() = _uiState.update { it.copy(confirmNewGame = false) }
 
     private fun start(state: HomeUiState): GameConfig? {
         val config = state.toConfig() ?: return null
-        settings?.let { repo -> viewModelScope.launch { repo.setLastMode(config.mode) } }
+        settings?.let { repo ->
+            if (writes != null) writes.enqueue { repo.setLastMode(config.mode) } else viewModelScope.launch { safely { repo.setLastMode(config.mode) } }
+        }
         return config
+    }
+
+    /** E/S que falha não derruba a tela: vale como "nada". */
+    private suspend fun <T> safely(block: suspend () -> T): T? = try {
+        block()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        null
     }
 }

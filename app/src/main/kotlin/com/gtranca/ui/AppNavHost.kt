@@ -22,6 +22,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.gtranca.ai.Difficulty
 import com.gtranca.data.GameData
+import com.gtranca.game.WriteQueue
+import com.gtranca.game.appData
+import androidx.lifecycle.ViewModel
+import androidx.navigation.NavDestination.Companion.hasRoute
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import java.util.UUID
 import com.gtranca.data.SavedGame
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.DataGamePersistence
@@ -64,14 +71,14 @@ data class GameRoute(val mode: String, val difficulty: String, val targetScore: 
 fun AppNavHost() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val data = remember { GameData.get(context) }
+    val data = remember { appData(context) }
     NavHost(navController, startDestination = HomeRoute) {
         composable<HomeRoute> {
             HomeScreen(
-                viewModel { HomeViewModel(data.settings, data.savedGames) },
-                onStart = { config -> navController.navigate(GameRoute.of(config)) },
-                onContinue = { navController.navigate(GameRoute.RESUME) },
-                onStats = { navController.navigate(StatsRoute) },
+                viewModel { HomeViewModel(data.settings, data.savedGames, WriteQueue.app) },
+                onStart = { config -> navController.navigateFromHome(GameRoute.of(config)) },
+                onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
+                onStats = { navController.navigateFromHome(StatsRoute) },
             )
         }
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
@@ -81,6 +88,12 @@ fun AppNavHost() {
     }
 }
 
+/** Sai do início uma vez só: um toque duplo em "Continuar"/"Novo jogo" nunca abre dois jogos. */
+private fun NavHostController.navigateFromHome(route: Any) {
+    if (currentBackStackEntry?.destination?.hasRoute<HomeRoute>() != true) return
+    navigate(route) { launchSingleTop = true }
+}
+
 private sealed interface GameLoad {
     data object Loading : GameLoad
 
@@ -88,22 +101,38 @@ private sealed interface GameLoad {
     data class Ready(val saved: SavedGame?, val sort: HandSort, val resumed: Boolean) : GameLoad
 }
 
+/** Vive enquanto a tela do jogo estiver na pilha (sobrevive a rotação/tema, não à morte do processo). */
+class GameSession : ViewModel() {
+    /** O [GameViewModel] desta tela já existe. */
+    var started = false
+}
+
 /**
- * Tela do jogo. Depois de criado, o jogo fica marcado (em estado salvável) como "em andamento": se o Android matar o
- * processo e recriar esta tela, o jogo é retomado do arquivo salvo — nunca começa outro. Se o salvo não existir mais
- * (o jogo terminou), volta ao início.
+ * Tela do jogo. O identificador do jogo fica em estado salvável: se o Android matar o processo e recriar esta tela,
+ * o jogo é retomado do arquivo salvo — nunca começa outro; se o salvo não for mais esse jogo (ele terminou), volta
+ * ao início. Mudança de configuração (tema, fonte) reaproveita o jogo em memória, sem reler o arquivo.
  */
 @Composable
 private fun GameDestination(route: GameRoute, data: GameData, navController: NavHostController) {
-    var resume by rememberSaveable { mutableStateOf(route.resume) }
-    val load by produceState<GameLoad>(GameLoad.Loading) {
-        val resumed = resume
-        val saved = if (resumed) data.savedGames.load() else null
-        val sort = data.settings.settings.first().handSortId
-            ?.let { id -> HandSort.entries.firstOrNull { it.name == id } } ?: HandSort.CUSTOM
-        value = GameLoad.Ready(saved, sort, resumed)
-    }
     val goHome = { navController.popBackStack(HomeRoute, inclusive = false) }
+    val session = viewModel { GameSession() }
+    if (session.started) {
+        val existing = viewModel<GameViewModel> { error("O jogo desta tela já foi criado") }
+        GameScreen(existing) { goHome() }
+        return
+    }
+    /** O jogo desta tela, depois de criado; `null` antes disso. */
+    var gameId by rememberSaveable { mutableStateOf<String?>(null) }
+    val newGameId = rememberSaveable { UUID.randomUUID().toString() }
+    val load by produceState<GameLoad>(GameLoad.Loading) {
+        val expected = gameId
+        val resumed = route.resume || expected != null
+        // Pela fila: lê depois das gravações pendentes.
+        val saved = if (resumed) WriteQueue.app.read { data.savedGames.load() } else null
+        val sort = data.settings.settings.map { it.handSortId }.catch { emit(null) }.first()
+            ?.let { id -> HandSort.entries.firstOrNull { it.name == id } } ?: HandSort.CUSTOM
+        value = GameLoad.Ready(saved?.takeIf { expected == null || it.gameId == expected }, sort, resumed)
+    }
     when (val ready = load) {
         GameLoad.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         is GameLoad.Ready -> {
@@ -123,10 +152,11 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             initialSort = ready.sort,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), persistence = persistence, initialSort = ready.sort)
+                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialSort = ready.sort)
                     }
                 }
-                LaunchedEffect(Unit) { resume = true }
+                session.started = true
+                LaunchedEffect(Unit) { gameId = saved?.gameId ?: newGameId }
                 GameScreen(viewModel) { goHome() }
             }
         }

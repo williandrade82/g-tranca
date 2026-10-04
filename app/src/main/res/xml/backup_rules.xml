@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 e anteriores: o jogo salvo (cartas ocultas e a semente) fica fora do backup. -->
+<full-backup-content>
+    <exclude domain="file" path="saved_game.json" />
+    <exclude domain="file" path="saved_game.json.tmp" />
+</full-backup-content>
