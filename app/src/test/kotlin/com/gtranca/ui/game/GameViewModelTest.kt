@@ -65,6 +65,7 @@ class GameViewModelTest {
             computeDispatcher = dispatcher,
             botDelayMillis = botDelayMillis,
             swapAnimationMillis = swapMillis,
+            animationMillis = 0,
         )
         advanceUntilIdle()
         if (settleReveals) settle(vm)
@@ -303,6 +304,7 @@ class GameViewModelTest {
                 computeDispatcher = dispatcher,
                 botDelayMillis = 0,
                 swapAnimationMillis = 1_000,
+                animationMillis = 0,
             )
             val presented = mutableListOf<RedThreeNotice>()
             backgroundScope.launch {
@@ -488,6 +490,7 @@ class GameViewModelTest {
             botDelayMillis = 0,
             redThreeSource = source,
             swapAnimationMillis = swapMillis,
+            animationMillis = 0,
         )
         // Sem avançar o relógio: a faixa do bot fica na tela (dura swapMillis).
         runCurrent()
@@ -662,5 +665,32 @@ class GameViewModelTest {
             advanceUntilIdle()
             settle(vm)
         }
+    }
+
+    @Test
+    fun `§3_5 reposicoes da distribuicao do humano ficam ocultas ate o Baixar e depois aparecem como novas`() = runTest(dispatcher) {
+        var checked = false
+        for (seed in 1L..80L) {
+            val vm = newGame(seed, mode = GameMode.DUPLAS, settleReveals = false)
+            val replacements = vm.uiState.value.snapshot.view.ownDealReplacements
+            val reveal = vm.uiState.value.reveal
+            if (reveal == null || !reveal.notice.atDeal || replacements.isEmpty()) continue
+            // Durante a encenação (de todas as trocas do humano), a mão não mostra as reposições e a mesa está bloqueada.
+            var guard = 0
+            while (vm.uiState.value.reveal != null && guard++ < 8) {
+                val state = vm.uiState.value
+                state.hand.any { it in replacements } shouldBe false
+                state.isHumanTurn shouldBe false
+                vm.onRevealConfirmed()
+                advanceUntilIdle()
+            }
+            val after = vm.uiState.value
+            after.reveal.shouldBeNull()
+            after.hand shouldContainAll replacements
+            after.newCards shouldContainAll replacements
+            checked = true
+            break
+        }
+        checked shouldBe true
     }
 }

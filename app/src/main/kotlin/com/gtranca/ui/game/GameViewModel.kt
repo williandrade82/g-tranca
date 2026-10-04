@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
 /** Mensagem para o humano (o texto em pt-BR é escolhido na camada de UI). */
@@ -88,6 +89,12 @@ data class GameUiState(
     val confirmResign: Boolean,
     val message: UiMessage?,
     val endScreen: EndScreen?,
+    /** Cartas voando agora (animações da mesa); vazio com animações desligadas. */
+    val flights: List<CardFlight> = emptyList(),
+    /** §7 conjuntos que acabaram de virar canastra (destaque curto). */
+    val canastaFlashes: List<CanastaFlash> = emptyList(),
+    /** Duração de cada voo (0 = sem animação). */
+    val animationMillis: Long = 0,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
     private val legal: List<Action> get() = if (ownSwapPending) emptyList() else snapshot.humanLegal
@@ -121,6 +128,11 @@ class GameViewModel(
     private val redThreeSource: RedThreeSwapSource = LogRedThreeSource,
     /** Duração da animação automática de troca de 3 vermelho de outro assento (0 nos testes). */
     private val swapAnimationMillis: Long = DEFAULT_SWAP_ANIMATION_MILLIS,
+    /**
+     * Duração das animações da mesa (compra, descarte, lixo, baixas, 3 vermelho, canastra); 0 desliga (testes).
+     * São só da interface: o laço do controlador não espera por elas.
+     */
+    private val animationMillis: Long = DEFAULT_ANIMATION_MILLIS,
 ) : ViewModel(), TableEvents {
 
     private data class Local(
@@ -132,6 +144,8 @@ class GameViewModel(
         val swaps: List<RedThreeNotice> = emptyList(),
         /** Cartas da mão escondidas até a troca do humano ([RedThreeNotice.id]) ser confirmada. */
         val hidden: Map<Long, Set<Card>> = emptyMap(),
+        val flights: List<CardFlight> = emptyList(),
+        val flashes: List<CanastaFlash> = emptyList(),
         val planChoice: List<Action.TakeDiscardPile>? = null,
         /** Pedido ([GameSnapshot.humanRequestId]) em que os planos de [planChoice] foram resolvidos. */
         val planRequestId: Long = 0,
@@ -151,6 +165,7 @@ class GameViewModel(
         computeDispatcher = computeDispatcher,
         botDelayMillis = botDelayMillis,
     )
+    private val animationIds = AtomicLong(0)
     private val local = MutableStateFlow(controller.state.value.let { absorb(Local(it), it, previous = null) })
 
     val uiState: StateFlow<GameUiState> = local.map(::build)
@@ -166,7 +181,28 @@ class GameViewModel(
                     if (head != null) {
                         delay(swapAnimationMillis)
                         local.update { state ->
-                            if (state.swaps.firstOrNull()?.id == head.id) state.copy(swaps = state.swaps.drop(1)) else state
+                            if (state.swaps.firstOrNull()?.id == head.id) {
+                                state.copy(swaps = state.swaps.drop(1), flights = state.flights + swapFlights(head, state, emptySet()))
+                            } else {
+                                state
+                            }
+                        }
+                    }
+                }
+        }
+        // Cada voo/destaque some sozinho depois da sua duração (o desenho também para; isto só limpa o estado).
+        viewModelScope.launch {
+            val scheduled = mutableSetOf<Long>()
+            local.map { state -> state.flights.map { it.id to it.delayMillis } + state.flashes.map { it.id to 0L } }
+                .distinctUntilChanged()
+                .collect { items ->
+                    items.filter { (id, _) -> scheduled.add(id) }.forEach { (id, delayMillis) ->
+                        launch {
+                            delay(delayMillis + animationMillis * 2)
+                            local.update { state ->
+                                state.copy(flights = state.flights.filterNot { it.id == id }, flashes = state.flashes.filterNot { it.id == id })
+                            }
+                            scheduled.remove(id)
                         }
                     }
                 }
@@ -207,6 +243,20 @@ class GameViewModel(
         // A reposição (ou o morto) da troca do próprio humano só aparece depois do "Baixar 3 vermelho" da última
         // troca dele nesta ação.
         fresh.lastOrNull { !it.atDeal && it.seat == snapshot.viewerSeat }?.let { hidden = hidden + (it.id to gained) }
+        // §3.5 na distribuição, as reposições do humano (informação privada da vista dele) ficam ocultas até a
+        // última troca dele ser confirmada, e então aparecem como novas. Não se casa reposição com troca: numa
+        // reposição em cadeia a carta intermediária era outro 3 vermelho, que não está mais na mão.
+        fresh.lastOrNull { it.atDeal && it.seat == snapshot.viewerSeat }?.let { last ->
+            val replacements = snapshot.view.ownDealReplacements.toSet()
+            hidden = hidden + (last.id to replacements)
+            newCards = newCards + replacements
+        }
+        // Animações da mesa a partir das diferenças com o último snapshot incorporado.
+        val (newFlights, newFlashes) = if (animationMillis > 0 && previous != null && snapshot.stage == Stage.PLAYING) {
+            TableAnimations.derive(old, snapshot, hidden.values.flatten().toSet(), animationIds::incrementAndGet)
+        } else {
+            emptyList<CardFlight>() to emptyList()
+        }
         val endStep = if (snapshot.stage == Stage.PLAYING || old.history.size != snapshot.history.size) 0 else state.endStep
         val playing = snapshot.stage == Stage.PLAYING
         if (!playing) newCards = emptySet()
@@ -215,6 +265,8 @@ class GameViewModel(
             selected = state.selected.filter { it in hand },
             newCards = newCards,
             swaps = if (playing) swaps else emptyList(),
+            flights = if (playing && sameRound) state.flights + newFlights else emptyList(),
+            flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
             confirmDecline = state.confirmDecline && snapshot.isHumanTurn,
@@ -251,6 +303,9 @@ class GameViewModel(
             confirmResign = state.confirmResign,
             message = state.message,
             endScreen = endScreen(snapshot, state.endStep),
+            flights = state.flights,
+            canastaFlashes = state.flashes,
+            animationMillis = animationMillis,
         )
     }
 
@@ -317,7 +372,11 @@ class GameViewModel(
     /** "Baixar 3 vermelho": encerra a encenação; o 3 vermelho aparece na mesa e a reposição, como nova. */
     override fun onRevealConfirmed() = local.update { state ->
         val head = state.swaps.firstOrNull()?.takeIf { isOwn(it, state.snapshot) } ?: return@update state
-        state.copy(swaps = state.swaps.drop(1), hidden = state.hidden - head.id)
+        state.copy(
+            swaps = state.swaps.drop(1),
+            hidden = state.hidden - head.id,
+            flights = state.flights + swapFlights(head, state, state.hidden[head.id].orEmpty()),
+        )
     }
 
     /** §13.1 desistir pede confirmação; cancelar volta como se nada tivesse acontecido. */
@@ -357,7 +416,18 @@ class GameViewModel(
         }
     }
 
+    /** §6.5 voos da troca encenada (3 vermelho à área do lado; reposição do monte), se as animações estão ligadas. */
+    private fun swapFlights(notice: RedThreeNotice, state: Local, revealed: Set<Card>): List<CardFlight> =
+        if (animationMillis > 0) {
+            TableAnimations.redThreeSwap(notice, state.snapshot.viewerSeat, revealed, animationIds::incrementAndGet)
+        } else {
+            emptyList()
+        }
+
     companion object {
+        /** Duração padrão de cada animação da mesa (300–600 ms). */
+        const val DEFAULT_ANIMATION_MILLIS: Long = 450
+
         /** Duração padrão da animação de troca de 3 vermelho de outro assento. */
         const val DEFAULT_SWAP_ANIMATION_MILLIS: Long = 1_800
     }

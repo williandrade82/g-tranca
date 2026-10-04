@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,6 +30,7 @@ import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.SideScore
 import com.gtranca.engine.model.SideTable
+import com.gtranca.engine.model.TableCards
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.HandOrder
@@ -71,11 +74,15 @@ class EndScreensTest {
                 Side(0), redThrees = line(2, -200), cleanCanastas = ScoreLine.ZERO, dirtyCanastas = ScoreLine.ZERO,
                 goOut = 0, mortoNotTaken = -100,
                 hand = HandPenalty(ScoreLine.ZERO, line(1, -5), line(3, -24), line(2, -20), line(1, -10)),
+                // §12.1 cartas na mesa: 2 três vermelhos (+5) e 3 cartas de 4 a 10 (+8) = +34.
+                tableCards = TableCards(line(2, 10), line(3, 24), ScoreLine.ZERO, ScoreLine.ZERO),
             ),
             SideScore(
                 Side(1), redThrees = line(1, 100), cleanCanastas = line(1, 200), dirtyCanastas = ScoreLine.ZERO,
                 goOut = 100, mortoNotTaken = 0,
                 hand = HandPenalty(ScoreLine.ZERO, ScoreLine.ZERO, ScoreLine.ZERO, ScoreLine.ZERO, ScoreLine.ZERO),
+                // Canastra limpa de 6 cartas de 4 a 10 (+48) e o 3 vermelho (+5) = +53.
+                tableCards = TableCards(line(1, 5), line(6, 48), ScoreLine.ZERO, ScoreLine.ZERO),
             ),
         ),
     )
@@ -95,7 +102,17 @@ class EndScreensTest {
         rule.setContent { GTrancaTheme { RoundSummaryScreen(snapshot(), {}, {}, onResign = { resigned = true }) } }
         // §12.1 sem canastra, 3 vermelho vale −100 cada: a célula diz o motivo e a nota explica.
         rule.onNodeWithText("-200 (2)\nsem canastra").assertExists()
-        rule.onNodeWithText("Sem canastra na mesa, cada 3 vermelho vale −100.").assertExists()
+        rule.onNodeWithText("Sem canastra na mesa, cada 3 vermelho vale −100 aqui e +5 em “Cartas na mesa”: −95 no total.").assertExists()
+        // §12.1 seção "Cartas na mesa" com subtotal, depois dos pontos especiais.
+        rule.onNodeWithTag("table-section").assertExists()
+        rule.onNodeWithText("Cartas na mesa").assertExists()
+        rule.onNodeWithText("Subtotal da mesa").assertExists()
+        rule.onNodeWithText("+34").assertExists()
+        rule.onNodeWithText("+53").assertExists()
+        // As linhas somam o total da partida: −200 −100 +34 −59 = −325; 100 + 200 + 100 + 53 = +453.
+        // −325 aparece no total da partida e no acumulado (1ª partida).
+        rule.onAllNodesWithText("-325").assertCountEquals(2)
+        rule.onNodeWithText("+453").assertExists()
         // §12.2 seção "Cartas na mão" destacada, com subtotal: −5 −24 −20 −10 = −59.
         rule.onNodeWithTag("hand-section").assertExists()
         rule.onNodeWithText("Cartas na mão").assertExists()

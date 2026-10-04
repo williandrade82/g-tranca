@@ -159,20 +159,26 @@
     <string name="round_result_no_winner">Partida sem vencedor.</string>
     <string name="round_tie_notice">Empate na maior pontuação: joga-se nova partida para desempatar.</string>
     <string name="score_item">Item</string>
-    <string name="score_red_threes">3 vermelhos na mesa</string>
+    <string name="score_red_threes">3 vermelhos na mesa (±100)</string>
     <string name="score_clean_canastas">Canastras limpas</string>
     <string name="score_dirty_canastas">Canastras sujas</string>
     <string name="score_go_out">Batida</string>
     <string name="score_morto_not_taken">Morto não pego</string>
+    <string name="score_table_header">Cartas na mesa</string>
+    <string name="score_table_red_threes">3 vermelhos (+5)</string>
+    <string name="score_table_four_to_ten">4 a 10 (+8)</string>
+    <string name="score_table_faces">J, Q, K, A (+10)</string>
+    <string name="score_table_wilds">Coringas (+10)</string>
+    <string name="score_table_subtotal">Subtotal da mesa</string>
     <string name="score_hand_header">Cartas na mão</string>
-    <string name="score_hand_red_threes">3 vermelhos</string>
-    <string name="score_hand_black_threes">3 pretos</string>
-    <string name="score_hand_four_to_ten">4 a 10</string>
-    <string name="score_hand_faces">J, Q, K, A</string>
-    <string name="score_hand_wilds">Coringas</string>
+    <string name="score_hand_red_threes">3 vermelhos (−5)</string>
+    <string name="score_hand_black_threes">3 pretos (−5)</string>
+    <string name="score_hand_four_to_ten">4 a 10 (−8)</string>
+    <string name="score_hand_faces">J, Q, K, A (−10)</string>
+    <string name="score_hand_wilds">Coringas (−10)</string>
     <string name="score_hand_subtotal">Subtotal da mão</string>
     <string name="score_red_threes_no_canasta">sem canastra</string>
-    <string name="score_red_threes_note">Sem canastra na mesa, cada 3 vermelho vale −100.</string>
+    <string name="score_red_threes_note">Sem canastra na mesa, cada 3 vermelho vale −100 aqui e +5 em “Cartas na mesa”: −95 no total.</string>
     <string name="score_round_total">Total da partida</string>
     <string name="score_cumulative">Total acumulado</string>
     <string name="score_points_with_count">%1$s (%2$d)</string>
@@ -196,7 +202,7 @@
     <string name="announce_see_result">Ver resultado</string>
 
     <!-- 3 vermelhos (§6.5) -->
-    <string name="red_three_value_note">Cada 3 vermelho vale +100 se o seu lado tiver canastra ao fim da partida; sem canastra, −100.</string>
+    <string name="red_three_value_note">Cada 3 vermelho vale +105 se o seu lado tiver canastra ao fim da partida (+100, mais +5 como carta na mesa); sem canastra, −95.</string>
     <string name="game_over_rounds">Partidas jogadas: %1$d</string>
     <string name="game_over_round_line">Partida %1$d: %2$s × %3$s</string>
     <string name="back_to_home">Voltar ao início</string>

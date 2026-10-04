@@ -74,6 +74,29 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import android.annotation.SuppressLint
+import android.provider.Settings
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.roundToInt
+import kotlin.math.sin
 import com.gtranca.R
 import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
@@ -149,6 +172,8 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
         }
     }
     var showDiscardPile by rememberSaveable { mutableStateOf(false) }
+    // Posições dos elementos da mesa, para as animações (cartas voando entre eles).
+    val anchors = remember { mutableStateMapOf<AnimAnchor, Rect>() }
     val tableScroll = rememberScrollState()
     // Só no início da vez do humano (etapa de comprar): rola até o fim, com lixo e os jogos do lado à vista.
     LaunchedEffect(state.awaitingDraw) {
@@ -169,33 +194,44 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
         containerColor = TableGreen,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            Header(state, events)
-            state.banner?.let { SwapBanner(it, view.mode, snapshot.viewerSeat) }
-            Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(tableScroll).padding(horizontal = 8.dp).testTag("table-scroll"),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SeatsPanel(state)
-                SideArea(
-                    title = stringResource(meldsTitleRes(view.mode, own = false)),
-                    melds = view.tables[view.mode.sides.first { it != view.side }.index].melds,
-                    redThrees = state.redThrees[view.mode.sides.first { it != view.side }.index],
-                    onMeldClick = null,
-                    sideTag = "opponent",
-                )
-                CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
-                SideArea(
-                    title = stringResource(meldsTitleRes(view.mode, own = true)),
-                    melds = view.tables[view.side.index].melds,
-                    redThrees = state.redThrees[view.side.index],
-                    onMeldClick = if (state.playing) events::onAddToMeld else null,
-                    sideTag = "own",
-                )
-                Spacer(Modifier.height(4.dp))
+        CompositionLocalProvider(LocalAnchors provides anchors) {
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                Column(Modifier.fillMaxSize()) {
+                    Header(state, events)
+                    state.banner?.let { SwapBanner(it, view.mode, snapshot.viewerSeat) }
+                    Column(
+                        Modifier.weight(1f).fillMaxWidth().verticalScroll(tableScroll).padding(horizontal = 8.dp).testTag("table-scroll"),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SeatsPanel(state)
+                        SideArea(
+                            side = view.mode.sides.first { it != view.side }.index,
+                            flashes = state.canastaFlashes,
+                            animationMillis = state.animationMillis,
+                            title = stringResource(meldsTitleRes(view.mode, own = false)),
+                            melds = view.tables[view.mode.sides.first { it != view.side }.index].melds,
+                            redThrees = state.redThrees[view.mode.sides.first { it != view.side }.index],
+                            onMeldClick = null,
+                            sideTag = "opponent",
+                        )
+                        CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
+                        SideArea(
+                            side = view.side.index,
+                            flashes = state.canastaFlashes,
+                            animationMillis = state.animationMillis,
+                            title = stringResource(meldsTitleRes(view.mode, own = true)),
+                            melds = view.tables[view.side.index].melds,
+                            redThrees = state.redThrees[view.side.index],
+                            onMeldClick = if (state.playing) events::onAddToMeld else null,
+                            sideTag = "own",
+                        )
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    StatusAndActions(state, events)
+                    HandArea(state, events)
+                }
+                FlightsLayer(state.flights, anchors, state.animationMillis)
             }
-            StatusAndActions(state, events)
-            HandArea(state, events)
         }
     }
 
@@ -285,6 +321,7 @@ private fun SeatRow(state: GameUiState, seat: Seat) {
             .fillMaxWidth()
             .background(if (thinking) TableGreenDark else Color.Transparent, RoundedCornerShape(6.dp))
             .padding(horizontal = 4.dp, vertical = 2.dp)
+            .anchor(AnimAnchor.SeatHand(seat.index))
             .testTag("seat-${seat.index}"),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -341,6 +378,9 @@ private fun HiddenHand(count: Int, modifier: Modifier = Modifier) {
 
 @Composable
 private fun SideArea(
+    side: Int,
+    flashes: List<CanastaFlash>,
+    animationMillis: Long,
     title: String,
     melds: List<TableMeld>,
     redThrees: List<Card>,
@@ -350,12 +390,15 @@ private fun SideArea(
     Column(
         Modifier.fillMaxWidth()
             .border(1.dp, OnTable.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .anchor(AnimAnchor.SideArea(side))
             .padding(6.dp)
             .testTag("side-$sideTag"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = OnTable, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            // Alvo dos 3 vermelhos que chegam (§6.5), mesmo antes do primeiro.
+            Spacer(Modifier.size(1.dp).anchor(AnimAnchor.RedThrees(side)))
             if (redThrees.isNotEmpty()) {
                 Text(
                     stringResource(R.string.red_threes, redThrees.size),
@@ -378,14 +421,38 @@ private fun SideArea(
             Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
         } else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                melds.forEach { meld -> MeldView(meld, onMeldClick, Modifier.testTag("meld-$sideTag-${meld.id.value}")) }
+                melds.forEach { meld ->
+                    MeldView(
+                        meld,
+                        onMeldClick,
+                        Modifier.anchor(AnimAnchor.Meld(side, meld.id.value)).testTag("meld-$sideTag-${meld.id.value}"),
+                        flash = flashes.lastOrNull { it.side == side && it.meldId == meld.id.value },
+                        animationMillis = animationMillis,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MeldView(tableMeld: TableMeld, onClick: ((MeldId) -> Unit)?, modifier: Modifier) {
+private fun MeldView(
+    tableMeld: TableMeld,
+    onClick: ((MeldId) -> Unit)?,
+    modifier: Modifier,
+    flash: CanastaFlash? = null,
+    animationMillis: Long = 0,
+) {
+    // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em azul-claro).
+    val pulse = remember(tableMeld.id) { Animatable(0f) }
+    val scale = animationScale()
+    LaunchedEffect(flash?.id) {
+        if (flash != null && animationMillis > 0 && scale > 0f) {
+            val half = (animationMillis * scale).toInt().coerceAtLeast(1)
+            pulse.animateTo(1f, tween(half))
+            pulse.animateTo(0f, tween(half))
+        }
+    }
     val meld = tableMeld.meld
     val canasta = meld.isCanasta()
     val label = when {
@@ -402,9 +469,16 @@ private fun MeldView(tableMeld: TableMeld, onClick: ((MeldId) -> Unit)?, modifie
     val descriptions = meld.cards.map { cardDescription(it) }
     val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
         (label?.let { ". $it" } ?: "")
+    val flashColor = if (flash?.clean == true) TableAccent else CanastaDirtyFlash
     Column(
         modifier
+            .graphicsLayer {
+                val grow = 1f + 0.08f * pulse.value
+                scaleX = grow
+                scaleY = grow
+            }
             .heightIn(min = 48.dp)
+            .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(6.dp))
             .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(6.dp))
             .then(if (onClick != null) Modifier.clickable { onClick(tableMeld.id) } else Modifier)
             .semantics(mergeDescendants = true) { contentDescription = description }
@@ -441,6 +515,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(6.dp))
                     .clickable(enabled = state.canDraw, onClick = events::onDraw)
                     .semantics(mergeDescendants = true) { contentDescription = stockLabel }
+                    .anchor(AnimAnchor.Stock)
                     .testTag("stock")
                     .padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -464,6 +539,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     val title = stringResource(R.string.morto_title, i + 1)
                     Row(
                         Modifier.width(MortoWidth).semantics(mergeDescendants = true) { contentDescription = "$title, $statusText" }
+                            .anchor(AnimAnchor.Morto(i))
                             .testTag("morto-$i"),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -506,6 +582,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                 .border(2.dp, if (pileActive) TableAccent else OnTable.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                 .clickable(enabled = state.awaitingDraw || state.playing, onClick = events::onDiscardPileClick)
                 .semantics(mergeDescendants = true) { contentDescription = pileLabel }
+                .anchor(AnimAnchor.DiscardPile)
                 .testTag("discard-pile")
                 .padding(4.dp),
         ) {
@@ -608,7 +685,10 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
         }
         // 7 cartas de 48dp por linha em 360dp; com 20+ cartas, a área rola.
         val custom = state.customHand
-        Box(Modifier.fillMaxWidth().heightIn(max = 74.dp * 3).verticalScroll(rememberScrollState()).testTag("hand")) {
+        Box(
+            Modifier.fillMaxWidth().heightIn(max = 74.dp * 3).anchor(AnimAnchor.OwnHand).verticalScroll(rememberScrollState())
+                .testTag("hand"),
+        ) {
             if (custom == null || custom.special.isEmpty()) {
                 CardFlow(state.hand, state, events, Modifier.fillMaxWidth())
             } else {
@@ -852,6 +932,93 @@ private fun SwapBanner(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat)
             }
         }
         Text(text, color = OnTable, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+    }
+}
+
+/** Cor do destaque de canastra suja fechada (§7). */
+private val CanastaDirtyFlash = Color(0xFF90CAF9)
+
+/** Posições dos elementos da mesa (coordenadas da raiz), registradas por [anchor]; `null` fora da mesa. */
+private val LocalAnchors = staticCompositionLocalOf<MutableMap<AnimAnchor, Rect>?> { null }
+
+/** Registra a posição deste elemento como [key] para as animações da mesa. */
+@SuppressLint("ModifierFactoryUnreferencedReceiver")
+private fun Modifier.anchor(key: AnimAnchor): Modifier = composed {
+    val anchors = LocalAnchors.current
+    // Posição sem recorte: um elemento rolado para fora da área visível continua com a posição real (o voo entra
+    // pela borda), em vez do retângulo vazio em (0,0) que `boundsInRoot` daria.
+    if (anchors == null) this else this.onGloballyPositioned { anchors[key] = Rect(it.positionInRoot(), it.size.toSize()) }
+}
+
+/** Escala de duração das animações do sistema ("remover animações" = 0). */
+@Composable
+private fun animationScale(): Float {
+    val context = LocalContext.current
+    return remember {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+    }
+}
+
+/**
+ * Camada por cima da mesa com as cartas voando ([CardFlight]). Não recebe toques nem aparece para o leitor de tela;
+ * com animações desligadas (duração 0 ou escala do sistema 0) não desenha nada.
+ */
+@Composable
+private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rect>, durationMillis: Long) {
+    val scale = animationScale()
+    if (durationMillis <= 0 || scale <= 0f || flights.isEmpty()) return
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clearAndSetSemantics {}
+            .onGloballyPositioned { origin = it.positionInRoot() }
+            .testTag("flights-layer"),
+    ) {
+        flights.forEach { flight ->
+            key(flight.id) { FlyingCard(flight, anchors, { origin }, (durationMillis * scale).toLong(), (flight.delayMillis * scale).toLong()) }
+        }
+    }
+}
+
+private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor): Rect? = when (anchor) {
+    is AnimAnchor.Meld -> this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
+    is AnimAnchor.RedThrees -> this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
+    else -> this[anchor]
+}
+
+@Composable
+private fun FlyingCard(flight: CardFlight, anchors: Map<AnimAnchor, Rect>, origin: () -> Offset, durationMillis: Long, delayMillis: Long) {
+    val progress = remember { Animatable(0f) }
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(delayMillis)
+        visible = true
+        progress.animateTo(1f, tween(durationMillis.toInt().coerceAtLeast(1), easing = FastOutSlowInEasing))
+        visible = false
+    }
+    if (!visible) return
+    val size = CardSize.SMALL
+    val density = LocalDensity.current
+    val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
+    Box(
+        Modifier
+            .offset {
+                // Lido a cada quadro: acompanha rolagem e o conjunto novo que aparece no destino.
+                val from = anchors.resolve(flight.from)?.center ?: return@offset IntOffset(-10_000, -10_000)
+                val to = anchors.resolve(flight.to)?.center ?: from
+                val t = progress.value
+                val point = from + (to - from) * t - origin() - half
+                IntOffset(point.x.roundToInt(), point.y.roundToInt())
+            }
+            .graphicsLayer {
+                val lift = 1f + 0.18f * sin(PI.toFloat() * progress.value)
+                scaleX = lift
+                scaleY = lift
+                shadowElevation = 6f
+            },
+    ) {
+        if (flight.card != null) PlayingCard(flight.card, size = size, describe = false) else CardBack(size = size, describe = false)
     }
 }
 
