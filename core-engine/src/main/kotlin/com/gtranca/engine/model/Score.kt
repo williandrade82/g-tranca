@@ -27,6 +27,29 @@ data class HandPenalty(
     val points: Int get() = redThrees.points + blackThrees.points + fourToTen.points + faceCardsAndAces.points + wilds.points
 }
 
+/**
+ * §12.1 valor das cartas baixadas na mesa do lado, por categoria (positivo, mesma tabela da mão): todas as cartas
+ * de todos os conjuntos do lado (canastras ou não) e os 3 vermelhos baixados, sempre (com ou sem vencedor, com
+ * ou sem canastra). Somado depois dos pontos especiais (3 vermelho ±100, canastras, batida).
+ */
+@Serializable
+data class TableCards(
+    /** 3 vermelho baixado: +5 cada (além do ±100 de [SideScore.redThrees]). */
+    val redThrees: ScoreLine,
+    /** 4 a 10: +8. */
+    val fourToTen: ScoreLine,
+    /** J, Q, K, A: +10. */
+    val faceCardsAndAces: ScoreLine,
+    /** Coringa (2): +10. */
+    val wilds: ScoreLine,
+) {
+    val points: Int get() = redThrees.points + fourToTen.points + faceCardsAndAces.points + wilds.points
+
+    companion object {
+        val ZERO = TableCards(ScoreLine.ZERO, ScoreLine.ZERO, ScoreLine.ZERO, ScoreLine.ZERO)
+    }
+}
+
 /** Detalhamento da pontuação de um lado em uma partida (§12), item a item. */
 @Serializable
 data class SideScore(
@@ -43,7 +66,13 @@ data class SideScore(
     val mortoNotTaken: Int,
     /** §12.2 cartas na mão. */
     val hand: HandPenalty,
+    /**
+     * §12.1 cartas na mesa. Tem padrão (zeros) para que o histórico salvo antes desta regra continue legível
+     * no JSON; o motor sempre preenche.
+     */
+    val tableCards: TableCards = TableCards.ZERO,
 ) {
     val total: Int
-        get() = redThrees.points + cleanCanastas.points + dirtyCanastas.points + goOut + mortoNotTaken + hand.points
+        get() = redThrees.points + cleanCanastas.points + dirtyCanastas.points + goOut + tableCards.points +
+            mortoNotTaken + hand.points
 }

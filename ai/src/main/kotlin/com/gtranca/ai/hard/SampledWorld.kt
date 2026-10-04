@@ -9,6 +9,7 @@ import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.scoreRound
+import com.gtranca.engine.tableCardPoints
 
 /*
  * Utilitários sobre estados SORTEADOS (determinizações). Todo RoundState deste pacote vem de
@@ -51,11 +52,13 @@ internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
  *
  * - Partida encerrada: a pontuação exata ([scoreRound], §12.1/§12.2).
  * - Em andamento (corte de profundidade): **heurística, não é regra do §12.** Estima o placar se a partida
- *   acabasse agora, com um pouco de potencial: 3 vermelhos e canastras com os valores de §12.1; morto não
- *   pego, −100 (§12.2); cartas na mão por uma fração da penalidade de §12.2 (ainda podem ser baixadas). Os
- *   demais termos são só estimativa de potencial e NÃO existem na pontuação: conjuntos ainda não canastra
- *   valem pelo tamanho (pelo §12.1 cartas em conjuntos não têm valor próprio) e o lado que já pode bater
- *   (morto e canastra, §11.1) ganha um bônus.
+ *   acabasse agora, com um pouco de potencial. Parte exata (como o motor, §12.1): 3 vermelhos (±100),
+ *   canastras e o valor de cada carta na mesa ([tableCardPoints]: 3 vermelho +5, 4 a 10 +8, J/Q/K/A +10,
+ *   coringa +10); morto não pego, −100 (§12.2). Cartas na mão por uma fração da penalidade de §12.2 (ainda
+ *   podem ser baixadas). Os demais termos são só estimativa de potencial e NÃO existem na pontuação: cada
+ *   conjunto que ainda não é canastra ganha um bônus de progresso pelo tamanho (mantido além do valor das
+ *   cartas, porque é ele que puxa o conjunto até a canastra, cujo bônus de §12.1 só vem na 6ª carta), e o lado
+ *   que já pode bater (morto e canastra, §11.1) ganha um bônus.
  */
 internal object Evaluation {
     private val RULES = RuleSet.DEFAULT
@@ -86,9 +89,12 @@ internal object Evaluation {
             when {
                 meld.isCleanCanasta(RULES) -> { value += RULES.cleanCanastaPoints; hasCanasta = true }
                 meld.isDirtyCanasta(RULES) -> { value += RULES.dirtyCanastaPoints; hasCanasta = true }
+                // Potencial (não é regra): só para conjuntos que ainda não são canastra.
                 else -> value += (meld.cards.size - 2) * if (meld.hasWild) DIRTY_MELD_PROGRESS else CLEAN_MELD_PROGRESS
             }
         }
+        // §12.1 cartas na mesa (todas, canastras ou não, e os 3 vermelhos baixados): exato como o motor.
+        value += tableCardPoints(state, side, RULES).points
         // §12.1 o 3 vermelho vale +100 só com canastra do lado; sem ela, −100.
         val redThreePoints = if (hasCanasta) RULES.redThreePoints else RULES.redThreeWithoutCanastaPoints
         value += state.redThreesOf(side).size * redThreePoints

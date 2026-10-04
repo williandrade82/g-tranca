@@ -13,7 +13,7 @@ package com.gtranca.ai
  */
 data class MediumWeights(
     // ---------- baixar (§4.3 etapa 2) ----------
-    /** Cada carta que sai da mão para a mesa (ritmo para o morto, menos penalidade na mão, §12.2). */
+    /** Cada carta que sai da mão para a mesa (ritmo para o morto; sai da penalidade da mão, §12.2, e soma o seu valor na mesa, §12.1). */
     val cardToTable: Double = 10.0,
     /** Bônus por formar canastra limpa (§7.2: +200). */
     val cleanCanastaBonus: Double = 60.0,
@@ -23,7 +23,7 @@ data class MediumWeights(
     val firstCanastaBonus: Double = 40.0,
     /** Custo de gastar um coringa da mão (perde flexibilidade e o conjunto não fecha limpo). */
     val wildUse: Double = 12.0,
-    /** Custo de sujar uma canastra limpa (§6.3/§7.3; a suja vale 100 a menos, §7.2). */
+    /** Custo de sujar uma canastra limpa (§6.3/§7.3; a suja vale 100 a menos, §7.2; o coringa soma +10 na mesa, §12.1). */
     val dirtyCleanCanasta: Double = 100.0,
     /** Esvaziar a mão: pega o morto direto (§9.2) ou bate (§11.1). */
     val emptyHand: Double = 500.0,

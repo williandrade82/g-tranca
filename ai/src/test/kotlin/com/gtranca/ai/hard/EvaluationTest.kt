@@ -51,22 +51,33 @@ class EvaluationTest {
     )
 
     @Test
+    fun `estimativa da partida em andamento soma o valor das cartas na mesa`() {
+        // §12.1 cada carta na mesa soma o seu valor: 4-5-6♥ = 3 × 8 = 24; J-Q-K♥ = 3 × 10 = 30. O progresso
+        // heurístico do conjunto é o mesmo nos dois (3 cartas, sem coringa), então a diferença é só a das cartas.
+        val low = Evaluation.scoreDiff(midRound(listOf("4H 5H 6H"), ""), Side(0))
+        val high = Evaluation.scoreDiff(midRound(listOf("JH QH KH"), ""), Side(0))
+        (high - low).shouldBeBetween(5.999, 6.001, 0.0)
+    }
+
+    @Test
     fun `estimativa da partida em andamento segue a regra do 3 vermelho`() {
-        // §12.1 cada 3 vermelho vale +100 com canastra do lado e −100 sem ela; a estimativa do Difícil segue isso
+        // §12.1 cada 3 vermelho vale +100 com canastra do lado e −100 sem ela, mais +5 da carta na mesa
+        // (+105 / −95); a estimativa do Difícil segue isso
         val canasta = listOf("4H 5H 6H 7H 8H 9H")
         val gainWithCanasta = Evaluation.scoreDiff(midRound(canasta, "3D"), Side(0)) -
             Evaluation.scoreDiff(midRound(canasta, ""), Side(0))
-        gainWithCanasta.shouldBeBetween(99.999, 100.001, 0.0)
+        gainWithCanasta.shouldBeBetween(104.999, 105.001, 0.0)
         val notCanasta = listOf("4H 5H 6H 7H 8H")
         val gainWithout = Evaluation.scoreDiff(midRound(notCanasta, "3D"), Side(0)) -
             Evaluation.scoreDiff(midRound(notCanasta, ""), Side(0))
-        gainWithout.shouldBeBetween(-100.001, -99.999, 0.0)
+        gainWithout.shouldBeBetween(-95.001, -94.999, 0.0)
     }
 
     @Test
     fun `partida encerrada no individual - diferenca exata, com sinal e lado corretos`() {
-        // Lado 0 bateu (§11.1): canastra limpa +200 (§7.2), batida +100 (§12.1); 4♣ na mão −8 (§12.2) ⇒ 292.
-        // Lado 1: 3 vermelho sem canastra −100 (§12.1); sem morto −100 e K♠ Q♠ na mão −20 (§12.2) ⇒ −220. Diferença 512.
+        // Lado 0 bateu (§11.1): canastra limpa +200 (§7.2), batida +100, cartas 4 a 9 na mesa 6 × 8 = +48 (§12.1);
+        // 4♣ na mão −8 (§12.2) ⇒ 340. Lado 1: 3 vermelho sem canastra −100 e +5 da carta na mesa (§12.1); sem
+        // morto −100 e K♠ Q♠ na mão −20 (§12.2) ⇒ −215. Diferença 555.
         val state = RoundState(
             mode = GameMode.INDIVIDUAL,
             hands = listOf(cards("4C"), cards("KS QS")),
@@ -81,18 +92,19 @@ class EvaluationTest {
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.BecameStock),
             result = RoundResult.GoOut(Side(0), Seat(0)),
         )
-        Evaluation.scoreDiff(state, Side(0)) shouldBe 512.0
-        Evaluation.scoreDiff(state, Side(1)) shouldBe -512.0
+        Evaluation.scoreDiff(state, Side(0)) shouldBe 555.0
+        Evaluation.scoreDiff(state, Side(1)) shouldBe -555.0
         Evaluation.scoreDiff(state, Side(0)) shouldBe engineDiff(state, Side(0)).toDouble()
-        Evaluation.reward(state, Side(0), scale = 600.0) shouldBe (0.5 + 512.0 / 1200.0)
-        Evaluation.reward(state, Side(1), scale = 600.0) shouldBe (0.5 - 512.0 / 1200.0)
+        Evaluation.reward(state, Side(0), scale = 600.0) shouldBe (0.5 + 555.0 / 1200.0)
+        Evaluation.reward(state, Side(1), scale = 600.0) shouldBe (0.5 - 555.0 / 1200.0)
     }
 
     @Test
     fun `partida encerrada em duplas - soma os parceiros e usa o lado do assento`() {
         // §12.3 o lado 0 (assentos 0 e 2) bateu pelo assento 2. Lado 0: canastra suja +100, batida +100,
-        // mãos 7♦ (−8) e 2♣ (−10) ⇒ 182. Lado 1 (assentos 1 e 3): canastra limpa +200, morto pego, mãos
-        // A♦ (−10) e 3♠ (−5) ⇒ 185. Diferença −3 para o lado 0.
+        // cartas na mesa 5 × 8 + coringa 10 = +50 (§12.1), mãos 7♦ (−8) e 2♣ (−10) ⇒ 232. Lado 1 (assentos 1
+        // e 3): canastra limpa +200, cartas na mesa 6 × 10 = +60, morto pego, mãos A♦ (−10) e 3♠ (−5) ⇒ 245.
+        // Diferença −13 para o lado 0.
         val state = RoundState(
             mode = GameMode.DUPLAS,
             hands = listOf(cards("7D"), cards("AD"), cards("2C"), cards("3S")),
@@ -107,8 +119,8 @@ class EvaluationTest {
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.Taken(Side(1))),
             result = RoundResult.GoOut(Side(0), Seat(2)),
         )
-        Evaluation.scoreDiff(state, Side(0)) shouldBe -3.0
-        Evaluation.scoreDiff(state, Side(1)) shouldBe 3.0
+        Evaluation.scoreDiff(state, Side(0)) shouldBe -13.0
+        Evaluation.scoreDiff(state, Side(1)) shouldBe 13.0
         Evaluation.scoreDiff(state, Side(1)) shouldBe engineDiff(state, Side(1)).toDouble()
     }
 

@@ -167,7 +167,7 @@ Um conjunto pode ser:
 ### **6.5. Três vermelhos**
 - **3 vermelho (copas ou ouros)**:
   - É baixado **automaticamente**, sozinho, sempre que entra na mão (distribuição, compra do monte, morto ou reposição).
-  - Vale **+100 ou –100 pontos** na mesa, conforme o lado tenha ou não canastra ao fim da partida (§12.1).
+  - Vale **+100 ou –100 pontos** na mesa, conforme o lado tenha ou não canastra ao fim da partida, e soma ainda **+5** como carta na mesa (§12.1): no total, +105 ou –95.
   - Ao ser baixado, o jogador recebe **uma carta do monte** como reposição. Se a reposição também for 3 vermelho, o processo se repete (**reposição em cadeia**).
   - A troca é **pública**: todos são avisados de quem baixou o 3 vermelho e em que momento (na distribuição, §3.5, ou durante a jogada). A carta de reposição é oculta.
   - Se o monte estiver vazio, a reposição segue §10. Se não houver monte nem morto, o 3 vermelho é baixado **sem reposição**.
@@ -271,7 +271,14 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
 - **Canastra limpa**: +200 cada
 - **Canastra suja**: +100 cada
 - **Batida**: +100 (somente o lado vencedor; não se aplica a partidas sem vencedor)
-- Cartas em conjuntos (canastras ou não) **não têm valor próprio**: valem apenas os bônus acima.
+- **Cartas na mesa**: depois dos pontos especiais acima, **cada carta baixada na mesa** do lado soma o seu valor, com a mesma tabela das cartas na mão (§12.2), porém **positiva**:
+  - **3 vermelho**: +5 (além do ±100 acima)
+  - **4 a 10**: +8
+  - **J, Q, K, A**: +10
+  - **Coringa (2)**: +10
+  - Não há 3 preto na mesa (nenhum 3 compõe conjuntos, §6.2).
+  - Contam todas as cartas de todos os conjuntos do lado (canastras ou não) e os 3 vermelhos baixados, sempre (com ou sem vencedor, com ou sem canastra).
+  - Exemplo: canastra limpa 4-5-6-7-8-9 de copas = 200 (canastra limpa) + 6 × 8 (cartas) = **248**.
 
 ### **12.2. Penalidades (negativas)**
 - **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto.

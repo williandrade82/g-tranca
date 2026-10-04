@@ -22,7 +22,7 @@ import kotlin.random.Random
  *    canastra). O motor só oferece baixas que deixam ao menos 2 cartas na mão, exceto quando ficar
  *    sem cartas leva ao morto ou à batida (§8); o bot não refaz essa validação. Não suja canastra
  *    limpa (§6.3/§7.3: a regra permite, sujar é escolha de estratégia; a suja vale 100 pontos a
- *    menos, §7.2), a não ser que isso esvazie a mão.
+ *    menos, §7.2, e o coringa só devolve +10 como carta na mesa, §12.1), a não ser que isso esvazie a mão.
  * 3. Descarte: a carta menos útil, isto é, a mais isolada (sem pares nem vizinhas de naipe e que não
  *    cabe nos conjuntos do lado). O 3 preto é descartado de preferência (trava o lixo, §5.3) e o
  *    coringa é evitado.

@@ -42,14 +42,15 @@ class GameControllerTest {
     /**
      * Equivalência com o simulador: mesmos bots e sementes ⇒ mesmo vencedor e mesmos totais finais (§13).
      * Valores obtidos com `.\gradlew.bat :sim:run --args="--games 1 --mode <modo> --sides medio,facil
-     * --seed <semente> --target 1000"` ("Pontuação final média" com 1 jogo = total final).
+     * --seed <semente> --target 1000"` ("Pontuação final média" com 1 jogo = total final), remedidos após a
+     * regra das cartas na mesa (§12.1).
      */
     @ParameterizedTest(name = "{0} semente {1}")
     @CsvSource(
-        "INDIVIDUAL, 11, 1, 772, 1460",
-        "INDIVIDUAL, 12, 0, 1122, 900",
-        "INDIVIDUAL, 13, 0, 1200, -90",
-        "DUPLAS, 21, 0, 1743, 1142",
+        "INDIVIDUAL, 11, 1, 1244, 2297",
+        "INDIVIDUAL, 12, 0, 1632, 1434",
+        "INDIVIDUAL, 13, 0, 1334, 245",
+        "DUPLAS, 21, 0, 1026, 977",
     )
     fun `jogo so de bots reproduz o simulador`(mode: GameMode, seed: Long, winner: Int, total0: Int, total1: Int) = runTest {
         val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 1000)

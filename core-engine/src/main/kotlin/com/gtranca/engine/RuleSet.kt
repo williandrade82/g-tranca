@@ -27,6 +27,14 @@ data class RuleSet(
     val dirtyCanastaPoints: Int = 100,
     /** §12.1 batida (só o lado vencedor). */
     val goOutPoints: Int = 100,
+    /** §12.1 cada 3 vermelho baixado na mesa, como carta (além de [redThreePoints]/[redThreeWithoutCanastaPoints]). */
+    val tableRedThreePoints: Int = 5,
+    /** §12.1 cada carta de 4 a 10 em conjunto na mesa. */
+    val tableFourToTenPoints: Int = 8,
+    /** §12.1 cada J, Q, K e A em conjunto na mesa. */
+    val tableFaceCardOrAcePoints: Int = 10,
+    /** §12.1 cada coringa (2) em conjunto na mesa. */
+    val tableWildPoints: Int = 10,
     /** §12.2 lado que terminou a partida sem ter pego morto. */
     val mortoNotTakenPoints: Int = -100,
     /** §12.2 3 vermelho na mão. */
