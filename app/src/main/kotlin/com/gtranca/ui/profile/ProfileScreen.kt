@@ -1,5 +1,11 @@
 package com.gtranca.ui.profile
 
+import androidx.compose.ui.text.style.TextAlign
+
+import androidx.compose.ui.text.font.FontWeight
+
+import androidx.compose.foundation.layout.width
+
 import com.gtranca.ui.sound.LocalSound
 import com.gtranca.ui.sound.SoundEffect
 
@@ -102,26 +108,22 @@ fun ProfileScreen(viewModel: ProfileViewModel, onDone: () -> Unit) {
                 }
 
                 Section(stringResource(R.string.profile_profession)) {
+                    // Quatro por linha em 360 dp; o nome da profissão fica sob cada desenho.
                     FlowRow(
                         Modifier.fillMaxWidth().selectableGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
                         Profession.entries.forEach { profession ->
                             val option = profile.copy(profession = profession).persona(youName)
-                            val label = stringResource(profession.labelRes(profile.gender))
-                            Choice(
+                            LabeledChoice(
                                 selected = profile.profession == profession,
                                 onClick = { viewModel.onProfession(profession) },
-                                description = label,
+                                label = stringResource(profession.labelRes(profile.gender)),
                                 tag = "profession-${profession.name.lowercase()}",
                             ) { PersonaAvatar(option, 52.dp) }
                         }
                     }
-                    Text(
-                        stringResource(profile.profession.labelRes(profile.gender)),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
                 }
 
                 Section(stringResource(R.string.profile_face)) {
@@ -238,6 +240,32 @@ private fun Choice(selected: Boolean, onClick: () -> Unit, description: String, 
             .padding(3.dp),
         contentAlignment = Alignment.Center,
     ) { content() }
+}
+
+/** Opção com desenho e nome embaixo; a coluna toda é a opção (o texto é lido uma vez só) e o aro marca o desenho. */
+@Composable
+private fun LabeledChoice(selected: Boolean, onClick: () -> Unit, label: String, tag: String, content: @Composable () -> Unit) {
+    Column(
+        Modifier
+            .width(70.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .testTag(tag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .border(if (selected) 3.dp else 0.dp, if (selected) GColors.Green else Color.Transparent, CircleShape)
+                .padding(3.dp),
+        ) { content() }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = GColors.CardBlack,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+        )
+    }
 }
 
 /** Fileira de cores selecionáveis (tom de pele ou de cabelo). */
