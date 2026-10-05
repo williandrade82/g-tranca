@@ -3,6 +3,7 @@ package com.gtranca.ui.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gtranca.data.SettingsRepository
+import com.gtranca.game.FaceShape
 import com.gtranca.game.Gender
 import com.gtranca.game.HairStyle
 import com.gtranca.game.PlayerProfile
@@ -56,6 +57,8 @@ class ProfileViewModel(
     fun onHair(style: HairStyle) = edit { if (style.gender == it.gender) it.copy(look = it.look.copy(hair = style)) else it }
 
     fun onHairColor(index: Int) = edit { it.copy(look = it.look.copy(hairColor = index)) }
+
+    fun onFace(face: FaceShape) = edit { it.copy(look = it.look.copy(face = face)) }
 
     fun onBeard(beard: Boolean) = edit { if (it.gender == Gender.MALE) it.copy(look = it.look.copy(beard = beard)) else it }
 

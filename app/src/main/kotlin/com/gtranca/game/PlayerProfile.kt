@@ -23,7 +23,7 @@ data class PlayerProfile(
     }
 
     fun encode(): String =
-        listOf(sanitizeName(name), gender.name, profession.name, look.skin, look.hair.name, look.hairColor, look.beard)
+        listOf(sanitizeName(name), gender.name, profession.name, look.skin, look.hair.name, look.hairColor, look.beard, look.face.name)
             .joinToString(SEPARATOR)
 
     companion object {
@@ -40,7 +40,8 @@ data class PlayerProfile(
         fun decode(text: String?): PlayerProfile {
             if (text == null) return PlayerProfile()
             val parts = text.split(SEPARATOR)
-            if (parts.size != 7) return PlayerProfile()
+            // 7 campos: formato anterior, sem o formato do rosto.
+            if (parts.size != 7 && parts.size != 8) return PlayerProfile()
             return try {
                 val gender = Gender.valueOf(parts[1])
                 PlayerProfile(
@@ -52,6 +53,7 @@ data class PlayerProfile(
                         hair = HairStyle.valueOf(parts[4]).also { require(it.gender == gender) },
                         hairColor = parts[5].toInt(),
                         beard = parts[6].toBooleanStrict(),
+                        face = parts.getOrNull(7)?.let { FaceShape.valueOf(it) } ?: FaceShape.OVAL,
                     ),
                 )
             } catch (_: IllegalArgumentException) {

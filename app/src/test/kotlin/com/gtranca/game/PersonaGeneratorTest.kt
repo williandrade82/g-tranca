@@ -50,6 +50,7 @@ class PersonaGeneratorTest {
         all.map { it.gender }.toSet() shouldBe Gender.entries.toSet()
         (all.map { it.look.hair }.toSet().size >= 7) shouldBe true
         all.map { it.look.skin }.toSet().size shouldBe Look.SKIN_TONES
+        all.map { it.look.face }.toSet() shouldBe FaceShape.entries.toSet()
     }
 
     @Test

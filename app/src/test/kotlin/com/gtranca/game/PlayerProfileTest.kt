@@ -12,11 +12,18 @@ class PlayerProfileTest {
             name = "Bia Souza",
             gender = Gender.FEMALE,
             profession = Profession.SAILOR,
-            look = Look(skin = 4, hair = HairStyle.PONYTAIL, hairColor = 5),
+            look = Look(skin = 4, hair = HairStyle.PONYTAIL, hairColor = 5, face = FaceShape.HEART),
         )
         PlayerProfile.decode(profile.encode()) shouldBe profile
         val bearded = PlayerProfile("Zé", Gender.MALE, Profession.MECHANIC, Look(0, HairStyle.BALD, 0, beard = true))
         PlayerProfile.decode(bearded.encode()) shouldBe bearded
+    }
+
+    @Test
+    fun `§14_1 perfil gravado no formato anterior, sem o rosto, ainda e lido`() {
+        val old = "Rui\tMALE\tPILOT\t2\tSHORT\t1\ttrue"
+        PlayerProfile.decode(old) shouldBe PlayerProfile("Rui", Gender.MALE, Profession.PILOT, Look(2, HairStyle.SHORT, 1, beard = true))
+        PlayerProfile.decode("$old\tQUADRADINHO") shouldBe PlayerProfile()
     }
 
     @Test

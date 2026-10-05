@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
+import com.gtranca.game.FaceShape
 import com.gtranca.game.Gender
 import com.gtranca.game.HairStyle
 import com.gtranca.game.Look
@@ -118,6 +119,24 @@ fun ProfileScreen(viewModel: ProfileViewModel, onDone: () -> Unit) {
                         stringResource(profile.profession.labelRes(profile.gender)),
                         style = MaterialTheme.typography.labelLarge,
                     )
+                }
+
+                Section(stringResource(R.string.profile_face)) {
+                    FlowRow(
+                        Modifier.fillMaxWidth().selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        FaceShape.entries.forEach { face ->
+                            val option = profile.copy(look = profile.look.copy(face = face)).persona(youName)
+                            Choice(
+                                selected = profile.look.face == face,
+                                onClick = { viewModel.onFace(face) },
+                                description = stringResource(face.labelRes()),
+                                tag = "face-${face.name.lowercase()}",
+                            ) { PersonaAvatar(option, 52.dp) }
+                        }
+                    }
                 }
 
                 Section(stringResource(R.string.profile_skin)) {
@@ -218,6 +237,14 @@ private fun Swatches(colors: List<Color>, selected: Int, tag: String, onSelect: 
             }
         }
     }
+}
+
+private fun FaceShape.labelRes(): Int = when (this) {
+    FaceShape.OVAL -> R.string.face_oval
+    FaceShape.ROUND -> R.string.face_round
+    FaceShape.SQUARE -> R.string.face_square
+    FaceShape.HEART -> R.string.face_heart
+    FaceShape.LONG -> R.string.face_long
 }
 
 private fun HairStyle.labelRes(): Int = when (this) {

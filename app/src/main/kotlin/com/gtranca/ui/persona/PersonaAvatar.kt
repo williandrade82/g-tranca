@@ -9,15 +9,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
+import com.gtranca.game.FaceShape
+import com.gtranca.game.Gender
 import com.gtranca.game.HairStyle
+import com.gtranca.game.Look
 import com.gtranca.game.Persona
 import com.gtranca.game.Profession
 
@@ -60,15 +65,33 @@ fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier) {
 
 // ---------- desenho em coordenadas de 0 a 1 ----------
 
-private fun DrawScope.circle(color: Color, cx: Float, cy: Float, r: Float) =
+private fun light(color: Color, amount: Float = 0.22f) = lerp(color, Color.White, amount)
+
+private fun dark(color: Color, amount: Float = 0.24f) = lerp(color, Color.Black, amount)
+
+/** Degradê de luz (canto superior esquerdo) para sombra (inferior direito): dá volume a qualquer forma. */
+private fun DrawScope.volume(color: Color, left: Float, top: Float, w: Float, h: Float): Brush =
+    if (color.alpha < 1f) {
+        Brush.linearGradient(listOf(color, color), Offset.Zero, Offset(1f, 1f))
+    } else {
+        Brush.linearGradient(
+            listOf(light(color), color, dark(color)),
+            start = Offset(left * size.width, top * size.height),
+            end = Offset((left + w) * size.width, (top + h) * size.height),
+        )
+    }
+
+private fun DrawScope.circle(color: Color, cx: Float, cy: Float, r: Float) = oval(color, cx - r, cy - r, 2 * r, 2 * r)
+
+private fun DrawScope.flatCircle(color: Color, cx: Float, cy: Float, r: Float) =
     drawCircle(color, r * size.width, Offset(cx * size.width, cy * size.height))
 
 private fun DrawScope.oval(color: Color, left: Float, top: Float, w: Float, h: Float) =
-    drawOval(color, Offset(left * size.width, top * size.height), Size(w * size.width, h * size.height))
+    drawOval(volume(color, left, top, w, h), Offset(left * size.width, top * size.height), Size(w * size.width, h * size.height))
 
 private fun DrawScope.box(color: Color, left: Float, top: Float, w: Float, h: Float, corner: Float = 0f) =
     drawRoundRect(
-        color,
+        volume(color, left, top, w, h),
         Offset(left * size.width, top * size.height),
         Size(w * size.width, h * size.height),
         CornerRadius(corner * size.width),
@@ -76,23 +99,78 @@ private fun DrawScope.box(color: Color, left: Float, top: Float, w: Float, h: Fl
 
 private fun DrawScope.shape(color: Color, build: Path.(Float, Float) -> Unit) {
     val path = Path().apply { build(size.width, size.height) }
-    drawPath(path, color)
+    val bounds = path.getBounds()
+    val brush = if (color.alpha < 1f) {
+        Brush.linearGradient(listOf(color, color), Offset.Zero, Offset(1f, 1f))
+    } else {
+        Brush.linearGradient(listOf(light(color), color, dark(color)), bounds.topLeft, bounds.bottomRight)
+    }
+    drawPath(path, brush)
 }
 
 private fun DrawScope.stroke(color: Color, x1: Float, y1: Float, x2: Float, y2: Float, width: Float) =
     drawLine(color, Offset(x1 * size.width, y1 * size.height), Offset(x2 * size.width, y2 * size.height), strokeWidth = width * size.width, cap = StrokeCap.Round)
 
-/** Metade de cima de uma elipse (boné de cabelo, capacete, boina). */
-private fun DrawScope.cap(color: Color, left: Float, top: Float, w: Float, h: Float) =
-    drawArc(color, 180f, 180f, true, Offset(left * size.width, top * size.height), Size(w * size.width, h * size.height * 2))
+/** Metade de cima de uma elipse (cabelo, capacete, boina), com um brilho no alto. */
+private fun DrawScope.cap(color: Color, left: Float, top: Float, w: Float, h: Float) {
+    drawArc(
+        volume(color, left, top, w, h * 2), 180f, 180f, true,
+        Offset(left * size.width, top * size.height), Size(w * size.width, h * size.height * 2),
+    )
+    drawArc(
+        Color(0x40FFFFFF), 205f, 55f, false,
+        Offset((left + w * 0.12f) * size.width, (top + h * 0.2f) * size.height), Size(w * 0.76f * size.width, h * 1.5f * size.height),
+        style = Stroke(width = 0.018f * size.width, cap = StrokeCap.Round),
+    )
+}
+
+/** Contorno da cabeça por formato: pares (meia-largura, altura) do alto ao queixo; a curva passa suave por eles. */
+private class FaceSpec(val knots: List<Pair<Float, Float>>, val earHalf: Float)
+
+private val FaceSpecs = mapOf(
+    FaceShape.OVAL to FaceSpec(listOf(0f to 0.19f, 0.09f to 0.2f, 0.15f to 0.27f, 0.168f to 0.38f, 0.155f to 0.49f, 0.11f to 0.57f, 0.05f to 0.615f, 0f to 0.625f), 0.168f),
+    FaceShape.ROUND to FaceSpec(listOf(0f to 0.2f, 0.1f to 0.205f, 0.165f to 0.28f, 0.182f to 0.4f, 0.172f to 0.5f, 0.125f to 0.59f, 0.055f to 0.63f, 0f to 0.64f), 0.182f),
+    FaceShape.SQUARE to FaceSpec(listOf(0f to 0.2f, 0.1f to 0.205f, 0.16f to 0.27f, 0.168f to 0.4f, 0.164f to 0.52f, 0.14f to 0.59f, 0.075f to 0.625f, 0f to 0.628f), 0.168f),
+    FaceShape.HEART to FaceSpec(listOf(0f to 0.2f, 0.1f to 0.2f, 0.17f to 0.26f, 0.176f to 0.35f, 0.14f to 0.47f, 0.08f to 0.57f, 0.03f to 0.625f, 0f to 0.645f), 0.176f),
+    FaceShape.LONG to FaceSpec(listOf(0f to 0.16f, 0.08f to 0.17f, 0.135f to 0.24f, 0.15f to 0.38f, 0.14f to 0.52f, 0.1f to 0.61f, 0.045f to 0.66f, 0f to 0.67f), 0.15f),
+)
+
+private fun DrawScope.headPath(face: FaceSpec): Path {
+    val w = size.width
+    val h = size.height
+    val points = face.knots.map { (half, y) -> Offset((0.5f + half) * w, y * h) } +
+        face.knots.reversed().drop(1).dropLast(1).map { (half, y) -> Offset((0.5f - half) * w, y * h) }
+    fun mid(a: Offset, b: Offset) = Offset((a.x + b.x) / 2, (a.y + b.y) / 2)
+    val path = Path()
+    val start = mid(points.last(), points.first())
+    path.moveTo(start.x, start.y)
+    points.indices.forEach { i ->
+        val end = mid(points[i], points[(i + 1) % points.size])
+        path.quadraticBezierTo(points[i].x, points[i].y, end.x, end.y)
+    }
+    path.close()
+    return path
+}
+
+private val EyeColors = listOf(0xFF4E342E, 0xFF5D4037, 0xFF8D6E63, 0xFF1E88E5, 0xFF43A047, 0xFF78909C).map { Color(it) }
 
 private fun DrawScope.drawPersona(persona: Persona) {
     val look = persona.look
+    val female = persona.gender == Gender.FEMALE
     val skin = SkinTones[look.skin]
-    val skinShade = lerp(skin, Color.Black, 0.12f)
+    val skinShade = dark(skin, 0.12f)
     val hair = HairColors[look.hairColor]
+    val spec = FaceSpecs.getValue(look.face)
+    val background = persona.profession.background()
 
-    drawRect(persona.profession.background())
+    // Fundo com luz no centro.
+    drawRect(
+        Brush.radialGradient(
+            listOf(light(background, 0.4f), background, dark(background, 0.14f)),
+            center = Offset(0.5f * size.width, 0.38f * size.height),
+            radius = 0.78f * size.width,
+        ),
+    )
 
     // Cabelo de trás (longos e rabo de cavalo), por baixo dos ombros.
     when (look.hair) {
@@ -104,42 +182,111 @@ private fun DrawScope.drawPersona(persona: Persona) {
     }
 
     drawBody(persona.profession, skinShade)
+    // Luz na linha do ombro e sombra do queixo no pescoço.
+    stroke(Color(0x33FFFFFF), 0.14f, 0.84f, 0.3f, 0.755f, 0.02f)
+    box(Color(0x40000000), 0.435f, 0.585f, 0.13f, 0.075f, 0.035f)
 
-    // Cabeça e orelhas.
-    circle(skin, 0.335f, 0.43f, 0.035f)
-    circle(skin, 0.665f, 0.43f, 0.035f)
-    oval(skin, 0.34f, 0.2f, 0.32f, 0.42f)
+    val head = headPath(spec)
+    val earY = 0.44f
+    listOf(0.5f - spec.earHalf - 0.004f, 0.5f + spec.earHalf + 0.004f).forEach { x ->
+        circle(skin, x, earY, 0.034f)
+        flatCircle(Color(0x30000000), x, earY, 0.017f)
+    }
+    // Cabeça com volume: luz no alto à esquerda, sombra embaixo à direita, e contorno suave.
+    drawPath(
+        head,
+        Brush.radialGradient(
+            listOf(light(skin, 0.16f), skin, dark(skin, 0.2f)),
+            center = Offset(0.44f * size.width, 0.35f * size.height),
+            radius = 0.34f * size.width,
+        ),
+    )
+    drawPath(head, dark(skin, 0.4f).copy(alpha = 0.55f), style = Stroke(width = 0.008f * size.width))
+
+    // Bochechas.
+    flatCircle(Color(0x30FF6F61), 0.385f, 0.52f, 0.036f)
+    flatCircle(Color(0x30FF6F61), 0.615f, 0.52f, 0.036f)
+
+    // Barba: a parte de baixo do rosto (recortada no contorno) com a boca à mostra.
+    if (look.beard) {
+        clipPath(head) {
+            drawRect(volume(hair, 0.3f, 0.5f, 0.4f, 0.2f), Offset(0f, 0.5f * size.height), Size(size.width, 0.2f * size.height))
+        }
+        oval(skin, 0.43f, 0.505f, 0.14f, 0.07f)
+    }
 
     // Cabelo da frente.
     when (look.hair) {
-        HairStyle.SHORT, HairStyle.LONG, HairStyle.BOB, HairStyle.PONYTAIL -> cap(hair, 0.32f, 0.17f, 0.36f, 0.17f)
+        HairStyle.SHORT, HairStyle.LONG, HairStyle.BOB, HairStyle.PONYTAIL -> cap(hair, 0.32f, 0.14f, 0.36f, 0.2f)
         HairStyle.SIDE_SWEEP -> {
-            cap(hair, 0.32f, 0.17f, 0.36f, 0.17f)
+            cap(hair, 0.32f, 0.14f, 0.36f, 0.2f)
             oval(hair, 0.34f, 0.27f, 0.24f, 0.09f)
         }
         HairStyle.BUN -> {
-            cap(hair, 0.32f, 0.17f, 0.36f, 0.17f)
-            circle(hair, 0.5f, 0.15f, 0.075f)
+            cap(hair, 0.32f, 0.14f, 0.36f, 0.2f)
+            circle(hair, 0.5f, 0.13f, 0.075f)
         }
         HairStyle.CURLY_SHORT, HairStyle.CURLY_LONG ->
-            listOf(0.36f to 0.27f, 0.43f to 0.2f, 0.5f to 0.18f, 0.57f to 0.2f, 0.64f to 0.27f, 0.34f to 0.35f, 0.66f to 0.35f)
+            listOf(0.36f to 0.27f, 0.43f to 0.2f, 0.5f to 0.18f, 0.57f to 0.2f, 0.64f to 0.27f, 0.34f to 0.35f, 0.66f to 0.35f, 0.4f to 0.23f, 0.6f to 0.23f)
                 .forEach { (x, y) -> circle(hair, x, y, 0.065f) }
         HairStyle.BALD -> Unit
     }
 
-    // Rosto: olhos e sorriso.
-    circle(Ink, 0.43f, 0.43f, 0.019f)
-    circle(Ink, 0.57f, 0.43f, 0.019f)
-    if (look.beard) {
-        drawArc(hair, 0f, 180f, true, Offset(0.34f * size.width, 0.36f * size.height), Size(0.32f * size.width, 0.26f * size.height))
-    }
-    drawArc(
-        if (look.beard) White else Color(0xFF8D3B3B), 20f, 140f, false,
-        Offset(0.44f * size.width, 0.48f * size.height), Size(0.12f * size.width, 0.08f * size.height),
-        style = Stroke(width = 0.018f * size.width, cap = StrokeCap.Round),
-    )
-
+    drawFace(look, hair, skin, spec, female)
     drawGear(persona.profession)
+}
+
+/** Olhos, sobrancelhas, nariz e boca. */
+private fun DrawScope.drawFace(look: Look, hair: Color, skin: Color, spec: FaceSpec, female: Boolean) {
+    val w = size.width
+    val h = size.height
+    val eyeY = if (look.face == FaceShape.LONG) 0.455f else 0.44f
+    val iris = EyeColors[if (look.skin >= 3) 0 else (look.hairColor + look.skin) % EyeColors.size]
+    listOf(-1f, 1f).forEach { side ->
+        val ex = 0.5f + side * 0.075f
+        // Olho: branco, íris, pupila e brilho; pálpebra por cima.
+        flatCircle(Color(0xFFFDFDFD), ex, eyeY, 0.03f)
+        flatCircle(iris, ex, eyeY + 0.002f, 0.019f)
+        flatCircle(Ink, ex, eyeY + 0.002f, 0.009f)
+        flatCircle(Color(0xFFFFFFFF), ex - 0.006f, eyeY - 0.005f, 0.0055f)
+        drawArc(
+            dark(skin, 0.45f), 200f, 140f, false,
+            Offset((ex - 0.031f) * w, (eyeY - 0.03f) * h), Size(0.062f * w, 0.06f * h),
+            style = Stroke(width = 0.011f * w, cap = StrokeCap.Round),
+        )
+        if (female) {
+            stroke(Ink, ex + side * 0.028f, eyeY - 0.012f, ex + side * 0.04f, eyeY - 0.024f, 0.007f)
+            stroke(Ink, ex + side * 0.03f, eyeY - 0.004f, ex + side * 0.043f, eyeY - 0.01f, 0.006f)
+        }
+        // Sobrancelha: fina e arqueada no feminino, mais grossa e reta no masculino.
+        drawArc(
+            dark(hair, 0.15f), if (female) 205f else 215f, if (female) 120f else 100f, false,
+            Offset((ex - 0.04f) * w, (eyeY - 0.075f) * h), Size(0.08f * w, 0.05f * h),
+            style = Stroke(width = (if (female) 0.011f else 0.017f) * w, cap = StrokeCap.Round),
+        )
+    }
+    // Nariz: sombra suave do lado e ponta.
+    drawArc(
+        dark(skin, 0.3f).copy(alpha = 0.75f), 30f, 120f, false,
+        Offset(0.465f * w, 0.485f * h), Size(0.07f * w, 0.04f * h),
+        style = Stroke(width = 0.009f * w, cap = StrokeCap.Round),
+    )
+    flatCircle(Color(0x30FFFFFF), 0.49f, 0.47f, 0.013f)
+    // Boca: sorriso com dentes e lábios.
+    val smile = Path().apply {
+        moveTo(0.44f * w, 0.54f * h)
+        quadraticBezierTo(0.5f * w, 0.605f * h, 0.56f * w, 0.54f * h)
+        quadraticBezierTo(0.5f * w, 0.55f * h, 0.44f * w, 0.54f * h)
+        close()
+    }
+    drawPath(smile, Color(0xFFFDFDFD))
+    val lip = if (female) Color(0xFFD35D6E) else Color(0xFFB5524F)
+    val lipLine = Path().apply {
+        moveTo(0.44f * w, 0.54f * h)
+        quadraticBezierTo(0.5f * w, 0.605f * h, 0.56f * w, 0.54f * h)
+    }
+    drawPath(lipLine, lip, style = Stroke(width = (if (female) 0.018f else 0.013f) * w, cap = StrokeCap.Round))
+    drawLine(lip, Offset(0.445f * w, 0.54f * h), Offset(0.555f * w, 0.54f * h), strokeWidth = 0.008f * w, cap = StrokeCap.Round)
 }
 
 /** Ombros, peito e braços com o uniforme da profissão, mais o pescoço. */

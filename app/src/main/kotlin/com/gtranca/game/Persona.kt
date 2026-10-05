@@ -9,6 +9,9 @@ enum class Profession {
     NURSE, POLICE, FARMER, MECHANIC, MUSICIAN, LAWYER, PHOTOGRAPHER, SAILOR,
 }
 
+/** Formato do rosto (contorno da cabeça). */
+enum class FaceShape { OVAL, ROUND, SQUARE, HEART, LONG }
+
 /** Penteados; cada um só serve a um gênero ([gender]). */
 enum class HairStyle(val gender: Gender) {
     SHORT(Gender.MALE),
@@ -23,7 +26,13 @@ enum class HairStyle(val gender: Gender) {
 }
 
 /** Aparência do avatar: índices nas paletas da tela ([SKIN_TONES] tons de pele, [HAIR_COLORS] cores de cabelo). */
-data class Look(val skin: Int, val hair: HairStyle, val hairColor: Int, val beard: Boolean = false) {
+data class Look(
+    val skin: Int,
+    val hair: HairStyle,
+    val hairColor: Int,
+    val beard: Boolean = false,
+    val face: FaceShape = FaceShape.OVAL,
+) {
     init {
         require(skin in 0 until SKIN_TONES) { "Tom de pele inválido: $skin" }
         require(hairColor in 0 until HAIR_COLORS) { "Cor de cabelo inválida: $hairColor" }

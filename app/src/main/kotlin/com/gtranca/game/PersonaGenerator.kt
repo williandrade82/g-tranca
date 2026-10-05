@@ -62,6 +62,7 @@ object PersonaGenerator {
                 hair = hair,
                 hairColor = random.nextInt(Look.HAIR_COLORS),
                 beard = beard,
+                face = FaceShape.entries.random(random),
             ),
         )
     }

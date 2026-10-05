@@ -81,6 +81,12 @@
     <string name="gender_male">Masculino</string>
     <string name="gender_female">Feminino</string>
     <string name="profile_profession">Profissão</string>
+    <string name="profile_face">Rosto</string>
+    <string name="face_oval">Oval</string>
+    <string name="face_round">Redondo</string>
+    <string name="face_square">Quadrado</string>
+    <string name="face_heart">Coração</string>
+    <string name="face_long">Alongado</string>
     <string name="profile_skin">Pele</string>
     <string name="profile_hair">Cabelo</string>
     <string name="profile_beard">Barba</string>
