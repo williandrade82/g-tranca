@@ -132,7 +132,7 @@ class EndScreensTest {
         var seePoints = false
         rule.setContent { GTrancaTheme { RoundAnnouncement(snapshot(), { seePoints = true }, onResign = {}) } }
         // §4.2 o assento 1 é o adversário à direita; §11.1 ele bateu.
-        rule.onNodeWithText("O adversário à direita bateu.").assertIsDisplayed()
+        rule.onNodeWithText("O adversário à direita venceu essa partida.").assertIsDisplayed()
         rule.onNodeWithText("A dupla adversária venceu a partida.").assertIsDisplayed()
         rule.onNodeWithTag("action-resign").assertIsDisplayed()
         rule.onNodeWithText("Ver pontos").performClick()

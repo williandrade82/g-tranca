@@ -42,7 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.DialogProperties
 
 /** Variantes de [GButton]. */
-enum class GButtonKind { Primary, Secondary, Danger, DangerOutline, Text }
+enum class GButtonKind { Primary, Secondary, Danger, DangerOutline, Text, Quiet }
 
 /** Botão do app: arredondado, com sombra. Primary = amarelo; Secondary = branco com contorno; Danger = vermelho. */
 @Composable
@@ -76,6 +76,11 @@ fun GButton(
             onClick, modifier, enabled, shape = shape, elevation = shadow,
             colors = ButtonDefaults.buttonColors(containerColor = GColors.White, contentColor = GColors.Red),
             border = BorderStroke(2.dp, GColors.Red),
+            content = content,
+        )
+        GButtonKind.Quiet -> TextButton(
+            onClick, modifier, enabled, shape = shape,
+            colors = ButtonDefaults.textButtonColors(contentColor = GColors.GreenDark),
             content = content,
         )
         GButtonKind.Text -> TextButton(

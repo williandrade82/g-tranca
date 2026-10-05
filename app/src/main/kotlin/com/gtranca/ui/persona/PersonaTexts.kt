@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.gtranca.R
 import com.gtranca.game.Gender
 import com.gtranca.game.Profession
+import com.gtranca.game.SeatRole
 
 /** Nome da profissão no gênero do perfil (médico/médica). */
 @StringRes
@@ -26,5 +27,18 @@ fun Profession.labelRes(gender: Gender): Int {
         Profession.LAWYER -> if (m) R.string.profession_lawyer_m else R.string.profession_lawyer_f
         Profession.PHOTOGRAPHER -> if (m) R.string.profession_photographer_m else R.string.profession_photographer_f
         Profession.SAILOR -> if (m) R.string.profession_sailor_m else R.string.profession_sailor_f
+    }
+}
+
+/** Papel do assento no gênero da persona (Parceira, Adversário à esquerda...). O próprio jogador é "Você". */
+@StringRes
+fun SeatRole.labelRes(gender: Gender): Int {
+    val m = gender == Gender.MALE
+    return when (this) {
+        SeatRole.YOU -> R.string.side_you
+        SeatRole.PARTNER -> if (m) R.string.role_partner_m else R.string.role_partner_f
+        SeatRole.OPPONENT -> if (m) R.string.role_opponent_m else R.string.role_opponent_f
+        SeatRole.LEFT_OPPONENT -> if (m) R.string.role_left_m else R.string.role_left_f
+        SeatRole.RIGHT_OPPONENT -> if (m) R.string.role_right_m else R.string.role_right_f
     }
 }

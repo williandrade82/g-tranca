@@ -130,7 +130,16 @@
     <string name="profession_artist_m">Pintor</string>
     <string name="profession_artist_f">Pintora</string>
     <string name="persona_caption">%1$s · %2$s</string>
-    <string name="round_result_named_went_out">%1$s bateu!</string>
+    <string name="round_result_named_went_out">%1$s venceu essa partida!</string>
+    <string name="persona_role_caption">%1$s · %2$s</string>
+    <string name="role_partner_m">Parceiro</string>
+    <string name="role_partner_f">Parceira</string>
+    <string name="role_opponent_m">Adversário</string>
+    <string name="role_opponent_f">Adversária</string>
+    <string name="role_left_m">Adversário à esquerda</string>
+    <string name="role_left_f">Adversária à esquerda</string>
+    <string name="role_right_m">Adversário à direita</string>
+    <string name="role_right_f">Adversária à direita</string>
     <string name="game_over_named_won">%1$s venceu.</string>
     <string name="seat_left_short">Adv. esq.</string>
     <string name="seat_right_short">Adv. dir.</string>
@@ -243,11 +252,11 @@
 
     <!-- Fim de partida (§12) -->
     <string name="round_over_title">Fim da partida %1$d</string>
-    <string name="round_result_you_went_out">Você bateu!</string>
-    <string name="round_result_opponent_went_out">O adversário bateu.</string>
-    <string name="round_result_partner_went_out">Seu parceiro bateu!</string>
-    <string name="round_result_left_went_out">O adversário à esquerda bateu.</string>
-    <string name="round_result_right_went_out">O adversário à direita bateu.</string>
+    <string name="round_result_you_went_out">Você venceu essa partida!</string>
+    <string name="round_result_opponent_went_out">O adversário venceu essa partida.</string>
+    <string name="round_result_partner_went_out">Seu parceiro venceu essa partida!</string>
+    <string name="round_result_left_went_out">O adversário à esquerda venceu essa partida.</string>
+    <string name="round_result_right_went_out">O adversário à direita venceu essa partida.</string>
     <string name="round_result_no_winner">Partida sem vencedor.</string>
     <string name="round_tie_notice">Empate na maior pontuação: joga-se nova partida para desempatar.</string>
     <string name="score_item">Item</string>

@@ -1,5 +1,9 @@
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.GMessage
+import com.gtranca.ui.theme.MessageIllustration
+import com.gtranca.ui.theme.MessageTone
+
 import androidx.activity.compose.BackHandler
 import com.gtranca.ui.theme.GDialog
 import androidx.compose.material3.Text
@@ -50,17 +54,18 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     if (state.confirmResign) ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign)
 
     if (confirmExit) {
-        GDialog(
-            onDismissRequest = { confirmExit = false },
-            title = { Text(stringResource(R.string.exit_title)) },
-            text = { Text(stringResource(R.string.exit_text)) },
-            confirmButton = {
-                TextButton({
-                    confirmExit = false
-                    onExit()
-                }) { Text(stringResource(R.string.exit_confirm)) }
+        GMessage(
+            title = stringResource(R.string.exit_title),
+            text = stringResource(R.string.exit_text),
+            illustration = MessageIllustration.Exit,
+            tone = MessageTone.Warning,
+            confirmText = stringResource(R.string.exit_confirm),
+            onConfirm = {
+                confirmExit = false
+                onExit()
             },
-            dismissButton = { TextButton({ confirmExit = false }) { Text(stringResource(R.string.cancel)) } },
+            dismissText = stringResource(R.string.cancel),
+            onDismissRequest = { confirmExit = false },
         )
     }
 }
@@ -68,13 +73,19 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
 /** §13.1 confirmação da desistência; cancelar volta exatamente ao estado anterior. */
 @Composable
 fun ResignDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    GDialog(
+    GMessage(
         modifier = Modifier.testTag("resign-dialog"),
+        title = stringResource(R.string.resign_title),
+        text = stringResource(R.string.resign_text),
+        illustration = MessageIllustration.Flag,
+        tone = MessageTone.Danger,
+        confirmText = stringResource(R.string.resign_confirm),
+        onConfirm = onConfirm,
+        confirmTag = "resign-confirm",
+        dismissText = stringResource(R.string.cancel),
+        onDismiss = onDismiss,
+        dismissTag = "resign-cancel",
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.resign_title)) },
-        text = { Text(stringResource(R.string.resign_text)) },
-        confirmButton = { TextButton(onConfirm, Modifier.testTag("resign-confirm")) { Text(stringResource(R.string.resign_confirm)) } },
-        dismissButton = { TextButton(onDismiss, Modifier.testTag("resign-cancel")) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

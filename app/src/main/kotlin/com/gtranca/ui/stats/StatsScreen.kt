@@ -1,5 +1,9 @@
 package com.gtranca.ui.stats
 
+import com.gtranca.ui.theme.GMessage
+import com.gtranca.ui.theme.MessageIllustration
+import com.gtranca.ui.theme.MessageTone
+
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.graphics.Color
 import com.gtranca.ui.theme.GBackground
@@ -122,21 +126,19 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
         }
     }
     if (confirmReset) {
-        GDialog(
-            onDismissRequest = { confirmReset = false },
-            title = { Text(stringResource(R.string.stats_reset_title)) },
-            text = { Text(stringResource(R.string.stats_reset_text)) },
-            confirmButton = {
-                TextButton(
-                    {
-                        confirmReset = false
-                        viewModel.onReset()
-                    },
-                    Modifier.testTag("stats-reset-confirm"),
-                    colors = ButtonDefaults.textButtonColors(contentColor = GColors.Red),
-                ) { Text(stringResource(R.string.stats_reset_confirm), fontWeight = FontWeight.Bold) }
+        GMessage(
+            title = stringResource(R.string.stats_reset_title),
+            text = stringResource(R.string.stats_reset_text),
+            illustration = MessageIllustration.Trash,
+            tone = MessageTone.Danger,
+            confirmText = stringResource(R.string.stats_reset_confirm),
+            onConfirm = {
+                confirmReset = false
+                viewModel.onReset()
             },
-            dismissButton = { TextButton({ confirmReset = false }) { Text(stringResource(R.string.cancel)) } },
+            confirmTag = "stats-reset-confirm",
+            dismissText = stringResource(R.string.cancel),
+            onDismissRequest = { confirmReset = false },
         )
     }
 }

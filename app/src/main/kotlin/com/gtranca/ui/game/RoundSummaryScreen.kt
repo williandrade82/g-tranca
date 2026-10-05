@@ -131,7 +131,7 @@ fun RoundSummaryScreen(
             }
 
             val tie = snapshot.stage == Stage.ROUND_OVER && snapshot.totals.any { it >= snapshot.config.targetScore }
-            if (tie) Text(stringResource(R.string.round_tie_notice), style = MaterialTheme.typography.bodyMedium, color = GColors.OnTable)
+            if (tie) GBanner(stringResource(R.string.round_tie_notice), GColors.Yellow, GColors.CardBlack, Modifier.testTag("tie-notice"))
 
             if (snapshot.stage == Stage.GAME_OVER) {
                 GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("show-final")) {

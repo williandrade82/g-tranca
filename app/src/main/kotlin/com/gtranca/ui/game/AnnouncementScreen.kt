@@ -1,10 +1,14 @@
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.MessageBadge
+import com.gtranca.ui.theme.MessageIllustration
+import com.gtranca.ui.theme.MessageTone
+
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.game.Persona
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.persona.AvatarRow
-import com.gtranca.ui.persona.personaCaption
+import com.gtranca.ui.persona.labelRes
 import com.gtranca.ui.persona.personasOfSide
 
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +59,8 @@ fun AnnouncementScreen(
     /** §14.1 quem protagoniza o anúncio (quem bateu ou o lado vencedor), com legenda opcional. */
     avatars: List<Persona> = emptyList(),
     caption: String? = null,
+    /** Ilustração quando não há avatar (ex.: partida sem vencedor). */
+    illustration: MessageIllustration? = null,
 ) {
     GBackground(Modifier.fillMaxSize().testTag("announcement")) {
         if (onResign != null) {
@@ -69,6 +75,7 @@ fun AnnouncementScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (avatars.isEmpty() && illustration != null) MessageBadge(illustration, MessageTone.Warning, 96.dp)
             if (avatars.isNotEmpty()) {
                 AvatarRow(avatars, 96.dp, Modifier.testTag("announcement-avatars"))
                 caption?.let { Text(it, color = OnTable, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
@@ -96,13 +103,17 @@ fun RoundAnnouncement(
     val record = snapshot.history.last()
     val mode = snapshot.view.mode
     val result = record.result
-    // §14.1 quem bateu, pelo nome (o próprio jogador continua "Você bateu!").
+    // §14.1 quem venceu a partida (bateu), pelo nome e pelo título: o próprio jogador continua "Você".
     val who = (result as? RoundResult.GoOut)?.let { personas.getOrNull(it.seat.index) }
-    val named = who != null && SeatRole.of(mode, (result as RoundResult.GoOut).seat, snapshot.viewerSeat) != SeatRole.YOU
+    val role = (result as? RoundResult.GoOut)?.let { SeatRole.of(mode, it.seat, snapshot.viewerSeat) }
+    val named = who != null && role != SeatRole.YOU
     AnnouncementScreen(
         title = if (named) stringResource(R.string.round_result_named_went_out, who!!.firstName) else stringResource(roundAnnouncementRes(mode, record.result, snapshot.viewerSeat)),
         avatars = listOfNotNull(who),
-        caption = who?.let { personaCaption(it) },
+        illustration = if (result is RoundResult.NoWinner) MessageIllustration.Cards else null,
+        caption = who?.let { persona ->
+            if (role == SeatRole.YOU) stringResource(R.string.side_you) else stringResource(R.string.persona_role_caption, persona.fullName, stringResource(role!!.labelRes(persona.gender)))
+        },
         subtitle = roundTeamAnnouncementRes(mode, record.result, snapshot.viewerSide)?.let { stringResource(it) },
         button = stringResource(R.string.announce_see_points),
         onContinue = onContinue,

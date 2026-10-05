@@ -1,5 +1,9 @@
 package com.gtranca.ui.home
 
+import com.gtranca.ui.theme.GMessage
+import com.gtranca.ui.theme.MessageIllustration
+import com.gtranca.ui.theme.MessageTone
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
@@ -188,21 +192,18 @@ fun HomeScreen(
     }
 
     if (state.confirmNewGame) {
-        GDialog(
+        GMessage(
             modifier = Modifier.testTag("new-game-dialog"),
+            title = stringResource(R.string.new_game_confirm_title),
+            text = stringResource(R.string.new_game_confirm_text),
+            illustration = MessageIllustration.Cards,
+            tone = MessageTone.Danger,
+            confirmText = stringResource(R.string.new_game_confirm),
+            onConfirm = viewModel::onConfirmNewGame,
+            confirmTag = "new-game-confirm",
+            dismissText = stringResource(R.string.cancel),
+            onDismiss = viewModel::onDismissNewGame,
             onDismissRequest = viewModel::onDismissNewGame,
-            title = { Text(stringResource(R.string.new_game_confirm_title)) },
-            text = { Text(stringResource(R.string.new_game_confirm_text)) },
-            confirmButton = {
-                TextButton(
-                    viewModel::onConfirmNewGame,
-                    Modifier.testTag("new-game-confirm"),
-                    colors = ButtonDefaults.textButtonColors(contentColor = GColors.Red),
-                ) {
-                    Text(stringResource(R.string.new_game_confirm), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = { TextButton(viewModel::onDismissNewGame) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

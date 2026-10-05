@@ -2,7 +2,13 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.GMessage
+import com.gtranca.ui.theme.MessageIllustration
+import com.gtranca.ui.theme.MessageTone
+import com.gtranca.ui.theme.GSnack
+
 import com.gtranca.ui.persona.PersonaAvatar
+import com.gtranca.ui.persona.labelRes
 
 import androidx.compose.ui.draw.clip
 
@@ -222,7 +228,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
             .background(Brush.verticalGradient(listOf(GColors.Table, GColors.TableDark)))
             .testTag("table-screen"),
         containerColor = Color.Transparent,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SnackbarHost(snackbar) { data -> GSnack(data.visuals.message) } },
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             Box(Modifier.fillMaxSize().padding(padding)) {
@@ -273,19 +279,24 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
             detailSeat = null
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
-            SeatDetailDialog(state.personas.getOrNull(index), stringResource(role.nameRes()), events) { detailSeat = null }
+            val detailPersona = state.personas.getOrNull(index)
+            SeatDetailDialog(detailPersona, stringResource(detailPersona?.let { role.labelRes(it.gender) } ?: role.nameRes()), events) { detailSeat = null }
         }
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed, events::onResign) }
     if (state.confirmDecline) {
-        GDialog(
+        GMessage(
+            title = stringResource(R.string.decline_title),
+            text = stringResource(R.string.decline_text),
+            illustration = MessageIllustration.Question,
+            tone = MessageTone.Warning,
+            confirmText = stringResource(R.string.decline_confirm),
+            onConfirm = events::onConfirmDecline,
+            dismissText = stringResource(R.string.cancel),
+            onDismiss = events::onDismissDecline,
             onDismissRequest = events::onDismissDecline,
-            title = { Text(stringResource(R.string.decline_title)) },
-            text = { Text(stringResource(R.string.decline_text)) },
-            confirmButton = { TextButton(events::onConfirmDecline) { Text(stringResource(R.string.decline_confirm)) } },
-            dismissButton = { TextButton(events::onDismissDecline) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
