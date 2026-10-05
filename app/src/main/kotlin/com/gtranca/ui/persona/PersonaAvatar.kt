@@ -129,9 +129,9 @@ private class FaceSpec(val knots: List<Pair<Float, Float>>, val earHalf: Float)
 
 private val FaceSpecs = mapOf(
     FaceShape.OVAL to FaceSpec(listOf(0f to 0.19f, 0.09f to 0.2f, 0.15f to 0.27f, 0.168f to 0.38f, 0.155f to 0.49f, 0.11f to 0.57f, 0.05f to 0.615f, 0f to 0.625f), 0.168f),
-    FaceShape.ROUND to FaceSpec(listOf(0f to 0.2f, 0.1f to 0.205f, 0.165f to 0.28f, 0.182f to 0.4f, 0.172f to 0.5f, 0.125f to 0.59f, 0.055f to 0.63f, 0f to 0.64f), 0.182f),
-    FaceShape.SQUARE to FaceSpec(listOf(0f to 0.2f, 0.1f to 0.205f, 0.16f to 0.27f, 0.168f to 0.4f, 0.164f to 0.52f, 0.14f to 0.59f, 0.075f to 0.625f, 0f to 0.628f), 0.168f),
-    FaceShape.HEART to FaceSpec(listOf(0f to 0.2f, 0.1f to 0.2f, 0.17f to 0.26f, 0.176f to 0.35f, 0.14f to 0.47f, 0.08f to 0.57f, 0.03f to 0.625f, 0f to 0.645f), 0.176f),
+    FaceShape.ROUND to FaceSpec(listOf(0f to 0.2f, 0.11f to 0.205f, 0.18f to 0.29f, 0.2f to 0.42f, 0.185f to 0.53f, 0.13f to 0.605f, 0.055f to 0.635f, 0f to 0.64f), 0.2f),
+    FaceShape.SQUARE to FaceSpec(listOf(0f to 0.2f, 0.1f to 0.205f, 0.16f to 0.26f, 0.17f to 0.4f, 0.17f to 0.54f, 0.155f to 0.6f, 0.1f to 0.628f, 0.05f to 0.632f, 0f to 0.633f), 0.17f),
+    FaceShape.HEART to FaceSpec(listOf(0f to 0.2f, 0.11f to 0.2f, 0.18f to 0.255f, 0.19f to 0.34f, 0.15f to 0.46f, 0.08f to 0.57f, 0.025f to 0.63f, 0f to 0.655f), 0.19f),
     FaceShape.LONG to FaceSpec(listOf(0f to 0.16f, 0.08f to 0.17f, 0.135f to 0.24f, 0.15f to 0.38f, 0.14f to 0.52f, 0.1f to 0.61f, 0.045f to 0.66f, 0f to 0.67f), 0.15f),
 )
 
