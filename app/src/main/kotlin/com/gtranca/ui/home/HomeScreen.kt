@@ -1,6 +1,22 @@
 package com.gtranca.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.font.FontWeight
+import com.gtranca.ui.theme.Elevation
+import com.gtranca.ui.theme.GBackground
+import com.gtranca.ui.theme.GButton
+import com.gtranca.ui.theme.GButtonKind
+import com.gtranca.ui.theme.GChoiceChip
+import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.GPanel
+import com.gtranca.ui.theme.Spacing
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,27 +78,40 @@ fun HomeScreen(
             onStart(config)
         }
     }
-    Surface(Modifier.fillMaxSize()) {
+    GBackground(Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                PlayingCard(Card.parse("AS"), size = CardSize.LARGE, describe = false)
-                PlayingCard(Card.parse("KH"), size = CardSize.LARGE, describe = false)
-                CardBack(size = CardSize.LARGE, describe = false)
+            Row(Modifier.padding(top = Spacing.sm), horizontalArrangement = Arrangement.spacedBy(-Spacing.sm)) {
+                Fan(Card.parse("AS"), -12f)
+                Fan(Card.parse("KH"), 0f)
+                Fan(null, 12f)
             }
-            Text(stringResource(R.string.home_title), style = MaterialTheme.typography.displayMedium)
-            Text(stringResource(R.string.home_subtitle), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+            Text(
+                stringResource(R.string.home_title),
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    shadow = Shadow(GColors.Shadow, Offset(0f, 6f), 12f),
+                ),
+                color = GColors.Yellow,
+            )
+            Text(
+                stringResource(R.string.home_subtitle),
+                style = MaterialTheme.typography.bodyLarge,
+                color = GColors.OnTable,
+                textAlign = TextAlign.Center,
+            )
 
             // Jogo salvo: "Continuar" em destaque, com modo, dificuldade e placar.
             state.saved?.let { saved ->
                 val description = savedDescription(saved)
-                Button(
+                GButton(
                     onClick = onContinue,
                     enabled = state.ready,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("continue"),
+                    kind = GButtonKind.Primary,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("continue"),
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.home_continue), style = MaterialTheme.typography.titleMedium)
@@ -91,57 +120,56 @@ fun HomeScreen(
                 }
             }
 
-            Section(stringResource(R.string.home_mode)) {
-                Choice(stringResource(R.string.mode_individual), state.mode == GameMode.INDIVIDUAL, enabled = true, tag = "mode-individual") {
-                    viewModel.onModeChange(GameMode.INDIVIDUAL)
+            GPanel(Modifier.fillMaxWidth()) {
+                Section(stringResource(R.string.home_mode)) {
+                    Chip(stringResource(R.string.mode_individual), state.mode == GameMode.INDIVIDUAL, "mode-individual") {
+                        viewModel.onModeChange(GameMode.INDIVIDUAL)
+                    }
+                    Chip(stringResource(R.string.mode_duplas), state.mode == GameMode.DUPLAS, "mode-duplas") {
+                        viewModel.onModeChange(GameMode.DUPLAS)
+                    }
                 }
-                Choice(stringResource(R.string.mode_duplas), state.mode == GameMode.DUPLAS, enabled = true, tag = "mode-duplas") {
-                    viewModel.onModeChange(GameMode.DUPLAS)
+
+                Section(stringResource(R.string.home_difficulty)) {
+                    Difficulty.entries.forEach { difficulty ->
+                        Chip(stringResource(difficulty.labelRes()), state.difficulty == difficulty, "difficulty-${difficulty.id}") {
+                            viewModel.onDifficultyChange(difficulty)
+                        }
+                    }
                 }
+
+                OutlinedTextField(
+                    value = state.targetText,
+                    onValueChange = viewModel::onTargetChange,
+                    label = { Text(stringResource(R.string.home_target)) },
+                    isError = state.targetError != null,
+                    supportingText = when (state.targetError) {
+                        null -> null
+                        TargetError.INVALID -> {
+                            { Text(stringResource(R.string.home_target_error)) }
+                        }
+                        TargetError.TOO_LARGE -> {
+                            { Text(stringResource(R.string.home_target_too_large, HomeUiState.MAX_TARGET)) }
+                        }
+                    },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().testTag("target-field"),
+                )
             }
 
-            Section(stringResource(R.string.home_difficulty)) {
-                Difficulty.entries.forEach { difficulty ->
-                    Choice(
-                        text = stringResource(difficulty.labelRes()),
-                        selected = state.difficulty == difficulty,
-                        enabled = true,
-                        tag = "difficulty-${difficulty.id}",
-                    ) { viewModel.onDifficultyChange(difficulty) }
-                }
-            }
-
-            OutlinedTextField(
-                value = state.targetText,
-                onValueChange = viewModel::onTargetChange,
-                label = { Text(stringResource(R.string.home_target)) },
-                isError = state.targetError != null,
-                supportingText = when (state.targetError) {
-                    null -> null
-                    TargetError.INVALID -> {
-                        { Text(stringResource(R.string.home_target_error)) }
-                    }
-                    TargetError.TOO_LARGE -> {
-                        { Text(stringResource(R.string.home_target_too_large, HomeUiState.MAX_TARGET)) }
-                    }
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth().testTag("target-field"),
-            )
-
-            val newGameModifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("new-game")
+            val newGameModifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("new-game")
             val startNew = { viewModel.onNewGame()?.let(onStart) }
-            if (state.saved == null) {
-                Button(onClick = { startNew() }, enabled = state.canStart, modifier = newGameModifier) {
-                    Text(stringResource(R.string.home_new_game))
-                }
-            } else {
-                OutlinedButton(onClick = { startNew() }, enabled = state.canStart, modifier = newGameModifier) {
-                    Text(stringResource(R.string.home_new_game))
-                }
+            GButton(
+                onClick = { startNew() },
+                enabled = state.canStart,
+                kind = if (state.saved == null) GButtonKind.Primary else GButtonKind.Secondary,
+                modifier = newGameModifier,
+            ) {
+                Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
             }
-            TextButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats")) {
+            GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
                 Text(stringResource(R.string.home_stats))
             }
         }
@@ -154,12 +182,25 @@ fun HomeScreen(
             title = { Text(stringResource(R.string.new_game_confirm_title)) },
             text = { Text(stringResource(R.string.new_game_confirm_text)) },
             confirmButton = {
-                TextButton(viewModel::onConfirmNewGame, Modifier.testTag("new-game-confirm")) {
-                    Text(stringResource(R.string.new_game_confirm))
+                TextButton(
+                    viewModel::onConfirmNewGame,
+                    Modifier.testTag("new-game-confirm"),
+                    colors = ButtonDefaults.textButtonColors(contentColor = GColors.Red),
+                ) {
+                    Text(stringResource(R.string.new_game_confirm), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = { TextButton(viewModel::onDismissNewGame) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+/** Carta do leque do topo: levemente inclinada, com sombra. `null` = verso. */
+@Composable
+private fun Fan(card: Card?, angle: Float) {
+    Box(Modifier.rotate(angle).shadow(Elevation.dialog, MaterialTheme.shapes.small)) {
+        if (card != null) PlayingCard(card, size = CardSize.LARGE, describe = false)
+        else CardBack(size = CardSize.LARGE, describe = false)
     }
 }
 
@@ -188,24 +229,14 @@ fun Difficulty.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().selectableGroup()) {
+private fun Section(title: String, chips: @Composable RowScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         Text(title, style = MaterialTheme.typography.titleMedium)
-        content()
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), content = chips)
     }
 }
 
 @Composable
-private fun Choice(text: String, selected: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
-            .testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = null, enabled = enabled)
-        Text(text, Modifier.padding(start = 8.dp), color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
-    }
+private fun RowScope.Chip(text: String, selected: Boolean, tag: String, onClick: () -> Unit) {
+    GChoiceChip(text, selected, onClick, Modifier.weight(1f).testTag(tag))
 }
