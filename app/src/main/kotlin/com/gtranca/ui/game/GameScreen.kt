@@ -43,11 +43,11 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     val canResign = snapshot.stage != Stage.GAME_OVER
     when (state.endScreen) {
         null -> TableScreen(state, viewModel)
-        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign }, state.personas)
+        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign }, state.personas, state.animationMillis > 0)
         EndScreen.ROUND_POINTS ->
             RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
-        EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext, state.personas)
-        EndScreen.FINAL -> GameOverScreen(snapshot, onExit, state.personas)
+        EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext, state.personas, state.animationMillis > 0)
+        EndScreen.FINAL -> GameOverScreen(snapshot, onExit, state.personas, state.animationMillis > 0)
     }
 
     // §13.1 desistência: disponível na mesa, na encenação e na tela de anúncio (não na de pontos, decisão do usuário).

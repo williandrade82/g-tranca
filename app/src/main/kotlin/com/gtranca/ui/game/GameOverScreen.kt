@@ -42,21 +42,24 @@ import com.gtranca.game.GameSnapshot
 
 /** Fim de jogo (§13): vencedor, totais e o resultado de cada partida. */
 @Composable
-fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: List<Persona> = emptyList()) {
+fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: List<Persona> = emptyList(), animate: Boolean = true) {
     val view = snapshot.view
     val sides = listOf(view.side) + view.mode.sides.filter { it != view.side }
+    val won = !snapshot.resigned && snapshot.winner == view.side
+    val outcome = if (won) EndOutcome.WIN else EndOutcome.LOSE
     GBackground(Modifier.fillMaxSize().testTag("game-over")) {
+        EndCelebration(outcome, brief = false, enabled = animate)
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             GTitle(stringResource(R.string.game_over_title))
-            val won = !snapshot.resigned && snapshot.winner == view.side
+            if (won) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Trophy(96.dp, animate, Modifier.testTag("game-over-trophy")) }
             // §14.1 quem venceu, com o avatar em destaque.
             snapshot.winner?.let { winner ->
                 val winners = personasOfSide(view.mode, winner, personas)
                 if (winners.isNotEmpty()) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AvatarRow(winners, 88.dp, Modifier.testTag("winner-avatars")) }
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AvatarRow(winners, 88.dp, Modifier.testTag("winner-avatars").outcomeMotion(outcome, animate)) }
                 }
             }
             val opponentName = personasOfSide(view.mode, view.mode.sides.first { it != view.side }, personas).firstOrNull()

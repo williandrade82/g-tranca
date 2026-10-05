@@ -61,8 +61,13 @@ fun AnnouncementScreen(
     caption: String? = null,
     /** Ilustração quando não há avatar (ex.: partida sem vencedor). */
     illustration: MessageIllustration? = null,
+    /** Vitória ou derrota a animar ao fundo (`null` = nenhuma); [brief] = disparo curto, de fim de partida. */
+    outcome: EndOutcome? = null,
+    brief: Boolean = false,
+    animate: Boolean = true,
 ) {
     GBackground(Modifier.fillMaxSize().testTag("announcement")) {
+        outcome?.let { EndCelebration(it, brief, animate) }
         if (onResign != null) {
             Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) {
                 TextButton(onResign, Modifier.heightIn(min = 48.dp).testTag("action-resign")) {
@@ -75,9 +80,10 @@ fun AnnouncementScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (outcome == EndOutcome.WIN && !brief) Trophy(96.dp, animate, Modifier.testTag("announcement-trophy"))
             if (avatars.isEmpty() && illustration != null) MessageBadge(illustration, MessageTone.Warning, 96.dp)
             if (avatars.isNotEmpty()) {
-                AvatarRow(avatars, 96.dp, Modifier.testTag("announcement-avatars"))
+                AvatarRow(avatars, 96.dp, Modifier.testTag("announcement-avatars").outcomeMotion(outcome, animate))
                 caption?.let { Text(it, color = OnTable, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
             }
             GTitle(title, Modifier.semantics { heading() }.testTag("announcement-title"))
@@ -99,6 +105,7 @@ fun RoundAnnouncement(
     onContinue: () -> Unit,
     onResign: (() -> Unit)? = null,
     personas: List<Persona> = emptyList(),
+    animate: Boolean = true,
 ) {
     val record = snapshot.history.last()
     val mode = snapshot.view.mode
@@ -118,12 +125,20 @@ fun RoundAnnouncement(
         button = stringResource(R.string.announce_see_points),
         onContinue = onContinue,
         onResign = onResign,
+        // Vitória da sua dupla (você ou o parceiro) ou do outro lado; sem vencedor, nada a celebrar.
+        outcome = when (role) {
+            null -> null
+            SeatRole.YOU, SeatRole.PARTNER -> EndOutcome.WIN
+            else -> EndOutcome.LOSE
+        },
+        brief = true,
+        animate = animate,
     )
 }
 
 /** §13 anúncio do fim do jogo, antes da tela final. */
 @Composable
-fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: List<Persona> = emptyList()) {
+fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: List<Persona> = emptyList(), animate: Boolean = true) {
     val winners = snapshot.winner?.let { personasOfSide(snapshot.view.mode, it, personas) }.orEmpty()
     AnnouncementScreen(
         avatars = winners,
@@ -132,5 +147,7 @@ fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: L
         subtitle = stringResource(gameResultRes(snapshot.view.mode, won = snapshot.winner == snapshot.viewerSide)),
         button = stringResource(R.string.announce_see_result),
         onContinue = onContinue,
+        outcome = if (snapshot.winner == snapshot.viewerSide) EndOutcome.WIN else EndOutcome.LOSE,
+        animate = animate,
     )
 }

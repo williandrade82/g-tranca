@@ -37,6 +37,7 @@ import com.gtranca.game.HandOrder
 import com.gtranca.game.HandSort
 import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.Stage
+import com.gtranca.ui.game.GameOverScreen
 import com.gtranca.ui.game.GameUiState
 import com.gtranca.ui.game.RoundAnnouncement
 import com.gtranca.ui.game.RoundSummaryScreen
@@ -125,6 +126,47 @@ class EndScreensTest {
         rule.onNodeWithText("\u221259").assertExists()
         // A tela de pontos não oferece desistir (decisão do usuário; §13.1 fica na mesa e no anúncio).
         rule.onNodeWithTag("action-resign").assertDoesNotExist()
+    }
+
+    /** Fim de jogo (§13) com o lado [winner] vencedor. */
+    private fun finished(winner: Side): GameSnapshot {
+        val record = record()
+        return GameSnapshot(
+            GameConfig(mode, Difficulty.MEDIO, 3000), Seat(0), view(), 1,
+            listOf(record.scores[0].total, record.scores[1].total), listOf(record), Stage.GAME_OVER, winner, emptyList(), null,
+            List(4) { emptyList() },
+        )
+    }
+
+    @Test
+    fun fimDeJogoComVitoriaMostraTrofeuEConfete() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { GTrancaTheme { GameOverScreen(finished(Side(0)), {}) } }
+        rule.onNodeWithTag("game-over-trophy").assertExists()
+        rule.onNodeWithTag("end-celebration").assertExists()
+    }
+
+    @Test
+    fun fimDeJogoComDerrotaTemSoAsCartasCaindoESemTrofeu() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { GTrancaTheme { GameOverScreen(finished(Side(1)), {}) } }
+        rule.onNodeWithTag("game-over-trophy").assertDoesNotExist()
+        rule.onNodeWithTag("end-celebration").assertExists()
+    }
+
+    @Test
+    fun animacaoDesligadaNaoDesenhaNada() {
+        rule.setContent { GTrancaTheme { GameOverScreen(finished(Side(0)), {}, animate = false) } }
+        rule.onNodeWithTag("end-celebration").assertDoesNotExist()
+        rule.onNodeWithTag("game-over").assertExists()
+    }
+
+    @Test
+    fun anuncioDaPartidaPerdidaTemAnimacaoCurta() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { GTrancaTheme { RoundAnnouncement(snapshot(), {}, onResign = {}) } }
+        rule.onNodeWithTag("end-celebration").assertExists()
+        rule.onNodeWithTag("announcement-trophy").assertDoesNotExist()
     }
 
     @Test
