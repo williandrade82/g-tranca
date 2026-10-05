@@ -102,7 +102,9 @@ internal object Evaluation {
         value += state.redThreesOf(side).size * redThreePoints
         val hasMorto = state.hasTakenMorto(side)
         if (!hasMorto) value += RULES.mortoNotTakenPoints
-        if (hasMorto && hasCanasta) value += READY_TO_GO_OUT_BONUS
+        // §9.5 sem morto disponível, o lado também pode bater sem ter pego o morto.
+        val mayGoOut = hasMorto || state.firstAvailableMorto() == null
+        if (mayGoOut && hasCanasta) value += READY_TO_GO_OUT_BONUS
         val handPenalty = state.mode.seatsOf(side).sumOf { seat -> state.handOf(seat).sumOf(::cardPenalty) }
         return value + HAND_PENALTY_WEIGHT * handPenalty
     }

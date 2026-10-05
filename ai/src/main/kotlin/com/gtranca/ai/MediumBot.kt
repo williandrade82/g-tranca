@@ -355,8 +355,11 @@ class MediumBot(
         val sideHasMorto: Boolean = view.mortoStatus.any { it == MortoStatus.Taken(ownSide) }
         val sideHasCanasta: Boolean = ownMelds.any { it.isCanasta() }
 
-        /** §11.1 o lado já cumpre morto e canastra: basta esvaziar a mão para bater. */
-        val canGoOut: Boolean = sideHasMorto && sideHasCanasta
+        /** §9.5 sem morto disponível, bate-se sem ter pego o morto. */
+        val noMortoLeft: Boolean = view.mortoStatus.none { it == MortoStatus.Available }
+
+        /** §11.1 o lado já cumpre morto (ou não há mais morto, §9.5) e canastra: basta esvaziar a mão para bater. */
+        val canGoOut: Boolean = (sideHasMorto || noMortoLeft) && sideHasCanasta
 
         /** §4.2 o próximo no sentido anti-horário é sempre adversário (em duplas, os parceiros ficam opostos). */
         val nextSeat: Seat = view.mode.nextSeat(view.seat)
@@ -366,12 +369,15 @@ class MediumBot(
          */
         val threat: Double = run {
             val oppHasMorto = view.mortoStatus.any { it == MortoStatus.Taken(opponentSide) }
+            // §9.5 sem morto disponível, o adversário também pode bater sem ter pego o morto.
+            val oppMayGoOut = oppHasMorto || noMortoLeft
             val oppHasCanasta = opponentMelds.any { it.isCanasta() }
             val oppMinHand = view.mode.seats.filter { view.mode.sideOf(it) == opponentSide }.minOf { view.handSizes[it.index] }
             var t = 0.0
             if (oppHasMorto) t += 0.4
-            if (oppHasMorto && oppHasCanasta) t += 0.3
-            if (oppHasMorto && oppMinHand <= 4) t += 0.3
+            // Heurística (não é regra): só soma pelo risco de batida de quem pode bater e tem canastra, ou mão pequena com morto.
+            if (oppMayGoOut && oppHasCanasta) t += 0.3
+            if (oppMayGoOut && oppMinHand <= 4 && (oppHasMorto || oppHasCanasta)) t += 0.3
             t
         }
 

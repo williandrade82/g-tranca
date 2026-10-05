@@ -177,8 +177,8 @@ object RoundEngine {
     // ---------- efeitos automáticos ----------
 
     /**
-     * §8 / §9 / §11 se a mão do [seat] ficou vazia: batida (lado com morto e canastra), morto
-     * (lado sem morto e morto disponível) ou jogada inválida.
+     * §8 / §9 / §11 se a mão do [seat] ficou vazia: morto (lado sem morto e morto disponível, §9.2/§9.3), batida (lado
+     * com canastra que já pegou o morto ou que não tem mais morto disponível, §9.5/§11.1) ou jogada inválida.
      */
     private fun resolveEmptyHand(state: RoundState, seat: Seat, rules: RuleSet): RuleResult<RoundState> {
         if (state.handOf(seat).isNotEmpty()) return RuleResult.Ok(state)
@@ -190,7 +190,15 @@ object RoundEngine {
                 fail(ActionError.NO_CANASTA_TO_GO_OUT)
             }
         }
-        val index = state.firstAvailableMorto() ?: return fail(ActionError.NO_MORTO_AVAILABLE) // §9.5
+        val index = state.firstAvailableMorto()
+        if (index == null) {
+            // §9.5 sem morto disponível o lado pode bater sem ter pego o morto, se tiver canastra; sem ela, não fica sem cartas.
+            return if (canGoOut(state, seat, rules)) {
+                RuleResult.Ok(state.finish(RoundResult.GoOut(side, seat)))
+            } else {
+                fail(ActionError.NO_MORTO_AVAILABLE)
+            }
+        }
         val withMorto = state
             .withHand(seat, state.mortos[index])
             .copy(
@@ -207,16 +215,20 @@ object RoundEngine {
     private fun keepCardsError(state: RoundState, seat: Seat, rules: RuleSet): ActionError? =
         if (state.handOf(seat).size == 1 && !canEmptyHand(state, seat, rules)) ActionError.MUST_KEEP_CARD_TO_DISCARD else null
 
-    /** §8 ficar sem cartas é permitido: resulta em batida (§11.1) ou em pegar o morto (§9). */
+    /** §8 ficar sem cartas é permitido: resulta em pegar o morto (§9) ou em batida (§11.1, §9.5). */
     private fun canEmptyHand(state: RoundState, seat: Seat, rules: RuleSet): Boolean {
         val side = state.mode.sideOf(seat)
-        return if (state.hasTakenMorto(side)) canGoOut(state, seat, rules) else state.firstAvailableMorto() != null
+        return if (!state.hasTakenMorto(side) && state.firstAvailableMorto() != null) true else canGoOut(state, seat, rules)
     }
 
-    /** §11.1 o lado do [seat] já pegou o morto e tem ao menos uma canastra na mesa. */
+    /**
+     * §11.1 o lado do [seat] tem ao menos uma canastra na mesa e já pegou o morto ou não tem mais morto disponível
+     * (§9.5: sem morto disponível, bate-se sem ter pego o morto).
+     */
     private fun canGoOut(state: RoundState, seat: Seat, rules: RuleSet): Boolean {
         val side = state.mode.sideOf(seat)
-        return state.hasTakenMorto(side) && state.tableOf(side).melds.any { it.meld.isCanasta(rules) }
+        val mortoResolved = state.hasTakenMorto(side) || state.firstAvailableMorto() == null
+        return mortoResolved && state.tableOf(side).melds.any { it.meld.isCanasta(rules) }
     }
 
     /** §4.2 passa a vez; §10.2 / §11.2 fim sem vencedor se o próximo não pode comprar nem pegar o lixo. */

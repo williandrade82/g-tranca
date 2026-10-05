@@ -190,14 +190,13 @@ class MortoTest {
     }
 
     @Test
-    fun `sem morto disponivel o lado sem morto nao fica sem cartas`() {
-        // §9.5 sem morto disponível o jogador não pode ficar sem cartas
+    fun `sem morto disponivel e sem canastra o lado sem morto nao fica sem cartas`() {
+        // §9.5 sem morto disponível o jogador só fica sem cartas se puder bater (§11.1); sem canastra, não
         val s = round {
             hand(0, "5H 6H 7H")
             hand(1, "9C 9D")
             mortoTaken(0, 1)
             mortoBecameStock(1)
-            meld(0, "4S 5S 6S 7S 8S 9S")
             phase = Phase.PLAYING
         }
         s.check(0, create("5H 6H 7H")) shouldFailWith ActionError.NO_MORTO_AVAILABLE

@@ -227,7 +227,9 @@ Um conjunto pode ser:
 - Os 3 vermelhos que vierem no morto são baixados e repostos automaticamente (§6.5).
 
 ### **9.5. Sem morto disponível**
-- Se o lado ainda não pegou morto e **não há morto disponível**, o jogador **não pode ficar sem cartas** (§8).
+- Se o lado ainda não pegou morto e **não há morto disponível** (os dois foram pegos pelo outro lado ou um deles virou monte, §10), o lado **pode bater sem ter pego o morto**, desde que cumpra o restante de §11.1 (pelo menos uma canastra). Vale nos dois modos (individual e duplas).
+- A batida segue a pontuação normal (§12): o lado que bate ganha os **+100 da batida** (§12.1) e, por não ter pego morto, sofre os **–100 de morto não pego** (§12.2); um compensa o outro.
+- Sem canastra, o jogador **não pode ficar sem cartas** (§8), como antes.
 
 ---
 
@@ -247,7 +249,7 @@ Quando for necessário comprar do monte (compra da jogada ou reposição de 3 ve
 ### **11.1. Condições para bater**
 O jogador bate, encerrando a partida com vitória do seu lado, quando:
 
-1. Seu **lado já pegou o morto** (no modo duplas, vale o morto pego por qualquer um dos parceiros);
+1. Seu **lado já pegou o morto** (no modo duplas, vale o morto pego por qualquer um dos parceiros) **ou não há mais morto disponível** (§9.5);
 2. Seu **lado tem pelo menos uma canastra** na mesa (limpa ou suja); e
 3. O jogador fica **sem cartas na mão**, de uma das formas:
    - **baixando todas as cartas** (sem descarte); ou
@@ -281,7 +283,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
   - Exemplo: canastra limpa 4-5-6-7-8-9 de copas = 200 (canastra limpa) + 6 × 8 (cartas) = **248**.
 
 ### **12.2. Penalidades (negativas)**
-- **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto.
+- **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto — inclusive o lado que bate quando não havia mais morto disponível (§9.5).
 - **Cartas na mão**, de todos os jogadores do lado:
   - **3 vermelho**: –5
   - **3 preto**: –5
@@ -378,19 +380,19 @@ flowchart TD
     C --> J
     J --> K{"Ficou sem cartas antes de descartar?"}
     K -->|Não| L["Descarta uma carta (§8)"]
-    K -->|Sim| M{"O lado já pegou o morto?"}
-    M -->|Não| N["Pega o morto direto e continua jogando (§9.2)"]
+    K -->|Sim| M{"O lado ainda não pegou o morto e há morto disponível? (§9.5)"}
+    M -->|Sim| N["Pega o morto direto e continua jogando (§9.2)"]
     N --> J
-    M -->|Sim| Z2["Batida: fim da partida com vitória do lado (§11.1)"]
+    M -->|Não| Z2["Batida: fim da partida com vitória do lado (§11.1)"]
     L --> O{"Ficou sem cartas?"}
     O -->|Não| P["Fim da jogada"]
-    O -->|Sim| Q{"O lado já pegou o morto?"}
-    Q -->|Não| R["Pega o morto indireto, para jogar com ele na próxima vez (§9.3)"]
+    O -->|Sim| Q{"O lado ainda não pegou o morto e há morto disponível? (§9.5)"}
+    Q -->|Sim| R["Pega o morto indireto, para jogar com ele na próxima vez (§9.3)"]
     R --> P
-    Q -->|Sim| Z2
+    Q -->|Não| Z2
 ```
 
 ### **15.4. Observações**
-- **Ficar sem cartas** só é permitido quando leva a pegar o morto ou a bater (§8), e bater exige também que o lado tenha pelo menos uma canastra (§11.1). Como o motor só oferece jogadas válidas, os fluxogramas não mostram caminhos ilegais.
+- **Ficar sem cartas** só é permitido quando leva a pegar o morto ou a bater (§8), e bater exige também que o lado tenha pelo menos uma canastra (§11.1). Sem morto disponível, o lado que ainda não pegou morto pode bater assim mesmo (§9.5). Como o motor só oferece jogadas válidas, os fluxogramas não mostram caminhos ilegais.
 - **3 vermelhos** que entram na mão por qualquer via (compra, morto ou reposição) são baixados e repostos automaticamente, inclusive em cadeia (§6.5, §9.4); não são uma ação do jogador.
 - **Duplas:** os parceiros compartilham os conjuntos e o morto do lado (§6.4, §9.1); o morto pego por um deles vale para a batida do outro (§11.1).

@@ -236,7 +236,7 @@
     <string name="error_discard_top_needs_two">Para pegar o lixo, o topo vai à mesa: forme um conjunto novo com ele e pelo menos 2 cartas da mão, ou acrescente-o a um conjunto do seu lado (com ou sem cartas da mão).</string>
     <string name="error_card_not_in_hand">Essa carta não está na sua mão.</string>
     <string name="error_cannot_discard_red_three">O 3 vermelho não pode ser descartado.</string>
-    <string name="error_no_morto_available">Você não pode ficar sem cartas: não há morto disponível.</string>
+    <string name="error_no_morto_available">Você não pode ficar sem cartas: não há morto disponível e o seu lado ainda não tem canastra para bater.</string>
     <string name="error_no_canasta_to_go_out">Você não pode ficar sem cartas: para bater é preciso ter uma canastra.</string>
     <string name="error_must_keep_card">É preciso ficar com pelo menos 2 cartas na mão (uma para descartar).</string>
 
