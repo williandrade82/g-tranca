@@ -17,6 +17,7 @@ import com.gtranca.game.RedThreeSwapSource
 import com.gtranca.game.classCounts
 import com.gtranca.game.Stage
 import com.gtranca.game.cardClass
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldBeSortedWith
 import io.kotest.matchers.collections.shouldContainAll
@@ -59,6 +60,7 @@ class GameViewModelTest {
         botDelayMillis: Long = 0,
         settleReveals: Boolean = true,
         swapMillis: Long = 0,
+        animationMillis: Long = 0,
     ): GameViewModel {
         val vm = GameViewModel(
             GameConfig(mode, Difficulty.FACIL, target),
@@ -66,7 +68,7 @@ class GameViewModelTest {
             computeDispatcher = dispatcher,
             botDelayMillis = botDelayMillis,
             swapAnimationMillis = swapMillis,
-            animationMillis = 0,
+            animationMillis = animationMillis,
         )
         advanceUntilIdle()
         if (settleReveals) settle(vm)
@@ -114,6 +116,54 @@ class GameViewModelTest {
         // Mesmo jogo, mesma semente: as mesmas pessoas ("Continuar").
         newGame(seed = 11, mode = GameMode.DUPLAS).personas shouldBe duplas.personas
         newGame(seed = 12, mode = GameMode.DUPLAS).personas shouldNotBe duplas.personas
+    }
+
+    @Test
+    fun `§6_5 nenhuma troca de 3 vermelho de outro assento aparece durante a vez do humano`() = runTest(dispatcher) {
+        // Tempos reais (troca encenada em 1,8 s, voo de 450 ms), com o bot pensando 700 ms e sem pausa nenhuma (o caso do
+        // morto indireto: a troca vem na mesma ação que passa a vez). A vez do humano só abre depois de todas as trocas dos
+        // outros assentos terem sido mostradas e de os voos delas terem pousado.
+        var humanTurns = 0
+        for (botDelay in listOf(700L, 0L)) {
+            for (mode in GameMode.entries) {
+                for (seed in 1L..25L) {
+                    val vm = newGame(seed, mode = mode, botDelayMillis = botDelay, swapMillis = 1_800, animationMillis = 450, settleReveals = false)
+                    val firstSeen = mutableMapOf<Long, Long>()
+                    var turns = 0
+                    var guard = 0
+                    while (turns < 12 && vm.uiState.value.snapshot.stage == Stage.PLAYING && guard++ < 4_000) {
+                        val state = vm.uiState.value
+                        val now = testScheduler.currentTime
+                        state.flights.filter { it.to is AnimAnchor.RedThrees }.forEach { firstSeen.putIfAbsent(it.id, now) }
+                        when {
+                            state.reveal != null -> vm.onRevealConfirmed()
+                            state.isHumanTurn -> {
+                                // Na vez do humano nenhuma troca de outro assento está pendente nem em cena.
+                                state.banner shouldBe null
+                                state.redThrees shouldBe state.snapshot.view.redThrees
+                                // Nem o voo de um 3 vermelho dos outros ao seu lugar (a troca encenada) ainda está no ar.
+                                state.flights.filter { it.to is AnimAnchor.RedThrees && it.from != AnimAnchor.OwnHand }.forEach { flight ->
+                                    val landed = firstSeen.getValue(flight.id) + flight.delayMillis + 450
+                                    withClue("modo $mode, semente $seed, bot $botDelay ms: voo $flight pousa em $landed e já é $now") {
+                                        (now >= landed - 100) shouldBe true // 100 ms: a granularidade da varredura do teste
+                                    }
+                                }
+                                humanTurns++
+                                turns++
+                                if (state.awaitingDraw) vm.onDraw() else {
+                                    val discard = state.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+                                    vm.select(state.physical(listOf(discard.card)))
+                                    vm.onDiscard()
+                                }
+                            }
+                        }
+                        advanceTimeBy(100)
+                        runCurrent()
+                    }
+                }
+            }
+        }
+        withClue("vezes do humano: $humanTurns") { (humanTurns > 200) shouldBe true }
     }
 
     @Test

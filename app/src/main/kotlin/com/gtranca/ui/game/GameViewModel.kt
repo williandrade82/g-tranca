@@ -188,6 +188,8 @@ class GameViewModel(
         val newCards: Set<Card> = emptySet(),
         /** Trocas de 3 vermelho a encenar, em ordem; a primeira está na tela. */
         val swaps: List<RedThreeNotice> = emptyList(),
+        /** Trocas já encenadas cujos voos ainda não pousaram: o controlador só segue quando chegam a zero. */
+        val settling: Int = 0,
         /** Cartas da mão escondidas até a troca do humano ([RedThreeNotice.id]) ser confirmada. */
         val hidden: Map<Long, Set<Card>> = emptyMap(),
         val flights: List<CardFlight> = emptyList(),
@@ -270,13 +272,22 @@ class GameViewModel(
                 .collectLatest { head ->
                     if (head != null) {
                         delay(swapAnimationMillis)
+                        var landing = 0L
                         local.update { state ->
                             if (state.swaps.firstOrNull()?.id == head.id) {
-                                state.copy(swaps = state.swaps.drop(1), flights = state.flights + swapFlights(head, state))
+                                val flights = swapFlights(head, state)
+                                landing = landingMillis(flights, state)
+                                state.copy(
+                                    swaps = state.swaps.drop(1),
+                                    flights = state.flights + flights,
+                                    settling = state.settling + if (landing > 0) 1 else 0,
+                                )
                             } else {
+                                landing = 0
                                 state
                             }
                         }
+                        settleAfter(landing)
                     }
                 }
         }
@@ -303,7 +314,7 @@ class GameViewModel(
         viewModelScope.launch {
             local.collect { state ->
                 val snapshot = state.snapshot
-                if (snapshot.stage == Stage.PLAYING && state.swaps.isEmpty() && snapshot.view.redThreeLog.isNotEmpty()) {
+                if (snapshot.stage == Stage.PLAYING && state.swaps.isEmpty() && state.settling <= 0 && snapshot.view.redThreeLog.isNotEmpty()) {
                     controller.presentationDone(snapshot.roundNumber, snapshot.view.redThreeLog.size)
                 }
             }
@@ -498,13 +509,38 @@ class GameViewModel(
     override fun onMessageShown() = local.update { it.copy(message = null) }
 
     /** "Baixar 3 vermelho": encerra a encenação; o 3 vermelho aparece na mesa e a reposição, como nova. */
-    override fun onRevealConfirmed() = local.update { state ->
-        val head = state.swaps.firstOrNull()?.takeIf { isOwn(it, state.snapshot) } ?: return@update state
-        state.copy(
-            swaps = state.swaps.drop(1),
-            hidden = state.hidden - head.id,
-            flights = state.flights + swapFlights(head, state),
-        )
+    override fun onRevealConfirmed() {
+        var landing = 0L
+        local.update { state ->
+            landing = 0
+            val head = state.swaps.firstOrNull()?.takeIf { isOwn(it, state.snapshot) } ?: return@update state
+            val flights = swapFlights(head, state)
+            landing = landingMillis(flights, state)
+            state.copy(
+                swaps = state.swaps.drop(1),
+                hidden = state.hidden - head.id,
+                flights = state.flights + flights,
+                settling = state.settling + if (landing > 0) 1 else 0,
+            )
+        }
+        settleAfter(landing)
+    }
+
+    /** Tempo até o último voo de [flights] pousar (atraso do voo + duração); 0 sem voos (animações desligadas). */
+    private fun landingMillis(flights: List<CardFlight>, state: Local): Long =
+        if (flights.isEmpty()) 0 else flights.maxOf { it.delayMillis } + effectiveMillis(state)
+
+    /**
+     * §3.5/§6.5 uma troca foi encenada: o controlador só segue [landing] ms depois, quando os voos dela já pousaram.
+     * Por tempo (não pela tela), para não travar se a mesa não estiver composta. Sem isso, a vez do humano podia abrir
+     * com o 3 vermelho do adversário ainda voando (ex.: morto indireto com 3 vermelho, §9.3/§9.4).
+     */
+    private fun settleAfter(landing: Long) {
+        if (landing <= 0) return
+        viewModelScope.launch {
+            delay(landing)
+            local.update { it.copy(settling = it.settling - 1) }
+        }
     }
 
     /** §13.1 desistir pede confirmação; cancelar volta como se nada tivesse acontecido. */

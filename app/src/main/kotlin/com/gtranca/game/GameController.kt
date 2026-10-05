@@ -310,7 +310,9 @@ class GameController(
                     val wait = human != null && after.phase != Phase.FINISHED &&
                         after.redThreeLog.drop(round.redThreeLog.size).any { !it.atDeal }
                     if (wait) awaitingPresentation.set(PresentationKey(match.roundNumber, after.redThreeLog.size))
-                    publishLocked(Stage.PLAYING)
+                    // Durante a encenação, quem trocou continua "jogando" (a vez passa ao humano só depois): o texto e o
+                    // destaque seguem o adversário em vez de um "Aguarde…" neutro.
+                    publishLocked(Stage.PLAYING, thinkingSeat = seat.takeIf { wait && it != viewerSeat })
                     wait
                 }
                 if (waitSwaps) presentationSignal.receive()
