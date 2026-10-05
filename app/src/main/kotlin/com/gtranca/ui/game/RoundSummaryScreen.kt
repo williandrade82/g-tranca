@@ -71,12 +71,13 @@ fun RoundSummaryScreen(
     }
     GBackground(Modifier.fillMaxSize().testTag("round-summary")) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+            Modifier.fillMaxSize().safeDrawingPadding().padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             GTitle(stringResource(R.string.round_over_title, record.number))
             GBanner(resultText, bannerColor, onBanner)
 
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = Spacing.sm)) {
             GPanel(Modifier.fillMaxWidth()) {
             ScoreRow(stringResource(R.string.score_item), sides.map { sideName(view.mode, it, view.side) }, bold = true)
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
@@ -109,6 +110,7 @@ fun RoundSummaryScreen(
                 bold = true,
                 tag = "cumulative",
             )
+            }
             }
 
             val tie = snapshot.stage == Stage.ROUND_OVER && snapshot.totals.any { it >= snapshot.config.targetScore }

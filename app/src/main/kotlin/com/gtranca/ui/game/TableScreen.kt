@@ -36,6 +36,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import com.gtranca.ui.theme.GButton
+import com.gtranca.ui.theme.GButtonKind
 import com.gtranca.ui.theme.GDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -850,7 +852,7 @@ private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit, onResi
             }
         },
         confirmButton = {
-            Button(onConfirm, Modifier.heightIn(min = 48.dp).testTag("red-three-confirm")) {
+            GButton(onConfirm, Modifier.heightIn(min = 48.dp).testTag("red-three-confirm")) {
                 Text(stringResource(R.string.red_three_button))
             }
         },
@@ -909,8 +911,9 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                             )
                         }
                     }
-                    OutlinedButton(
+                    GButton(
                         onClick = { events.onPlanChosen(option) },
+                        kind = GButtonKind.Secondary,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     ) { Text(text) }
                 }

@@ -27,6 +27,9 @@ import com.gtranca.R
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Box
 import com.gtranca.game.GameSnapshot
+import com.gtranca.ui.theme.GBackground
+import com.gtranca.ui.theme.GButton
+import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.OnTable
 import com.gtranca.ui.theme.TableAccent
 import com.gtranca.ui.theme.TableGreen
@@ -37,7 +40,7 @@ import com.gtranca.ui.theme.TableGreen
  */
 @Composable
 fun AnnouncementScreen(title: String, subtitle: String?, button: String, onContinue: () -> Unit, onResign: (() -> Unit)? = null) {
-    Surface(Modifier.fillMaxSize().testTag("announcement"), color = TableGreen) {
+    GBackground(Modifier.fillMaxSize().testTag("announcement")) {
         if (onResign != null) {
             Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) {
                 TextButton(onResign, Modifier.heightIn(min = 48.dp).testTag("action-resign")) {
@@ -50,22 +53,14 @@ fun AnnouncementScreen(title: String, subtitle: String?, button: String, onConti
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                title,
-                color = TableAccent,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.semantics { heading() }.testTag("announcement-title"),
-            )
+            GTitle(title, Modifier.semantics { heading() }.testTag("announcement-title"))
             if (subtitle != null) {
                 Text(subtitle, color = OnTable, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
             }
-            Button(
+            GButton(
                 onContinue,
-                Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("announcement-continue"),
-                colors = ButtonDefaults.buttonColors(containerColor = TableAccent, contentColor = Color.Black),
-            ) { Text(button) }
+                Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("announcement-continue"),
+            ) { Text(button, style = MaterialTheme.typography.titleMedium) }
         }
     }
 }
