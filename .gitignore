@@ -17,6 +17,11 @@ bin/
 .project
 .classpath
 
+# Assinatura do app (nunca vai para o repositório)
+*.jks
+*.keystore
+keystore.properties
+
 # Sistema
 .DS_Store
 Thumbs.db
