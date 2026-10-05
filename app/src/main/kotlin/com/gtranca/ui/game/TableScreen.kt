@@ -2,6 +2,9 @@
 
 package com.gtranca.ui.game
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.draw.alpha
+
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import com.gtranca.ui.theme.Elevation
@@ -186,9 +189,14 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
         }
     }
     var showDiscardPile by rememberSaveable { mutableStateOf(false) }
+    var showLegend by rememberSaveable { mutableStateOf(false) }
     // Posições dos elementos da mesa, para as animações (cartas voando entre eles).
     val anchors = remember { mutableStateMapOf<AnimAnchor, Rect>() }
     val tableScroll = rememberScrollState()
+    // Voos que já chegaram: a carta aparece no destino só então (sai da origem, voa, aparece no destino).
+    val arrived = remember { mutableStateMapOf<Long, Boolean>() }
+    val landing = if (state.animationMillis <= 0) emptySet() else
+        state.flights.filter { it.card != null && arrived[it.id] != true }.mapNotNull { it.card }.toSet()
     // Só no início da vez do humano (etapa de comprar): rola até o fim, com lixo e os jogos do lado à vista.
     LaunchedEffect(state.awaitingDraw) {
         if (state.awaitingDraw) tableScroll.animateScrollTo(tableScroll.maxValue)
@@ -210,16 +218,17 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        CompositionLocalProvider(LocalAnchors provides anchors) {
+        CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
-                    Header(state, events)
+                    Header(state, events) { showLegend = true }
                     state.banner?.let { SwapBanner(it, view.mode, snapshot.viewerSeat) }
+                    // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) }
                     Column(
                         Modifier.weight(1f).fillMaxWidth().verticalScroll(tableScroll).padding(horizontal = 8.dp).testTag("table-scroll"),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        SeatsPanel(state)
                         SideArea(
                             side = view.mode.sides.first { it != view.side }.index,
                             flashes = state.canastaFlashes,
@@ -246,11 +255,12 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     StatusAndActions(state, events)
                     HandArea(state, events)
                 }
-                FlightsLayer(state.flights, anchors, state.animationMillis)
+                FlightsLayer(state.flights, anchors, state.animationMillis) { arrived[it] = true }
             }
         }
     }
 
+    if (showLegend) LegendDialog { showLegend = false }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed, events::onResign) }
@@ -266,7 +276,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
 }
 
 @Composable
-private fun Header(state: GameUiState, events: TableEvents) {
+private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val other = view.mode.sides.first { it != view.side }
@@ -296,6 +306,20 @@ private fun Header(state: GameUiState, events: TableEvents) {
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.testTag("score"),
         )
+        // Legenda dos símbolos das jogadas dos outros assentos.
+        val legendText = stringResource(R.string.legend_button)
+        Box(
+            Modifier
+                .size(48.dp)
+                .clickable(onClickLabel = legendText, role = Role.Button, onClick = onLegend)
+                .semantics { contentDescription = legendText }
+                .testTag("action-legend"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size(22.dp).border(2.dp, OnTable, CircleShape), contentAlignment = Alignment.Center) {
+                Text("?", color = OnTable, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        }
         // §13.1 desistir: ícone de bandeira, alvo de 48dp.
         Box(
             Modifier
@@ -309,20 +333,42 @@ private fun Header(state: GameUiState, events: TableEvents) {
 }
 
 /**
- * Os outros assentos, na ordem de jogada a partir do humano (§4.2, anti-horário): em duplas, adversário à
- * direita, parceiro e adversário à esquerda. De cada um, a mão como cartas viradas (nunca as cartas, nem as do
- * parceiro) com o número, se está pensando e a última jogada.
+ * Os outros assentos, lado a lado como se vê da mesa: adversário à esquerda, parceiro e adversário à direita (em
+ * duplas; sem espaço, o parceiro fica numa linha e os adversários na de baixo). De cada um, a mão como cartas
+ * viradas (nunca as cartas, nem as do parceiro), a quantidade, se está pensando e a última jogada em símbolos.
  */
 @Composable
 private fun SeatsPanel(state: GameUiState) {
     val snapshot = state.snapshot
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        snapshot.view.mode.seatsInPlayOrder(snapshot.viewerSeat).drop(1).forEach { seat -> SeatRow(state, seat) }
+    val mode = snapshot.view.mode
+    val others = mode.seatsInPlayOrder(snapshot.viewerSeat).drop(1)
+    if (mode != GameMode.DUPLAS) {
+        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth()) }
+        return
+    }
+    val byRole = others.associateBy { SeatRole.of(mode, it, snapshot.viewerSeat) }
+    val left = byRole.getValue(SeatRole.LEFT_OPPONENT)
+    val partner = byRole.getValue(SeatRole.PARTNER)
+    val right = byRole.getValue(SeatRole.RIGHT_OPPONENT)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 340.dp) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(left, partner, right).forEach { SeatPill(state, it, Modifier.weight(1f)) }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SeatPill(state, partner, Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SeatPill(state, left, Modifier.weight(1f))
+                    SeatPill(state, right, Modifier.weight(1f))
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun SeatRow(state: GameUiState, seat: Seat) {
+private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val role = SeatRole.of(view.mode, seat, snapshot.viewerSeat)
@@ -332,21 +378,34 @@ private fun SeatRow(state: GameUiState, seat: Seat) {
     val countText = countText(R.plurals.card_count, R.string.card_count_zero, handSize)
     val thinkingText = stringResource(R.string.seat_thinking)
     val events = snapshot.turnEvents[seat.index]
+    val shape = RoundedCornerShape(14.dp)
     Column(
-        Modifier
-            .fillMaxWidth()
-            .background(if (thinking) TableGreenDark else GColors.Shadow.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
-            .border(if (thinking) 2.dp else 0.dp, if (thinking) TableAccent else Color.Transparent, RoundedCornerShape(14.dp))
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+        modifier
+            .heightIn(min = 72.dp)
+            .background(if (thinking) TableGreenDark else GColors.Shadow.copy(alpha = 0.18f), shape)
+            .border(if (thinking) 2.dp else 0.dp, if (thinking) TableAccent else Color.Transparent, shape)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
             .testTag("seat-${seat.index}"),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(role.nameRes()),
+                stringResource(role.pillNameRes()),
+                Modifier.weight(1f),
                 color = if (role == SeatRole.PARTNER) TableAccent else OnTable,
                 fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 2,
             )
+            if (thinking) {
+                CircularProgressIndicator(
+                    Modifier.size(14.dp).semantics { contentDescription = thinkingText }.testTag("seat-thinking-${seat.index}"),
+                    color = TableAccent,
+                    strokeWidth = 2.dp,
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             // Mão representada: uma carta virada por carta, compactadas para caber na largura.
             HiddenHand(
                 handSize,
@@ -354,30 +413,25 @@ private fun SeatRow(state: GameUiState, seat: Seat) {
                 Modifier.weight(1f).semantics { contentDescription = handText }.testTag("seat-hand-${seat.index}"),
             )
             Text(
-                countText,
+                handSize.toString(),
                 color = OnTable,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.testTag("seat-hand-size-${seat.index}"),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { contentDescription = countText }.testTag("seat-hand-size-${seat.index}"),
             )
-            if (thinking) {
-                CircularProgressIndicator(
-                    Modifier.size(16.dp).semantics { contentDescription = thinkingText }.testTag("seat-thinking-${seat.index}"),
-                    color = TableAccent,
-                    strokeWidth = 2.dp,
-                )
-            }
         }
         if (events.isNotEmpty()) {
-            Text(
-                stringResource(R.string.opponent_last_turn, turnText(events)),
-                color = OnTable,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("seat-last-turn-${seat.index}"),
-            )
+            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"))
         }
     }
+}
+
+/** Nome curto do assento para a pílula (cabe em um terço da largura). */
+@StringRes
+private fun SeatRole.pillNameRes(): Int = when (this) {
+    SeatRole.LEFT_OPPONENT -> R.string.seat_left_short
+    SeatRole.RIGHT_OPPONENT -> R.string.seat_right_short
+    else -> nameRes()
 }
 
 /** [count] cartas viradas sobrepostas; o passo encolhe (até 2dp) para nunca passar da largura disponível. */
@@ -428,7 +482,7 @@ private fun SideArea(
                         // Animação simples ao chegar à mesa (depois do "Baixar 3 vermelho").
                         val visible = remember(card) { MutableTransitionState(false).apply { targetState = true } }
                         AnimatedVisibility(visible, enter = fadeIn() + scaleIn(initialScale = 1.6f)) {
-                            PlayingCard(card, Modifier.padding(start = 2.dp).anchor(AnimAnchor.RedThreeCard(side, card)), size = CardSize.SMALL)
+                            PlayingCard(card, Modifier.padding(start = 2.dp).anchor(AnimAnchor.RedThreeCard(side, card)).alpha(if (card in LocalLanding.current) 0f else 1f), size = CardSize.SMALL)
                         }
                     }
                 }
@@ -526,10 +580,12 @@ private fun OverlappedCards(
     size: CardSize = CardSize.SMALL,
     anchorFor: ((Card) -> AnimAnchor)? = null,
 ) {
+    val landing = LocalLanding.current
     Box(modifier.width(size.width + step * (cards.size - 1).coerceAtLeast(0)).height(size.height)) {
         cards.forEachIndexed { i, card ->
             val position = Modifier.offset(x = step * i)
-            PlayingCard(card, if (anchorFor != null) position.anchor(anchorFor(card)) else position, size = size, describe = false)
+            val placed = if (anchorFor != null) position.anchor(anchorFor(card)).alpha(if (card in landing) 0f else 1f) else position
+            PlayingCard(card, placed, size = size, describe = false)
         }
     }
 }
@@ -762,6 +818,7 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     val newText = stringResource(R.string.card_new)
     val newDescription = stringResource(R.string.card_new_description)
     val hasSelection = state.selected.isNotEmpty()
+    val landing = LocalLanding.current
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
@@ -783,6 +840,7 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
                 card,
                 Modifier
                     .anchor(AnimAnchor.HandCard(card))
+                    .alpha(if (card in landing) 0f else 1f)
                     .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
                     .semantics {
                         stateDescription = listOf(emphasisText, if (isNew) newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
@@ -1014,6 +1072,9 @@ var SemanticsPropertyReceiver.canastaPulse by CanastaPulseKey
 /** Posições dos elementos da mesa (coordenadas da raiz), registradas por [anchor]; `null` fora da mesa. */
 private val LocalAnchors = staticCompositionLocalOf<MutableMap<AnimAnchor, Rect>?> { null }
 
+/** Cartas com voo em andamento: ficam invisíveis no destino (mantendo o lugar) até o voo chegar. */
+private val LocalLanding = staticCompositionLocalOf<Set<Card>> { emptySet() }
+
 /** Registra a posição deste elemento como [key] para as animações da mesa. */
 @SuppressLint("ModifierFactoryUnreferencedReceiver")
 private fun Modifier.anchor(key: AnimAnchor): Modifier = composed {
@@ -1028,7 +1089,7 @@ private fun Modifier.anchor(key: AnimAnchor): Modifier = composed {
  * com animações desligadas (duração 0 ou escala do sistema 0) não desenha nada.
  */
 @Composable
-private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rect>, durationMillis: Long) {
+private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rect>, durationMillis: Long, onArrived: (Long) -> Unit) {
     // [durationMillis] e os atrasos dos voos já vêm escalados pelo ViewModel (escala 0 = nenhum voo).
     if (durationMillis <= 0 || flights.isEmpty()) return
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -1040,7 +1101,7 @@ private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rec
             .testTag("flights-layer"),
     ) {
         flights.forEach { flight ->
-            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis) }
+            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, onArrived) }
         }
     }
 }
@@ -1060,13 +1121,21 @@ private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect
 }
 
 @Composable
-private fun FlyingCard(flight: CardFlight, anchors: Map<AnimAnchor, Rect>, origin: () -> Offset, durationMillis: Long, delayMillis: Long) {
+private fun FlyingCard(
+    flight: CardFlight,
+    anchors: Map<AnimAnchor, Rect>,
+    origin: () -> Offset,
+    durationMillis: Long,
+    delayMillis: Long,
+    onArrived: (Long) -> Unit,
+) {
     val progress = remember { Animatable(0f) }
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(delayMillis)
         visible = true
         progress.animateTo(1f, tween(durationMillis.toInt().coerceAtLeast(1), easing = FastOutSlowInEasing))
+        onArrived(flight.id)
         visible = false
     }
     if (!visible) return

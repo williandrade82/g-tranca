@@ -72,6 +72,16 @@
     <string name="seat_left_opponent">Adversário à esquerda</string>
     <string name="seat_right_opponent">Adversário à direita</string>
     <string name="seat_thinking">pensando</string>
+    <string name="seat_left_short">Adv. esquerda</string>
+    <string name="seat_right_short">Adv. direita</string>
+    <string name="legend_button">Legenda dos símbolos</string>
+    <string name="legend_title">Símbolos das jogadas</string>
+    <string name="legend_draw">Comprou do monte</string>
+    <string name="legend_take">Pegou o lixo (número de cartas)</string>
+    <string name="legend_meld">Baixou um jogo novo (número de cartas)</string>
+    <string name="legend_add">Acrescentou a um jogo (número de cartas)</string>
+    <string name="legend_discard">Descartou (a carta)</string>
+    <string name="legend_decline">Recusou a compra</string>
     <string name="score_us">Nós</string>
     <string name="score_them">Eles</string>
     <string name="turn_waiting">Aguarde…</string>
