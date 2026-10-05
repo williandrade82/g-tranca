@@ -1,5 +1,7 @@
 package com.gtranca.ui.home
 
+import com.gtranca.ui.sound.SoundButton
+
 import com.gtranca.ui.theme.GMessage
 import com.gtranca.ui.theme.MessageIllustration
 import com.gtranca.ui.theme.MessageTone
@@ -189,6 +191,8 @@ fun HomeScreen(
                 }
             }
         }
+        // Por cima da rolagem (senão a coluna rolável engole o toque): sempre à vista, mesmo com jogo salvo.
+        Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) { SoundButton(GColors.OnTable) }
     }
 
     if (state.confirmNewGame) {

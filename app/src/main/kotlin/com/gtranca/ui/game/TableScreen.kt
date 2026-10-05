@@ -2,6 +2,8 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.sound.SoundButton
+
 import com.gtranca.ui.sound.LocalSound
 import com.gtranca.ui.sound.SoundEffect
 import com.gtranca.ui.sound.SoundMap
@@ -329,34 +331,32 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
         Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Esquerda: "Partida 1 · alvo 3000" e, embaixo, o placar (cabe ao lado dos três botões, sem cortar o texto).
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.table_round, snapshot.roundNumber),
-                color = OnTable,
-                style = MaterialTheme.typography.labelLarge,
+                stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
+                color = OnTable.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                stringResource(R.string.table_target, snapshot.config.targetScore),
-                color = OnTable.copy(alpha = 0.8f),
-                style = MaterialTheme.typography.labelSmall,
+                stringResource(
+                    R.string.score_line,
+                    shortSideName(view.mode, view.side, view.side),
+                    plainPoints(snapshot.totals[view.side.index]),
+                    plainPoints(snapshot.totals[other.index]),
+                    shortSideName(view.mode, other, view.side),
+                ),
+                color = TableAccent,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("score"),
             )
         }
-        Text(
-            stringResource(
-                R.string.score_line,
-                shortSideName(view.mode, view.side, view.side),
-                plainPoints(snapshot.totals[view.side.index]),
-                plainPoints(snapshot.totals[other.index]),
-                shortSideName(view.mode, other, view.side),
-            ),
-            color = TableAccent,
-            fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.testTag("score"),
-        )
+        SoundButton(OnTable)
         // Legenda dos símbolos das jogadas dos outros assentos.
         val legendText = stringResource(R.string.legend_button)
         Box(

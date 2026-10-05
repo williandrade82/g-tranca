@@ -1,5 +1,10 @@
 package com.gtranca.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gtranca.ui.sound.LocalSoundSettings
+import com.gtranca.ui.sound.SoundSettings
+
 import com.gtranca.ui.sound.LocalSound
 
 import androidx.compose.foundation.layout.Box
@@ -83,9 +88,12 @@ fun AppNavHost() {
     val data = remember { appData(context) }
     // Chave de som (Perfil): vale para o app todo.
     val sound = LocalSound.current
-    LaunchedEffect(data) {
-        data.settings.settings.map { it.soundOn }.catch { emit(true) }.collect { sound.enabled = it }
+    val soundOn by remember(data) { data.settings.settings.map { it.soundOn }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
+    LaunchedEffect(soundOn) { sound.enabled = soundOn }
+    val soundSettings = remember(soundOn, data) {
+        SoundSettings(soundOn) { WriteQueue.app.enqueue { data.settings.setSoundOn(!soundOn) } }
     }
+    CompositionLocalProvider(LocalSoundSettings provides soundSettings) {
     NavHost(navController, startDestination = HomeRoute) {
         composable<HomeRoute> {
             HomeScreen(
@@ -103,6 +111,7 @@ fun AppNavHost() {
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats) }) { navController.popBackStack() }
         }
+    }
     }
 }
 
