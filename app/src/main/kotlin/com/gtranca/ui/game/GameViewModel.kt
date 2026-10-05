@@ -18,6 +18,9 @@ import com.gtranca.game.GameSnapshot
 import com.gtranca.game.HandOrder
 import com.gtranca.game.HandPrefs
 import com.gtranca.game.HandSort
+import com.gtranca.game.Persona
+import com.gtranca.game.PersonaGenerator
+import com.gtranca.game.PlayerProfile
 import com.gtranca.game.HumanPlayer
 import com.gtranca.game.HumanTurnResolver
 import com.gtranca.game.PlayIntent
@@ -110,6 +113,8 @@ data class GameUiState(
      * "remover animações", nenhum voo é gerado).
      */
     val animationMillis: Long = 0,
+    /** §14.1 perfil de cada assento (vazio se a tela não tem perfis). */
+    val personas: List<Persona> = emptyList(),
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
     private val legal: List<Action> get() = if (ownSwapPending) emptyList() else snapshot.humanLegal
@@ -156,6 +161,8 @@ class GameViewModel(
     private val persistence: GamePersistence? = null,
     /** Ordem da mão inicial (a preferida do jogador). */
     initialHand: HandPrefs = HandPrefs(),
+    /** §14.1 perfil do jogador (nome e avatar); os dos adversários e do parceiro são sorteados pela semente do jogo. */
+    playerProfile: PlayerProfile = PlayerProfile(),
     /** Fila das gravações (fora da thread principal e do laço do jogo; sobrevive ao fim desta tela). */
     private val writes: WriteQueue = WriteQueue.app,
 ) : ViewModel(), TableEvents {
@@ -213,6 +220,14 @@ class GameViewModel(
         onSave = if (persistence == null) null else ::enqueueSave,
     )
     private val animationIds = AtomicLong(0)
+
+    /** §14.1 perfis por assento: o do jogador no seu e, nos demais, os sorteados com a semente deste jogo. */
+    val personas: List<Persona> = run {
+        val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, playerProfile.name).iterator()
+        List(config.mode.seatCount) { index ->
+            if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME) else opponents.next()
+        }
+    }
     private val local = MutableStateFlow(
         controller.state.value.let { initial ->
             // Retomada: o registro de 3 vermelhos já aconteceu (nada se reencena) e, se o jogo parou no fim de uma
@@ -410,6 +425,7 @@ class GameViewModel(
             flights = state.flights,
             canastaFlashes = state.flashes,
             animationMillis = effectiveMillis(state),
+            personas = personas,
         )
     }
 

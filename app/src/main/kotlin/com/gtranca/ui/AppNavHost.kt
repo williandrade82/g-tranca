@@ -16,7 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.gtranca.ui.persona.AvatarGalleryScreen
+import com.gtranca.ui.profile.ProfileScreen
+import com.gtranca.ui.profile.ProfileViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -35,6 +36,8 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.game.DataGamePersistence
 import com.gtranca.game.GameConfig
 import com.gtranca.game.HandPrefs
+import com.gtranca.game.PlayerProfile
+import com.gtranca.data.Settings
 import com.gtranca.game.toConfig
 import com.gtranca.game.toRestored
 import com.gtranca.ui.game.GameScreen
@@ -50,7 +53,7 @@ import kotlinx.serialization.Serializable
 object HomeRoute
 
 @Serializable
-object GalleryRoute
+object ProfileRoute
 
 @Serializable
 object StatsRoute
@@ -83,11 +86,13 @@ fun AppNavHost() {
                 onStart = { config -> navController.navigateFromHome(GameRoute.of(config)) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
-                onGallery = { navController.navigateFromHome(GalleryRoute) },
+                onProfile = { navController.navigateFromHome(ProfileRoute) },
             )
         }
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
-        composable<GalleryRoute> { AvatarGalleryScreen(onBack = { navController.popBackStack() }) }
+        composable<ProfileRoute> {
+            ProfileScreen(viewModel { ProfileViewModel(data.settings, WriteQueue.app) }) { navController.popBackStack() }
+        }
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats) }) { navController.popBackStack() }
         }
@@ -104,7 +109,7 @@ private sealed interface GameLoad {
     data object Loading : GameLoad
 
     /** [resumed]: o carregamento foi de um jogo a retomar (então [saved] `null` = o jogo já terminou). */
-    data class Ready(val saved: SavedGame?, val hand: HandPrefs, val resumed: Boolean) : GameLoad
+    data class Ready(val saved: SavedGame?, val hand: HandPrefs, val profile: PlayerProfile, val resumed: Boolean) : GameLoad
 }
 
 /** Vive enquanto a tela do jogo estiver na pilha (sobrevive a rotação/tema, não à morte do processo). */
@@ -135,8 +140,13 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
         val resumed = route.resume || expected != null
         // Pela fila: lê depois das gravações pendentes.
         val saved = if (resumed) WriteQueue.app.read { data.savedGames.load() } else null
-        val hand = HandPrefs.parse(data.settings.settings.map { it.handSortId }.catch { emit(null) }.first())
-        value = GameLoad.Ready(saved?.takeIf { expected == null || it.gameId == expected }, hand, resumed)
+        val prefs = data.settings.settings.catch { emit(Settings()) }.first()
+        value = GameLoad.Ready(
+            saved?.takeIf { expected == null || it.gameId == expected },
+            HandPrefs.parse(prefs.handSortId),
+            PlayerProfile.decode(prefs.profileId),
+            resumed,
+        )
     }
     when (val ready = load) {
         GameLoad.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -155,9 +165,10 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             gameId = saved.gameId,
                             persistence = persistence,
                             initialHand = ready.hand,
+                            playerProfile = ready.profile,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand)
+                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile)
                     }
                 }
                 session.started = true

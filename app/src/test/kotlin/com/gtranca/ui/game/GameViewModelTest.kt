@@ -25,6 +25,7 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -99,6 +100,20 @@ class GameViewModelTest {
         vm.select(state.physical(listOf(discard.card)))
         vm.onDiscard()
         advanceUntilIdle()
+    }
+
+    @Test
+    fun `§14_1 cada assento tem um perfil - o do jogador no seu e os sorteados pela semente nos outros`() = runTest(dispatcher) {
+        val individual = newGame(seed = 11)
+        individual.personas.size shouldBe 2
+        individual.personas[0].fullName shouldBe "Você"
+        individual.uiState.value.personas shouldBe individual.personas
+        val duplas = newGame(seed = 11, mode = GameMode.DUPLAS)
+        duplas.personas.size shouldBe 4
+        duplas.personas.drop(1).map { it.firstName }.toSet().size shouldBe 3
+        // Mesmo jogo, mesma semente: as mesmas pessoas ("Continuar").
+        newGame(seed = 11, mode = GameMode.DUPLAS).personas shouldBe duplas.personas
+        newGame(seed = 12, mode = GameMode.DUPLAS).personas shouldNotBe duplas.personas
     }
 
     @Test

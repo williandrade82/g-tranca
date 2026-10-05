@@ -16,8 +16,13 @@ import kotlinx.coroutines.flow.map
  *
  * @property lastMode §14 último modo escolhido (individual na primeira vez).
  * @property handSortId ordem da mão preferida (identificador da interface), ou `null` para o padrão dela.
+ * @property profileId §14.1 perfil do jogador (texto da interface), ou `null` para o padrão dela.
  */
-data class Settings(val lastMode: GameMode = GameMode.INDIVIDUAL, val handSortId: String? = null)
+data class Settings(
+    val lastMode: GameMode = GameMode.INDIVIDUAL,
+    val handSortId: String? = null,
+    val profileId: String? = null,
+)
 
 interface SettingsRepository {
     val settings: Flow<Settings>
@@ -25,6 +30,8 @@ interface SettingsRepository {
     suspend fun setLastMode(mode: GameMode)
 
     suspend fun setHandSort(id: String)
+
+    suspend fun setProfile(id: String) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -37,6 +44,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         Settings(
             lastMode = prefs[LAST_MODE]?.let { name -> GameMode.entries.firstOrNull { it.name == name } } ?: GameMode.INDIVIDUAL,
             handSortId = prefs[HAND_SORT],
+            profileId = prefs[PROFILE],
         )
     }
 
@@ -48,7 +56,12 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[HAND_SORT] = id }
     }
 
+    override suspend fun setProfile(id: String) {
+        store.edit { it[PROFILE] = id }
+    }
+
     private companion object {
+        val PROFILE = stringPreferencesKey("profile")
         val LAST_MODE = stringPreferencesKey("last_mode")
         val HAND_SORT = stringPreferencesKey("hand_sort")
     }

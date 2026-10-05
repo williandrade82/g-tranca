@@ -121,6 +121,8 @@ class PersistenceTest {
         settings.setLastMode(GameMode.DUPLAS)
         settings.setHandSort("CUSTOM")
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM")
+        settings.setProfile("perfil")
+        settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil")
     }
 
     @Test

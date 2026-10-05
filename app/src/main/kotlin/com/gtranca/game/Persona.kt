@@ -4,7 +4,10 @@ package com.gtranca.game
 enum class Gender { MALE, FEMALE }
 
 /** Profissão de um avatar (§14.1): uniforme e acessório próprios. */
-enum class Profession { DOCTOR, CHEF, ENGINEER, TEACHER, FIREFIGHTER, SCIENTIST, PILOT, ARTIST }
+enum class Profession {
+    DOCTOR, CHEF, ENGINEER, TEACHER, FIREFIGHTER, SCIENTIST, PILOT, ARTIST,
+    NURSE, POLICE, FARMER, MECHANIC, MUSICIAN, LAWYER, PHOTOGRAPHER, SAILOR,
+}
 
 /** Penteados; cada um só serve a um gênero ([gender]). */
 enum class HairStyle(val gender: Gender) {

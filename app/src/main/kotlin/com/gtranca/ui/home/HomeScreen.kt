@@ -70,7 +70,7 @@ fun HomeScreen(
     onStart: (GameConfig) -> Unit,
     onContinue: () -> Unit = {},
     onStats: () -> Unit = {},
-    onGallery: () -> Unit = {},
+    onProfile: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Ao voltar para esta tela, o jogo salvo pode ter mudado (jogado, terminado).
@@ -173,13 +173,16 @@ fun HomeScreen(
             ) {
                 Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
             }
-            GButton(onGallery, Modifier.heightIn(min = 48.dp).testTag("gallery"), kind = GButtonKind.Text) {
-                Text(stringResource(R.string.home_gallery))
-            }
-            GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
-                StatsIcon(GColors.OnTable)
-                Spacer(Modifier.width(Spacing.sm))
-                Text(stringResource(R.string.home_stats))
+            // Perfil e Estatísticas lado a lado: os dois cabem na tela sem rolar.
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = Alignment.CenterVertically) {
+                GButton(onProfile, Modifier.heightIn(min = 48.dp).testTag("profile"), kind = GButtonKind.Text) {
+                    Text(stringResource(R.string.home_profile))
+                }
+                GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
+                    StatsIcon(GColors.OnTable)
+                    Spacer(Modifier.width(Spacing.sm))
+                    Text(stringResource(R.string.home_stats))
+                }
             }
         }
     }

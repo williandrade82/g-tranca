@@ -21,8 +21,8 @@ import com.gtranca.game.HairStyle
 import com.gtranca.game.Persona
 import com.gtranca.game.Profession
 
-private val SkinTones = listOf(0xFFF8D9C0, 0xFFEEC39A, 0xFFD49A6A, 0xFFA9714B, 0xFF6F4426).map { Color(it) }
-private val HairColors = listOf(0xFF2B2B2B, 0xFF5A3A22, 0xFF8D5524, 0xFFD8B15A, 0xFFB5482A, 0xFF9E9E9E).map { Color(it) }
+internal val SkinTones = listOf(0xFFF8D9C0, 0xFFEEC39A, 0xFFD49A6A, 0xFFA9714B, 0xFF6F4426).map { Color(it) }
+internal val HairColors = listOf(0xFF2B2B2B, 0xFF5A3A22, 0xFF8D5524, 0xFFD8B15A, 0xFFB5482A, 0xFF9E9E9E).map { Color(it) }
 
 private val Ink = Color(0xFF2B2B2B)
 private val White = Color(0xFFFAFAFA)
@@ -38,6 +38,14 @@ private fun Profession.background(): Color = Color(
         Profession.SCIENTIST -> 0xFFC8E6C9
         Profession.PILOT -> 0xFFBBDEFB
         Profession.ARTIST -> 0xFFE1BEE7
+        Profession.NURSE -> 0xFFB3E5FC
+        Profession.POLICE -> 0xFFCFD8DC
+        Profession.FARMER -> 0xFFDCEDC8
+        Profession.MECHANIC -> 0xFFFFCCBC
+        Profession.MUSICIAN -> 0xFFD1C4E9
+        Profession.LAWYER -> 0xFFD7CCC8
+        Profession.PHOTOGRAPHER -> 0xFFF0F4C3
+        Profession.SAILOR -> 0xFFB2EBF2
     },
 )
 
@@ -144,6 +152,14 @@ private fun DrawScope.drawBody(profession: Profession, skinShade: Color) {
             Profession.FIREFIGHTER -> 0xFF37474F
             Profession.PILOT -> 0xFF1A237E
             Profession.ARTIST -> 0xFFEFEBE9
+            Profession.NURSE -> 0xFF4FC3F7
+            Profession.POLICE -> 0xFF1F3A5F
+            Profession.FARMER -> 0xFFC62828
+            Profession.MECHANIC -> 0xFF1E88E5
+            Profession.MUSICIAN -> 0xFF7B1FA2
+            Profession.LAWYER -> 0xFF455A64
+            Profession.PHOTOGRAPHER -> 0xFFA1887F
+            Profession.SAILOR -> 0xFFFAFAFA
         },
     )
     box(skinShade, 0.435f, 0.56f, 0.13f, 0.2f, 0.04f)
@@ -207,6 +223,63 @@ private fun DrawScope.drawBody(profession: Profession, skinShade: Color) {
             box(Color(0xFFFFC107), 0.17f, 0.8f, 0.14f, 0.035f, 0.01f)
             box(Color(0xFFFFC107), 0.69f, 0.8f, 0.14f, 0.035f, 0.01f)
         }
+        Profession.NURSE -> {
+            shape(White) { w, h ->
+                moveTo(0.42f * w, 0.72f * h); lineTo(0.58f * w, 0.72f * h); lineTo(0.5f * w, 0.86f * h); close()
+            }
+            box(Color(0xFF0288D1), 0.64f, 0.84f, 0.1f, 0.08f, 0.012f)
+        }
+        Profession.POLICE -> {
+            shape(White) { w, h ->
+                moveTo(0.43f * w, 0.72f * h); lineTo(0.57f * w, 0.72f * h); lineTo(0.5f * w, 0.84f * h); close()
+            }
+            shape(Ink) { w, h ->
+                moveTo(0.485f * w, 0.75f * h); lineTo(0.515f * w, 0.75f * h); lineTo(0.525f * w, 0.9f * h); lineTo(0.5f * w, 0.93f * h); lineTo(0.475f * w, 0.9f * h); close()
+            }
+            circle(Color(0xFFFFC107), 0.7f, 0.88f, 0.04f)
+        }
+        Profession.FARMER -> {
+            // Macacão jeans sobre camisa xadrez.
+            box(Color(0xFF1565C0), 0.34f, 0.84f, 0.32f, 0.2f, 0.03f)
+            stroke(Color(0xFF1565C0), 0.38f, 0.74f, 0.4f, 0.86f, 0.045f)
+            stroke(Color(0xFF1565C0), 0.62f, 0.74f, 0.6f, 0.86f, 0.045f)
+            circle(Color(0xFFFFC107), 0.4f, 0.87f, 0.014f)
+            circle(Color(0xFFFFC107), 0.6f, 0.87f, 0.014f)
+        }
+        Profession.MECHANIC -> {
+            box(White, 0.6f, 0.84f, 0.12f, 0.06f, 0.012f)
+            stroke(Color(0xFF0D47A1), 0.5f, 0.76f, 0.5f, 1.0f, 0.012f)
+            circle(Color(0xFFFFB300), 0.5f, 0.8f, 0.014f)
+        }
+        Profession.MUSICIAN -> {
+            shape(White) { w, h ->
+                moveTo(0.42f * w, 0.72f * h); lineTo(0.58f * w, 0.72f * h); lineTo(0.5f * w, 0.9f * h); close()
+            }
+            circle(Color(0xFFFFC107), 0.7f, 0.86f, 0.018f)
+        }
+        Profession.LAWYER -> {
+            shape(White) { w, h ->
+                moveTo(0.42f * w, 0.72f * h); lineTo(0.58f * w, 0.72f * h); lineTo(0.5f * w, 0.9f * h); close()
+            }
+            shape(Color(0xFFC62828)) { w, h ->
+                moveTo(0.485f * w, 0.76f * h); lineTo(0.515f * w, 0.76f * h); lineTo(0.525f * w, 0.92f * h); lineTo(0.5f * w, 0.96f * h); lineTo(0.475f * w, 0.92f * h); close()
+            }
+        }
+        Profession.PHOTOGRAPHER -> {
+            shape(Color(0xFF8D6E63)) { w, h ->
+                moveTo(0.36f * w, 0.73f * h); lineTo(0.43f * w, 0.72f * h); lineTo(0.6f * w, 0.98f * h); lineTo(0.53f * w, 1.0f * h); close()
+            }
+            box(Ink, 0.55f, 0.86f, 0.2f, 0.12f, 0.02f)
+            circle(Color(0xFF90A4AE), 0.65f, 0.92f, 0.04f)
+            circle(Ink, 0.65f, 0.92f, 0.022f)
+        }
+        Profession.SAILOR -> {
+            // Camisa listrada e lenço azul.
+            listOf(0.8f, 0.87f, 0.94f).forEach { y -> stroke(Color(0xFF1565C0), 0.1f, y, 0.9f, y, 0.03f) }
+            shape(Color(0xFF1565C0)) { w, h ->
+                moveTo(0.42f * w, 0.72f * h); lineTo(0.58f * w, 0.72f * h); lineTo(0.5f * w, 0.8f * h); close()
+            }
+        }
         Profession.ARTIST -> {
             // Respingos de tinta no avental.
             circle(Color(0xFFFDD835), 0.34f, 0.88f, 0.03f)
@@ -260,6 +333,50 @@ private fun DrawScope.drawGear(profession: Profession) {
             cap(Color(0xFF1A237E), 0.31f, 0.13f, 0.38f, 0.2f)
             box(Ink, 0.3f, 0.32f, 0.4f, 0.035f, 0.015f)
             circle(Color(0xFFFFC107), 0.5f, 0.25f, 0.032f)
+        }
+        Profession.NURSE -> {
+            // Touca azul com uma cruz.
+            cap(Color(0xFF29B6F6), 0.31f, 0.14f, 0.38f, 0.2f)
+            box(White, 0.485f, 0.2f, 0.03f, 0.08f)
+            box(White, 0.46f, 0.225f, 0.08f, 0.03f)
+        }
+        Profession.POLICE -> {
+            cap(Color(0xFF1F3A5F), 0.31f, 0.13f, 0.38f, 0.2f)
+            box(Ink, 0.29f, 0.32f, 0.42f, 0.04f, 0.015f)
+            circle(Color(0xFFFFC107), 0.5f, 0.25f, 0.032f)
+        }
+        Profession.FARMER -> {
+            // Chapéu de palha de aba larga.
+            oval(Color(0xFFE0B66B), 0.2f, 0.22f, 0.6f, 0.12f)
+            cap(Color(0xFFE0B66B), 0.34f, 0.1f, 0.32f, 0.17f)
+            box(Color(0xFF8D5524), 0.345f, 0.22f, 0.31f, 0.03f)
+        }
+        Profession.MECHANIC -> {
+            cap(Color(0xFFD32F2F), 0.32f, 0.14f, 0.36f, 0.19f)
+            box(Color(0xFFD32F2F), 0.5f, 0.31f, 0.26f, 0.035f, 0.015f)
+            // Mancha de graxa na bochecha.
+            circle(Color(0x66000000), 0.6f, 0.5f, 0.022f)
+        }
+        Profession.MUSICIAN -> {
+            // Fones: arco sobre a cabeça e conchas nas orelhas.
+            drawArc(
+                Ink, 180f, 180f, false,
+                Offset(0.32f * size.width, 0.12f * size.height), Size(0.36f * size.width, 0.44f * size.height),
+                style = Stroke(width = 0.03f * size.width, cap = StrokeCap.Round),
+            )
+            circle(Color(0xFFFF5722), 0.33f, 0.43f, 0.05f)
+            circle(Color(0xFFFF5722), 0.67f, 0.43f, 0.05f)
+        }
+        Profession.LAWYER -> Unit
+        Profession.PHOTOGRAPHER -> {
+            // Boné cinza e alça da câmera.
+            cap(Color(0xFF607D8B), 0.32f, 0.14f, 0.36f, 0.19f)
+            box(Color(0xFF607D8B), 0.3f, 0.31f, 0.22f, 0.035f, 0.015f)
+        }
+        Profession.SAILOR -> {
+            cap(White, 0.3f, 0.14f, 0.4f, 0.2f)
+            box(Color(0xFF1565C0), 0.3f, 0.3f, 0.4f, 0.04f, 0.015f)
+            circle(Color(0xFF1565C0), 0.5f, 0.12f, 0.025f)
         }
         Profession.ARTIST -> {
             // Boina inclinada.

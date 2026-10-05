@@ -1,0 +1,233 @@
+package com.gtranca.ui.profile
+
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gtranca.R
+import com.gtranca.game.Gender
+import com.gtranca.game.HairStyle
+import com.gtranca.game.Look
+import com.gtranca.game.PlayerProfile
+import com.gtranca.game.Profession
+import com.gtranca.ui.persona.HairColors
+import com.gtranca.ui.persona.PersonaAvatar
+import com.gtranca.ui.persona.SkinTones
+import com.gtranca.ui.persona.labelRes
+import com.gtranca.ui.theme.GBackground
+import com.gtranca.ui.theme.GButton
+import com.gtranca.ui.theme.GButtonKind
+import com.gtranca.ui.theme.GChoiceChip
+import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.GPanel
+import com.gtranca.ui.theme.GTitle
+import com.gtranca.ui.theme.Spacing
+
+/** Perfil do jogador (§14.1): nome e avatar (gênero, profissão, pele, cabelo e barba), com pré-visualização. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ProfileScreen(viewModel: ProfileViewModel, onDone: () -> Unit) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val profile = state.profile
+    val youName = stringResource(R.string.side_you)
+    GBackground(Modifier.fillMaxSize().testTag("profile-screen")) {
+        Column(
+            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            GTitle(stringResource(R.string.profile_title))
+            GPanel(Modifier.fillMaxWidth()) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val preview = profile.persona(youName)
+                    PersonaAvatar(preview, 112.dp, Modifier.semantics { contentDescription = preview.firstName }.testTag("profile-preview"))
+                }
+                OutlinedTextField(
+                    value = profile.name,
+                    onValueChange = viewModel::onName,
+                    label = { Text(stringResource(R.string.profile_name)) },
+                    supportingText = { Text(stringResource(R.string.profile_name_hint, PlayerProfile.MAX_NAME)) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth().testTag("profile-name"),
+                )
+
+                Section(stringResource(R.string.profile_gender)) {
+                    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Gender.entries.forEach { gender ->
+                            GChoiceChip(
+                                stringResource(if (gender == Gender.MALE) R.string.gender_male else R.string.gender_female),
+                                selected = profile.gender == gender,
+                                onClick = { viewModel.onGender(gender) },
+                                modifier = Modifier.weight(1f).testTag("gender-${gender.name.lowercase()}"),
+                            )
+                        }
+                    }
+                }
+
+                Section(stringResource(R.string.profile_profession)) {
+                    FlowRow(
+                        Modifier.fillMaxWidth().selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        Profession.entries.forEach { profession ->
+                            val option = profile.copy(profession = profession).persona(youName)
+                            val label = stringResource(profession.labelRes(profile.gender))
+                            Choice(
+                                selected = profile.profession == profession,
+                                onClick = { viewModel.onProfession(profession) },
+                                description = label,
+                                tag = "profession-${profession.name.lowercase()}",
+                            ) { PersonaAvatar(option, 52.dp) }
+                        }
+                    }
+                    Text(
+                        stringResource(profile.profession.labelRes(profile.gender)),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+
+                Section(stringResource(R.string.profile_skin)) {
+                    Swatches(SkinTones, profile.look.skin, "skin", viewModel::onSkin)
+                }
+
+                Section(stringResource(R.string.profile_hair)) {
+                    FlowRow(
+                        Modifier.fillMaxWidth().selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        HairStyle.entries.filter { it.gender == profile.gender }.forEach { style ->
+                            val option = profile.copy(look = profile.look.copy(hair = style)).persona(youName)
+                            Choice(
+                                selected = profile.look.hair == style,
+                                onClick = { viewModel.onHair(style) },
+                                description = stringResource(style.labelRes()),
+                                tag = "hair-${style.name.lowercase()}",
+                            ) { PersonaAvatar(option, 44.dp) }
+                        }
+                    }
+                    Swatches(HairColors, profile.look.hairColor, "haircolor", viewModel::onHairColor)
+                }
+
+                if (profile.gender == Gender.MALE) {
+                    val beardLabel = stringResource(R.string.profile_beard)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .toggleable(profile.look.beard, role = Role.Switch, onValueChange = viewModel::onBeard)
+                            .testTag("profile-beard"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(beardLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                        Switch(checked = profile.look.beard, onCheckedChange = null)
+                    }
+                }
+            }
+            GButton(
+                onClick = {
+                    viewModel.onSave()
+                    onDone()
+                },
+                enabled = state.loaded,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("profile-save"),
+            ) { Text(stringResource(R.string.profile_save), style = MaterialTheme.typography.titleMedium) }
+            GButton(onDone, Modifier.fillMaxWidth().testTag("profile-cancel"), kind = GButtonKind.Text) {
+                Text(stringResource(R.string.back))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Section(title: String, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        content()
+    }
+}
+
+/** Opção selecionável com um desenho: aro verde quando escolhida. */
+@Composable
+private fun Choice(selected: Boolean, onClick: () -> Unit, description: String, tag: String, content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .heightIn(min = 48.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = description }
+            .testTag(tag)
+            .border(if (selected) 3.dp else 0.dp, if (selected) GColors.Green else Color.Transparent, CircleShape)
+            .padding(3.dp),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** Fileira de cores selecionáveis (tom de pele ou de cabelo). */
+@Composable
+private fun Swatches(colors: List<Color>, selected: Int, tag: String, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        colors.forEachIndexed { index, color ->
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .selectable(selected = selected == index, role = Role.RadioButton, onClick = { onSelect(index) })
+                    .semantics { contentDescription = "${index + 1}" }
+                    .testTag("$tag-$index"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .background(color, CircleShape)
+                        .border(if (selected == index) 3.dp else 1.dp, if (selected == index) GColors.Green else GColors.CardBorder, CircleShape),
+                )
+            }
+        }
+    }
+}
+
+private fun HairStyle.labelRes(): Int = when (this) {
+    HairStyle.SHORT -> R.string.hair_short
+    HairStyle.SIDE_SWEEP -> R.string.hair_side_sweep
+    HairStyle.CURLY_SHORT -> R.string.hair_curly_short
+    HairStyle.BALD -> R.string.hair_bald
+    HairStyle.LONG -> R.string.hair_long
+    HairStyle.BOB -> R.string.hair_bob
+    HairStyle.BUN -> R.string.hair_bun
+    HairStyle.PONYTAIL -> R.string.hair_ponytail
+    HairStyle.CURLY_LONG -> R.string.hair_curly_long
+}
