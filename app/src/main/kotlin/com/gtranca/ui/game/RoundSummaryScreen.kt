@@ -1,5 +1,11 @@
 package com.gtranca.ui.game
 
+import androidx.compose.ui.Alignment
+import com.gtranca.game.Persona
+import com.gtranca.ui.persona.AvatarRow
+import com.gtranca.ui.persona.personasOfSide
+import com.gtranca.ui.persona.sideLabel
+
 import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GBanner
 import com.gtranca.ui.theme.GButton
@@ -53,6 +59,8 @@ fun RoundSummaryScreen(
     snapshot: GameSnapshot,
     onNextRound: () -> Unit,
     onContinue: () -> Unit,
+    /** §14.1 perfis por assento (vazio = sem avatares). */
+    personas: List<Persona> = emptyList(),
 ) {
     val record = snapshot.history.last()
     val view = snapshot.view
@@ -79,7 +87,16 @@ fun RoundSummaryScreen(
 
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = Spacing.sm)) {
             GPanel(Modifier.fillMaxWidth()) {
-            ScoreRow(stringResource(R.string.score_item), sides.map { sideName(view.mode, it, view.side) }, bold = true)
+            // Cabeçalho com o avatar de cada lado (§14.1) e o nome: no individual o da persona; em duplas, "Nós" e "Eles".
+            Row(Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.score_item), Modifier.weight(1.4f).align(Alignment.Bottom), fontWeight = FontWeight.Bold)
+                sides.forEach { side ->
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                        AvatarRow(personasOfSide(view.mode, side, personas), 26.dp)
+                        Text(sideLabel(view.mode, side, view.side, personas), fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                    }
+                }
+            }
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
             // Tudo vem de ScoreBreakdown: a soma das linhas exibidas é o "Total da partida" de cada lado.
             val lines = scores.map { ScoreBreakdown.lines(it) }

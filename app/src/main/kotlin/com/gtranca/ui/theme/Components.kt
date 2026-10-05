@@ -161,6 +161,7 @@ fun GDialog(
         properties = properties,
         shape = MaterialTheme.shapes.extraLarge,
         tonalElevation = Elevation.dialog,
+        containerColor = GColors.Cream,
     )
 }
 

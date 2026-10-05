@@ -129,8 +129,11 @@
     <string name="profession_pilot">Piloto</string>
     <string name="profession_artist_m">Pintor</string>
     <string name="profession_artist_f">Pintora</string>
-    <string name="seat_left_short">Adv. esquerda</string>
-    <string name="seat_right_short">Adv. direita</string>
+    <string name="persona_caption">%1$s · %2$s</string>
+    <string name="round_result_named_went_out">%1$s bateu!</string>
+    <string name="game_over_named_won">%1$s venceu.</string>
+    <string name="seat_left_short">Adv. esq.</string>
+    <string name="seat_right_short">Adv. dir.</string>
     <string name="seat_detail_hint">Ver a última jogada</string>
     <string name="legend_button">Legenda dos símbolos</string>
     <string name="legend_title">Símbolos das jogadas</string>

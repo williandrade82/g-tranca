@@ -180,8 +180,8 @@ class TableLayoutTest {
 
         // Os três outros assentos e os títulos por dupla.
         rule.onNodeWithText("Parceiro").assertExists()
-        rule.onNodeWithText("Adv. esquerda").assertExists()
-        rule.onNodeWithText("Adv. direita").assertExists()
+        rule.onNodeWithText("Adv. esq.").assertExists()
+        rule.onNodeWithText("Adv. dir.").assertExists()
         // Mãos dos outros assentos como cartas viradas, dentro da largura (9 cartas cada).
         listOf(1, 2, 3).forEach { check(right("seat-hand-$it") <= 360.dp + 0.5.dp) { "mão do assento $it passa da largura" } }
         rule.onAllNodesWithContentDescription("9 cartas na mão", useUnmergedTree = true).assertCountEquals(3)

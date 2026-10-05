@@ -1,5 +1,14 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
+import com.gtranca.engine.model.GameMode
+import com.gtranca.game.Persona
+import com.gtranca.ui.persona.AvatarRow
+import com.gtranca.ui.persona.personasOfSide
+import com.gtranca.ui.persona.sideLabel
+
 import androidx.compose.ui.text.font.FontWeight
 import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GBanner
@@ -33,7 +42,7 @@ import com.gtranca.game.GameSnapshot
 
 /** Fim de jogo (§13): vencedor, totais e o resultado de cada partida. */
 @Composable
-fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit) {
+fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: List<Persona> = emptyList()) {
     val view = snapshot.view
     val sides = listOf(view.side) + view.mode.sides.filter { it != view.side }
     GBackground(Modifier.fillMaxSize().testTag("game-over")) {
@@ -43,19 +52,34 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit) {
         ) {
             GTitle(stringResource(R.string.game_over_title))
             val won = !snapshot.resigned && snapshot.winner == view.side
+            // §14.1 quem venceu, com o avatar em destaque.
+            snapshot.winner?.let { winner ->
+                val winners = personasOfSide(view.mode, winner, personas)
+                if (winners.isNotEmpty()) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AvatarRow(winners, 88.dp, Modifier.testTag("winner-avatars")) }
+                }
+            }
+            val opponentName = personasOfSide(view.mode, view.mode.sides.first { it != view.side }, personas).firstOrNull()
             GBanner(
-                stringResource(
-                    if (snapshot.resigned) resignedRes(view.mode) else gameResultRes(view.mode, won = snapshot.winner == view.side),
-                ),
+                if (view.mode == GameMode.INDIVIDUAL && !won && !snapshot.resigned && opponentName != null) {
+                    stringResource(R.string.game_over_named_won, opponentName.shortName)
+                } else {
+                    stringResource(
+                        if (snapshot.resigned) resignedRes(view.mode) else gameResultRes(view.mode, won = snapshot.winner == view.side),
+                    )
+                },
                 if (won) GColors.Green else GColors.Neutral,
                 GColors.White,
             )
             GPanel(Modifier.fillMaxWidth()) {
                 sides.forEach { side ->
-                    Text(
-                        sideName(view.mode, side, view.side) + ": " + plainPoints(snapshot.totals[side.index]),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        AvatarRow(personasOfSide(view.mode, side, personas), 30.dp)
+                        Text(
+                            sideLabel(view.mode, side, view.side, personas) + ": " + plainPoints(snapshot.totals[side.index]),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
                 }
                 HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
                 Text(stringResource(R.string.game_over_rounds, snapshot.history.size), fontWeight = FontWeight.Bold)

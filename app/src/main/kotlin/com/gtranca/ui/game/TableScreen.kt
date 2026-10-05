@@ -2,6 +2,8 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.persona.PersonaAvatar
+
 import androidx.compose.ui.draw.clip
 
 import androidx.annotation.StringRes
@@ -271,7 +273,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
             detailSeat = null
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
-            SeatDetailDialog(stringResource(role.nameRes()), events) { detailSeat = null }
+            SeatDetailDialog(state.personas.getOrNull(index), stringResource(role.nameRes()), events) { detailSeat = null }
         }
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
@@ -411,15 +413,32 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                stringResource(role.pillNameRes()),
-                Modifier.weight(1f),
-                color = if (role == SeatRole.PARTNER) TableAccent else OnTable,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 2,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // §14.1 avatar discreto e nome curto; o papel (esquerda, parceiro, direita) vai embaixo, bem pequeno.
+            val persona = state.personas.getOrNull(seat.index)
+            if (persona != null) {
+                PersonaAvatar(persona, 28.dp, Modifier.border(1.5.dp, if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = 0.6f), CircleShape))
+            }
+            Column(Modifier.weight(1f)) {
+                if (persona != null) {
+                    Text(
+                        persona.shortName,
+                        color = OnTable,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    stringResource(role.pillNameRes()),
+                    color = if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = if (persona != null) 0.8f else 1f),
+                    fontWeight = if (persona != null) FontWeight.Normal else FontWeight.Bold,
+                    style = if (persona != null) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                    maxLines = if (persona != null) 1 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (thinking) {
                 CircularProgressIndicator(
                     Modifier.size(14.dp).semantics { contentDescription = thinkingText }.testTag("seat-thinking-${seat.index}"),
@@ -794,6 +813,10 @@ internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection:
 private fun HandArea(state: GameUiState, events: TableEvents) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // §14.1 seu avatar, bem discreto, junto do título da mão.
+            state.personas.getOrNull(state.snapshot.viewerSeat.index)?.let {
+                PersonaAvatar(it, 22.dp, Modifier.padding(end = 6.dp).border(1.dp, OnTable.copy(alpha = 0.6f), CircleShape))
+            }
             Text(
                 stringResource(R.string.your_hand, state.hand.size),
                 color = OnTable,
