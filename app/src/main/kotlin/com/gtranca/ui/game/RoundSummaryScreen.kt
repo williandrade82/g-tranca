@@ -1,5 +1,14 @@
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.GBackground
+import com.gtranca.ui.theme.GBanner
+import com.gtranca.ui.theme.GButton
+import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.GPanel
+import com.gtranca.ui.theme.GSubPanel
+import com.gtranca.ui.theme.GTitle
+import com.gtranca.ui.theme.Spacing
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.semantics.heading
@@ -54,16 +63,23 @@ fun RoundSummaryScreen(
         // §11.1 quem bateu, pelo assento (em duplas: você, parceiro ou um dos adversários).
         is RoundResult.GoOut -> stringResource(SeatRole.of(view.mode, result.seat, snapshot.viewerSeat).wentOutRes())
     }
-    Surface(Modifier.fillMaxSize().testTag("round-summary")) {
+    val role = (record.result as? RoundResult.GoOut)?.let { SeatRole.of(view.mode, it.seat, snapshot.viewerSeat) }
+    val (bannerColor, onBanner) = when {
+        role == null -> GColors.Yellow to GColors.CardBlack
+        role == SeatRole.YOU || role == SeatRole.PARTNER -> GColors.Green to GColors.White
+        else -> GColors.Neutral to GColors.White
+    }
+    GBackground(Modifier.fillMaxSize().testTag("round-summary")) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Text(stringResource(R.string.round_over_title, record.number), style = MaterialTheme.typography.headlineSmall)
-            Text(resultText, style = MaterialTheme.typography.titleMedium)
+            GTitle(stringResource(R.string.round_over_title, record.number))
+            GBanner(resultText, bannerColor, onBanner)
 
+            GPanel(Modifier.fillMaxWidth()) {
             ScoreRow(stringResource(R.string.score_item), sides.map { sideName(view.mode, it, view.side) }, bold = true)
-            HorizontalDivider()
+            HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
             // Tudo vem de ScoreBreakdown: a soma das linhas exibidas é o "Total da partida" de cada lado.
             val lines = scores.map { ScoreBreakdown.lines(it) }
             // §12.1 pontos especiais e §12.2 morto não pego.
@@ -85,7 +101,7 @@ fun RoundSummaryScreen(
             // §12.1 cartas na mesa e §12.2 cartas na mão: seções destacadas, com subtotal.
             ScoreSectionBox(ScoreSection.TABLE, scores, lines)
             ScoreSectionBox(ScoreSection.HAND, scores, lines)
-            HorizontalDivider()
+            HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
             ScoreRow(stringResource(R.string.score_round_total), scores.map { signed(it.total) }, bold = true)
             ScoreRow(
                 stringResource(R.string.score_cumulative),
@@ -93,16 +109,17 @@ fun RoundSummaryScreen(
                 bold = true,
                 tag = "cumulative",
             )
+            }
 
             val tie = snapshot.stage == Stage.ROUND_OVER && snapshot.totals.any { it >= snapshot.config.targetScore }
-            if (tie) Text(stringResource(R.string.round_tie_notice), style = MaterialTheme.typography.bodyMedium)
+            if (tie) Text(stringResource(R.string.round_tie_notice), style = MaterialTheme.typography.bodyMedium, color = GColors.OnTable)
 
             if (snapshot.stage == Stage.GAME_OVER) {
-                Button(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("show-final")) {
+                GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("show-final")) {
                     Text(stringResource(R.string.announce_continue))
                 }
             } else {
-                Button(onNextRound, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("next-round")) {
+                GButton(onNextRound, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("next-round")) {
                     Text(stringResource(R.string.next_round))
                 }
             }
@@ -120,14 +137,7 @@ private fun ScoreBreakdown.Line.text(): String = when {
 @Composable
 private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, lines: List<Map<ScoreItem, ScoreBreakdown.Line>>) {
     val tag = if (section == ScoreSection.TABLE) "table-section" else "hand-section"
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-            .testTag(tag),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    GSubPanel(Modifier.testTag(tag)) {
         Text(
             stringResource(if (section == ScoreSection.TABLE) R.string.score_table_header else R.string.score_hand_header),
             style = MaterialTheme.typography.titleSmall,
@@ -137,7 +147,7 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
         ScoreItem.entries.filter { it.section == section }.forEach { item ->
             ScoreRow(stringResource(item.labelRes()), lines.map { it.getValue(item).text() })
         }
-        HorizontalDivider()
+        HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
         ScoreRow(
             stringResource(if (section == ScoreSection.TABLE) R.string.score_table_subtotal else R.string.score_hand_subtotal),
             scores.map { signed(ScoreBreakdown.subtotal(it, section)) },

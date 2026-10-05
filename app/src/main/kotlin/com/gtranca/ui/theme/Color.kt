@@ -14,6 +14,9 @@ object GColors {
     val White = Color(0xFFFFFFFF)
     val Cream = Color(0xFFFFF8E1)
     val Shadow = Color(0x66000000)
+    val CreamDeep = Color(0xFFFFEFC0)
+    val Divider = Color(0xFFE0D2A0)
+    val Neutral = Color(0xFF607D8B)
 
     // Mesa
     val Table = Color(0xFF1E5631)

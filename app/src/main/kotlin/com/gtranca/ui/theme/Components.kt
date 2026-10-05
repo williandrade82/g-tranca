@@ -12,6 +12,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.heightIn
@@ -38,7 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.DialogProperties
 
 /** Variantes de [GButton]. */
-enum class GButtonKind { Primary, Secondary, Danger, Text }
+enum class GButtonKind { Primary, Secondary, Danger, DangerOutline, Text }
 
 /** Botão do app: arredondado, com sombra. Primary = amarelo; Secondary = branco com contorno; Danger = vermelho. */
 @Composable
@@ -66,6 +70,12 @@ fun GButton(
         GButtonKind.Danger -> Button(
             onClick, modifier, enabled, shape = shape, elevation = shadow,
             colors = ButtonDefaults.buttonColors(containerColor = GColors.Red, contentColor = GColors.White),
+            content = content,
+        )
+        GButtonKind.DangerOutline -> Button(
+            onClick, modifier, enabled, shape = shape, elevation = shadow,
+            colors = ButtonDefaults.buttonColors(containerColor = GColors.White, contentColor = GColors.Red),
+            border = BorderStroke(2.dp, GColors.Red),
             content = content,
         )
         GButtonKind.Text -> TextButton(
@@ -167,4 +177,50 @@ fun StatsIcon(color: Color, modifier: Modifier = Modifier, size: Dp = 20.dp) {
             drawRoundRect(color, Offset(x, h * (1f - fraction)), Size(bar, h * fraction), radius)
         }
     }
+}
+
+/** Título de tela sobre o fundo verde: amarelo, em negrito, com sombra. */
+@Composable
+fun GTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        modifier,
+        style = MaterialTheme.typography.headlineMedium.copy(
+            fontWeight = FontWeight.ExtraBold,
+            shadow = Shadow(GColors.Shadow, Offset(0f, 4f), 8f),
+        ),
+        color = GColors.Yellow,
+    )
+}
+
+/** Faixa de destaque (resultado): [color] de fundo, texto em [onColor]. */
+@Composable
+fun GBanner(text: String, color: Color, onColor: Color, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = color,
+        contentColor = onColor,
+        shadowElevation = Elevation.button,
+    ) {
+        Text(
+            text,
+            Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
+            style = MaterialTheme.typography.titleLarge,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** Bloco interno de um painel (fundo creme mais forte). */
+@Composable
+fun GSubPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(GColors.CreamDeep, MaterialTheme.shapes.medium)
+            .padding(Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        content = content,
+    )
 }

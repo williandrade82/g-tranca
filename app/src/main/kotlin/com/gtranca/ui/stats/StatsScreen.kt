@@ -1,5 +1,15 @@
 package com.gtranca.ui.stats
 
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
+import com.gtranca.ui.theme.GBackground
+import com.gtranca.ui.theme.GButton
+import com.gtranca.ui.theme.GButtonKind
+import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.GPanel
+import com.gtranca.ui.theme.GTitle
+import com.gtranca.ui.theme.Spacing
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -72,25 +82,14 @@ class StatsViewModel(private val repository: StatsRepository) : ViewModel() {
 fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     var confirmReset by rememberSaveable { mutableStateOf(false) }
-    Surface(Modifier.fillMaxSize().testTag("stats-screen")) {
+    GBackground(Modifier.fillMaxSize().testTag("stats-screen")) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Text(
-                stringResource(R.string.stats_title),
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.semantics { heading() },
-            )
+            GTitle(stringResource(R.string.stats_title), Modifier.semantics { heading() })
             GameMode.entries.forEach { mode ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                        .padding(8.dp)
-                        .testTag("stats-${mode.name.lowercase()}"),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
+                GPanel(Modifier.fillMaxWidth().testTag("stats-${mode.name.lowercase()}")) {
                     Text(
                         stringResource(if (mode == GameMode.DUPLAS) R.string.mode_duplas_short else R.string.mode_individual),
                         style = MaterialTheme.typography.titleMedium,
@@ -102,22 +101,24 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
                         listOf(stringResource(R.string.stats_games), stringResource(R.string.stats_wins), stringResource(R.string.stats_percent)),
                         bold = true,
                     )
-                    HorizontalDivider()
+                    HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
                     Difficulty.entries.forEach { difficulty ->
                         val line = stats.line(mode, difficulty.id)
                         StatsRow(
                             stringResource(difficulty.labelRes()),
                             listOf(line.games.toString(), line.wins.toString(), if (line.games == 0) "—" else "${line.winPercent}%"),
+                            winsColor = GColors.GreenDark,
                         )
                     }
                 }
             }
-            Text(stringResource(R.string.stats_defeats_note), style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(
+            Text(stringResource(R.string.stats_defeats_note), style = MaterialTheme.typography.bodySmall, color = GColors.OnTable)
+            GButton(
                 onClick = { confirmReset = true },
+                kind = GButtonKind.DangerOutline,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("stats-reset"),
             ) { Text(stringResource(R.string.stats_reset)) }
-            TextButton(onBack, Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.back)) }
+            GButton(onBack, Modifier.heightIn(min = 48.dp), kind = GButtonKind.Text) { Text(stringResource(R.string.back)) }
         }
     }
     if (confirmReset) {
@@ -126,10 +127,14 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
             title = { Text(stringResource(R.string.stats_reset_title)) },
             text = { Text(stringResource(R.string.stats_reset_text)) },
             confirmButton = {
-                TextButton({
-                    confirmReset = false
-                    viewModel.onReset()
-                }, Modifier.testTag("stats-reset-confirm")) { Text(stringResource(R.string.stats_reset_confirm)) }
+                TextButton(
+                    {
+                        confirmReset = false
+                        viewModel.onReset()
+                    },
+                    Modifier.testTag("stats-reset-confirm"),
+                    colors = ButtonDefaults.textButtonColors(contentColor = GColors.Red),
+                ) { Text(stringResource(R.string.stats_reset_confirm), fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton({ confirmReset = false }) { Text(stringResource(R.string.cancel)) } },
         )
@@ -137,10 +142,13 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun StatsRow(label: String, values: List<String>, bold: Boolean = false) {
+private fun StatsRow(label: String, values: List<String>, bold: Boolean = false, winsColor: Color = Color.Unspecified) {
     val weight = if (bold) FontWeight.Bold else FontWeight.Normal
     Row(Modifier.fillMaxWidth()) {
         Text(label, Modifier.weight(1.4f), fontWeight = weight)
-        values.forEach { Text(it, Modifier.weight(1f), fontWeight = weight, textAlign = TextAlign.End) }
+        values.forEachIndexed { i, value ->
+            val color = if (i == 1) winsColor else Color.Unspecified
+            Text(value, Modifier.weight(1f), fontWeight = if (i == 1 && !bold) FontWeight.Bold else weight, color = color, textAlign = TextAlign.End)
+        }
     }
 }
