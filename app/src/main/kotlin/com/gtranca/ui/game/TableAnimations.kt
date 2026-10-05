@@ -30,6 +30,19 @@ sealed interface AnimAnchor {
 
     /** Área de 3 vermelhos do lado (§6.5). */
     data class RedThrees(val side: Int) : AnimAnchor
+
+    // Posição exata de uma carta na tela (a tela resolve pelo [CardFlight.card]; sem ela, cai na âncora geral).
+    /** Uma carta da mão do humano. */
+    data class HandCard(val card: Card) : AnimAnchor
+
+    /** Uma carta de um conjunto do lado. */
+    data class MeldCard(val side: Int, val meldId: Int, val card: Card) : AnimAnchor
+
+    /** Uma carta do lixo. */
+    data class DiscardCard(val card: Card) : AnimAnchor
+
+    /** Um 3 vermelho na área de 3 vermelhos do lado. */
+    data class RedThreeCard(val side: Int, val card: Card) : AnimAnchor
 }
 
 /**

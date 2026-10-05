@@ -4,8 +4,28 @@ import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.Suit
 
-/** Ordem da mão na tela (só apresentação; não valida regra nenhuma). */
-enum class HandSort { BY_RANK, BY_SUIT, CUSTOM }
+/** Critério de ordem da mão na tela (só apresentação; não valida regra nenhuma). */
+enum class HandSort { BY_RANK, BY_SUIT }
+
+/**
+ * Preferência de ordem da mão: o critério e se os 3 pretos e coringas ficam separados numa coluna à esquerda
+ * (o "separar"). Gravada como texto: `BY_SUIT` ou `BY_SUIT:SPECIAL`.
+ */
+data class HandPrefs(val sort: HandSort = HandSort.BY_SUIT, val separateSpecial: Boolean = true) {
+    val id: String get() = sort.name + if (separateSpecial) ":$SPECIAL" else ""
+
+    companion object {
+        private const val SPECIAL = "SPECIAL"
+
+        /** Lê o texto gravado; o antigo `CUSTOM` (ordem personalizada) vira o padrão, e o ilegível também. */
+        fun parse(id: String?): HandPrefs {
+            if (id == null) return HandPrefs()
+            val parts = id.split(':')
+            val sort = HandSort.entries.firstOrNull { it.name == parts[0] } ?: return HandPrefs()
+            return HandPrefs(sort, separateSpecial = SPECIAL in parts.drop(1))
+        }
+    }
+}
 
 /** Ordem dos naipes na mão: cores alternadas. */
 private val SUIT_ORDER = listOf(Suit.SPADES, Suit.HEARTS, Suit.CLUBS, Suit.DIAMONDS)
@@ -16,9 +36,8 @@ private val byRankThenSuit: Comparator<Card> =
     compareBy<Card> { it.rank.ordinal }.thenBy { SUIT_ORDER.indexOf(it.suit) }.thenBy { it.deck }
 
 /**
- * Mão na ordem Personalizada, em blocos:
- * - [special]: (a) 3 pretos e (b) coringas (2), mostrados numa coluna fixa à esquerda;
- * - [rest]: (c) cartas soltas, (d) sequências e (e) cartas de mesmo valor, nessa ordem.
+ * Mão com a coluna separada: [special] são os 3 pretos e os coringas (2), mostrados numa coluna fixa à esquerda;
+ * [rest] são as demais cartas, na ordem do critério escolhido.
  */
 data class CustomHand(val special: List<Card>, val rest: List<Card>) {
     val all: List<Card> get() = special + rest
@@ -26,67 +45,19 @@ data class CustomHand(val special: List<Card>, val rest: List<Card>) {
 
 object HandOrder {
 
-    /** Valores que podem formar sequência de naturais (4..A; sem 2 e 3). */
-    private val SEQUENCE_RANKS: List<Rank> = Rank.entries.filter { it >= Rank.FOUR }
+    private fun comparator(sort: HandSort) = if (sort == HandSort.BY_RANK) byRankThenSuit else bySuitThenRank
 
-    fun sort(hand: List<Card>, sort: HandSort): List<Card> = when (sort) {
-        HandSort.BY_SUIT -> hand.sortedWith(bySuitThenRank)
-        HandSort.BY_RANK -> hand.sortedWith(byRankThenSuit)
-        HandSort.CUSTOM -> custom(hand).all
-    }
+    /** Mão toda no critério [sort], sem separar nada. */
+    fun sort(hand: List<Card>, sort: HandSort): List<Card> = hand.sortedWith(comparator(sort))
 
     /**
-     * Ordem Personalizada. Definições (apresentação, não regra):
-     * - sequência: 2+ cartas naturais (4..A) do mesmo naipe com valores consecutivos, uma cópia por valor;
-     * - mesmo valor: 2+ naturais do mesmo número que não entraram numa sequência;
-     * - forma-se primeiro as sequências (a mais longa antes; empate pela ordem naipe/valor), depois os grupos de
-     *   mesmo valor com o que sobrou; o resto é solto.
-     * Dentro de cada bloco, ordem estável por naipe/valor.
+     * Mão com os 3 pretos e coringas separados. Dentro da coluna: 3 pretos e depois coringas, por naipe/valor; o
+     * resto (inclui 3 vermelho, se houver) no critério [sort].
      */
-    fun custom(hand: List<Card>): CustomHand {
-        val blackThrees = hand.filter { it.isBlackThree }.sortedWith(bySuitThenRank)
-        val wilds = hand.filter { it.isWild }.sortedWith(bySuitThenRank)
-        val pool = hand.filter { it.rank in SEQUENCE_RANKS }.sortedWith(bySuitThenRank).toMutableList()
-        val others = hand.filter { !it.isBlackThree && !it.isWild && it.rank !in SEQUENCE_RANKS } // ex.: 3 vermelho
-
-        val sequences = mutableListOf<List<Card>>()
-        while (true) {
-            val best = longestRun(pool) ?: break
-            sequences += best
-            best.forEach { pool.remove(it) }
-        }
-        val groups = pool.groupBy { it.rank }.filterValues { it.size >= 2 }
-            .toSortedMap(compareBy { it.ordinal })
-            .values.map { it.sortedWith(bySuitThenRank) }
-        groups.forEach { group -> group.forEach { pool.remove(it) } }
-        val loose = (pool + others).sortedWith(bySuitThenRank)
-
-        val orderedSequences = sequences.sortedWith(
-            compareBy<List<Card>> { SUIT_ORDER.indexOf(it.first().suit) }.thenBy { it.first().rank.ordinal },
-        )
-        return CustomHand(
-            special = blackThrees + wilds,
-            rest = loose + orderedSequences.flatten() + groups.flatten(),
-        )
-    }
-
-    /** Maior sequência (≥ 2) disponível em [pool], uma cópia por valor; empate: a primeira por naipe/valor. */
-    private fun longestRun(pool: List<Card>): List<Card>? {
-        var best: List<Card>? = null
-        for (suit in SUIT_ORDER) {
-            val byRank = pool.filter { it.suit == suit }.groupBy { it.rank }
-            var run = mutableListOf<Card>()
-            for (rank in SEQUENCE_RANKS) {
-                val card = byRank[rank]?.minByOrNull { it.deck }
-                if (card != null) {
-                    run.add(card)
-                } else {
-                    run = mutableListOf()
-                }
-                if (run.size >= 2 && run.size > (best?.size ?: 1)) best = run.toList()
-            }
-        }
-        return best
+    fun split(hand: List<Card>, sort: HandSort): CustomHand {
+        val special = hand.filter { it.isBlackThree }.sortedWith(bySuitThenRank) + hand.filter { it.isWild }.sortedWith(bySuitThenRank)
+        val rest = hand.filter { !it.isBlackThree && !it.isWild }.sortedWith(comparator(sort))
+        return CustomHand(special, rest)
     }
 
     /**

@@ -143,6 +143,7 @@ class EndScreensTest {
         override fun onCardClick(card: Card) {}
         override fun onClearSelection() {}
         override fun onSortChange(sort: HandSort) {}
+        override fun onSpecialColumnToggle() {}
         override fun onDraw() {}
         override fun onTakeDiscardPile() {}
         override fun onDiscardPileClick() {}

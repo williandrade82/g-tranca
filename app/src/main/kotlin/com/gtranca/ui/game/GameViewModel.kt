@@ -16,6 +16,7 @@ import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.HandOrder
+import com.gtranca.game.HandPrefs
 import com.gtranca.game.HandSort
 import com.gtranca.game.HumanPlayer
 import com.gtranca.game.HumanTurnResolver
@@ -46,6 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
@@ -153,7 +155,7 @@ class GameViewModel(
     /** Onde gravar o jogo, a estatística e as preferências; `null` = não grava (testes). */
     private val persistence: GamePersistence? = null,
     /** Ordem da mão inicial (a preferida do jogador). */
-    initialSort: HandSort = HandSort.CUSTOM,
+    initialHand: HandPrefs = HandPrefs(),
     /** Fila das gravações (fora da thread principal e do laço do jogo; sobrevive ao fim desta tela). */
     private val writes: WriteQueue = WriteQueue.app,
 ) : ViewModel(), TableEvents {
@@ -174,7 +176,8 @@ class GameViewModel(
     private data class Local(
         val snapshot: GameSnapshot,
         val selected: List<Card> = emptyList(),
-        val sort: HandSort = HandSort.CUSTOM,
+        val sort: HandSort = HandSort.BY_SUIT,
+        val separateSpecial: Boolean = true,
         val newCards: Set<Card> = emptySet(),
         /** Trocas de 3 vermelho a encenar, em ordem; a primeira está na tela. */
         val swaps: List<RedThreeNotice> = emptyList(),
@@ -215,7 +218,8 @@ class GameViewModel(
             // partida, volta à tela de pontos dela.
             val base = Local(
                 initial,
-                sort = initialSort,
+                sort = initialHand.sort,
+                separateSpecial = initialHand.separateSpecial,
                 endStep = if (restored != null && initial.stage == Stage.ROUND_OVER) 1 else 0,
             )
             absorb(base, initial, previous = if (restored != null) initial else null)
@@ -370,13 +374,14 @@ class GameViewModel(
         // Os 3 vermelhos ainda não encenados não aparecem na mesa (o atual entra quando a encenação termina).
         val staged = state.swaps.flatMap { it.cards }.toSet()
         val visibleHand = snapshot.view.hand.filter { it !in hidden }
-        val hand = HandOrder.sort(visibleHand, state.sort)
+        val split = if (state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
+        val hand = split?.all ?: HandOrder.sort(visibleHand, state.sort)
         val ownSwapPending = state.swaps.any { isOwn(it, snapshot) }
         val legal = if (ownSwapPending) emptyList() else snapshot.humanLegal
         return GameUiState(
             snapshot = snapshot,
             hand = hand,
-            customHand = if (state.sort == HandSort.CUSTOM) HandOrder.custom(visibleHand) else null,
+            customHand = split,
             selected = state.selected.filter { it in visibleHand },
             highlighted = HumanTurnResolver.highlightedCards(hand, legal, state.selected),
             newCards = state.newCards - hidden,
@@ -412,9 +417,14 @@ class GameViewModel(
 
     override fun onClearSelection() = local.update { it.copy(selected = emptyList()) }
 
-    override fun onSortChange(sort: HandSort) {
-        local.update { it.copy(sort = sort) }
-        persistence?.let { store -> writes.enqueue { store.saveHandSort(sort.name) } }
+    override fun onSortChange(sort: HandSort) = updatePrefs { it.copy(sort = sort) }
+
+    override fun onSpecialColumnToggle() = updatePrefs { it.copy(separateSpecial = !it.separateSpecial) }
+
+    private fun updatePrefs(change: (Local) -> Local) {
+        val updated = local.updateAndGet(change)
+        val id = HandPrefs(updated.sort, updated.separateSpecial).id
+        persistence?.let { store -> writes.enqueue { store.saveHandSort(id) } }
     }
 
     override fun onDraw() = play(PlayIntent.Draw)

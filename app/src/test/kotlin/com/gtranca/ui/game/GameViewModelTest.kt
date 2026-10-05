@@ -102,19 +102,24 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§4_3 comeca na vez do humano com a mao na ordem personalizada e so a compra habilitada`() = runTest(dispatcher) {
+    fun `§4_3 comeca na vez do humano com a mao por naipe, 3 pretos e coringas separados, e so a compra habilitada`() = runTest(dispatcher) {
         val vm = newGame(seed = 3)
         val state = vm.uiState.value
         state.isHumanTurn shouldBe true
         state.awaitingDraw shouldBe true
         state.canDraw shouldBe true
         state.canMeld shouldBe false
-        state.sort shouldBe HandSort.CUSTOM
-        state.hand shouldBe HandOrder.sort(state.snapshot.view.hand, HandSort.CUSTOM)
-        state.customHand shouldBe HandOrder.custom(state.snapshot.view.hand)
+        state.sort shouldBe HandSort.BY_SUIT
+        state.customHand shouldBe HandOrder.split(state.snapshot.view.hand, HandSort.BY_SUIT)
+        state.hand shouldBe state.customHand!!.all
+        // Valor: a coluna separada continua e o resto muda de critério.
         vm.onSortChange(HandSort.BY_RANK)
         advanceUntilIdle()
         vm.uiState.value.sort shouldBe HandSort.BY_RANK
+        vm.uiState.value.customHand shouldBe HandOrder.split(state.snapshot.view.hand, HandSort.BY_RANK)
+        // Desligar a separação: a mão toda segue o critério, sem coluna.
+        vm.onSpecialColumnToggle()
+        advanceUntilIdle()
         vm.uiState.value.customHand.shouldBeNull()
         vm.uiState.value.hand.map { it.rank }.shouldBeSortedWith(compareBy { it.ordinal })
     }

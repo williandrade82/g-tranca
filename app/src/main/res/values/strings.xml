@@ -106,7 +106,7 @@
     <string name="hand_order">Ordem:</string>
     <string name="sort_rank">Ordenar por valor</string>
     <string name="sort_suit">Ordenar por naipe</string>
-    <string name="sort_custom">Ordem personalizada: 3 pretos e coringas à esquerda; soltas, sequências e cartas de mesmo valor</string>
+    <string name="sort_special">Separar 3 pretos e coringas numa coluna à esquerda</string>
     <string name="action_resign">Desistir</string>
     <string name="resign_title">Desistir do jogo?</string>
     <string name="resign_text">O outro lado será declarado vencedor.</string>

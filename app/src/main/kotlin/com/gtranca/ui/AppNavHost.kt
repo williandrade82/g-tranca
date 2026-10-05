@@ -33,7 +33,7 @@ import com.gtranca.data.SavedGame
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.DataGamePersistence
 import com.gtranca.game.GameConfig
-import com.gtranca.game.HandSort
+import com.gtranca.game.HandPrefs
 import com.gtranca.game.toConfig
 import com.gtranca.game.toRestored
 import com.gtranca.ui.game.GameScreen
@@ -98,7 +98,7 @@ private sealed interface GameLoad {
     data object Loading : GameLoad
 
     /** [resumed]: o carregamento foi de um jogo a retomar (então [saved] `null` = o jogo já terminou). */
-    data class Ready(val saved: SavedGame?, val sort: HandSort, val resumed: Boolean) : GameLoad
+    data class Ready(val saved: SavedGame?, val hand: HandPrefs, val resumed: Boolean) : GameLoad
 }
 
 /** Vive enquanto a tela do jogo estiver na pilha (sobrevive a rotação/tema, não à morte do processo). */
@@ -129,9 +129,8 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
         val resumed = route.resume || expected != null
         // Pela fila: lê depois das gravações pendentes.
         val saved = if (resumed) WriteQueue.app.read { data.savedGames.load() } else null
-        val sort = data.settings.settings.map { it.handSortId }.catch { emit(null) }.first()
-            ?.let { id -> HandSort.entries.firstOrNull { it.name == id } } ?: HandSort.CUSTOM
-        value = GameLoad.Ready(saved?.takeIf { expected == null || it.gameId == expected }, sort, resumed)
+        val hand = HandPrefs.parse(data.settings.settings.map { it.handSortId }.catch { emit(null) }.first())
+        value = GameLoad.Ready(saved?.takeIf { expected == null || it.gameId == expected }, hand, resumed)
     }
     when (val ready = load) {
         GameLoad.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -149,10 +148,10 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             restored = saved.toRestored(),
                             gameId = saved.gameId,
                             persistence = persistence,
-                            initialSort = ready.sort,
+                            initialHand = ready.hand,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialSort = ready.sort)
+                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand)
                     }
                 }
                 session.started = true

@@ -13,6 +13,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -137,6 +141,7 @@ interface TableEvents {
     fun onCardClick(card: Card)
     fun onClearSelection()
     fun onSortChange(sort: HandSort)
+    fun onSpecialColumnToggle()
     fun onDraw()
     fun onTakeDiscardPile()
     fun onDiscardPileClick()
@@ -333,7 +338,6 @@ private fun SeatRow(state: GameUiState, seat: Seat) {
             .background(if (thinking) TableGreenDark else GColors.Shadow.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
             .border(if (thinking) 2.dp else 0.dp, if (thinking) TableAccent else Color.Transparent, RoundedCornerShape(14.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp)
-            .anchor(AnimAnchor.SeatHand(seat.index))
             .testTag("seat-${seat.index}"),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -346,6 +350,7 @@ private fun SeatRow(state: GameUiState, seat: Seat) {
             // Mão representada: uma carta virada por carta, compactadas para caber na largura.
             HiddenHand(
                 handSize,
+                seat.index,
                 Modifier.weight(1f).semantics { contentDescription = handText }.testTag("seat-hand-${seat.index}"),
             )
             Text(
@@ -377,12 +382,12 @@ private fun SeatRow(state: GameUiState, seat: Seat) {
 
 /** [count] cartas viradas sobrepostas; o passo encolhe (até 2dp) para nunca passar da largura disponível. */
 @Composable
-private fun HiddenHand(count: Int, modifier: Modifier = Modifier) {
+private fun HiddenHand(count: Int, seat: Int, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.height(CardSize.TINY.height)) {
         if (count == 0) return@BoxWithConstraints
         val size = CardSize.TINY
         val step = if (count == 1) 0.dp else ((maxWidth - size.width) / (count - 1)).coerceIn(2.dp, 9.dp)
-        Box(Modifier.width(size.width + step * (count - 1))) {
+        Box(Modifier.width(size.width + step * (count - 1)).anchor(AnimAnchor.SeatHand(seat))) {
             repeat(count) { i -> CardBack(Modifier.offset(x = step * i), size = size, describe = false) }
         }
     }
@@ -423,7 +428,7 @@ private fun SideArea(
                         // Animação simples ao chegar à mesa (depois do "Baixar 3 vermelho").
                         val visible = remember(card) { MutableTransitionState(false).apply { targetState = true } }
                         AnimatedVisibility(visible, enter = fadeIn() + scaleIn(initialScale = 1.6f)) {
-                            PlayingCard(card, Modifier.padding(start = 2.dp), size = CardSize.SMALL)
+                            PlayingCard(card, Modifier.padding(start = 2.dp).anchor(AnimAnchor.RedThreeCard(side, card)), size = CardSize.SMALL)
                         }
                     }
                 }
@@ -435,6 +440,7 @@ private fun SideArea(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 melds.forEach { meld ->
                     MeldView(
+                        side,
                         meld,
                         onMeldClick,
                         Modifier.anchor(AnimAnchor.Meld(side, meld.id.value)).testTag("meld-$sideTag-${meld.id.value}"),
@@ -449,6 +455,7 @@ private fun SideArea(
 
 @Composable
 private fun MeldView(
+    side: Int,
     tableMeld: TableMeld,
     onClick: ((MeldId) -> Unit)?,
     modifier: Modifier,
@@ -503,7 +510,7 @@ private fun MeldView(
             .semantics(mergeDescendants = true) { contentDescription = description }
             .padding(3.dp),
     ) {
-        OverlappedCards(meld.cards, step = 14.dp)
+        OverlappedCards(meld.cards, step = 14.dp, anchorFor = { AnimAnchor.MeldCard(side, tableMeld.id.value, it) })
         if (label != null) {
             Text(label, color = borderColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
         }
@@ -512,10 +519,17 @@ private fun MeldView(
 
 /** Cartas pequenas sobrepostas, cada uma deslocada [step] para a direita (o índice de cada uma fica visível). */
 @Composable
-private fun OverlappedCards(cards: List<Card>, step: Dp, modifier: Modifier = Modifier, size: CardSize = CardSize.SMALL) {
+private fun OverlappedCards(
+    cards: List<Card>,
+    step: Dp,
+    modifier: Modifier = Modifier,
+    size: CardSize = CardSize.SMALL,
+    anchorFor: ((Card) -> AnimAnchor)? = null,
+) {
     Box(modifier.width(size.width + step * (cards.size - 1).coerceAtLeast(0)).height(size.height)) {
         cards.forEachIndexed { i, card ->
-            PlayingCard(card, Modifier.offset(x = step * i), size = size, describe = false)
+            val position = Modifier.offset(x = step * i)
+            PlayingCard(card, if (anchorFor != null) position.anchor(anchorFor(card)) else position, size = size, describe = false)
         }
     }
 }
@@ -534,13 +548,12 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(6.dp))
                     .clickable(enabled = state.canDraw, onClick = events::onDraw)
                     .semantics(mergeDescendants = true) { contentDescription = stockLabel }
-                    .anchor(AnimAnchor.Stock)
                     .testTag("stock")
                     .padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (view.stockSize > 0) CardBack(size = CardSize.SMALL, describe = false) else Spacer(Modifier.width(CardSize.SMALL.width))
+                if (view.stockSize > 0) CardBack(Modifier.anchor(AnimAnchor.Stock), size = CardSize.SMALL, describe = false) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
                 Column {
                     Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
                     Text(stockCount, color = OnTable, style = MaterialTheme.typography.labelSmall)
@@ -558,13 +571,13 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     val title = stringResource(R.string.morto_title, i + 1)
                     Row(
                         Modifier.width(MortoWidth).semantics(mergeDescendants = true) { contentDescription = "$title, $statusText" }
-                            .anchor(AnimAnchor.Morto(i))
                             .testTag("morto-$i"),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        if (status == MortoStatus.Available) CardBack(size = CardSize.SMALL, describe = false)
-                        Column {
+                        val available = status == MortoStatus.Available
+                        if (available) CardBack(Modifier.anchor(AnimAnchor.Morto(i)), size = CardSize.SMALL, describe = false)
+                        Column(if (available) Modifier else Modifier.anchor(AnimAnchor.Morto(i))) {
                             Text(title, color = OnTable, style = MaterialTheme.typography.labelMedium)
                             Text(statusText, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 2)
                         }
@@ -608,7 +621,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
             if (pile.isEmpty()) {
                 Text(stringResource(R.string.discard_pile_empty), color = OnTable, modifier = Modifier.align(Alignment.CenterStart))
             } else {
-                Box(Modifier.horizontalScroll(scroll)) { OverlappedCards(pile, step = 18.dp) }
+                Box(Modifier.horizontalScroll(scroll)) { OverlappedCards(pile, step = 18.dp, anchorFor = { AnimAnchor.DiscardCard(it) }) }
             }
         }
     }
@@ -708,7 +721,7 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f),
             )
-            SortSelector(state.sort, events::onSortChange)
+            SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
         // 7 cartas de 48dp por linha em 360dp; com 20+ cartas, a área rola.
         val custom = state.customHand
@@ -769,6 +782,7 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
             PlayingCard(
                 card,
                 Modifier
+                    .anchor(AnimAnchor.HandCard(card))
                     .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
                     .semantics {
                         stateDescription = listOf(emphasisText, if (isNew) newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
@@ -782,54 +796,75 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     }
 }
 
-/** "Ordem:" e três botões de ícone alternáveis (Valor, Naipe, Personalizado), o selecionado em destaque. */
+/**
+ * "Ordem:" e três botões de ícone: Valor e Naipe (um dos dois sempre escolhido) e, à parte, a chave de separar os
+ * 3 pretos e coringas numa coluna à esquerda (ligada: o resto segue o critério escolhido; desligada: não interfere).
+ */
 @Composable
-private fun SortSelector(current: HandSort, onChange: (HandSort) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.selectableGroup()) {
+private fun SortSelector(current: HandSort, separate: Boolean, onChange: (HandSort) -> Unit, onToggleSpecial: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(R.string.hand_order), color = OnTable, style = MaterialTheme.typography.labelMedium)
-        listOf(
-            HandSort.BY_RANK to R.string.sort_rank,
-            HandSort.BY_SUIT to R.string.sort_suit,
-            HandSort.CUSTOM to R.string.sort_custom,
-        ).forEach { (sort, label) ->
-            val selected = sort == current
-            val description = stringResource(label)
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .selectable(selected = selected, role = Role.RadioButton, onClick = { onChange(sort) })
-                    .semantics { contentDescription = description }
-                    .testTag("sort-${sort.name.lowercase()}"),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier
-                        .size(36.dp)
-                        .background(if (selected) TableAccent else Color.Transparent, CircleShape)
-                        .border(1.dp, if (selected) TableAccent else OnTable.copy(alpha = 0.6f), CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val color = if (selected) Color.Black else OnTable
+        Row(Modifier.selectableGroup()) {
+            listOf(HandSort.BY_RANK to R.string.sort_rank, HandSort.BY_SUIT to R.string.sort_suit).forEach { (sort, label) ->
+                val description = stringResource(label)
+                SortButton(
+                    selected = sort == current,
+                    modifier = Modifier
+                        .selectable(selected = sort == current, role = Role.RadioButton, onClick = { onChange(sort) })
+                        .semantics { contentDescription = description }
+                        .testTag("sort-${sort.name.lowercase()}"),
+                ) { color ->
                     when (sort) {
                         HandSort.BY_RANK -> Text("A K", color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         HandSort.BY_SUIT -> Text("♠︎♥︎", color = color, fontSize = 13.sp, maxLines = 1)
-                        HandSort.CUSTOM -> TuneIcon(color, Modifier.size(18.dp))
                     }
                 }
             }
         }
+        val description = stringResource(R.string.sort_special)
+        SortButton(
+            selected = separate,
+            modifier = Modifier
+                .toggleable(value = separate, role = Role.Switch, onValueChange = { onToggleSpecial() })
+                .semantics { contentDescription = description }
+                .testTag("sort-custom"),
+        ) { color -> SplitColumnIcon(color, Modifier.size(20.dp)) }
     }
 }
 
-/** Ícone de ajuste (três controles deslizantes), desenhado no código. */
+/** Botão redondo de 48dp de área de toque; [selected] = preenchido em amarelo. */
 @Composable
-private fun TuneIcon(color: Color, modifier: Modifier) {
+private fun SortButton(selected: Boolean, modifier: Modifier, content: @Composable (Color) -> Unit) {
+    Box(modifier.size(48.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .background(if (selected) TableAccent else Color.Transparent, CircleShape)
+                .border(1.dp, if (selected) TableAccent else OnTable.copy(alpha = 0.6f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { content(if (selected) Color.Black else OnTable) }
+    }
+}
+
+/** Ícone de "exceção à esquerda": uma coluna de cartas separada por um traço das demais, desenhado no código. */
+@Composable
+private fun SplitColumnIcon(color: Color, modifier: Modifier) {
     Canvas(modifier) {
         val w = size.width
-        val stroke = w * 0.1f
-        listOf(0.2f to 0.65f, 0.5f to 0.3f, 0.8f to 0.55f).forEach { (y, knob) ->
-            drawLine(color, Offset(0f, w * y), Offset(w, w * y), strokeWidth = stroke, cap = StrokeCap.Round)
-            drawCircle(color, radius = w * 0.12f, center = Offset(w * knob, w * y))
+        val h = size.height
+        val corner = CornerRadius(w * 0.06f)
+        val card = Size(w * 0.22f, h * 0.36f)
+        val stroke = Stroke(width = w * 0.07f)
+        // Coluna separada (preenchida): duas cartas.
+        drawRoundRect(color, Offset(w * 0.02f, h * 0.08f), card, corner)
+        drawRoundRect(color, Offset(w * 0.02f, h * 0.56f), card, corner)
+        // Traço divisor.
+        drawLine(color, Offset(w * 0.36f, h * 0.02f), Offset(w * 0.36f, h * 0.98f), strokeWidth = w * 0.07f, cap = StrokeCap.Round)
+        // Demais cartas (contornos): grade 2 × 2.
+        listOf(0.46f, 0.74f).forEach { x ->
+            listOf(0.08f, 0.56f).forEach { y ->
+                drawRoundRect(color, Offset(w * x, h * y), card, corner, style = stroke)
+            }
         }
     }
 }
@@ -1010,9 +1045,17 @@ private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rec
     }
 }
 
-private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor): Rect? = when (anchor) {
-    is AnimAnchor.Meld -> this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
-    is AnimAnchor.RedThrees -> this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
+/**
+ * Posição de [anchor] na tela. Com a [card] do voo, o ponto é o da própria carta (na mão, no conjunto, no lixo ou
+ * nos 3 vermelhos): o voo sai de onde ela estava e chega onde ela aparece. Sem a posição exata, cai na região.
+ */
+private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect? = when (anchor) {
+    is AnimAnchor.OwnHand -> card?.let { this[AnimAnchor.HandCard(it)] } ?: this[anchor]
+    is AnimAnchor.DiscardPile -> card?.let { this[AnimAnchor.DiscardCard(it)] } ?: this[anchor]
+    is AnimAnchor.Meld ->
+        card?.let { this[AnimAnchor.MeldCard(anchor.side, anchor.meldId, it)] } ?: this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
+    is AnimAnchor.RedThrees ->
+        card?.let { this[AnimAnchor.RedThreeCard(anchor.side, it)] } ?: this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
     else -> this[anchor]
 }
 
@@ -1034,8 +1077,8 @@ private fun FlyingCard(flight: CardFlight, anchors: Map<AnimAnchor, Rect>, origi
         Modifier
             .offset {
                 // Lido a cada quadro: acompanha rolagem e o conjunto novo que aparece no destino.
-                val from = anchors.resolve(flight.from)?.center ?: return@offset IntOffset(-10_000, -10_000)
-                val to = anchors.resolve(flight.to)?.center ?: from
+                val from = anchors.resolve(flight.from, flight.card)?.center ?: return@offset IntOffset(-10_000, -10_000)
+                val to = anchors.resolve(flight.to, flight.card)?.center ?: from
                 val t = progress.value
                 val point = from + (to - from) * t - origin() - half
                 IntOffset(point.x.roundToInt(), point.y.roundToInt())

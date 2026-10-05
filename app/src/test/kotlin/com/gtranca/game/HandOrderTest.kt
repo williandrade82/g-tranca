@@ -1,55 +1,46 @@
 package com.gtranca.game
 
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.Deck
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
-import com.gtranca.engine.model.Deck
 import org.junit.jupiter.api.Test
 import kotlin.random.Random
 
-/** Ordem Personalizada da mão: só apresentação (nenhuma regra é validada aqui). */
+/** Ordem da mão: só apresentação (nenhuma regra é validada aqui). */
 class HandOrderTest {
 
     private fun cards(vararg text: String) = text.map(Card::parse)
 
     @Test
-    fun `blocos na ordem - 3 pretos, coringas, soltas, sequencias e mesmo valor`() {
-        val hand = cards("QD", "3C", "7H", "2S", "8H", "KS", "KC", "3S", "9H", "2D", "5D")
-        val custom = HandOrder.custom(hand)
-        custom.special shouldBe cards("3S", "3C", "2S", "2D")
-        // Soltas (Q♦, 5♦), depois a sequência 7-8-9♥ e o par de reis.
-        custom.rest shouldBe cards("5D", "QD", "7H", "8H", "9H", "KS", "KC")
+    fun `sem separar - a mao toda segue o criterio escolhido`() {
+        val hand = cards("QD", "3C", "7H", "2S", "8H", "KS", "7S")
+        HandOrder.sort(hand, HandSort.BY_SUIT) shouldBe cards("2S", "7S", "KS", "7H", "8H", "3C", "QD")
+        HandOrder.sort(hand, HandSort.BY_RANK) shouldBe cards("2S", "3C", "7S", "7H", "8H", "QD", "KS")
     }
 
     @Test
-    fun `carta que serve a sequencia e ao par vai para a sequencia e o par sobra so se ainda tiver 2`() {
-        // 7♥ serve a 7-8♥ e ao grupo de 7: as sequências se formam primeiro.
-        HandOrder.custom(cards("7H", "8H", "7S")).rest shouldBe cards("7S", "7H", "8H")
-        // Com mais dois 7, o grupo 7♠ 7♣ ainda se forma com o que sobrou.
-        HandOrder.custom(cards("7H", "8H", "7S", "7C")).rest shouldBe cards("7H", "8H", "7S", "7C")
+    fun `separando - 3 pretos e coringas na coluna e o resto no criterio escolhido`() {
+        val hand = cards("QD", "3C", "7H", "2S", "8H", "KS", "3S", "2D", "7S")
+        val bySuit = HandOrder.split(hand, HandSort.BY_SUIT)
+        bySuit.special shouldBe cards("3S", "3C", "2S", "2D")
+        bySuit.rest shouldBe cards("7S", "KS", "7H", "8H", "QD")
+        val byRank = HandOrder.split(hand, HandSort.BY_RANK)
+        byRank.special shouldBe bySuit.special
+        byRank.rest shouldBe cards("7S", "7H", "8H", "QD", "KS")
     }
 
     @Test
-    fun `duas copias da mesma carta - uma na sequencia, a outra fica solta`() {
-        HandOrder.custom(cards("7H", "7H'", "8H")).rest shouldBe cards("7H'", "7H", "8H")
-        // Duas cópias e mais nada: mesmo valor.
-        HandOrder.custom(cards("9D", "9D'")).rest shouldBe cards("9D", "9D'")
-    }
-
-    @Test
-    fun `sequencias mais longas antes - a mais longa leva as cartas disputadas`() {
-        // 4-5-6-7♠ (4 cartas) e 7♠' não forma nada; Á♠ e K♠ formam K-A.
-        HandOrder.custom(cards("4S", "5S", "6S", "7S", "KS", "AS")).rest shouldBe cards("4S", "5S", "6S", "7S", "KS", "AS")
-        // 2 e 3 nunca entram em sequência (§6.2/§6.3 só como apresentação aqui: 4..A).
-        HandOrder.custom(cards("3H", "4H", "5H")).let {
-            it.special shouldBe emptyList()
-            it.rest shouldBe cards("3H", "4H", "5H")
+    fun `3 vermelho nao e especial e fica com o resto`() {
+        HandOrder.split(cards("3H", "3S", "5D"), HandSort.BY_RANK).let {
+            it.special shouldBe cards("3S")
+            it.rest shouldBe cards("3H", "5D")
         }
     }
 
     @Test
     fun `mao vazia`() {
-        HandOrder.custom(emptyList()) shouldBe CustomHand(emptyList(), emptyList())
+        HandOrder.split(emptyList(), HandSort.BY_SUIT) shouldBe CustomHand(emptyList(), emptyList())
         HandOrder.sort(emptyList(), HandSort.BY_RANK) shouldBe emptyList()
     }
 
@@ -59,8 +50,22 @@ class HandOrderTest {
         repeat(300) { seed ->
             val random = Random(seed)
             val hand = deck.shuffled(random).take(random.nextInt(0, 23))
-            HandSort.entries.forEach { HandOrder.sort(hand, it) shouldContainExactlyInAnyOrder hand }
+            HandSort.entries.forEach {
+                HandOrder.sort(hand, it) shouldContainExactlyInAnyOrder hand
+                HandOrder.split(hand, it).all shouldContainExactlyInAnyOrder hand
+            }
         }
+    }
+
+    @Test
+    fun `preferencia grava e le o criterio e a coluna separada, e o antigo CUSTOM vira o padrao`() {
+        HandPrefs(HandSort.BY_RANK, separateSpecial = false).id shouldBe "BY_RANK"
+        HandPrefs(HandSort.BY_SUIT, separateSpecial = true).id shouldBe "BY_SUIT:SPECIAL"
+        HandPrefs.parse("BY_RANK") shouldBe HandPrefs(HandSort.BY_RANK, false)
+        HandPrefs.parse("BY_RANK:SPECIAL") shouldBe HandPrefs(HandSort.BY_RANK, true)
+        HandPrefs.parse("CUSTOM") shouldBe HandPrefs()
+        HandPrefs.parse(null) shouldBe HandPrefs()
+        HandPrefs.parse("lixo:xyz") shouldBe HandPrefs()
     }
 
     @Test

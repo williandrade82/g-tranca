@@ -10,6 +10,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -59,6 +60,7 @@ class TableLayoutTest {
         override fun onCardClick(card: Card) {}
         override fun onClearSelection() {}
         override fun onSortChange(sort: HandSort) {}
+        override fun onSpecialColumnToggle() {}
         override fun onDiscardPileClick() {}
         override fun onRevealConfirmed() {}
         override fun onResign() {}
@@ -91,6 +93,7 @@ class TableLayoutTest {
         otherTable: SideTable,
         phase: Phase = Phase.PLAYING,
         sort: HandSort = HandSort.BY_SUIT,
+        separateSpecial: Boolean = false,
     ): GameUiState {
         val seats = mode.seatCount
         val view = PlayerView(
@@ -113,8 +116,8 @@ class TableLayoutTest {
         )
         return GameUiState(
             snapshot = snapshot,
-            hand = HandOrder.sort(hand, sort),
-            customHand = if (sort == HandSort.CUSTOM) HandOrder.custom(hand) else null,
+            hand = HandOrder.split(hand, sort).takeIf { separateSpecial }?.all ?: HandOrder.sort(hand, sort),
+            customHand = if (separateSpecial) HandOrder.split(hand, sort) else null,
             selected = emptyList(),
             highlighted = emptySet(),
             newCards = emptySet(),
@@ -211,7 +214,7 @@ class TableLayoutTest {
         val c = { text: String -> Card.parse(text) }
         // 5 especiais (3 pretos e coringas) e 9 outras cartas.
         val hand = listOf("3S", "3C", "2H", "2D", "2S'", "7H", "8H", "9H", "KS", "KC", "4D", "6C", "JD", "AS").map(c)
-        show(state(GameMode.INDIVIDUAL, hand, emptyList(), SideTable(), SideTable(), sort = HandSort.CUSTOM))
+        show(state(GameMode.INDIVIDUAL, hand, emptyList(), SideTable(), SideTable(), separateSpecial = true))
         rule.waitForIdle()
         val special = rule.onNodeWithTag("hand-special", useUnmergedTree = true).getBoundsInRoot()
         // Mais especiais do que linhas: a coluna ganha mais uma carta de largura (2 × 49dp).
@@ -223,8 +226,8 @@ class TableLayoutTest {
             check(left("hand-card-$it") >= special.right) { "$it dentro da coluna" }
             check(right("hand-card-$it") <= 360.dp + 0.5.dp) { "$it fora da tela" }
         }
-        // Botões de ordem com nome acessível; o Personalizado está selecionado.
-        rule.onNodeWithTag("sort-custom").assertIsSelected()
+        // Botões de ordem com nome acessível; a separação está ligada.
+        rule.onNodeWithTag("sort-custom").assertIsOn()
         rule.onNodeWithTag("sort-by_rank").assertIsNotSelected()
     }
 }
