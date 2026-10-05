@@ -29,7 +29,10 @@ import androidx.compose.ui.unit.dp
 import com.gtranca.R
 import com.gtranca.ai.PublicEvent
 import com.gtranca.engine.Action
+import com.gtranca.ui.cards.CardSize
+import com.gtranca.ui.cards.PlayingCard
 import com.gtranca.ui.cards.shortLabel
+import androidx.compose.ui.platform.testTag
 import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GDialog
 import com.gtranca.ui.theme.Spacing
@@ -150,5 +153,41 @@ fun LegendDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+/** Detalhe da última jogada de um assento: cada ação com o símbolo, a frase completa e as cartas desenhadas. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SeatDetailDialog(title: String, events: List<PublicEvent>, onDismiss: () -> Unit) {
+    GDialog(
+        modifier = Modifier.testTag("seat-detail-dialog"),
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                events.forEach { event ->
+                    val cards = when (val action = event.action) {
+                        is Action.Discard -> listOf(action.card)
+                        is Action.CreateMeld -> action.cards
+                        is Action.AddToMeld -> action.cards
+                        is Action.TakeDiscardPile -> event.takenFromDiscard
+                        else -> emptyList()
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                        ActionIcon(event.symbol().kind, MaterialTheme.colorScheme.onSurface, Modifier.padding(top = 2.dp).size(22.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            Text(eventText(event).replaceFirstChar { it.uppercase() })
+                            if (cards.isNotEmpty()) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onDismiss, Modifier.testTag("seat-detail-close")) { Text(stringResource(R.string.close)) } },
     )
 }

@@ -74,6 +74,7 @@
     <string name="seat_thinking">pensando</string>
     <string name="seat_left_short">Adv. esquerda</string>
     <string name="seat_right_short">Adv. direita</string>
+    <string name="seat_detail_hint">Ver a última jogada</string>
     <string name="legend_button">Legenda dos símbolos</string>
     <string name="legend_title">Símbolos das jogadas</string>
     <string name="legend_draw">Comprou do monte</string>
@@ -126,10 +127,10 @@
     <string name="close">Fechar</string>
 
     <!-- Escolha de plano / recusa -->
-    <string name="plan_choice_title">Como levar o topo do lixo à mesa?</string>
-    <string name="plan_new_meld">Novo conjunto: %1$s</string>
-    <string name="plan_add_to_meld">Acrescentar %1$s ao seu jogo %2$d (%3$s)</string>
-    <string name="plan_add_to_team_meld">Acrescentar %1$s ao jogo %2$d da sua dupla (%3$s)</string>
+    <string name="plan_choice_title">Como usar o descarte?</string>
+    <string name="plan_dest_new">Novo jogo</string>
+    <string name="plan_dest_add">Ao seu jogo %1$d (%2$s)</string>
+    <string name="plan_dest_add_team">Ao jogo %1$d da sua dupla (%2$s)</string>
     <string name="plan_choice_hint">Ou selecione as cartas da mão antes de tocar no lixo.</string>
     <string name="decline_title">Recusar a compra?</string>
     <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem vencedor.</string>

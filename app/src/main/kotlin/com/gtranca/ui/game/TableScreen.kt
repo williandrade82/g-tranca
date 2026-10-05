@@ -2,7 +2,10 @@
 
 package com.gtranca.ui.game
 
+import androidx.compose.ui.draw.clip
+
 import androidx.annotation.StringRes
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.alpha
 
 import androidx.compose.ui.draw.shadow
@@ -190,6 +193,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
     }
     var showDiscardPile by rememberSaveable { mutableStateOf(false) }
     var showLegend by rememberSaveable { mutableStateOf(false) }
+    var detailSeat by rememberSaveable { mutableStateOf<Int?>(null) }
     // Posições dos elementos da mesa, para as animações (cartas voando entre eles).
     val anchors = remember { mutableStateMapOf<AnimAnchor, Rect>() }
     val tableScroll = rememberScrollState()
@@ -224,7 +228,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     Header(state, events) { showLegend = true }
                     state.banner?.let { SwapBanner(it, view.mode, snapshot.viewerSeat) }
                     // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) }
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
                     Column(
                         Modifier.weight(1f).fillMaxWidth().verticalScroll(tableScroll).padding(horizontal = 8.dp).testTag("table-scroll"),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -261,6 +265,15 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
     }
 
     if (showLegend) LegendDialog { showLegend = false }
+    detailSeat?.let { index ->
+        val events = snapshot.turnEvents.getOrNull(index).orEmpty()
+        if (events.isEmpty()) {
+            detailSeat = null
+        } else {
+            val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
+            SeatDetailDialog(stringResource(role.nameRes()), events) { detailSeat = null }
+        }
+    }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed, events::onResign) }
@@ -338,12 +351,12 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
  * viradas (nunca as cartas, nem as do parceiro), a quantidade, se está pensando e a última jogada em símbolos.
  */
 @Composable
-private fun SeatsPanel(state: GameUiState) {
+private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
     val snapshot = state.snapshot
     val mode = snapshot.view.mode
     val others = mode.seatsInPlayOrder(snapshot.viewerSeat).drop(1)
     if (mode != GameMode.DUPLAS) {
-        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth()) }
+        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth(), onSeatClick) }
         return
     }
     val byRole = others.associateBy { SeatRole.of(mode, it, snapshot.viewerSeat) }
@@ -353,14 +366,14 @@ private fun SeatsPanel(state: GameUiState) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (maxWidth >= 340.dp) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(left, partner, right).forEach { SeatPill(state, it, Modifier.weight(1f)) }
+                listOf(left, partner, right).forEach { SeatPill(state, it, Modifier.weight(1f), onSeatClick) }
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                SeatPill(state, partner, Modifier.fillMaxWidth())
+                SeatPill(state, partner, Modifier.fillMaxWidth(), onSeatClick)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SeatPill(state, left, Modifier.weight(1f))
-                    SeatPill(state, right, Modifier.weight(1f))
+                    SeatPill(state, left, Modifier.weight(1f), onSeatClick)
+                    SeatPill(state, right, Modifier.weight(1f), onSeatClick)
                 }
             }
         }
@@ -368,7 +381,7 @@ private fun SeatsPanel(state: GameUiState) {
 }
 
 @Composable
-private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier) {
+private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatClick: (Int) -> Unit) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val role = SeatRole.of(view.mode, seat, snapshot.viewerSeat)
@@ -379,9 +392,12 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier) {
     val thinkingText = stringResource(R.string.seat_thinking)
     val events = snapshot.turnEvents[seat.index]
     val shape = RoundedCornerShape(14.dp)
+    val detailHint = stringResource(R.string.seat_detail_hint)
     Column(
         modifier
             .heightIn(min = 72.dp)
+            .clip(shape)
+            .clickable(enabled = events.isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(if (thinking) TableGreenDark else GColors.Shadow.copy(alpha = 0.18f), shape)
             .border(if (thinking) 2.dp else 0.dp, if (thinking) TableAccent else Color.Transparent, shape)
             .padding(horizontal = 8.dp, vertical = 6.dp)
@@ -1003,27 +1019,43 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                 Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).testTag("plan-choice"),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                options.forEach { option ->
-                    val text = when (val plan = option.plan) {
-                        is DiscardPlan.NewMeld ->
-                            stringResource(R.string.plan_new_meld, (listOfNotNull(top) + plan.handCards).joinToString(" + ") { it.shortLabel })
+                // Planos que só diferem pelo coringa usado aparecem uma vez (com o primeiro coringa).
+                options.distinctBy { planKey(it) }.forEach { option ->
+                    val plan = option.plan
+                    val handCards = when (plan) {
+                        is DiscardPlan.NewMeld -> plan.handCards
+                        is DiscardPlan.AddToMeld -> plan.handCards
+                    }
+                    val destination = when (plan) {
+                        is DiscardPlan.NewMeld -> stringResource(R.string.plan_dest_new)
                         is DiscardPlan.AddToMeld -> {
                             // §6.4 pode haver grupos repetidos: o número do jogo os distingue.
                             val melds = view.tables[view.side.index].melds
                             val index = melds.indexOfFirst { it.id == plan.meldId }
                             stringResource(
-                                if (view.mode == GameMode.DUPLAS) R.string.plan_add_to_team_meld else R.string.plan_add_to_meld,
-                                (listOfNotNull(top) + plan.handCards).joinToString(" + ") { it.shortLabel },
+                                if (view.mode == GameMode.DUPLAS) R.string.plan_dest_add_team else R.string.plan_dest_add,
                                 index + 1,
                                 melds.getOrNull(index)?.meld?.cards?.labels().orEmpty(),
                             )
                         }
                     }
+                    val used = listOfNotNull(top) + handCards
+                    val description = used.labels() + ": " + destination
                     GButton(
                         onClick = { events.onPlanChosen(option) },
                         kind = GButtonKind.Secondary,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text(text) }
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description },
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                used.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                            }
+                            Text(destination, textAlign = TextAlign.Center)
+                        }
+                    }
                 }
                 Text(stringResource(R.string.plan_choice_hint), style = MaterialTheme.typography.bodySmall)
             }
@@ -1163,3 +1195,12 @@ private fun FlyingCard(
     }
 }
 
+
+/** Chave de um plano para o diálogo: destino e cartas da mão, com todos os coringas contados como um só tipo. */
+private fun planKey(action: Action.TakeDiscardPile): Any {
+    val (destination, cards) = when (val plan = action.plan) {
+        is DiscardPlan.NewMeld -> "new" to plan.handCards
+        is DiscardPlan.AddToMeld -> plan.meldId to plan.handCards
+    }
+    return Triple(destination, cards.count { it.isWild }, cards.filterNot { it.isWild }.map { it.toString() }.sorted())
+}
