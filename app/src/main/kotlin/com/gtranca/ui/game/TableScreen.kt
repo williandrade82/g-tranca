@@ -2,6 +2,10 @@
 
 package com.gtranca.ui.game
 
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import com.gtranca.ui.theme.Elevation
+
 import com.gtranca.ui.theme.GColors
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
@@ -195,8 +199,10 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
     }
 
     Scaffold(
-        modifier = modifier.testTag("table-screen"),
-        containerColor = TableGreen,
+        modifier = modifier
+            .background(Brush.verticalGradient(listOf(GColors.Table, GColors.TableDark)))
+            .testTag("table-screen"),
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors) {
@@ -324,8 +330,9 @@ private fun SeatRow(state: GameUiState, seat: Seat) {
     Column(
         Modifier
             .fillMaxWidth()
-            .background(if (thinking) TableGreenDark else Color.Transparent, RoundedCornerShape(6.dp))
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .background(if (thinking) TableGreenDark else GColors.Shadow.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+            .border(if (thinking) 2.dp else 0.dp, if (thinking) TableAccent else Color.Transparent, RoundedCornerShape(14.dp))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
             .anchor(AnimAnchor.SeatHand(seat.index))
             .testTag("seat-${seat.index}"),
     ) {
@@ -620,7 +627,12 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
         else -> stringResource(R.string.turn_waiting)
     }
     Column(
-        Modifier.fillMaxWidth().background(TableGreenDark).padding(horizontal = 8.dp, vertical = 4.dp).testTag("action-bar"),
+        Modifier
+            .fillMaxWidth()
+            .shadow(Elevation.dialog, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .background(TableGreenDark, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .testTag("action-bar"),
     ) {
         Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -636,6 +648,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             OutlinedButton(
                 onClick = events::onClearSelection,
                 enabled = clearEnabled,
+                shape = MaterialTheme.shapes.large,
                 border = BorderStroke(1.dp, if (clearEnabled) OnTable else GColors.OnTableDisabled),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = OnTable, disabledContentColor = GColors.OnTableDisabled),
                 modifier = Modifier.heightIn(min = 48.dp).testTag("action-clear"),
@@ -659,6 +672,8 @@ private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, ta
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier.heightIn(min = 48.dp).testTag(tag),
+        shape = MaterialTheme.shapes.large,
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = Elevation.button, disabledElevation = 0.dp),
         border = if (enabled) null else BorderStroke(1.dp, GColors.OnTableDisabled),
         colors = ButtonDefaults.buttonColors(
             containerColor = TableAccent,
@@ -936,8 +951,9 @@ private fun SwapBanner(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat)
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 2.dp)
-            .background(TableGreenDark, RoundedCornerShape(8.dp))
-            .border(1.dp, TableAccent, RoundedCornerShape(8.dp))
+            .shadow(Elevation.button, RoundedCornerShape(16.dp))
+            .background(TableGreenDark, RoundedCornerShape(16.dp))
+            .border(2.dp, TableAccent, RoundedCornerShape(16.dp))
             .padding(6.dp)
             .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
             .testTag("red-three-banner"),
