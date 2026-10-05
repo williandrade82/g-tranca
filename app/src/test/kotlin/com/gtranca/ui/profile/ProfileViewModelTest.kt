@@ -41,6 +41,7 @@ class ProfileViewModelTest {
         override suspend fun setLastMode(mode: GameMode) = state.update { it.copy(lastMode = mode) }
         override suspend fun setHandSort(id: String) = state.update { it.copy(handSortId = id) }
         override suspend fun setProfile(id: String) = state.update { it.copy(profileId = id) }
+        override suspend fun setSoundOn(on: Boolean) = state.update { it.copy(soundOn = on) }
     }
 
     @Test
@@ -112,5 +113,19 @@ class ProfileViewModelTest {
         advanceUntilIdle()
         vm.uiState.value.profile.name shouldBe "Novo"
         vm.uiState.value.loaded shouldBe true
+    }
+
+    @Test
+    fun `chave de som le o valor gravado e grava na hora`() = runTest(dispatcher) {
+        val settings = FakeSettings(Settings(soundOn = false))
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.uiState.value.soundOn shouldBe false
+        vm.onSoundToggle(true)
+        advanceUntilIdle()
+        vm.uiState.value.soundOn shouldBe true
+        settings.state.value.soundOn shouldBe true
+        // Padrão: ligado.
+        ProfileViewModel(FakeSettings(), WriteQueue(CoroutineScope(dispatcher))).also { advanceUntilIdle() }.uiState.value.soundOn shouldBe true
     }
 }

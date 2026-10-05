@@ -48,7 +48,7 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
     val won = !snapshot.resigned && snapshot.winner == view.side
     val outcome = if (won) EndOutcome.WIN else EndOutcome.LOSE
     GBackground(Modifier.fillMaxSize().testTag("game-over")) {
-        EndCelebration(outcome, brief = false, enabled = animate)
+        EndCelebration(outcome, brief = false, enabled = animate, playSound = snapshot.resigned)
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),

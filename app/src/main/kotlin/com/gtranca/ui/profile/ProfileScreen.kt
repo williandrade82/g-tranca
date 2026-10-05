@@ -1,5 +1,8 @@
 package com.gtranca.ui.profile
 
+import com.gtranca.ui.sound.LocalSound
+import com.gtranca.ui.sound.SoundEffect
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -175,6 +178,28 @@ fun ProfileScreen(viewModel: ProfileViewModel, onDone: () -> Unit) {
                         Text(beardLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         Switch(checked = profile.look.beard, onCheckedChange = null)
                     }
+                }
+            }
+            GPanel(Modifier.fillMaxWidth()) {
+                val sound = LocalSound.current
+                val soundLabel = stringResource(R.string.profile_sound)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .toggleable(state.soundOn, role = Role.Switch) { on ->
+                            viewModel.onSoundToggle(on)
+                            // Pré-escuta ao ligar (a chave do app ainda pode estar desligada neste instante).
+                            if (on) sound.play(SoundEffect.CHIME, force = true)
+                        }
+                        .testTag("profile-sound"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(soundLabel, style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.profile_sound_hint), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = state.soundOn, onCheckedChange = null)
                 }
             }
             GButton(

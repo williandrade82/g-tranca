@@ -1,5 +1,8 @@
 package com.gtranca.ui.game
 
+import com.gtranca.ui.sound.LocalSound
+import com.gtranca.ui.sound.SoundEffect
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -91,8 +94,11 @@ private val ConfettiColors = listOf(GColors.Yellow, GColors.Green, GColors.Red, 
  * não desenha nada.
  */
 @Composable
-fun EndCelebration(outcome: EndOutcome, brief: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
+fun EndCelebration(outcome: EndOutcome, brief: Boolean, enabled: Boolean, modifier: Modifier = Modifier, playSound: Boolean = true) {
     if (!enabled) return
+    val sound = LocalSound.current
+    // O som de vitória ou derrota toca uma vez, junto com a animação.
+    LaunchedEffect(outcome) { if (playSound) sound.play(if (outcome == EndOutcome.WIN) SoundEffect.WIN else SoundEffect.LOSE) }
     val win = outcome == EndOutcome.WIN
     val particles = remember(outcome) { EndParticles.create(if (win) 70 else 14, seed = if (win) 11L else 23L) }
     val progress = remember { Animatable(0f) }

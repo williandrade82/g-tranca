@@ -91,6 +91,8 @@
     <string name="profile_hair">Cabelo</string>
     <string name="profile_beard">Barba</string>
     <string name="profile_save">Salvar</string>
+    <string name="profile_sound">Sons do jogo</string>
+    <string name="profile_sound_hint">Cartas, canastra, vitória e derrota</string>
     <string name="hair_short">Curto</string>
     <string name="hair_side_sweep">Topete</string>
     <string name="hair_curly_short">Cacheado curto</string>

@@ -19,7 +19,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Estado da tela de perfil: o rascunho em edição e se o perfil gravado já foi lido. */
-data class ProfileUiState(val profile: PlayerProfile = PlayerProfile(), val loaded: Boolean = false)
+data class ProfileUiState(
+    val profile: PlayerProfile = PlayerProfile(),
+    val loaded: Boolean = false,
+    /** Chave de som (grava na hora, sem o botão Salvar). */
+    val soundOn: Boolean = true,
+)
 
 /** Perfil do jogador (§14.1): edita um rascunho e grava ao salvar. Preferências ilegíveis: perfil padrão. */
 class ProfileViewModel(
@@ -35,8 +40,11 @@ class ProfileViewModel(
     init {
         settings?.let { repo ->
             viewModelScope.launch {
-                val saved = PlayerProfile.decode(repo.settings.map { it.profileId }.catch { emit(null) }.first())
-                _uiState.update { if (touched) it.copy(loaded = true) else ProfileUiState(saved, loaded = true) }
+                val stored = repo.settings.catch { emit(com.gtranca.data.Settings()) }.first()
+                val saved = PlayerProfile.decode(stored.profileId)
+                _uiState.update {
+                    if (touched) it.copy(loaded = true, soundOn = stored.soundOn) else ProfileUiState(saved, loaded = true, soundOn = stored.soundOn)
+                }
             }
         }
     }
@@ -44,6 +52,12 @@ class ProfileViewModel(
     private fun edit(change: (PlayerProfile) -> PlayerProfile) {
         touched = true
         _uiState.update { it.copy(profile = change(it.profile)) }
+    }
+
+    /** Liga ou desliga os sons do jogo; grava na hora pela fila durável. */
+    fun onSoundToggle(on: Boolean) {
+        _uiState.update { it.copy(soundOn = on) }
+        settings?.let { repo -> writes?.enqueue { repo.setSoundOn(on) } }
     }
 
     fun onName(raw: String) = edit { it.copy(name = PlayerProfile.sanitizeName(raw)) }

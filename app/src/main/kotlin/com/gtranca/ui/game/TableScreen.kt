@@ -2,6 +2,10 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.sound.LocalSound
+import com.gtranca.ui.sound.SoundEffect
+import com.gtranca.ui.sound.SoundMap
+
 import com.gtranca.ui.theme.GMessage
 import com.gtranca.ui.theme.MessageIllustration
 import com.gtranca.ui.theme.MessageTone
@@ -201,6 +205,16 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
     }
     var showDiscardPile by rememberSaveable { mutableStateOf(false) }
     var showLegend by rememberSaveable { mutableStateOf(false) }
+    val sound = LocalSound.current
+    // Canastra fechada: toca uma vez por destaque novo.
+    var lastFlash by remember { mutableStateOf(0L) }
+    LaunchedEffect(state.canastaFlashes) {
+        val newest = state.canastaFlashes.maxOfOrNull { it.id } ?: return@LaunchedEffect
+        if (newest > lastFlash) {
+            lastFlash = newest
+            sound.play(SoundEffect.CANASTA)
+        }
+    }
     var detailSeat by rememberSaveable { mutableStateOf<Int?>(null) }
     // Posições dos elementos da mesa, para as animações (cartas voando entre eles).
     val anchors = remember { mutableStateMapOf<AnimAnchor, Rect>() }
@@ -267,7 +281,11 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     StatusAndActions(state, events)
                     HandArea(state, events)
                 }
-                FlightsLayer(state.flights, anchors, state.animationMillis) { arrived[it] = true }
+                FlightsLayer(state.flights, anchors, state.animationMillis) { id ->
+                    arrived[id] = true
+                    // O som acompanha a chegada da carta ao destino.
+                    state.flights.firstOrNull { it.id == id }?.let(SoundMap::forFlight)?.let(sound::play)
+                }
             }
         }
     }

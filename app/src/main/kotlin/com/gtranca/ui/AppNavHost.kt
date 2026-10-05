@@ -1,5 +1,7 @@
 package com.gtranca.ui
 
+import com.gtranca.ui.sound.LocalSound
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,6 +81,11 @@ fun AppNavHost() {
     val navController = rememberNavController()
     val context = LocalContext.current
     val data = remember { appData(context) }
+    // Chave de som (Perfil): vale para o app todo.
+    val sound = LocalSound.current
+    LaunchedEffect(data) {
+        data.settings.settings.map { it.soundOn }.catch { emit(true) }.collect { sound.enabled = it }
+    }
     NavHost(navController, startDestination = HomeRoute) {
         composable<HomeRoute> {
             HomeScreen(
