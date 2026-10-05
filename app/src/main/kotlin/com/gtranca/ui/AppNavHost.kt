@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.gtranca.ui.persona.AvatarGalleryScreen
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -49,6 +50,9 @@ import kotlinx.serialization.Serializable
 object HomeRoute
 
 @Serializable
+object GalleryRoute
+
+@Serializable
 object StatsRoute
 
 /**
@@ -79,9 +83,11 @@ fun AppNavHost() {
                 onStart = { config -> navController.navigateFromHome(GameRoute.of(config)) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
+                onGallery = { navController.navigateFromHome(GalleryRoute) },
             )
         }
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
+        composable<GalleryRoute> { AvatarGalleryScreen(onBack = { navController.popBackStack() }) }
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats) }) { navController.popBackStack() }
         }

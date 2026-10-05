@@ -316,6 +316,14 @@ Definidos pelo jogador **antes do início do jogo**; não mudam durante o jogo.
 | Modo | individual / duplas | o último modo escolhido (individual na primeira vez) |
 | Dificuldade dos jogadores virtuais | fácil / médio / difícil | médio |
 
+### **14.1. Perfis (apresentação; não alteram nenhuma regra)**
+
+- O **jogador** define o próprio **perfil**: nome (até 16 caracteres; vazio = "Você") e avatar. O perfil vale para todos os jogos e é lembrado entre eles.
+- Os **adversários e o parceiro** (jogadores virtuais) **não são configurados pelo jogador**: no **início de cada jogo** o sistema sorteia o perfil de cada um (a partir da semente do jogo, de modo que "Continuar" mostra as mesmas pessoas).
+- O perfil de cada jogador virtual tem **nome e sobrenome**, **gênero** (masculino ou feminino), **profissão** e um **avatar compatível com o gênero** (nome, cabelo e profissão no feminino ou masculino). Nomes e profissões **não se repetem** entre os jogadores da mesma mesa, e nenhum jogador virtual usa o nome do jogador.
+- O **avatar** é uma persona de uma profissão: **cabeça, ombros, parte do peito e dos braços** (sem o resto do corpo), com aparência variável (pele, cabelo e uniforme).
+- O avatar e o nome aparecem de forma discreta na mesa, na tela de pontos e na declaração do vencedor.
+
 Todas as demais regras deste documento são **fixas**. No código, elas ficam reunidas no `RuleSet` padrão (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de canastra = 6, máximo de coringas por conjunto = 1, valores de pontuação), para facilitar ajustes futuros, mas não são expostas ao jogador.
 
 ---

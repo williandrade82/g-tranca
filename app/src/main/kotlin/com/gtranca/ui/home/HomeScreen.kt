@@ -70,6 +70,7 @@ fun HomeScreen(
     onStart: (GameConfig) -> Unit,
     onContinue: () -> Unit = {},
     onStats: () -> Unit = {},
+    onGallery: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Ao voltar para esta tela, o jogo salvo pode ter mudado (jogado, terminado).
@@ -171,6 +172,9 @@ fun HomeScreen(
                 modifier = newGameModifier,
             ) {
                 Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
+            }
+            GButton(onGallery, Modifier.heightIn(min = 48.dp).testTag("gallery"), kind = GButtonKind.Text) {
+                Text(stringResource(R.string.home_gallery))
             }
             GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
                 StatsIcon(GColors.OnTable)
