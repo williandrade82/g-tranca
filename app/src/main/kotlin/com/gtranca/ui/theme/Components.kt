@@ -1,6 +1,13 @@
 package com.gtranca.ui.theme
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -145,4 +152,19 @@ fun GDialog(
         shape = MaterialTheme.shapes.extraLarge,
         tonalElevation = Elevation.dialog,
     )
+}
+
+/** Ícone de estatísticas (três barras), desenhado no código. */
+@Composable
+fun StatsIcon(color: Color, modifier: Modifier = Modifier, size: Dp = 20.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val bar = w * 0.22f
+        val radius = CornerRadius(bar * 0.3f)
+        listOf(0.45f, 0.75f, 1f).forEachIndexed { i, fraction ->
+            val x = w * (0.06f + i * 0.32f)
+            drawRoundRect(color, Offset(x, h * (1f - fraction)), Size(bar, h * fraction), radius)
+        }
+    }
 }

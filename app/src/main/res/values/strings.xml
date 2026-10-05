@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="pt">
-    <string name="app_name">G-Tranca</string>
+    <string name="app_name">Tranca Família</string>
 
     <!-- Início -->
-    <string name="home_title">Tranca</string>
+    <string name="home_title">Tranca Família</string>
     <string name="home_subtitle">Você contra a máquina, sozinho ou em dupla</string>
     <string name="home_mode">Modo</string>
     <string name="mode_individual">Individual</string>

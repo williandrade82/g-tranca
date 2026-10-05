@@ -18,6 +18,9 @@ import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.Spacing
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import com.gtranca.ui.theme.StatsIcon
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -170,6 +173,8 @@ fun HomeScreen(
                 Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
             }
             GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
+                StatsIcon(GColors.OnTable)
+                Spacer(Modifier.width(Spacing.sm))
                 Text(stringResource(R.string.home_stats))
             }
         }
