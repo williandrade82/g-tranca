@@ -2,6 +2,7 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.GColors
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
@@ -35,7 +36,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import com.gtranca.ui.theme.GDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -149,7 +150,6 @@ interface TableEvents {
 }
 
 /** Texto claro para controles desabilitados sobre o verde (contraste ≥ 4,5:1 com o verde escuro e o da mesa). */
-private val DisabledOnTable = Color(0xFFB4C3B4)
 
 /** Largura de uma carta da mão mais o espaço entre cartas. */
 private val HandCardSlot = CardSize.MEDIUM.width + 1.dp
@@ -242,7 +242,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed, events::onResign) }
     if (state.confirmDecline) {
-        AlertDialog(
+        GDialog(
             onDismissRequest = events::onDismissDecline,
             title = { Text(stringResource(R.string.decline_title)) },
             text = { Text(stringResource(R.string.decline_text)) },
@@ -471,14 +471,14 @@ private fun MeldView(
     }
     val borderColor = when {
         canasta && meld.isClean -> TableAccent
-        canasta -> Color(0xFFB0BEC5)
+        canasta -> GColors.CanastraClean
         onClick != null -> OnTable.copy(alpha = 0.6f) // tocável para acrescentar
         else -> Color.Transparent
     }
     val descriptions = meld.cards.map { cardDescription(it) }
     val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
         (label?.let { ". $it" } ?: "")
-    val flashColor = if (flash?.clean == true) TableAccent else CanastaDirtyFlash
+    val flashColor = if (flash?.clean == true) TableAccent else GColors.CanastraDirtyFlash
     Column(
         modifier
             .graphicsLayer {
@@ -634,8 +634,8 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             OutlinedButton(
                 onClick = events::onClearSelection,
                 enabled = clearEnabled,
-                border = BorderStroke(1.dp, if (clearEnabled) OnTable else DisabledOnTable),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnTable, disabledContentColor = DisabledOnTable),
+                border = BorderStroke(1.dp, if (clearEnabled) OnTable else GColors.OnTableDisabled),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnTable, disabledContentColor = GColors.OnTableDisabled),
                 modifier = Modifier.heightIn(min = 48.dp).testTag("action-clear"),
             ) { Text(stringResource(R.string.action_clear)) }
         }
@@ -657,12 +657,12 @@ private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, ta
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier.heightIn(min = 48.dp).testTag(tag),
-        border = if (enabled) null else BorderStroke(1.dp, DisabledOnTable),
+        border = if (enabled) null else BorderStroke(1.dp, GColors.OnTableDisabled),
         colors = ButtonDefaults.buttonColors(
             containerColor = TableAccent,
             contentColor = Color.Black,
             disabledContainerColor = Color.Transparent,
-            disabledContentColor = DisabledOnTable,
+            disabledContentColor = GColors.OnTableDisabled,
         ),
     ) { Text(text) }
 }
@@ -836,7 +836,7 @@ private fun FlagIcon(modifier: Modifier) {
  */
 @Composable
 private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit, onResign: () -> Unit) {
-    AlertDialog(
+    GDialog(
         modifier = Modifier.testTag("red-three-dialog"),
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
@@ -865,7 +865,7 @@ private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit, onResi
 
 @Composable
 private fun DiscardPileDialog(pile: List<Card>, onDismiss: () -> Unit) {
-    AlertDialog(
+    GDialog(
         onDismissRequest = onDismiss,
         title = { Text(countText(R.plurals.discard_pile_dialog_title, R.string.discard_pile_empty, pile.size)) },
         text = {
@@ -884,7 +884,7 @@ private fun DiscardPileDialog(pile: List<Card>, onDismiss: () -> Unit) {
 @Composable
 private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: PlayerView, events: TableEvents) {
     val top = view.discardTop
-    AlertDialog(
+    GDialog(
         onDismissRequest = events::onDismissPlanChoice,
         title = { Text(stringResource(R.string.plan_choice_title)) },
         text = {
@@ -956,7 +956,6 @@ val CanastaPulseKey = SemanticsPropertyKey<Float>("CanastaPulse")
 var SemanticsPropertyReceiver.canastaPulse by CanastaPulseKey
 
 /** Cor do destaque de canastra suja fechada (§7). */
-private val CanastaDirtyFlash = Color(0xFF90CAF9)
 
 /** Posições dos elementos da mesa (coordenadas da raiz), registradas por [anchor]; `null` fora da mesa. */
 private val LocalAnchors = staticCompositionLocalOf<MutableMap<AnimAnchor, Rect>?> { null }

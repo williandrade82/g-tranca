@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import com.gtranca.ui.theme.GDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -121,7 +121,7 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
         }
     }
     if (confirmReset) {
-        AlertDialog(
+        GDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text(stringResource(R.string.stats_reset_title)) },
             text = { Text(stringResource(R.string.stats_reset_text)) },

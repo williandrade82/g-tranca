@@ -35,7 +35,7 @@ import com.gtranca.ui.game.plainPoints
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.AlertDialog
+import com.gtranca.ui.theme.GDialog
 import com.gtranca.ai.Difficulty
 import com.gtranca.game.GameConfig
 import com.gtranca.ui.cards.CardBack
@@ -148,7 +148,7 @@ fun HomeScreen(
     }
 
     if (state.confirmNewGame) {
-        AlertDialog(
+        GDialog(
             modifier = Modifier.testTag("new-game-dialog"),
             onDismissRequest = viewModel::onDismissNewGame,
             title = { Text(stringResource(R.string.new_game_confirm_title)) },

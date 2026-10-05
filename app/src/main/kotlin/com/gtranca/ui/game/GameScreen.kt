@@ -1,7 +1,7 @@
 package com.gtranca.ui.game
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.material3.AlertDialog
+import com.gtranca.ui.theme.GDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,7 +50,7 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     if (state.confirmResign) ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign)
 
     if (confirmExit) {
-        AlertDialog(
+        GDialog(
             onDismissRequest = { confirmExit = false },
             title = { Text(stringResource(R.string.exit_title)) },
             text = { Text(stringResource(R.string.exit_text)) },
@@ -68,7 +68,7 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
 /** §13.1 confirmação da desistência; cancelar volta exatamente ao estado anterior. */
 @Composable
 fun ResignDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+    GDialog(
         modifier = Modifier.testTag("resign-dialog"),
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.resign_title)) },

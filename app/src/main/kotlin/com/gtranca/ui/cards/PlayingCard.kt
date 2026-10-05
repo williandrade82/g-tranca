@@ -1,5 +1,6 @@
 package com.gtranca.ui.cards
 
+import com.gtranca.ui.theme.GColors
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -56,17 +57,8 @@ enum class CardSize(val width: Dp, val height: Dp, val cornerFont: Dp, val cente
     LARGE(56.dp, 80.dp, 15.dp, 30.dp, true),
 }
 
-private val CardRed = Color(0xFFC62828)
-private val CardBlack = Color(0xFF1B1B1B)
-private val CardBorder = Color(0xFF9E9E9E)
-private val SelectedBorder = Color(0xFF1565C0)
-private val SelectedFill = Color(0xFFDCEBFF)
-private val HighlightBorder = Color(0xFFFFB300)
 
 /** Marca discreta de "participa de jogada" sobre o branco da carta (contraste ≥ 3:1 com o branco). */
-private val PlayableMark = Color(0xFFE65100)
-private val DimOverlay = Color(0x66000000)
-private val NewBadge = Color(0xFF1B5E20)
 
 /**
  * Realce de uma carta da mão (derivado de `legalActions` pelo ViewModel; a carta não decide nada).
@@ -143,12 +135,12 @@ fun PlayingCard(
     describe: Boolean = true,
 ) {
     val description = cardDescription(card)
-    val color = if (card.suit.isRed) CardRed else CardBlack
+    val color = if (card.suit.isRed) GColors.CardRed else GColors.CardBlack
     val shape = RoundedCornerShape(size.width * 0.12f)
     val border = when (emphasis) {
-        CardEmphasis.SELECTED -> 3.dp to SelectedBorder
-        CardEmphasis.STRONG -> 3.dp to HighlightBorder
-        else -> 1.dp to CardBorder
+        CardEmphasis.SELECTED -> 3.dp to GColors.CardSelectedBorder
+        CardEmphasis.STRONG -> 3.dp to GColors.CardHighlightBorder
+        else -> 1.dp to GColors.CardBorder
     }
     val cornerStyle = TextStyle(
         color = color,
@@ -161,13 +153,13 @@ fun PlayingCard(
             .size(size.width, size.height)
             .then(if (describe) Modifier.semantics { contentDescription = description } else Modifier)
             .clip(shape)
-            .background(if (emphasis == CardEmphasis.SELECTED) SelectedFill else Color.White)
+            .background(if (emphasis == CardEmphasis.SELECTED) GColors.CardSelectedFill else Color.White)
             .border(border.first, border.second, shape),
     ) {
         CornerIndex(card, cornerStyle, Modifier.align(Alignment.TopStart).padding(start = 3.dp, top = 2.dp))
         val mark = when (emphasis) {
-            CardEmphasis.SUBTLE, CardEmphasis.STRONG -> PlayableMark
-            CardEmphasis.SELECTED -> SelectedBorder
+            CardEmphasis.SUBTLE, CardEmphasis.STRONG -> GColors.CardPlayableMark
+            CardEmphasis.SELECTED -> GColors.CardSelectedBorder
             else -> null
         }
         if (mark != null) {
@@ -194,14 +186,14 @@ fun PlayingCard(
         if (size != CardSize.SMALL) {
             CornerIndex(card, cornerStyle, Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 2.dp).rotate(180f))
         }
-        if (emphasis == CardEmphasis.DIMMED) Box(Modifier.matchParentSize().background(DimOverlay))
+        if (emphasis == CardEmphasis.DIMMED) Box(Modifier.matchParentSize().background(GColors.CardDim))
         if (badge != null) {
             // Rótulo (ex.: "nova") sobre a parte de baixo da carta, branco sobre verde-escuro (contraste ≥ 7:1).
             Text(
                 badge,
                 style = TextStyle(color = Color.White, fontSize = 10.dp.asFont(), lineHeight = 11.dp.asFont(), fontWeight = FontWeight.Bold),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(NewBadge).padding(vertical = 1.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(GColors.CardNewBadge).padding(vertical = 1.dp),
             )
         }
     }
@@ -215,8 +207,6 @@ private fun CornerIndex(card: Card, style: TextStyle, modifier: Modifier) {
     }
 }
 
-private val BackFrame = Color(0xFF8E1B1B)
-private val BackPattern = Color(0xFFE8B4B4)
 
 /**
  * Verso da carta: moldura branca e, dentro dela, um padrão de losangos sobre fundo vermelho-escuro.
@@ -236,25 +226,25 @@ fun CardBack(
             .then(if (describe) Modifier.semantics { contentDescription = description } else Modifier)
             .clip(shape)
             .background(Color.White)
-            .border(1.dp, CardBorder, shape),
+            .border(1.dp, GColors.CardBorder, shape),
     ) {
         Canvas(Modifier.matchParentSize().padding(3.dp)) {
             val radius = CornerRadius(this.size.width * 0.08f)
-            drawRoundRect(BackFrame, cornerRadius = radius)
+            drawRoundRect(GColors.CardBackFrame, cornerRadius = radius)
             val step = this.size.width / 4f
             clipRect {
                 // Losangos: duas famílias de diagonais.
                 var x = -this.size.height
                 while (x < this.size.width + this.size.height) {
-                    drawLine(BackPattern, Offset(x, 0f), Offset(x + this.size.height, this.size.height), strokeWidth = 1.2f)
-                    drawLine(BackPattern, Offset(x, this.size.height), Offset(x + this.size.height, 0f), strokeWidth = 1.2f)
+                    drawLine(GColors.CardBackPattern, Offset(x, 0f), Offset(x + this.size.height, this.size.height), strokeWidth = 1.2f)
+                    drawLine(GColors.CardBackPattern, Offset(x, this.size.height), Offset(x + this.size.height, 0f), strokeWidth = 1.2f)
                     x += step
                 }
             }
             // Moldura interna.
             val inset = 2.dp.toPx()
             drawRoundRect(
-                BackPattern,
+                GColors.CardBackPattern,
                 topLeft = Offset(inset, inset),
                 size = Size(this.size.width - 2 * inset, this.size.height - 2 * inset),
                 cornerRadius = radius,
