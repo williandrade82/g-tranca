@@ -207,6 +207,7 @@ class GameViewModel(
         viewerSeat = humanSeat,
         computeDispatcher = computeDispatcher,
         botDelayMillis = botDelayMillis,
+        dealDelayMillis = if (animationMillis > 0) dealAnimationMillis(config) else 0,
         restored = restored,
         // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
         onSave = if (persistence == null) null else ::enqueueSave,
@@ -567,6 +568,10 @@ class GameViewModel(
         return TableAnimations.redThreeSwap(notice, viewer, replacement, animationIds::incrementAndGet, fromMorto)
             .map { it.scaled(state.animationScale) }
     }
+
+    /** Tempo da animação de distribuição (cartas dos assentos e dos mortos, escalonadas, mais um voo). */
+    private fun dealAnimationMillis(config: GameConfig): Long =
+        (config.mode.seatCount * 11 + 2) * TableAnimations.DEAL_STAGGER_MILLIS + animationMillis + EXPIRY_MARGIN_MILLIS
 
     companion object {
         /** Folga para a limpeza de uma animação depois do fim do desenho. */

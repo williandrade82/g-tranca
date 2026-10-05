@@ -56,7 +56,8 @@
     <string name="card_not_with_selection">não combina com a seleção</string>
 
     <!-- Mesa -->
-    <string name="table_round">Partida %1$d · alvo %2$d</string>
+    <string name="table_round">Partida %1$d</string>
+    <string name="table_target">alvo %1$d</string>
     <string name="side_you">Você</string>
     <string name="side_opponent">Adversário</string>
     <string name="side_your_team">Sua dupla</string>

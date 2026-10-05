@@ -180,11 +180,16 @@ class TableLayoutTest {
 
         // Os três outros assentos e os títulos por dupla.
         rule.onNodeWithText("Parceiro").assertExists()
-        rule.onNodeWithText("Adversário à esquerda").assertExists()
-        rule.onNodeWithText("Adversário à direita").assertExists()
+        rule.onNodeWithText("Adv. esquerda").assertExists()
+        rule.onNodeWithText("Adv. direita").assertExists()
         // Mãos dos outros assentos como cartas viradas, dentro da largura (9 cartas cada).
         listOf(1, 2, 3).forEach { check(right("seat-hand-$it") <= 360.dp + 0.5.dp) { "mão do assento $it passa da largura" } }
         rule.onAllNodesWithContentDescription("9 cartas na mão", useUnmergedTree = true).assertCountEquals(3)
+        // Disposição vista da mesa, na mesma linha: adversário à esquerda (assento 3), parceiro (2) e adversário à direita (1).
+        check(left("seat-3") < left("seat-2") && left("seat-2") < left("seat-1")) { "ordem esquerda, parceiro, direita" }
+        check(top("seat-3") == top("seat-2") && top("seat-2") == top("seat-1")) { "assentos fora da mesma linha em 360dp" }
+        // Jogadores fixos: acima da área que rola.
+        listOf(1, 2, 3).forEach { check(bottom("seat-$it") <= top("table-scroll") + 0.5.dp) { "assento $it dentro da área rolável" } }
         rule.onNodeWithText("Jogos da sua dupla").assertExists()
         rule.onNodeWithText("Jogos da dupla adversária").assertExists()
         rule.onNodeWithText("pego pela dupla adversária", substring = true).assertExists()

@@ -298,14 +298,21 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
         Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            stringResource(R.string.table_round, snapshot.roundNumber, snapshot.config.targetScore),
-            color = OnTable,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.table_round, snapshot.roundNumber),
+                color = OnTable,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                stringResource(R.string.table_target, snapshot.config.targetScore),
+                color = OnTable.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
         Text(
             stringResource(
                 R.string.score_line,
@@ -356,7 +363,7 @@ private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
     val mode = snapshot.view.mode
     val others = mode.seatsInPlayOrder(snapshot.viewerSeat).drop(1)
     if (mode != GameMode.DUPLAS) {
-        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth(), onSeatClick) }
+        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth(), onSeatClick, minHeight = 72.dp) }
         return
     }
     val byRole = others.associateBy { SeatRole.of(mode, it, snapshot.viewerSeat) }
@@ -381,7 +388,7 @@ private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
 }
 
 @Composable
-private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatClick: (Int) -> Unit) {
+private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatClick: (Int) -> Unit, minHeight: Dp = 96.dp) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val role = SeatRole.of(view.mode, seat, snapshot.viewerSeat)
@@ -395,7 +402,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     val detailHint = stringResource(R.string.seat_detail_hint)
     Column(
         modifier
-            .heightIn(min = 72.dp)
+            .heightIn(min = minHeight)
             .clip(shape)
             .clickable(enabled = events.isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(if (thinking) TableGreenDark else GColors.Shadow.copy(alpha = 0.18f), shape)

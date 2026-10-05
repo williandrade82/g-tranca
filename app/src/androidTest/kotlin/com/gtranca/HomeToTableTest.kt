@@ -86,8 +86,8 @@ class HomeToTableTest {
         rule.onNodeWithTag("new-game").performClick()
         rule.onNodeWithTag("table-screen").assertExists()
         rule.onNodeWithText("Parceiro").assertExists()
-        rule.onNodeWithText("Adversário à esquerda").assertExists()
-        rule.onNodeWithText("Adversário à direita").assertExists()
+        rule.onNodeWithText("Adv. esquerda").assertExists()
+        rule.onNodeWithText("Adv. direita").assertExists()
         rule.onNodeWithText("Jogos da sua dupla").assertExists()
 
         waitFor(60_000) { canDraw() }

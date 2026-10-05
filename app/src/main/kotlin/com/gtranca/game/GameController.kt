@@ -117,6 +117,8 @@ class GameController(
     private val viewerSeat: Seat = Seat(0),
     private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val botDelayMillis: Long = DEFAULT_BOT_DELAY_MILLIS,
+    /** Pausa depois da distribuição de cada partida (com humano), para a interface animar as cartas antes da 1ª jogada. */
+    private val dealDelayMillis: Long = 0,
     /** Jogo salvo a retomar (mesmo `Match` e os eventos públicos da partida atual), ou `null` para um jogo novo. */
     private val restored: RestoredGame? = null,
     /**
@@ -237,6 +239,7 @@ class GameController(
                 }
                 resuming = false
             }
+            val freshDeal = !resuming
             val waitDeal = synchronized(lock) {
                 if (match.isOver || resigned) return
                 bots.forEach { it.onNewRound() }
@@ -260,6 +263,7 @@ class GameController(
             }
             resuming = false
             if (waitDeal) presentationSignal.receive()
+            if (freshDeal && human != null && dealDelayMillis > 0) delay(dealDelayMillis)
             while (true) {
                 val round = synchronized(lock) {
                     if (resigned) return
