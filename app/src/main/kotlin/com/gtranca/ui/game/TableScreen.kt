@@ -625,7 +625,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (view.stockSize > 0) CardBack(Modifier.anchor(AnimAnchor.Stock), size = CardSize.SMALL, describe = false) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
+                if (view.stockSize > 0) DeckStack(view.stockSize, AnimAnchor.Stock) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
                 Column {
                     Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
                     Text(stockCount, color = OnTable, style = MaterialTheme.typography.labelSmall)
@@ -648,7 +648,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         val available = status == MortoStatus.Available
-                        if (available) CardBack(Modifier.anchor(AnimAnchor.Morto(i)), size = CardSize.SMALL, describe = false)
+                        if (available) DeckStack(view.mortoSizes[i], AnimAnchor.Morto(i))
                         Column(if (available) Modifier else Modifier.anchor(AnimAnchor.Morto(i))) {
                             Text(title, color = OnTable, style = MaterialTheme.typography.labelMedium)
                             Text(statusText, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 2)
@@ -1020,7 +1020,7 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 // Planos que só diferem pelo coringa usado aparecem uma vez (com o primeiro coringa).
-                options.distinctBy { planKey(it) }.forEach { option ->
+                options.distinctBy { planKey(it) }.sortedBy { planUsesWild(it) }.forEach { option ->
                     val plan = option.plan
                     val handCards = when (plan) {
                         is DiscardPlan.NewMeld -> plan.handCards
@@ -1203,4 +1203,28 @@ private fun planKey(action: Action.TakeDiscardPile): Any {
         is DiscardPlan.AddToMeld -> plan.meldId to plan.handCards
     }
     return Triple(destination, cards.count { it.isWild }, cards.filterNot { it.isWild }.map { it.toString() }.sorted())
+}
+
+/** Planos sem coringa vêm primeiro na lista (a ordem se mantém dentro de cada grupo). */
+private fun planUsesWild(action: Action.TakeDiscardPile): Boolean = when (val plan = action.plan) {
+    is DiscardPlan.NewMeld -> plan.handCards.any { it.isWild }
+    is DiscardPlan.AddToMeld -> plan.handCards.any { it.isWild }
+}
+
+/** Cartas por camada de profundidade do monte e dos mortos (a pilha afina a cada tantas cartas). */
+private const val CARDS_PER_LAYER = 5
+
+/** Pilha de cartas viradas com profundidade: uma camada a cada [CARDS_PER_LAYER] cartas (no máximo 8). */
+@Composable
+private fun DeckStack(count: Int, anchor: AnimAnchor) {
+    val size = CardSize.SMALL
+    val layers = ((count + CARDS_PER_LAYER - 1) / CARDS_PER_LAYER).coerceIn(1, 8)
+    val step = 1.5.dp
+    Box(Modifier.size(size.width + step * (layers - 1), size.height + step * (layers - 1))) {
+        // Camadas de baixo (deslocadas para a direita e para baixo) primeiro; a de cima, no canto, é a âncora.
+        for (i in layers - 1 downTo 1) {
+            CardBack(Modifier.offset(x = step * i, y = step * i).shadow(1.dp, RoundedCornerShape(4.dp)), size = size, describe = false)
+        }
+        CardBack(Modifier.anchor(anchor).shadow(2.dp, RoundedCornerShape(4.dp)), size = size, describe = false)
+    }
 }

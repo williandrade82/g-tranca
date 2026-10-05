@@ -64,11 +64,40 @@ object TableAnimations {
     /** Espaço entre cartas do mesmo movimento. */
     const val STAGGER_MILLIS: Long = 70
 
+    /** Espaço entre cartas na distribuição (são muitas: 11 por jogador). */
+    const val DEAL_STAGGER_MILLIS: Long = 40
+
     /** Máximo de cartas animadas num movimento (o lixo pode ter muitas; as demais chegam sem voo). */
     const val MAX_CARDS_PER_MOVE: Int = 5
 
     private fun holder(seat: Seat, viewer: Seat): AnimAnchor =
         if (seat == viewer) AnimAnchor.OwnHand else AnimAnchor.SeatHand(seat.index)
+
+    /**
+     * Distribuição do início da partida: uma carta por vez, do monte a cada assento (em ordem a partir de quem
+     * começa) e, no fim, uma carta virada a cada morto. As do humano voam abertas ([ownCards]: a mão visível); as
+     * dos outros assentos, viradas (informação oculta).
+     */
+    fun deal(snapshot: GameSnapshot, ownCards: List<Card>, nextId: () -> Long): List<CardFlight> {
+        val view = snapshot.view
+        val viewer = snapshot.viewerSeat
+        val order = view.mode.seatsInPlayOrder(view.firstSeat)
+        val flights = mutableListOf<CardFlight>()
+        var k = 0L
+        val rounds = order.maxOf { seat -> if (seat == viewer) ownCards.size else view.handSizes[seat.index] }
+        for (i in 0 until rounds) {
+            for (seat in order) {
+                val mine = seat == viewer
+                val count = if (mine) ownCards.size else view.handSizes[seat.index]
+                if (i >= count) continue
+                flights += CardFlight(nextId(), AnimAnchor.Stock, holder(seat, viewer), if (mine) ownCards[i] else null, DEAL_STAGGER_MILLIS * k++)
+            }
+        }
+        view.mortoSizes.indices.forEach { m ->
+            flights += CardFlight(nextId(), AnimAnchor.Stock, AnimAnchor.Morto(m), null, DEAL_STAGGER_MILLIS * k++)
+        }
+        return flights
+    }
 
     /** Eventos novos de cada assento entre [old] e [new], na mesma partida. */
     fun newEvents(old: GameSnapshot, new: GameSnapshot): List<PublicEvent> {

@@ -347,6 +347,16 @@ class GameViewModel(
         } else {
             emptyList<CardFlight>() to emptyList()
         }
+        // Início de partida (jogo novo ou partida seguinte): distribuição do monte aos assentos.
+        val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING &&
+            (previous == null || !sameRound)
+        val dealFlights = if (dealing) {
+            val hiddenCards = hidden.values.flatten().toSet()
+            TableAnimations.deal(snapshot, snapshot.view.hand.filter { it !in hiddenCards }, animationIds::incrementAndGet)
+                .map { it.scaled(state.animationScale) }
+        } else {
+            emptyList()
+        }
         val endStep = if (snapshot.stage == Stage.PLAYING || old.history.size != snapshot.history.size) 0 else state.endStep
         val playing = snapshot.stage == Stage.PLAYING
         if (!playing) newCards = emptySet()
@@ -356,7 +366,7 @@ class GameViewModel(
             newCards = newCards,
             swaps = if (playing) swaps else emptyList(),
             mortoSwaps = if (playing) mortoSwaps.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
-            flights = if (playing && sameRound) state.flights + newFlights else emptyList(),
+            flights = if (playing && sameRound) state.flights + newFlights + dealFlights else dealFlights,
             flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
@@ -369,7 +379,8 @@ class GameViewModel(
     private fun build(state: Local): GameUiState {
         val snapshot = state.snapshot
         val head = state.swaps.firstOrNull()
-        val reveal = head?.takeIf { isOwn(it, snapshot) }?.let { RedThreeReveal(it, state.hidden[it.id].orEmpty()) }
+        // O diálogo do próprio 3 vermelho espera os voos em andamento (distribuição, compra) terminarem.
+        val reveal = head?.takeIf { isOwn(it, snapshot) && state.flights.isEmpty() }?.let { RedThreeReveal(it, state.hidden[it.id].orEmpty()) }
         val hidden = state.hidden.values.flatten().toSet()
         // Os 3 vermelhos ainda não encenados não aparecem na mesa (o atual entra quando a encenação termina).
         val staged = state.swaps.flatMap { it.cards }.toSet()
@@ -389,7 +400,7 @@ class GameViewModel(
             redThrees = snapshot.view.redThrees.map { side -> side.filter { it !in staged } },
             reveal = reveal,
             ownSwapPending = ownSwapPending,
-            banner = head?.takeIf { reveal == null },
+            banner = head?.takeIf { reveal == null && !isOwn(it, snapshot) },
             planChoice = state.planChoice,
             confirmDecline = state.confirmDecline,
             confirmResign = state.confirmResign,
