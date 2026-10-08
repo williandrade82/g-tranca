@@ -236,7 +236,7 @@ private fun Choice(selected: Boolean, onClick: () -> Unit, description: String, 
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .semantics { contentDescription = description }
             .testTag(tag)
-            .border(if (selected) 3.dp else 0.dp, if (selected) GColors.Green else Color.Transparent, CircleShape)
+            .border(if (selected) 3.dp else 0.dp, if (selected) GColors.Yellow else Color.Transparent, CircleShape)
             .padding(3.dp),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -254,14 +254,14 @@ private fun LabeledChoice(selected: Boolean, onClick: () -> Unit, label: String,
     ) {
         Box(
             Modifier
-                .border(if (selected) 3.dp else 0.dp, if (selected) GColors.Green else Color.Transparent, CircleShape)
+                .border(if (selected) 3.dp else 0.dp, if (selected) GColors.Yellow else Color.Transparent, CircleShape)
                 .padding(3.dp),
         ) { content() }
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = GColors.CardBlack,
+            color = GColors.White,
             textAlign = TextAlign.Center,
             maxLines = 2,
         )
@@ -285,7 +285,7 @@ private fun Swatches(colors: List<Color>, selected: Int, tag: String, onSelect: 
                     Modifier
                         .size(34.dp)
                         .background(color, CircleShape)
-                        .border(if (selected == index) 3.dp else 1.dp, if (selected == index) GColors.Green else GColors.CardBorder, CircleShape),
+                        .border(if (selected == index) 3.dp else 1.dp, if (selected == index) GColors.Yellow else GColors.CardBorder, CircleShape),
                 )
             }
         }

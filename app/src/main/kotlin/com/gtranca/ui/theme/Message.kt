@@ -159,10 +159,10 @@ fun GMessage(
                     title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
-                    color = GColors.CardBlack,
+                    color = GColors.White,
                     textAlign = TextAlign.Center,
                 )
-                text?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = GColors.CardBlack, textAlign = TextAlign.Center) }
+                text?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = GColors.White, textAlign = TextAlign.Center) }
                 GButton(
                     onConfirm,
                     Modifier.fillMaxWidth().heightIn(min = 52.dp).let { if (confirmTag != null) it.testTag(confirmTag) else it },
@@ -187,7 +187,7 @@ fun GSnack(message: String, modifier: Modifier = Modifier) {
         modifier
             .padding(Spacing.md)
             .shadow(Elevation.dialog, MaterialTheme.shapes.large)
-            .background(GColors.TableDark, MaterialTheme.shapes.large)
+            .background(GColors.Indigo, MaterialTheme.shapes.large)
             .border(2.dp, GColors.Yellow, MaterialTheme.shapes.large)
             .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
