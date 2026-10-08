@@ -211,7 +211,14 @@ class Simulator internal constructor(
         if (state.phase != Phase.FINISHED) {
             state.hands.forEachIndexed { seat, hand ->
                 if (hand.isEmpty()) return "assento $seat sem cartas com a partida em andamento"
-                if (hand.any { it.isRedThree }) return "3 vermelho na mão do assento $seat"
+                // §3.5 / §9.4 só assento que ainda não começou a 1ª vez, ou com morto indireto pendente, e nunca o da vez
+                if (hand.any { it.isRedThree }) {
+                    val s = Seat(seat)
+                    if (state.hasBegunFirstTurn(s) && s !in state.unsettledMortoSeats) {
+                        return "3 vermelho na mão do assento $seat, que já trocou os seus"
+                    }
+                    if (s == state.currentSeat) return "3 vermelho na mão do assento da vez ($seat)"
+                }
             }
         }
         state.redThrees.forEachIndexed { sideIndex, threes ->

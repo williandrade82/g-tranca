@@ -54,7 +54,7 @@ class MediumBotTest {
         val state = scenario(
             hand = "KS QD 9C 5D 7S",
             discard = "8C 2D",
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
             opponentHand = "JC JC' TC",
         )
         val legal = RoundEngine.legalActions(state, state.currentSeat)
@@ -68,7 +68,7 @@ class MediumBotTest {
         val state = scenario(
             hand = "KS QD 9C 5D 7S",
             discard = "KD KC QS QH 9D 9S 5C 5C' 7D 7C 2C 2D",
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
             opponentHand = "JC JC' TC",
         )
         val action = bot().decide(state)
@@ -85,7 +85,7 @@ class MediumBotTest {
         val state = scenario(
             hand = "2C KS",
             phase = Phase.PLAYING,
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.Available),
         )
         val action = bot().decide(state)
@@ -99,7 +99,7 @@ class MediumBotTest {
         val state = scenario(
             hand = "2C KS QD 9C 5D",
             phase = Phase.PLAYING,
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
         )
         val action = bot().decide(state)
         action.shouldBeInstanceOf<Action.Discard>()
@@ -256,7 +256,7 @@ class MediumBotTest {
     @Test
     fun `sem monte nem morto recusa a compra quando o lixo nao compensa e o lado nao tem morto`() {
         // §10.2 o único plano suja a canastra limpa com o coringa do topo (§5.4); recusar encerra sem vencedor
-        val state = exhaustedScenario("KS QD 9C 5D 7S", "8C 2D", listOf("4H 5H 6H 7H 8H 9H"), sideHasMorto = false)
+        val state = exhaustedScenario("KS QD 9C 5D 7S", "8C 2D", listOf("4H 5H 6H 7H 8H 9H TH"), sideHasMorto = false)
         val legal = RoundEngine.legalActions(state, state.currentSeat)
         legal.contains(Action.DrawFromStock) shouldBe false
         legal.contains(Action.DeclineDraw) shouldBe true
@@ -267,7 +267,7 @@ class MediumBotTest {
     @Test
     fun `sem monte nem morto pega o lixo quando o lado tem morto, mesmo valendo pouco`() {
         // §10.2 / §11.1 com o morto do lado, manter a partida viva preserva a chance de bater
-        val state = exhaustedScenario("KS QD 9C 5D 7S", "8C 2D", listOf("4H 5H 6H 7H 8H 9H"), sideHasMorto = true)
+        val state = exhaustedScenario("KS QD 9C 5D 7S", "8C 2D", listOf("4H 5H 6H 7H 8H 9H TH"), sideHasMorto = true)
         bot().decide(state).shouldBeInstanceOf<Action.TakeDiscardPile>()
     }
 
@@ -290,7 +290,7 @@ class MediumBotTest {
             ownMelds = listOf("4H 5H 6H"),
             opponentHand = "JC JC' TC",
             stock = "TD JD QH KH",
-            opponentMelds = if (threat) listOf("4S 5S 6S 7S 8S 9S") else emptyList(),
+            opponentMelds = if (threat) listOf("4S 5S 6S 7S 8S 9S TS") else emptyList(),
             mortoStatus = listOf(MortoStatus.Available, if (threat) MortoStatus.Taken(Side(1)) else MortoStatus.Available),
         )
         val calm = bot().decide(state(threat = false))
@@ -311,7 +311,7 @@ class MediumBotTest {
         val state = scenario(
             hand = "3C KH 9S 5D 7C",
             phase = Phase.PLAYING,
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
             opponentHand = "JC JC' TC",
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.Available),
         )

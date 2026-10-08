@@ -50,7 +50,7 @@ class EasyBotTest {
         val state = scenario(
             hand = "KS KD QC JD 5C",
             discard = "8C 2D",
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
         )
         val action = perfectBot().decide(state)
         action.shouldBeInstanceOf<Action.TakeDiscardPile>()
@@ -74,7 +74,7 @@ class EasyBotTest {
         val state = scenario(
             hand = "2C KS QD 9C 5D",
             phase = Phase.PLAYING,
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
         )
         val legal = RoundEngine.legalActions(state, state.currentSeat)
         legal.any { it is Action.AddToMeld && it.cards.any { card -> card.isWild } } shouldBe true

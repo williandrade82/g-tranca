@@ -8,7 +8,6 @@ import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
-import com.gtranca.engine.ownDealReplacementsInHand
 import com.gtranca.engine.scoreRound
 import com.gtranca.engine.tableCardPoints
 
@@ -45,7 +44,8 @@ internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
     redThrees = redThrees,
     tables = tables,
     redThreeLog = redThreeLog,
-    ownDealReplacements = ownDealReplacementsInHand(seat), // §3.5 privadas: só as do próprio assento, ainda na mão
+    turnsBegun = turnsBegun, // §3.5 público: quem ainda não começou pode ter 3 vermelho na mão
+    unsettledMortoSeats = unsettledMortoSeats, // §9.4 público
 )
 
 /**
@@ -59,7 +59,7 @@ internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
  *   coringa +10); morto não pego, −100 (§12.2). Cartas na mão por uma fração da penalidade de §12.2 (ainda
  *   podem ser baixadas). Os demais termos são só estimativa de potencial e NÃO existem na pontuação: cada
  *   conjunto que ainda não é canastra ganha um bônus de progresso pelo tamanho (mantido além do valor das
- *   cartas, porque é ele que puxa o conjunto até a canastra, cujo bônus de §12.1 só vem na 6ª carta), e o lado
+ *   cartas, porque é ele que puxa o conjunto até a canastra, cujo bônus de §12.1 só vem na 7ª carta), e o lado
  *   que já pode bater (morto e canastra, §11.1) ganha um bônus.
  */
 internal object Evaluation {

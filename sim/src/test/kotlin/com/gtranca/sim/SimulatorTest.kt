@@ -228,15 +228,37 @@ class SimulatorTest {
     fun `3 vermelho na mao e morto pego com cartas violam invariantes`() {
         val sim = simulator(SimConfig(checkInvariants = true))
         val dealt = dealRound(GameMode.INDIVIDUAL, Random(3))
-        // §6.5 o 3 vermelho vai para a mesa e é reposto; nunca fica na mão
+        // §3.5 / §6.5 o 3 vermelho só fica na mão de quem ainda não começou a 1ª vez (ou com morto indireto pendente)
         val redThree = dealt.allCards().first { it.isRedThree }
-        val withRedThree = dealt.copy(
-            hands = listOf(dealt.hands[0] + redThree, dealt.hands[1]),
-            stock = dealt.stock - redThree,
-            redThrees = dealt.redThrees.map { it - redThree },
-            mortos = dealt.mortos.map { it - redThree },
+        // base: nenhum 3 vermelho em mão (movidos para o monte), todos já começaram a 1ª vez
+        val hidden = dealt.hands.flatten().filter { it.isRedThree }
+        val base = dealt.copy(
+            hands = dealt.hands.map { hand -> hand.filterNot { it.isRedThree } },
+            stock = dealt.stock + hidden,
+            turnsBegun = GameMode.INDIVIDUAL.seatCount,
         )
-        sim.invariantViolation(withRedThree) shouldBe "3 vermelho na mão do assento 0"
+        val cur = base.currentSeat
+        val other = Seat(1 - cur.index)
+        fun withRedThreeIn(seat: Seat, state: RoundState): RoundState {
+            val card = redThree
+            val stripped = state.copy(
+                hands = state.hands.map { it - card },
+                stock = state.stock - card,
+                redThrees = state.redThrees.map { it - card },
+                mortos = state.mortos.map { it - card },
+            )
+            return stripped.copy(hands = stripped.hands.mapIndexed { i, h -> if (i == seat.index) h + card else h })
+        }
+        // quem já trocou os seus não pode ter 3 vermelho na mão
+        sim.invariantViolation(withRedThreeIn(other, base)) shouldBe
+            "3 vermelho na mão do assento ${other.index}, que já trocou os seus"
+        // mas pode, se ainda não começou a 1ª vez (turnsBegun = 1: só o da vez começou)
+        sim.invariantViolation(withRedThreeIn(other, base.copy(turnsBegun = 1))) shouldBe null
+        // ou se pegou o morto indireto e ainda não começou a vez seguinte (§9.4)
+        sim.invariantViolation(withRedThreeIn(other, base.copy(unsettledMortoSeats = listOf(other)))) shouldBe null
+        // nunca o assento da vez, mesmo que ainda não tenha começado (o motor troca antes de ele decidir)
+        sim.invariantViolation(withRedThreeIn(cur, base.copy(turnsBegun = 0))) shouldBe
+            "3 vermelho na mão do assento da vez (${cur.index})"
         // §9.1 morto pego fica vazio (as cartas vão para a mão)
         val takenWithCards = dealt.copy(mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.Available))
         sim.invariantViolation(takenWithCards)!! shouldContain "morto 0"

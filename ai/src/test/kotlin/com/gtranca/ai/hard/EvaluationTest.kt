@@ -63,11 +63,11 @@ class EvaluationTest {
     fun `estimativa da partida em andamento segue a regra do 3 vermelho`() {
         // §12.1 cada 3 vermelho vale +100 com canastra do lado e −100 sem ela, mais +5 da carta na mesa
         // (+105 / −95); a estimativa do Difícil segue isso
-        val canasta = listOf("4H 5H 6H 7H 8H 9H")
+        val canasta = listOf("4H 5H 6H 7H 8H 9H TH")
         val gainWithCanasta = Evaluation.scoreDiff(midRound(canasta, "3D"), Side(0)) -
             Evaluation.scoreDiff(midRound(canasta, ""), Side(0))
         gainWithCanasta.shouldBeBetween(104.999, 105.001, 0.0)
-        val notCanasta = listOf("4H 5H 6H 7H 8H")
+        val notCanasta = listOf("4H 5H 6H 7H 8H 9H")
         val gainWithout = Evaluation.scoreDiff(midRound(notCanasta, "3D"), Side(0)) -
             Evaluation.scoreDiff(midRound(notCanasta, ""), Side(0))
         gainWithout.shouldBeBetween(-95.001, -94.999, 0.0)
@@ -75,9 +75,9 @@ class EvaluationTest {
 
     @Test
     fun `partida encerrada no individual - diferenca exata, com sinal e lado corretos`() {
-        // Lado 0 bateu (§11.1): canastra limpa +200 (§7.2), batida +100, cartas 4 a 9 na mesa 6 × 8 = +48 (§12.1);
-        // 4♣ na mão −8 (§12.2) ⇒ 340. Lado 1: 3 vermelho sem canastra −100 e +5 da carta na mesa (§12.1); sem
-        // morto −100 e K♠ Q♠ na mão −20 (§12.2) ⇒ −215. Diferença 555.
+        // Lado 0 bateu (§11.1): canastra limpa +200 (§7.2), batida +100, cartas 4 a 10 na mesa 7 × 8 = +56 (§12.1);
+        // 4♣ na mão −8 (§12.2) ⇒ 348. Lado 1: 3 vermelho sem canastra −100 e +5 da carta na mesa (§12.1); sem
+        // morto −100 e K♠ Q♠ na mão −20 (§12.2) ⇒ −215. Diferença 563.
         val state = RoundState(
             mode = GameMode.INDIVIDUAL,
             hands = listOf(cards("4C"), cards("KS QS")),
@@ -85,26 +85,26 @@ class EvaluationTest {
             discardPile = emptyList(),
             mortos = listOf(emptyList(), emptyList()),
             redThrees = listOf(emptyList(), cards("3H")),
-            tables = listOf(table("4H 5H 6H 7H 8H 9H"), SideTable()),
+            tables = listOf(table("4H 5H 6H 7H 8H 9H TH"), SideTable()),
             firstSeat = Seat(0),
             currentSeat = Seat(0),
             phase = Phase.FINISHED,
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.BecameStock),
             result = RoundResult.GoOut(Side(0), Seat(0)),
         )
-        Evaluation.scoreDiff(state, Side(0)) shouldBe 555.0
-        Evaluation.scoreDiff(state, Side(1)) shouldBe -555.0
+        Evaluation.scoreDiff(state, Side(0)) shouldBe 563.0
+        Evaluation.scoreDiff(state, Side(1)) shouldBe -563.0
         Evaluation.scoreDiff(state, Side(0)) shouldBe engineDiff(state, Side(0)).toDouble()
-        Evaluation.reward(state, Side(0), scale = 600.0) shouldBe (0.5 + 555.0 / 1200.0)
-        Evaluation.reward(state, Side(1), scale = 600.0) shouldBe (0.5 - 555.0 / 1200.0)
+        Evaluation.reward(state, Side(0), scale = 600.0) shouldBe (0.5 + 563.0 / 1200.0)
+        Evaluation.reward(state, Side(1), scale = 600.0) shouldBe (0.5 - 563.0 / 1200.0)
     }
 
     @Test
     fun `partida encerrada em duplas - soma os parceiros e usa o lado do assento`() {
         // §12.3 o lado 0 (assentos 0 e 2) bateu pelo assento 2. Lado 0: canastra suja +100, batida +100,
-        // cartas na mesa 5 × 8 + coringa 10 = +50 (§12.1), mãos 7♦ (−8) e 2♣ (−10) ⇒ 232. Lado 1 (assentos 1
-        // e 3): canastra limpa +200, cartas na mesa 6 × 10 = +60, morto pego, mãos A♦ (−10) e 3♠ (−5) ⇒ 245.
-        // Diferença −13 para o lado 0.
+        // cartas na mesa 6 × 8 + coringa 10 = +58 (§12.1), mãos 7♦ (−8) e 2♣ (−10) ⇒ 240. Lado 1 (assentos 1
+        // e 3): canastra limpa +200, cartas na mesa 7 × 10 = +70, morto pego, mãos A♦ (−10) e 3♠ (−5) ⇒ 255.
+        // Diferença −15 para o lado 0.
         val state = RoundState(
             mode = GameMode.DUPLAS,
             hands = listOf(cards("7D"), cards("AD"), cards("2C"), cards("3S")),
@@ -112,15 +112,15 @@ class EvaluationTest {
             discardPile = emptyList(),
             mortos = listOf(emptyList(), emptyList()),
             redThrees = listOf(emptyList(), emptyList()),
-            tables = listOf(table("5S 6S 7S 8S 9S 2D"), table("JC JC' JD JH JS JS'")),
+            tables = listOf(table("5S 6S 7S 8S 9S TS 2D"), table("JC JC' JD JD' JH JS JS'")),
             firstSeat = Seat(0),
             currentSeat = Seat(2),
             phase = Phase.FINISHED,
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.Taken(Side(1))),
             result = RoundResult.GoOut(Side(0), Seat(2)),
         )
-        Evaluation.scoreDiff(state, Side(0)) shouldBe -13.0
-        Evaluation.scoreDiff(state, Side(1)) shouldBe 13.0
+        Evaluation.scoreDiff(state, Side(0)) shouldBe -15.0
+        Evaluation.scoreDiff(state, Side(1)) shouldBe 15.0
         Evaluation.scoreDiff(state, Side(1)) shouldBe engineDiff(state, Side(1)).toDouble()
     }
 

@@ -77,7 +77,7 @@ class HardBotTest {
         // §11.1 o lado já tem morto e canastra: baixar os reis e descartar o 5♣ é bater (+100, §12.1)
         val state = fullScenario(
             hand = "KS KD KC 5C",
-            ownMelds = listOf("4H 5H 6H 7H 8H 9H"),
+            ownMelds = listOf("4H 5H 6H 7H 8H 9H TH"),
             mortoStatus = listOf(MortoStatus.Taken(Side(0)), MortoStatus.Available),
         )
         val end = playTurn(HardBot(Random(3), tactical), state)
@@ -92,7 +92,7 @@ class HardBotTest {
             hand = "JD 5S 8D",
             opponentHand = "JH JS",
             opponentHandSize = 2,
-            opponentMelds = listOf("4C 5C 6C 7C 8C 9C"),
+            opponentMelds = listOf("4C 5C 6C 7C 8C 9C TC"),
             mortoStatus = listOf(MortoStatus.Available, MortoStatus.Taken(Side(1))),
         )
         val bot = HardBot(Random(5), tactical)
