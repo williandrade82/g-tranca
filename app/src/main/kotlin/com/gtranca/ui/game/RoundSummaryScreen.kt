@@ -1,5 +1,12 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.graphics.Color
+import com.gtranca.ui.theme.GoldBrush
+import com.gtranca.ui.theme.TabularNums
 import androidx.compose.ui.Alignment
 import com.gtranca.game.Persona
 import com.gtranca.ui.persona.AvatarRow
@@ -73,11 +80,11 @@ fun RoundSummaryScreen(
     }
     val role = (record.result as? RoundResult.GoOut)?.let { SeatRole.of(view.mode, it.seat, snapshot.viewerSeat) }
     val (bannerColor, onBanner) = when {
-        role == null -> GColors.Yellow to GColors.CardBlack
-        role == SeatRole.YOU || role == SeatRole.PARTNER -> GColors.Green to GColors.White
-        else -> GColors.Neutral to GColors.White
+        role == null -> GColors.GoldDeep to GColors.Ivory
+        role == SeatRole.YOU || role == SeatRole.PARTNER -> GColors.RoyalEnd to GColors.Ivory
+        else -> GColors.Bordeaux to GColors.Ivory
     }
-    GBackground(Modifier.fillMaxSize().testTag("round-summary")) {
+    GBackground(Modifier.fillMaxSize().testTag("round-summary"), royal = true) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -93,7 +100,7 @@ fun RoundSummaryScreen(
                 sides.forEach { side ->
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                         AvatarRow(personasOfSide(view.mode, side, personas), 26.dp)
-                        Text(sideLabel(view.mode, side, view.side, personas), fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                        Text(sideLabel(view.mode, side, view.side, personas), fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = GColors.Champagne)
                     }
                 }
             }
@@ -120,18 +127,19 @@ fun RoundSummaryScreen(
             ScoreSectionBox(ScoreSection.TABLE, scores, lines)
             ScoreSectionBox(ScoreSection.HAND, scores, lines)
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
-            ScoreRow(stringResource(R.string.score_round_total), scores.map { signed(it.total) }, bold = true)
+            ScoreRow(stringResource(R.string.score_round_total), scores.map { signed(it.total) }, bold = true, pill = true)
             ScoreRow(
                 stringResource(R.string.score_cumulative),
                 sides.map { plainPoints(snapshot.totals[it.index]) },
                 bold = true,
                 tag = "cumulative",
+                pill = true,
             )
             }
             }
 
             val tie = snapshot.stage == Stage.ROUND_OVER && snapshot.totals.any { it >= snapshot.config.targetScore }
-            if (tie) GBanner(stringResource(R.string.round_tie_notice), GColors.Yellow, GColors.CardBlack, Modifier.testTag("tie-notice"))
+            if (tie) GBanner(stringResource(R.string.round_tie_notice), GColors.GoldDeep, GColors.Ivory, Modifier.testTag("tie-notice"))
 
             if (snapshot.stage == Stage.GAME_OVER) {
                 GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("show-final")) {
@@ -195,10 +203,26 @@ private fun ScoreItem.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun ScoreRow(label: String, values: List<String>, bold: Boolean = false, tag: String? = null) {
+private fun ScoreRow(label: String, values: List<String>, bold: Boolean = false, tag: String? = null, pill: Boolean = false) {
     val weight = if (bold) FontWeight.Bold else FontWeight.Normal
-    Row(Modifier.fillMaxWidth().then(if (tag != null) Modifier.testTag(tag) else Modifier)) {
-        Text(label, Modifier.weight(1.4f), fontWeight = weight)
-        values.forEach { Text(it, Modifier.weight(1f), fontWeight = weight, textAlign = TextAlign.End) }
+    val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums)
+    Row(Modifier.fillMaxWidth().then(if (tag != null) Modifier.testTag(tag) else Modifier), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1.4f), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
+        values.forEach {
+            if (pill) {
+                // Totais em cápsula dourada, alinhados à direita.
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    Text(
+                        it,
+                        Modifier.padding(vertical = 2.dp).background(GoldBrush, CircleShape).padding(horizontal = 10.dp, vertical = 2.dp),
+                        style = numbers,
+                        fontWeight = FontWeight.Bold,
+                        color = GColors.OnGold,
+                    )
+                }
+            } else {
+                Text(it, Modifier.weight(1f), style = numbers, fontWeight = weight, textAlign = TextAlign.End)
+            }
+        }
     }
 }

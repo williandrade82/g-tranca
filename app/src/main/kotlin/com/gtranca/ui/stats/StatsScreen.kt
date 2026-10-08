@@ -1,5 +1,14 @@
 package com.gtranca.ui.stats
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.gtranca.ui.theme.GoldBrush
+import com.gtranca.ui.theme.TabularNums
+import com.gtranca.ui.theme.goldTitleStyle
 import com.gtranca.ui.theme.GMessage
 import com.gtranca.ui.theme.MessageIllustration
 import com.gtranca.ui.theme.MessageTone
@@ -99,7 +108,10 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.semantics { heading() },
+                        color = GColors.Champagne,
                     )
+                    val lines = Difficulty.entries.map { stats.line(mode, it.id) }
+                    WinRing(lines.sumOf { it.wins }, lines.sumOf { it.games })
                     StatsRow(
                         stringResource(R.string.stats_difficulty),
                         listOf(stringResource(R.string.stats_games), stringResource(R.string.stats_wins), stringResource(R.string.stats_percent)),
@@ -111,7 +123,7 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
                         StatsRow(
                             stringResource(difficulty.labelRes()),
                             listOf(line.games.toString(), line.wins.toString(), if (line.games == 0) "—" else "${line.winPercent}%"),
-                            winsColor = GColors.GreenDark,
+                            winsColor = GColors.Emerald,
                         )
                     }
                 }
@@ -151,6 +163,36 @@ private fun StatsRow(label: String, values: List<String>, bold: Boolean = false,
         values.forEachIndexed { i, value ->
             val color = if (i == 1) winsColor else Color.Unspecified
             Text(value, Modifier.weight(1f), fontWeight = if (i == 1 && !bold) FontWeight.Bold else weight, color = color, textAlign = TextAlign.End)
+        }
+    }
+}
+
+/** Anel de progresso: vitórias (ouro) × derrotas (bordô) do modo, com o total de vitórias grande no meio. */
+@Composable
+private fun WinRing(wins: Int, games: Int) {
+    val fraction = if (games == 0) 0f else wins.toFloat() / games
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
+        Box(Modifier.size(84.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.matchParentSize()) {
+                val stroke = 9.dp.toPx()
+                val inset = stroke / 2
+                val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+                val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+                drawArc(if (games == 0) GColors.IndigoLight else GColors.Bordeaux, 0f, 360f, false, topLeft, arcSize, style = Stroke(stroke))
+                if (fraction > 0f) drawArc(GoldBrush, -90f, 360f * fraction, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            Text(
+                wins.toString(),
+                style = goldTitleStyle(MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = TabularNums)),
+            )
+        }
+        Column {
+            Text(stringResource(R.string.stats_wins), color = GColors.Gold, fontWeight = FontWeight.Bold)
+            Text(
+                "${stringResource(R.string.stats_games)}: $games" + if (games > 0) " · ${(fraction * 100).toInt()}%" else "",
+                color = GColors.Lavender,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = TabularNums),
+            )
         }
     }
 }

@@ -1,5 +1,9 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.goldFrame
 import com.gtranca.ui.theme.MessageBadge
 import com.gtranca.ui.theme.MessageIllustration
 import com.gtranca.ui.theme.MessageTone
@@ -66,7 +70,7 @@ fun AnnouncementScreen(
     brief: Boolean = false,
     animate: Boolean = true,
 ) {
-    GBackground(Modifier.fillMaxSize().testTag("announcement")) {
+    GBackground(Modifier.fillMaxSize().testTag("announcement"), royal = true, rays = outcome == EndOutcome.WIN && animate) {
         outcome?.let { EndCelebration(it, brief, animate) }
         if (onResign != null) {
             Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) {
@@ -75,8 +79,14 @@ fun AnnouncementScreen(
                 }
             }
         }
+        Box(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp), contentAlignment = Alignment.Center) {
+        // Painel central com moldura dourada biselada.
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
+            Modifier
+                .fillMaxWidth()
+                .background(GColors.Indigo.copy(alpha = 0.9f), RoundedCornerShape(24.dp))
+                .goldFrame(24.dp, 3.dp)
+                .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -94,6 +104,7 @@ fun AnnouncementScreen(
                 onContinue,
                 Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("announcement-continue"),
             ) { Text(button, style = MaterialTheme.typography.titleMedium) }
+        }
         }
     }
 }

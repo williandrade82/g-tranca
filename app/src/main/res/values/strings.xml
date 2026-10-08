@@ -291,6 +291,8 @@
 
     <!-- Fim de jogo (§13) -->
     <string name="game_over_title">Fim de jogo</string>
+    <string name="outcome_victory">VITÓRIA</string>
+    <string name="outcome_defeat">DERROTA</string>
     <string name="game_over_you_won">Você venceu!</string>
     <string name="game_over_opponent_won">O adversário venceu.</string>
     <string name="game_over_team_won">Sua dupla venceu!</string>

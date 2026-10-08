@@ -9,6 +9,9 @@ import com.gtranca.ui.sound.LocalSound
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawWithContent
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -93,8 +96,33 @@ fun AppNavHost() {
     val soundSettings = remember(soundOn, data) {
         SoundSettings(soundOn) { WriteQueue.app.enqueue { data.settings.setSoundOn(!soundOn) } }
     }
+    // Troca de tela: fade com um véu dourado que se apaga (não bloqueia toques; parado sem animações do sistema).
+    val motion = com.gtranca.ui.theme.rememberMotionEnabled()
+    val entry by navController.currentBackStackEntryAsState()
+    val veil = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(entry?.id) {
+        if (!motion || entry == null) return@LaunchedEffect
+        veil.snapTo(0.16f)
+        veil.animateTo(0f, androidx.compose.animation.core.tween(450))
+    }
     CompositionLocalProvider(LocalSoundSettings provides soundSettings) {
-    NavHost(navController, startDestination = HomeRoute) {
+    androidx.compose.foundation.layout.Box(
+        androidx.compose.ui.Modifier
+            .fillMaxSize()
+            .drawWithContent {
+                drawContent()
+                if (veil.value > 0f) drawRect(com.gtranca.ui.theme.GColors.Champagne.copy(alpha = veil.value))
+            },
+    ) {
+    NavHost(
+        navController,
+        startDestination = HomeRoute,
+        modifier = androidx.compose.ui.Modifier.background(com.gtranca.ui.theme.GColors.Midnight),
+        enterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(if (motion) 300 else 0)) },
+        exitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(if (motion) 250 else 0)) },
+        popEnterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(if (motion) 300 else 0)) },
+        popExitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(if (motion) 250 else 0)) },
+    ) {
         composable<HomeRoute> {
             HomeScreen(
                 viewModel { HomeViewModel(data.settings, data.savedGames, WriteQueue.app) },
@@ -111,6 +139,7 @@ fun AppNavHost() {
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats) }) { navController.popBackStack() }
         }
+    }
     }
     }
 }

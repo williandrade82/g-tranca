@@ -1,5 +1,26 @@
 package com.gtranca.ui.home
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.gtranca.ui.theme.GoldBrush
+import com.gtranca.ui.theme.goldTitleStyle
+import com.gtranca.ui.theme.rememberMotionEnabled
 import com.gtranca.ui.sound.SoundButton
 
 import com.gtranca.ui.theme.GMessage
@@ -88,7 +109,7 @@ fun HomeScreen(
             onStart(config)
         }
     }
-    GBackground(Modifier.fillMaxSize()) {
+    GBackground(Modifier.fillMaxSize(), royal = true, rays = true) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.xl),
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
@@ -99,14 +120,8 @@ fun HomeScreen(
                 Fan(Card.parse("KH"), 0f)
                 Fan(null, 12f)
             }
-            Text(
-                stringResource(R.string.home_title),
-                style = MaterialTheme.typography.displayMedium.copy(
-                    fontWeight = FontWeight.ExtraBold,
-                    shadow = Shadow(GColors.Shadow, Offset(0f, 6f), 12f),
-                ),
-                color = GColors.Yellow,
-            )
+            CrownOrnament(Modifier.width(120.dp).height(40.dp))
+            LogoTitle(stringResource(R.string.home_title))
             Text(
                 stringResource(R.string.home_subtitle),
                 style = MaterialTheme.typography.bodyLarge,
@@ -132,10 +147,10 @@ fun HomeScreen(
 
             GPanel(Modifier.fillMaxWidth()) {
                 Section(stringResource(R.string.home_mode)) {
-                    Chip(stringResource(R.string.mode_individual), state.mode == GameMode.INDIVIDUAL, "mode-individual") {
+                    ModeCard(stringResource(R.string.mode_individual), 1, state.mode == GameMode.INDIVIDUAL, "mode-individual") {
                         viewModel.onModeChange(GameMode.INDIVIDUAL)
                     }
-                    Chip(stringResource(R.string.mode_duplas), state.mode == GameMode.DUPLAS, "mode-duplas") {
+                    ModeCard(stringResource(R.string.mode_duplas), 2, state.mode == GameMode.DUPLAS, "mode-duplas") {
                         viewModel.onModeChange(GameMode.DUPLAS)
                     }
                 }
@@ -179,13 +194,22 @@ fun HomeScreen(
             ) {
                 Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
             }
-            // Perfil e Estatísticas lado a lado: os dois cabem na tela sem rolar.
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = Alignment.CenterVertically) {
+            // Barra inferior em cápsula: Perfil e Estatísticas lado a lado (cabem na tela sem rolar).
+            Row(
+                Modifier
+                    .background(GColors.Midnight.copy(alpha = 0.6f), CircleShape)
+                    .border(1.dp, GColors.Gold.copy(alpha = 0.4f), CircleShape)
+                    .padding(horizontal = Spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 GButton(onProfile, Modifier.heightIn(min = 48.dp).testTag("profile"), kind = GButtonKind.Text) {
+                    ProfileGlyph(GColors.Gold)
+                    Spacer(Modifier.width(Spacing.sm))
                     Text(stringResource(R.string.home_profile))
                 }
                 GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
-                    StatsIcon(GColors.OnTable)
+                    StatsIcon(GColors.Gold)
                     Spacer(Modifier.width(Spacing.sm))
                     Text(stringResource(R.string.home_stats))
                 }
@@ -248,7 +272,7 @@ fun Difficulty.labelRes(): Int = when (this) {
 @Composable
 private fun Section(title: String, chips: @Composable RowScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(title, style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), content = chips)
     }
 }
@@ -256,4 +280,119 @@ private fun Section(title: String, chips: @Composable RowScope.() -> Unit) {
 @Composable
 private fun RowScope.Chip(text: String, selected: Boolean, tag: String, onClick: () -> Unit) {
     GChoiceChip(text, selected, onClick, Modifier.weight(1f).testTag(tag))
+}
+
+/** Logotipo em Cinzel com degradê dourado; um brilho percorre o texto de tempos em tempos. */
+@Composable
+private fun LogoTitle(text: String) {
+    val motion = rememberMotionEnabled()
+    val t = if (motion) {
+        val v by rememberInfiniteTransition(label = "logo").animateFloat(
+            -0.3f, 1.3f,
+            infiniteRepeatable(keyframes { durationMillis = 5000; -0.3f at 0; -0.3f at 3600; 1.3f at 5000 }),
+            label = "logo-sheen",
+        )
+        v
+    } else -1f
+    val base = goldTitleStyle(MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Black, textAlign = TextAlign.Center))
+    Box {
+        Text(text, style = base)
+        if (t > -0.3f && t < 1.3f) {
+            Text(
+                text,
+                style = base.copy(
+                    brush = Brush.linearGradient(
+                        listOf(Color.Transparent, GColors.Champagne.copy(alpha = 0.95f), Color.White, GColors.Champagne.copy(alpha = 0.95f), Color.Transparent),
+                        start = Offset(t * 900f - 160f, 0f),
+                        end = Offset(t * 900f + 160f, 160f),
+                    ),
+                    shadow = null,
+                ),
+            )
+        }
+    }
+}
+
+/** Coroa com naipes vazados (ornamento vetorial do logotipo). */
+@Composable
+private fun CrownOrnament(modifier: Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val crown = Path().apply {
+            moveTo(w * 0.3f, h * 0.9f)
+            lineTo(w * 0.27f, h * 0.3f); lineTo(w * 0.4f, h * 0.55f); lineTo(w * 0.5f, h * 0.12f)
+            lineTo(w * 0.6f, h * 0.55f); lineTo(w * 0.73f, h * 0.3f); lineTo(w * 0.7f, h * 0.9f); close()
+        }
+        drawPath(crown, GoldBrush)
+        drawPath(crown, GColors.GoldDeep, style = Stroke(1.5.dp.toPx()))
+        listOf(0.27f, 0.5f, 0.73f).forEach { x -> drawCircle(GColors.Champagne, h * 0.07f, Offset(w * x, if (x == 0.5f) h * 0.1f else h * 0.28f)) }
+        // Losangos laterais.
+        listOf(0.1f, 0.9f).forEach { x ->
+            val d = Path().apply {
+                moveTo(w * x, h * 0.35f); lineTo(w * x + h * 0.15f, h * 0.6f); lineTo(w * x, h * 0.85f); lineTo(w * x - h * 0.15f, h * 0.6f); close()
+            }
+            drawPath(d, GColors.Gold, style = Stroke(1.5.dp.toPx()))
+        }
+    }
+}
+
+/** Cartão grande de modo com ilustração ([seats] medalhões por lado: 1 × 1 ou 2 × 2). */
+@Composable
+private fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        Modifier
+            .weight(1f)
+            .heightIn(min = 96.dp)
+            .clip(shape)
+            .background(
+                if (selected) Brush.verticalGradient(listOf(GColors.Amethyst, GColors.RoyalEnd))
+                else Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)),
+                shape,
+            )
+            .border(if (selected) 2.dp else 1.dp, if (selected) GColors.Gold else GColors.Lavender.copy(alpha = 0.4f), shape)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(Spacing.sm)
+            .testTag(tag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterVertically),
+    ) {
+        Canvas(Modifier.width(88.dp).height(36.dp)) {
+            val r = size.height * 0.26f
+            val ring = if (selected) GColors.Gold else GColors.Lavender
+            fun seat(x: Float, y: Float, own: Boolean) {
+                drawCircle(if (own) GColors.Gold.copy(alpha = 0.85f) else GColors.Midnight, r, Offset(x, y))
+                drawCircle(ring, r, Offset(x, y), style = Stroke(2.dp.toPx()))
+            }
+            val cy = size.height / 2
+            if (seats == 1) {
+                seat(size.width * 0.25f, cy, true); seat(size.width * 0.75f, cy, false)
+            } else {
+                seat(size.width * 0.12f, cy, true); seat(size.width * 0.34f, cy, true)
+                seat(size.width * 0.66f, cy, false); seat(size.width * 0.88f, cy, false)
+            }
+            // "×" no meio.
+            val c = Offset(size.width / 2, cy); val d = r * 0.5f
+            drawLine(GColors.Champagne, c + Offset(-d, -d), c + Offset(d, d), 2.dp.toPx())
+            drawLine(GColors.Champagne, c + Offset(-d, d), c + Offset(d, -d), 2.dp.toPx())
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) GColors.Ivory else GColors.Lavender,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** Ícone de perfil (linha fina): cabeça e ombros. */
+@Composable
+private fun ProfileGlyph(color: Color) {
+    Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        val stroke = Stroke(1.75.dp.toPx())
+        drawCircle(color, w * 0.2f, Offset(w / 2, w * 0.32f), style = stroke)
+        drawArc(color, 200f, 140f, false, Offset(w * 0.15f, w * 0.58f), Size(w * 0.7f, w * 0.7f), style = stroke)
+    }
 }

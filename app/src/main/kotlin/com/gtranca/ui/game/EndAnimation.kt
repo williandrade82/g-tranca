@@ -86,7 +86,7 @@ object EndParticles {
     fun x(p: Particle, t: Float): Float = p.x + sin(t * 2 * PI.toFloat() * p.sway + p.phase) * 0.03f
 }
 
-private val ConfettiColors = listOf(GColors.Yellow, GColors.Green, GColors.Red, GColors.White, GColors.YellowSoft)
+private val ConfettiColors = listOf(GColors.Gold, GColors.Champagne, GColors.GoldDeep, GColors.Ivory, GColors.Gold)
 
 /**
  * Camada de fundo da tela final: confete caindo na vitória, cartas descendo devagar na derrota. [brief] = um disparo
@@ -118,7 +118,7 @@ fun EndCelebration(outcome: EndOutcome, brief: Boolean, enabled: Boolean, modifi
             val cx = EndParticles.x(p, t) * size.width
             val cy = y * size.height
             if (win) {
-                val w = size.width * 0.022f * p.size
+                val w = size.width * 0.013f * p.size
                 rotate(p.spin * t * 360f + p.phase * 20f, Offset(cx, cy)) {
                     drawRoundRect(ConfettiColors[p.colorIndex], Offset(cx - w / 2, cy - w), Size(w, w * 2), CornerRadius(w * 0.2f))
                 }
@@ -176,11 +176,11 @@ fun Trophy(size: Dp, animate: Boolean, modifier: Modifier = Modifier) {
         scaleY = s
     }) {
         val w = this.size.width
-        val gold = Brush.linearGradient(listOf(Color(0xFFFFE082), GColors.Yellow, Color(0xFFFF8F00)), Offset(0f, 0f), Offset(w, w))
+        val gold = Brush.linearGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep), Offset(0f, 0f), Offset(w, w))
         // Alças.
         val handle = Stroke(width = w * 0.07f, cap = StrokeCap.Round)
-        drawArc(Color(0xFFFFB300), 90f, 180f, false, Offset(w * 0.04f, w * 0.14f), Size(w * 0.3f, w * 0.34f), style = handle)
-        drawArc(Color(0xFFFFB300), -90f, 180f, false, Offset(w * 0.66f, w * 0.14f), Size(w * 0.3f, w * 0.34f), style = handle)
+        drawArc(GColors.GoldDeep, 90f, 180f, false, Offset(w * 0.04f, w * 0.14f), Size(w * 0.3f, w * 0.34f), style = handle)
+        drawArc(GColors.GoldDeep, -90f, 180f, false, Offset(w * 0.66f, w * 0.14f), Size(w * 0.3f, w * 0.34f), style = handle)
         // Taça.
         val cup = Path().apply {
             moveTo(w * 0.22f, w * 0.1f); lineTo(w * 0.78f, w * 0.1f)
@@ -207,7 +207,79 @@ fun Trophy(size: Dp, animate: Boolean, modifier: Modifier = Modifier) {
             }
             close()
         }
-        drawPath(star, Color(0xFFFFF8E1))
+        drawPath(star, GColors.Ivory)
         drawArc(Color(0x66FFFFFF), 110f, 70f, false, Offset(w * 0.28f, w * 0.14f), Size(w * 0.26f, w * 0.4f), style = Stroke(width = w * 0.035f, cap = StrokeCap.Round))
+    }
+}
+
+/**
+ * Faixa de resultado: "VITÓRIA" em ouro com louros e coroa, descendo com um balanço; "DERROTA" em bordô,
+ * sóbria e parada. Sem animação ([animate] falso), já aparece no lugar.
+ */
+@Composable
+fun OutcomeRibbon(text: String, win: Boolean, animate: Boolean, modifier: Modifier = Modifier) {
+    val drop = remember { Animatable(if (animate && win) 0f else 1f) }
+    LaunchedEffect(Unit) { if (animate && win) drop.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.35f, stiffness = 120f)) }
+    androidx.compose.foundation.layout.Box(
+        modifier.graphicsLayer {
+            translationY = (drop.value - 1f) * 120.dp.toPx()
+            rotationZ = if (win) (1f - drop.value) * 8f else 0f
+            alpha = drop.value.coerceIn(0f, 1f)
+        },
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Canvas(Modifier.size(width = 300.dp, height = 96.dp)) {
+            val w = size.width
+            val h = size.height
+            val top = h * 0.3f
+            val bh = h * 0.5f
+            val fill = if (win) Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep), top, top + bh)
+                else Brush.verticalGradient(listOf(GColors.Bordeaux, Color(0xFF4A0D1D)), top, top + bh)
+            val edge = if (win) GColors.GoldDeep else GColors.GoldDeep.copy(alpha = 0.6f)
+            // Pontas da faixa (rabo de andorinha).
+            listOf(-1f, 1f).forEach { dir ->
+                val x0 = if (dir < 0) w * 0.04f else w * 0.96f
+                val x1 = if (dir < 0) w * 0.2f else w * 0.8f
+                val tail = Path().apply {
+                    moveTo(x1, top + bh * 0.25f); lineTo(x0, top + bh * 0.25f); lineTo(x0 + dir * -w * 0.04f, top + bh * 0.75f)
+                    lineTo(x0, top + bh * 1.25f); lineTo(x1, top + bh * 1.25f); close()
+                }
+                drawPath(tail, if (win) GColors.GoldDeep else Color(0xFF4A0D1D))
+            }
+            drawRoundRect(fill, Offset(w * 0.14f, top), Size(w * 0.72f, bh), CornerRadius(h * 0.06f))
+            drawRoundRect(edge, Offset(w * 0.14f, top), Size(w * 0.72f, bh), CornerRadius(h * 0.06f), style = Stroke(1.5.dp.toPx()))
+            if (win) {
+                // Coroa no alto.
+                val cx = w / 2
+                val crown = Path().apply {
+                    moveTo(cx - h * 0.2f, top - h * 0.02f); lineTo(cx - h * 0.24f, top - h * 0.26f); lineTo(cx - h * 0.1f, top - h * 0.14f)
+                    lineTo(cx, top - h * 0.3f); lineTo(cx + h * 0.1f, top - h * 0.14f); lineTo(cx + h * 0.24f, top - h * 0.26f)
+                    lineTo(cx + h * 0.2f, top - h * 0.02f); close()
+                }
+                drawPath(crown, Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold)))
+                // Louros dos dois lados.
+                listOf(-1f, 1f).forEach { dir ->
+                    for (i in 0 until 5) {
+                        val t = i / 4f
+                        val px = w / 2 + dir * (w * 0.4f + h * 0.05f * sin(t * PI.toFloat()))
+                        val py = top + bh * 1.2f - t * bh * 1.5f
+                        rotate(dir * (30f + t * 40f), Offset(px, py)) {
+                            drawOval(GColors.Gold, Offset(px - h * 0.035f, py - h * 0.08f), Size(h * 0.07f, h * 0.16f))
+                        }
+                    }
+                }
+            }
+        }
+        androidx.compose.material3.Text(
+            text,
+            style = androidx.compose.ui.text.TextStyle(
+                fontFamily = com.gtranca.ui.theme.Cinzel,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                fontSize = androidx.compose.ui.unit.TextUnit(26f, androidx.compose.ui.unit.TextUnitType.Sp),
+                letterSpacing = androidx.compose.ui.unit.TextUnit(3f, androidx.compose.ui.unit.TextUnitType.Sp),
+                color = if (win) GColors.OnGold else GColors.Ivory,
+            ),
+            modifier = Modifier.graphicsLayer { translationY = 7.dp.toPx() },
+        )
     }
 }

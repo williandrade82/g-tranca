@@ -1,5 +1,6 @@
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.TabularNums
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
@@ -47,13 +48,17 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
     val sides = listOf(view.side) + view.mode.sides.filter { it != view.side }
     val won = !snapshot.resigned && snapshot.winner == view.side
     val outcome = if (won) EndOutcome.WIN else EndOutcome.LOSE
-    GBackground(Modifier.fillMaxSize().testTag("game-over")) {
-        EndCelebration(outcome, brief = false, enabled = animate, playSound = snapshot.resigned)
+    GBackground(Modifier.fillMaxSize().testTag("game-over"), royal = true, rays = won && animate) {
+        // Vitória: confete dourado fino por alguns segundos; derrota: discreta.
+        EndCelebration(outcome, brief = won, enabled = animate, playSound = snapshot.resigned)
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             GTitle(stringResource(R.string.game_over_title))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                OutcomeRibbon(stringResource(if (won) R.string.outcome_victory else R.string.outcome_defeat), won, animate, Modifier.testTag("outcome-ribbon"))
+            }
             if (won) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Trophy(96.dp, animate, Modifier.testTag("game-over-trophy")) }
             // §14.1 quem venceu, com o avatar em destaque.
             snapshot.winner?.let { winner ->
@@ -71,8 +76,8 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
                         if (snapshot.resigned) resignedRes(view.mode) else gameResultRes(view.mode, won = snapshot.winner == view.side),
                     )
                 },
-                if (won) GColors.Green else GColors.Neutral,
-                GColors.White,
+                if (won) GColors.RoyalEnd else GColors.Bordeaux,
+                GColors.Ivory,
             )
             GPanel(Modifier.fillMaxWidth()) {
                 sides.forEach { side ->
@@ -80,7 +85,8 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
                         AvatarRow(personasOfSide(view.mode, side, personas), 30.dp)
                         Text(
                             sideLabel(view.mode, side, view.side, personas) + ": " + plainPoints(snapshot.totals[side.index]),
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = TabularNums),
+                            color = if (side == snapshot.winner) GColors.Gold else GColors.Ivory,
                         )
                     }
                 }
