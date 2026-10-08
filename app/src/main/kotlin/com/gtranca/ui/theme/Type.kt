@@ -22,15 +22,15 @@ val Poppins = FontFamily(
     Font(R.font.poppins_regular, FontWeight.Normal),
     Font(R.font.poppins_medium, FontWeight.Medium),
     Font(R.font.poppins_semibold, FontWeight.SemiBold),
-    Font(R.font.poppins_semibold, FontWeight.Bold),
-    Font(R.font.poppins_semibold, FontWeight.ExtraBold),
+    Font(R.font.poppins_bold, FontWeight.Bold),
+    Font(R.font.poppins_bold, FontWeight.ExtraBold),
 )
 
-/** Índices das cartas (Playfair Display, fonte variável). */
-val Playfair = FontFamily(
-    Font(R.font.playfair, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
-    Font(R.font.playfair, FontWeight.ExtraBold, variationSettings = FontVariation.Settings(FontVariation.weight(800))),
-    Font(R.font.playfair, FontWeight.Black, variationSettings = FontVariation.Settings(FontVariation.weight(900))),
+/** Índices das cartas: Poppins Bold (traço grosso e uniforme, legível em tamanho pequeno). */
+val CardFont = FontFamily(
+    Font(R.font.poppins_bold, FontWeight.Bold),
+    Font(R.font.poppins_bold, FontWeight.ExtraBold),
+    Font(R.font.poppins_bold, FontWeight.Black),
 )
 
 /** Algarismos de largura fixa (placar e contadores não "dançam"). */

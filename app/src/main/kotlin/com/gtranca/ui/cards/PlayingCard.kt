@@ -2,7 +2,7 @@ package com.gtranca.ui.cards
 
 import com.gtranca.ui.theme.Cinzel
 import com.gtranca.ui.theme.GColors
-import com.gtranca.ui.theme.Playfair
+import com.gtranca.ui.theme.CardFont
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -150,7 +150,7 @@ fun PlayingCard(
         fontSize = size.cornerFont.asFont(),
         lineHeight = size.cornerFont.asFont(),
         fontWeight = FontWeight.Bold,
-        fontFamily = Playfair,
+        fontFamily = CardFont,
     )
     Box(
         modifier
