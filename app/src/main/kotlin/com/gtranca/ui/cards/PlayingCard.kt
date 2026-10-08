@@ -1,6 +1,9 @@
 package com.gtranca.ui.cards
 
+import com.gtranca.ui.theme.Cinzel
 import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.Playfair
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -147,13 +150,16 @@ fun PlayingCard(
         fontSize = size.cornerFont.asFont(),
         lineHeight = size.cornerFont.asFont(),
         fontWeight = FontWeight.Bold,
+        fontFamily = Playfair,
     )
     Box(
         modifier
             .size(size.width, size.height)
             .then(if (describe) Modifier.semantics { contentDescription = description } else Modifier)
+            // Selecionada: borda ouro e leve elevação (sombra dourada).
+            .shadow(if (emphasis == CardEmphasis.SELECTED) 8.dp else 1.dp, shape, ambientColor = GColors.GoldDeep, spotColor = GColors.GoldDeep)
             .clip(shape)
-            .background(if (emphasis == CardEmphasis.SELECTED) GColors.CardSelectedFill else Color.White)
+            .background(if (emphasis == CardEmphasis.SELECTED) GColors.CardSelectedFill else GColors.CardFace)
             .border(border.first, border.second, shape),
     ) {
         CornerIndex(card, cornerStyle, Modifier.align(Alignment.TopStart).padding(start = 3.dp, top = 2.dp))
@@ -209,7 +215,7 @@ private fun CornerIndex(card: Card, style: TextStyle, modifier: Modifier) {
 
 
 /**
- * Verso da carta: moldura branca e, dentro dela, um padrão de losangos sobre fundo vermelho-escuro.
+ * Verso da carta: moldura marfim e, dentro dela, losangos dourados sobre bordô, com o monograma "TF".
  * Isolado para poder ser trocado por imagem no futuro.
  */
 @Composable
@@ -225,7 +231,7 @@ fun CardBack(
             .size(size.width, size.height)
             .then(if (describe) Modifier.semantics { contentDescription = description } else Modifier)
             .clip(shape)
-            .background(Color.White)
+            .background(GColors.CardFace)
             .border(1.dp, GColors.CardBorder, shape),
     ) {
         Canvas(Modifier.matchParentSize().padding(3.dp)) {
@@ -236,8 +242,8 @@ fun CardBack(
                 // Losangos: duas famílias de diagonais.
                 var x = -this.size.height
                 while (x < this.size.width + this.size.height) {
-                    drawLine(GColors.CardBackPattern, Offset(x, 0f), Offset(x + this.size.height, this.size.height), strokeWidth = 1.2f)
-                    drawLine(GColors.CardBackPattern, Offset(x, this.size.height), Offset(x + this.size.height, 0f), strokeWidth = 1.2f)
+                    drawLine(GColors.CardBackPattern.copy(alpha = 0.45f), Offset(x, 0f), Offset(x + this.size.height, this.size.height), strokeWidth = 1f)
+                    drawLine(GColors.CardBackPattern.copy(alpha = 0.45f), Offset(x, this.size.height), Offset(x + this.size.height, 0f), strokeWidth = 1f)
                     x += step
                 }
             }
@@ -257,7 +263,21 @@ fun CardBack(
             val diamond = Path().apply {
                 moveTo(cx, cy - r * 1.4f); lineTo(cx + r, cy); lineTo(cx, cy + r * 1.4f); lineTo(cx - r, cy); close()
             }
-            drawPath(diamond, Color.White)
+            drawPath(diamond, GColors.CardBackFrame)
+            drawPath(diamond, GColors.Gold, style = Stroke(width = 1.5f))
+        }
+        if (size != CardSize.SMALL) {
+            Text(
+                "TF",
+                Modifier.align(Alignment.Center),
+                style = TextStyle(
+                    color = GColors.Champagne,
+                    fontFamily = Cinzel,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (size.width * 0.18f).asFont(),
+                    lineHeight = (size.width * 0.18f).asFont(),
+                ),
+            )
         }
     }
 }
