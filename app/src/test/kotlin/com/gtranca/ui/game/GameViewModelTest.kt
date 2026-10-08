@@ -838,7 +838,7 @@ class GameViewModelTest {
                     choice.toSet() shouldBe plans.toSet()
                     vm.uiState.value.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
                     vm.uiState.value.snapshot.turnEvents[0].none { it.action is Action.TakeDiscardPile } shouldBe true
-                    // O botão "Pegar lixo" segue a mesma regra.
+                    // O botão "Pegar descarte" segue a mesma regra.
                     vm.onDismissPlanChoice()
                     vm.onTakeDiscardPile()
                     advanceUntilIdle()

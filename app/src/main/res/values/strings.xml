@@ -63,7 +63,7 @@
     <string name="side_your_team">Sua dupla</string>
     <string name="side_other_team">Dupla adversária</string>
     <string name="score_line">%1$s %2$s × %3$s %4$s</string>
-    <string name="turn_draw">Sua vez: compre do monte ou pegue o lixo</string>
+    <string name="turn_draw">Sua vez: compre do monte ou pegue o descarte</string>
     <string name="turn_play">Sua vez: baixe, acrescente ou descarte</string>
     <string name="turn_opponent">Vez do adversário…</string>
     <string name="turn_partner">Vez do parceiro…</string>
@@ -151,7 +151,7 @@
     <string name="legend_button">Legenda dos símbolos</string>
     <string name="legend_title">Símbolos das jogadas</string>
     <string name="legend_draw">Comprou do monte</string>
-    <string name="legend_take">Pegou o lixo (número de cartas)</string>
+    <string name="legend_take">Pegou o descarte (número de cartas)</string>
     <string name="legend_meld">Baixou um jogo novo (número de cartas)</string>
     <string name="legend_add">Acrescentou a um jogo (número de cartas)</string>
     <string name="legend_discard">Descartou (a carta)</string>
@@ -182,7 +182,7 @@
     <string name="add_to_meld_hint">Toque num dos seus jogos para acrescentar as cartas selecionadas</string>
     <string name="add_to_meld_hint_team">Toque num jogo da sua dupla para acrescentar as cartas selecionadas</string>
     <string name="action_draw">Comprar</string>
-    <string name="action_take_discard">Pegar lixo</string>
+    <string name="action_take_discard">Pegar descarte</string>
     <string name="action_decline">Recusar compra</string>
     <string name="action_meld">Baixar</string>
     <string name="action_discard">Descartar</string>
@@ -227,7 +227,7 @@
     <!-- Motivos de recusa (ActionError) -->
     <string name="error_round_finished">A partida já terminou.</string>
     <string name="error_not_your_turn">Não é a sua vez.</string>
-    <string name="error_must_draw_first">Primeiro compre do monte ou pegue o lixo.</string>
+    <string name="error_must_draw_first">Primeiro compre do monte ou pegue o descarte.</string>
     <string name="error_already_drew">Você já comprou nesta jogada.</string>
     <string name="error_stock_exhausted">O monte acabou e não há morto disponível.</string>
     <string name="error_decline_not_allowed">Só é possível recusar a compra quando o monte acabou e não há morto disponível.</string>
@@ -336,10 +336,10 @@
     <!-- Zero tratado à parte: em pt, a forma "one" cobre o 0 ("0 carta"). -->
     <string name="card_count_zero">nenhuma carta</string>
     <string name="opponent_hand_zero">nenhuma carta na mão</string>
-    <string name="event_take_discard_zero">pegou o lixo (só o topo, levado à mesa)</string>
+    <string name="event_take_discard_zero">pegou o descarte (só o topo, levado à mesa)</string>
     <plurals name="event_take_discard">
-        <item quantity="one">pegou o lixo (%1$d carta para a mão)</item>
-        <item quantity="other">pegou o lixo (%1$d cartas para a mão)</item>
-        <item quantity="many">pegou o lixo (%1$d cartas para a mão)</item>
+        <item quantity="one">pegou o descarte (%1$d carta para a mão)</item>
+        <item quantity="other">pegou o descarte (%1$d cartas para a mão)</item>
+        <item quantity="many">pegou o descarte (%1$d cartas para a mão)</item>
     </plurals>
 </resources>

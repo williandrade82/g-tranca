@@ -1,5 +1,7 @@
 package com.gtranca.ui.game
 
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.rotate
 import com.gtranca.game.Persona
 import com.gtranca.ui.persona.PersonaAvatar
 import com.gtranca.ui.persona.labelRes
@@ -75,7 +77,7 @@ fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier) {
 @Composable
 private fun SymbolWithDetail(symbol: ActionSymbol) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        ActionIcon(symbol.kind, GColors.OnTable, Modifier.size(14.dp))
+        ActionIcon(symbol.kind, GColors.Gold, Modifier.size(15.dp))
         symbol.detail?.let {
             Text(
                 it,
@@ -89,48 +91,66 @@ private fun SymbolWithDetail(symbol: ActionSymbol) {
     }
 }
 
-/** Ícone da ação, desenhado no código. */
+/**
+ * Ícone da ação em linha fina (1,75dp num ícone de 22dp, proporcional), desenhado no código: cada jogada
+ * tem forma própria, sem depender da cor.
+ */
 @Composable
 fun ActionIcon(kind: ActionKind, color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val w = size.width
-        val stroke = w * 0.13f
-        fun line(x1: Float, y1: Float, x2: Float, y2: Float) =
+        val stroke = (1.75.dp.toPx() * w / 22.dp.toPx()).coerceAtLeast(1.dp.toPx())
+        val line = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        fun seg(x1: Float, y1: Float, x2: Float, y2: Float) =
             drawLine(color, Offset(w * x1, w * y1), Offset(w * x2, w * y2), strokeWidth = stroke, cap = StrokeCap.Round)
+        fun card(x: Float, y: Float, cw: Float = 0.42f, ch: Float = 0.6f, angle: Float = 0f) =
+            rotate(angle, Offset(w * (x + cw / 2), w * (y + ch))) {
+                drawRoundRect(color, Offset(w * x, w * y), Size(w * cw, w * ch), CornerRadius(w * 0.07f), style = line)
+            }
+        fun head(x: Float, y: Float, dx: Float, dy: Float) {
+            // Ponta de seta em (x, y) apontando na direção (dx, dy).
+            val px = -dy
+            val py = dx
+            seg(x, y, x - dx * 0.18f + px * 0.14f, y - dy * 0.18f + py * 0.14f)
+            seg(x, y, x - dx * 0.18f - px * 0.14f, y - dy * 0.18f - py * 0.14f)
+        }
         when (kind) {
-            ActionKind.DRAW -> arrow(::line, down = true, from = 0.08f, to = 0.9f)
+            // Comprar: monte (duas cartas empilhadas) e seta saindo para baixo.
+            ActionKind.DRAW -> {
+                card(0.12f, 0.06f, 0.4f, 0.5f)
+                card(0.2f, 0.14f, 0.4f, 0.5f)
+                seg(0.78f, 0.3f, 0.78f, 0.92f); head(0.78f, 0.92f, 0f, 1f)
+            }
+            // Pegar o descarte: leque de cartas recolhido por uma seta para baixo.
             ActionKind.TAKE -> {
-                arrow(::line, down = true, from = 0.05f, to = 0.68f)
-                line(0.12f, 0.93f, 0.88f, 0.93f)
+                card(0.08f, 0.08f, 0.34f, 0.48f, -18f)
+                card(0.3f, 0.04f, 0.34f, 0.48f, 0f)
+                card(0.52f, 0.08f, 0.34f, 0.48f, 18f)
+                seg(0.5f, 0.62f, 0.5f, 0.95f); head(0.5f, 0.95f, 0f, 1f)
             }
-            ActionKind.DISCARD -> {
-                arrow(::line, down = false, from = 0.72f, to = 0.08f)
-                line(0.12f, 0.93f, 0.88f, 0.93f)
+            // Baixar jogo: três cartas abertas sobre a linha da mesa.
+            ActionKind.MELD -> {
+                listOf(0.04f, 0.31f, 0.58f).forEach { x -> card(x, 0.1f, 0.36f, 0.58f) }
+                seg(0.02f, 0.86f, 0.98f, 0.86f)
             }
-            ActionKind.MELD -> listOf(0.04f, 0.3f, 0.56f).forEach { x ->
-                drawRoundRect(
-                    color, Offset(w * x, w * 0.14f), Size(w * 0.4f, w * 0.72f), CornerRadius(w * 0.08f),
-                    style = Stroke(width = w * 0.1f),
-                )
-            }
+            // Acrescentar: carta com "+".
             ActionKind.ADD -> {
-                line(0.5f, 0.12f, 0.5f, 0.88f)
-                line(0.12f, 0.5f, 0.88f, 0.5f)
+                card(0.06f, 0.14f, 0.42f, 0.66f)
+                seg(0.72f, 0.3f, 0.72f, 0.7f)
+                seg(0.52f, 0.5f, 0.92f, 0.5f)
             }
+            // Descartar: carta saindo para a direita.
+            ActionKind.DISCARD -> {
+                card(0.06f, 0.16f, 0.4f, 0.62f, -10f)
+                seg(0.52f, 0.47f, 0.94f, 0.47f); head(0.94f, 0.47f, 1f, 0f)
+            }
+            // Recusar a compra: carta riscada.
             ActionKind.DECLINE -> {
-                line(0.2f, 0.2f, 0.8f, 0.8f)
-                line(0.8f, 0.2f, 0.2f, 0.8f)
+                card(0.25f, 0.1f, 0.5f, 0.76f)
+                seg(0.1f, 0.9f, 0.9f, 0.1f)
             }
         }
     }
-}
-
-/** Seta vertical de [from] a [to] (frações da altura) com a ponta em [to]. */
-private fun arrow(line: (Float, Float, Float, Float) -> Unit, down: Boolean, from: Float, to: Float) {
-    line(0.5f, from, 0.5f, to)
-    val back = if (down) to - 0.3f else to + 0.3f
-    line(0.5f, to, 0.22f, back)
-    line(0.5f, to, 0.78f, back)
 }
 
 /** Legenda dos símbolos (botão "?" da mesa). */
@@ -150,7 +170,7 @@ fun LegendDialog(onDismiss: () -> Unit) {
                     ActionKind.DECLINE to R.string.legend_decline,
                 ).forEach { (kind, text) ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        ActionIcon(kind, MaterialTheme.colorScheme.onSurface, Modifier.size(22.dp))
+                        ActionIcon(kind, GColors.Gold, Modifier.size(22.dp))
                         Text(stringResource(text))
                     }
                 }
@@ -194,7 +214,7 @@ fun SeatDetailDialog(persona: Persona?, roleLabel: String, events: List<PublicEv
                         else -> emptyList()
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        ActionIcon(event.symbol().kind, MaterialTheme.colorScheme.onSurface, Modifier.padding(top = 2.dp).size(22.dp))
+                        ActionIcon(event.symbol().kind, GColors.Gold, Modifier.padding(top = 2.dp).size(22.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                             Text(eventText(event).replaceFirstChar { it.uppercase() })
                             if (cards.isNotEmpty()) {

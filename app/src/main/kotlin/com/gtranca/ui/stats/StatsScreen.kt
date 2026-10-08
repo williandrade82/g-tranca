@@ -1,5 +1,12 @@
 package com.gtranca.ui.stats
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Box
@@ -112,6 +119,14 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
                     )
                     val lines = Difficulty.entries.map { stats.line(mode, it.id) }
                     WinRing(lines.sumOf { it.wins }, lines.sumOf { it.games })
+                    if (lines.any { it.games > 0 }) {
+                        StatsBarChart(
+                            Difficulty.entries.map { stringResource(it.labelRes()) },
+                            lines.map { it.games },
+                            lines.map { it.wins },
+                            Modifier.testTag("stats-chart-${mode.name.lowercase()}"),
+                        )
+                    }
                     StatsRow(
                         stringResource(R.string.stats_difficulty),
                         listOf(stringResource(R.string.stats_games), stringResource(R.string.stats_wins), stringResource(R.string.stats_percent)),
@@ -193,6 +208,56 @@ private fun WinRing(wins: Int, games: Int) {
                 color = GColors.Lavender,
                 style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = TabularNums),
             )
+        }
+    }
+}
+
+/** Cores das séries do gráfico (validadas para daltonismo sobre o índigo). */
+private val ChartGames = Color(0xFF8F7FF0)
+private val ChartWins = Color(0xFFC8921A)
+
+/**
+ * Barras agrupadas por dificuldade: jogos (ametista) e vitórias (ouro), com o valor sobre cada barra e
+ * legenda; a tabela logo abaixo traz os mesmos números.
+ */
+@Composable
+private fun StatsBarChart(labels: List<String>, games: List<Int>, wins: List<Int>, modifier: Modifier = Modifier) {
+    val gamesLabel = stringResource(R.string.stats_games)
+    val winsLabel = stringResource(R.string.stats_wins)
+    val description = labels.indices.joinToString("; ") { "${labels[it]}: $gamesLabel ${games[it]}, $winsLabel ${wins[it]}" }
+    val max = (games.maxOrNull() ?: 0).coerceAtLeast(1)
+    val numbers = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = TabularNums)
+    Column(modifier.semantics(mergeDescendants = true) { contentDescription = description }, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = Alignment.CenterVertically) {
+            listOf(ChartGames to gamesLabel, ChartWins to winsLabel).forEach { (color, label) ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.size(10.dp).background(color, RoundedCornerShape(2.dp)))
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = GColors.Lavender)
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().height(120.dp), verticalAlignment = Alignment.Bottom) {
+            labels.indices.forEach { i ->
+                Row(Modifier.weight(1f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.Bottom) {
+                    listOf(games[i] to ChartGames, wins[i] to ChartWins).forEach { (value, color) ->
+                        Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(value.toString(), style = numbers, color = GColors.Ivory)
+                            Box(
+                                Modifier
+                                    .width(18.dp)
+                                    .fillMaxHeight(0.8f * value / max)
+                                    .heightIn(min = 1.dp)
+                                    .background(color, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        // Linha de base e rótulos das dificuldades.
+        Box(Modifier.fillMaxWidth().height(1.dp).background(GColors.Lavender.copy(alpha = 0.4f)))
+        Row(Modifier.fillMaxWidth()) {
+            labels.forEach { Text(it, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender, textAlign = TextAlign.Center) }
         }
     }
 }

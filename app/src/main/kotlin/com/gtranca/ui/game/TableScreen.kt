@@ -794,12 +794,12 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
         Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (snapshot.view.phase != Phase.PLAYING || !state.isHumanTurn) {
-                ActionButton(stringResource(R.string.action_draw), state.canDraw, events::onDraw, "action-draw")
-                ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard")
-                if (state.canDecline) ActionButton(stringResource(R.string.action_decline), true, events::onDeclineDraw, "action-decline")
+                ActionButton(stringResource(R.string.action_draw), state.canDraw, events::onDraw, "action-draw", ActionKind.DRAW)
+                ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard", ActionKind.TAKE)
+                if (state.canDecline) ActionButton(stringResource(R.string.action_decline), true, events::onDeclineDraw, "action-decline", ActionKind.DECLINE)
             } else {
-                ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld")
-                ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard")
+                ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
+                ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard", ActionKind.DISCARD)
             }
             val clearEnabled = state.selected.isNotEmpty()
             OutlinedButton(
@@ -824,7 +824,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
 
 /** Botão de ação. Desabilitado: só o contorno, sem preenchimento, com texto claro legível sobre o verde. */
 @Composable
-private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String) {
+private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String, icon: ActionKind? = null) {
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -839,7 +839,13 @@ private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, ta
             disabledContainerColor = Color.Transparent,
             disabledContentColor = GColors.OnTableDisabled,
         ),
-    ) { Text(text) }
+    ) {
+        if (icon != null) {
+            ActionIcon(icon, if (enabled) GColors.OnGold else GColors.OnTableDisabled, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(text)
+    }
 }
 
 /**
@@ -1297,18 +1303,34 @@ private fun planUsesWild(action: Action.TakeDiscardPile): Boolean = when (val pl
 }
 
 /** Cartas por camada de profundidade do monte e dos mortos (a pilha afina a cada tantas cartas). */
-private const val CARDS_PER_LAYER = 5
+private const val CARDS_PER_LAYER = 2
 
-/** Pilha de cartas viradas com profundidade: uma camada a cada [CARDS_PER_LAYER] cartas (no máximo 8). */
+/**
+ * Pilha de cartas viradas vista de lado: uma lâmina por [CARDS_PER_LAYER] cartas (sem limite prático), e a cada
+ * 10 cartas a lâmina é dourada, como marcas de régua. A altura da pilha permite estimar quantas cartas restam.
+ */
 @Composable
 private fun DeckStack(count: Int, anchor: AnimAnchor) {
     val size = CardSize.SMALL
-    val layers = ((count + CARDS_PER_LAYER - 1) / CARDS_PER_LAYER).coerceIn(1, 8)
-    val step = 1.5.dp
-    Box(Modifier.size(size.width + step * (layers - 1), size.height + step * (layers - 1))) {
-        // Camadas de baixo (deslocadas para a direita e para baixo) primeiro; a de cima, no canto, é a âncora.
-        for (i in layers - 1 downTo 1) {
-            CardBack(Modifier.offset(x = step * i, y = step * i).shadow(1.dp, RoundedCornerShape(4.dp)), size = size, describe = false)
+    val layers = ((count + CARDS_PER_LAYER - 1) / CARDS_PER_LAYER).coerceIn(1, 60)
+    val step = 1.dp
+    val depth = step * (layers - 1)
+    Box(Modifier.size(size.width + 2.dp, size.height + depth)) {
+        // Lâminas de baixo para cima; a carta do topo fica no alto e é a âncora.
+        Canvas(Modifier.matchParentSize()) {
+            val cw = size.width.toPx()
+            val ch = size.height.toPx()
+            val s = step.toPx()
+            val r = CornerRadius(cw * 0.12f)
+            for (i in layers - 1 downTo 1) {
+                val y = i * s
+                val tick = (i * CARDS_PER_LAYER) % 10 == 0
+                drawRoundRect(GColors.CardFace, Offset(0f, y), Size(cw, ch), r)
+                drawRoundRect(
+                    if (tick) GColors.Gold else GColors.CardBorder, Offset(0f, y), Size(cw, ch), r,
+                    style = Stroke(if (tick) 1.2.dp.toPx() else 0.6.dp.toPx()),
+                )
+            }
         }
         CardBack(Modifier.anchor(anchor).shadow(2.dp, RoundedCornerShape(4.dp)), size = size, describe = false)
     }
