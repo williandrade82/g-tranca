@@ -26,7 +26,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import com.gtranca.ui.theme.Elevation
 
+import com.gtranca.ui.theme.Cinzel
 import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.GCounterPill
+import com.gtranca.ui.theme.GMedallion
+import com.gtranca.ui.theme.GoldBrush
+import com.gtranca.ui.theme.TabularNums
+import com.gtranca.ui.theme.goldFrame
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
@@ -241,7 +247,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
 
     Scaffold(
         modifier = modifier
-            .background(Brush.verticalGradient(listOf(GColors.Table, GColors.TableDark)))
+            .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
             .testTag("table-screen"),
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) { data -> GSnack(data.visuals.message) } },
@@ -254,7 +260,8 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
                     Column(
-                        Modifier.weight(1f).fillMaxWidth().verticalScroll(tableScroll).padding(horizontal = 8.dp).testTag("table-scroll"),
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp).feltTable()
+                            .verticalScroll(tableScroll).padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-scroll"),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         SideArea(
@@ -350,10 +357,15 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
                 ),
                 color = TableAccent,
                 fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = TabularNums),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("score"),
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .background(GColors.Midnight.copy(alpha = 0.7f), CircleShape)
+                    .border(1.dp, GColors.Gold.copy(alpha = 0.6f), CircleShape)
+                    .padding(horizontal = 10.dp, vertical = 1.dp)
+                    .testTag("score"),
             )
         }
         SoundButton(OnTable)
@@ -367,8 +379,8 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
                 .testTag("action-legend"),
             contentAlignment = Alignment.Center,
         ) {
-            Box(Modifier.size(22.dp).border(2.dp, OnTable, CircleShape), contentAlignment = Alignment.Center) {
-                Text("?", color = OnTable, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Box(Modifier.size(22.dp).border(1.75.dp, TableAccent, CircleShape), contentAlignment = Alignment.Center) {
+                Text("?", color = TableAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
         // §13.1 desistir: ícone de bandeira, alvo de 48dp.
@@ -436,8 +448,8 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             .heightIn(min = minHeight)
             .clip(shape)
             .clickable(enabled = events.isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
-            .background(if (thinking) TableGreenDark else GColors.Shadow.copy(alpha = 0.18f), shape)
-            .border(if (thinking) 2.dp else 0.dp, if (thinking) TableAccent else Color.Transparent, shape)
+            .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
+            .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
             .padding(horizontal = 8.dp, vertical = 6.dp)
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -446,7 +458,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             // §14.1 avatar discreto e nome curto; o papel (esquerda, parceiro, direita) vai embaixo, bem pequeno.
             val persona = state.personas.getOrNull(seat.index)
             if (persona != null) {
-                PersonaAvatar(persona, 28.dp, Modifier.border(1.5.dp, if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = 0.6f), CircleShape))
+                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp) }
             }
             Column(Modifier.weight(1f)) {
                 if (persona != null) {
@@ -483,12 +495,10 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                 seat.index,
                 Modifier.weight(1f).semantics { contentDescription = handText }.testTag("seat-hand-${seat.index}"),
             )
-            Text(
+            GCounterPill(
                 handSize.toString(),
-                color = OnTable,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.semantics { contentDescription = countText }.testTag("seat-hand-size-${seat.index}"),
+                Modifier.semantics { contentDescription = countText }.testTag("seat-hand-size-${seat.index}"),
+                icon = { CardsGlyph(TableAccent) },
             )
         }
         if (events.isNotEmpty()) {
@@ -531,14 +541,15 @@ private fun SideArea(
 ) {
     Column(
         Modifier.fillMaxWidth()
-            .border(1.dp, OnTable.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(14.dp))
+            .border(1.dp, GColors.Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
             .anchor(AnimAnchor.SideArea(side))
             .padding(6.dp)
             .testTag("side-$sideTag"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = OnTable, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            Text(title, color = TableAccent, style = MaterialTheme.typography.labelLarge.copy(fontFamily = Cinzel, fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
             // Alvo dos 3 vermelhos que chegam (§6.5), mesmo antes do primeiro.
             Spacer(Modifier.size(1.dp).anchor(AnimAnchor.RedThrees(side)))
             if (redThrees.isNotEmpty()) {
@@ -611,15 +622,15 @@ private fun MeldView(
         else -> stringResource(R.string.canasta_dirty)
     }
     val borderColor = when {
-        canasta && meld.isClean -> TableAccent
-        canasta -> GColors.CanastraClean
+        canasta && meld.isClean -> GColors.CanastraClean
+        canasta -> GColors.Lavender
         onClick != null -> OnTable.copy(alpha = 0.6f) // tocável para acrescentar
         else -> Color.Transparent
     }
     val descriptions = meld.cards.map { cardDescription(it) }
     val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
         (label?.let { ". $it" } ?: "")
-    val flashColor = if (flash?.clean == true) TableAccent else GColors.CanastraDirtyFlash
+    val flashColor = if (flash?.clean == true) GColors.Gold else GColors.CanastraDirtyFlash
     Column(
         modifier
             .graphicsLayer {
@@ -637,7 +648,10 @@ private fun MeldView(
     ) {
         OverlappedCards(meld.cards, step = 14.dp, anchorFor = { AnimAnchor.MeldCard(side, tableMeld.id.value, it) })
         if (label != null) {
-            Text(label, color = borderColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                CanastaSeal(meld.isClean, borderColor, pulse.value, Modifier.size(12.dp))
+                Text(label, color = borderColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -683,7 +697,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                 if (view.stockSize > 0) DeckStack(view.stockSize, AnimAnchor.Stock) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
                 Column {
                     Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
-                    Text(stockCount, color = OnTable, style = MaterialTheme.typography.labelSmall)
+                    GCounterPill(view.stockSize.toString(), icon = { CardsGlyph(TableAccent) })
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -706,7 +720,8 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                         if (available) DeckStack(view.mortoSizes[i], AnimAnchor.Morto(i))
                         Column(if (available) Modifier else Modifier.anchor(AnimAnchor.Morto(i))) {
                             Text(title, color = OnTable, style = MaterialTheme.typography.labelMedium)
-                            Text(statusText, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                            if (available) GCounterPill(view.mortoSizes[i].toString(), icon = { CardsGlyph(TableAccent) })
+                            else Text(statusText, color = GColors.Lavender, style = MaterialTheme.typography.labelSmall, maxLines = 2)
                         }
                     }
                 }
@@ -738,7 +753,8 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
-                .border(2.dp, if (pileActive) TableAccent else OnTable.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                .background(GColors.Midnight.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                .border(if (pileActive) 2.dp else 1.dp, if (pileActive) TableAccent else OnTable.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
                 .clickable(enabled = state.awaitingDraw || state.playing, onClick = events::onDiscardPileClick)
                 .semantics(mergeDescendants = true) { contentDescription = pileLabel }
                 .anchor(AnimAnchor.DiscardPile)
@@ -770,7 +786,8 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
         Modifier
             .fillMaxWidth()
             .shadow(Elevation.dialog, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .background(TableGreenDark, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .testTag("action-bar"),
     ) {
@@ -788,8 +805,8 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             OutlinedButton(
                 onClick = events::onClearSelection,
                 enabled = clearEnabled,
-                shape = MaterialTheme.shapes.large,
-                border = BorderStroke(1.dp, if (clearEnabled) OnTable else GColors.OnTableDisabled),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, if (clearEnabled) GColors.Amethyst else GColors.OnTableDisabled.copy(alpha = 0.5f)),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = OnTable, disabledContentColor = GColors.OnTableDisabled),
                 modifier = Modifier.heightIn(min = 48.dp).testTag("action-clear"),
             ) { Text(stringResource(R.string.action_clear)) }
@@ -798,7 +815,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
         if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
             Text(
                 stringResource(if (snapshot.view.mode == GameMode.DUPLAS) R.string.add_to_meld_hint_team else R.string.add_to_meld_hint),
-                color = OnTable,
+                color = GColors.Lavender,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -811,13 +828,14 @@ private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, ta
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.heightIn(min = 48.dp).testTag(tag),
-        shape = MaterialTheme.shapes.large,
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = Elevation.button, disabledElevation = 0.dp),
-        border = if (enabled) null else BorderStroke(1.dp, GColors.OnTableDisabled),
+        modifier = Modifier.heightIn(min = 48.dp).testTag(tag)
+            .then(if (enabled) Modifier.background(GoldBrush, CircleShape) else Modifier),
+        shape = CircleShape,
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, disabledElevation = 0.dp),
+        border = if (enabled) BorderStroke(1.dp, GColors.Champagne) else BorderStroke(1.dp, GColors.OnTableDisabled.copy(alpha = 0.5f)),
         colors = ButtonDefaults.buttonColors(
-            containerColor = TableAccent,
-            contentColor = Color.Black,
+            containerColor = Color.Transparent,
+            contentColor = GColors.OnGold,
             disabledContainerColor = Color.Transparent,
             disabledContentColor = GColors.OnTableDisabled,
         ),
@@ -844,7 +862,7 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // §14.1 seu avatar, bem discreto, junto do título da mão.
             state.personas.getOrNull(state.snapshot.viewerSeat.index)?.let {
-                PersonaAvatar(it, 22.dp, Modifier.padding(end = 6.dp).border(1.dp, OnTable.copy(alpha = 0.6f), CircleShape))
+                GMedallion(Modifier.padding(end = 6.dp).size(30.dp), active = state.isHumanTurn) { PersonaAvatar(it, 24.dp) }
             }
             Text(
                 stringResource(R.string.your_hand, state.hand.size),
@@ -972,10 +990,10 @@ private fun SortButton(selected: Boolean, modifier: Modifier, content: @Composab
         Box(
             Modifier
                 .size(36.dp)
-                .background(if (selected) TableAccent else Color.Transparent, CircleShape)
-                .border(1.dp, if (selected) TableAccent else OnTable.copy(alpha = 0.6f), CircleShape),
+                .then(if (selected) Modifier.background(GoldBrush, CircleShape) else Modifier)
+                .border(1.dp, if (selected) GColors.Champagne else GColors.Lavender.copy(alpha = 0.6f), CircleShape),
             contentAlignment = Alignment.Center,
-        ) { content(if (selected) Color.Black else OnTable) }
+        ) { content(if (selected) GColors.OnGold else OnTable) }
     }
 }
 
@@ -1136,8 +1154,8 @@ private fun SwapBanner(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat)
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 2.dp)
             .shadow(Elevation.button, RoundedCornerShape(16.dp))
-            .background(TableGreenDark, RoundedCornerShape(16.dp))
-            .border(2.dp, TableAccent, RoundedCornerShape(16.dp))
+            .background(GColors.Indigo, RoundedCornerShape(16.dp))
+            .goldFrame(16.dp, 2.dp, lights = false)
             .padding(6.dp)
             .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
             .testTag("red-three-banner"),
@@ -1233,6 +1251,8 @@ private fun FlyingCard(
     val size = CardSize.SMALL
     val density = LocalDensity.current
     val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
+    val arcPx = with(density) { 36.dp.toPx() }
+    val flips = flight.card != null && flight.from == AnimAnchor.Stock
     Box(
         Modifier
             .offset {
@@ -1240,7 +1260,9 @@ private fun FlyingCard(
                 val from = anchors.resolve(flight.from, flight.card)?.center ?: return@offset IntOffset(-10_000, -10_000)
                 val to = anchors.resolve(flight.to, flight.card)?.center ?: from
                 val t = progress.value
-                val point = from + (to - from) * t - origin() - half
+                // Trajeto em curva: sobe um pouco no meio do caminho.
+                val arc = Offset(0f, -arcPx * sin(PI.toFloat() * t))
+                val point = from + (to - from) * t + arc - origin() - half
                 IntOffset(point.x.roundToInt(), point.y.roundToInt())
             }
             .graphicsLayer {
@@ -1248,9 +1270,13 @@ private fun FlyingCard(
                 scaleX = lift
                 scaleY = lift
                 shadowElevation = 6f
+                // Compra do monte: a carta vira no meio do voo (verso → face).
+                if (flips) rotationY = if (progress.value < 0.5f) 180f * progress.value else 180f * progress.value - 180f
+                cameraDistance = 12f * density.density
             },
     ) {
-        if (flight.card != null) PlayingCard(flight.card, size = size, describe = false) else CardBack(size = size, describe = false)
+        val showFace = flight.card != null && (!flips || progress.value >= 0.5f)
+        if (showFace) PlayingCard(flight.card!!, size = size, describe = false) else CardBack(size = size, describe = false)
     }
 }
 
@@ -1285,5 +1311,50 @@ private fun DeckStack(count: Int, anchor: AnimAnchor) {
             CardBack(Modifier.offset(x = step * i, y = step * i).shadow(1.dp, RoundedCornerShape(4.dp)), size = size, describe = false)
         }
         CardBack(Modifier.anchor(anchor).shadow(2.dp, RoundedCornerShape(4.dp)), size = size, describe = false)
+    }
+}
+
+/** Feltro esmeralda da mesa (quase oval: cantos bem grandes) com a moldura dourada biselada. */
+private fun Modifier.feltTable(): Modifier {
+    val shape = RoundedCornerShape(36.dp)
+    return this
+        .shadow(Elevation.dialog, shape)
+        .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f), shape)
+        .goldFrame(36.dp, 3.dp)
+        .clip(shape)
+}
+
+/** Ícone de "cartas" (duas cartas sobrepostas) para as cápsulas contadoras. */
+@Composable
+private fun CardsGlyph(color: Color) {
+    Canvas(Modifier.size(12.dp)) {
+        val w = size.width
+        val card = Size(w * 0.55f, w * 0.78f)
+        val r = CornerRadius(w * 0.08f)
+        drawRoundRect(color.copy(alpha = 0.55f), Offset(w * 0.05f, w * 0.05f), card, r)
+        drawRoundRect(color, Offset(w * 0.4f, w * 0.18f), card, r)
+    }
+}
+
+/**
+ * Selo da canastra (a forma diz o tipo, não só a cor): limpa = estrela cheia; suja = estrela vazada.
+ * [flash] (0..1) acende um halo curto quando ela acaba de fechar.
+ */
+@Composable
+private fun CanastaSeal(clean: Boolean, color: Color, flash: Float, modifier: Modifier) {
+    Canvas(modifier) {
+        val c = Offset(size.width / 2, size.height / 2)
+        val outer = size.minDimension / 2
+        if (flash > 0f) drawCircle(GColors.Champagne.copy(alpha = 0.6f * flash), outer * (1f + flash), c)
+        val star = Path().apply {
+            for (i in 0 until 10) {
+                val a = Math.toRadians((-90 + i * 36).toDouble())
+                val rr = if (i % 2 == 0) outer else outer * 0.45f
+                val p = Offset(c.x + rr * kotlin.math.cos(a).toFloat(), c.y + rr * kotlin.math.sin(a).toFloat())
+                if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+            }
+            close()
+        }
+        if (clean) drawPath(star, color) else drawPath(star, color, style = Stroke(width = outer * 0.25f))
     }
 }

@@ -1,6 +1,7 @@
 package com.gtranca.ui.theme
 
 import android.provider.Settings
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -406,11 +407,21 @@ fun GCounterPill(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (icon != null) Box(Modifier.size(14.dp), contentAlignment = Alignment.Center, content = icon)
-        Text(
+        // O número "rola" ao mudar (200 ms).
+        androidx.compose.animation.AnimatedContent(
             value,
-            style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = TabularNums),
-            color = if (gold) GColors.OnGold else GColors.Ivory,
-        )
+            transitionSpec = {
+                (androidx.compose.animation.slideInVertically(tween(200)) { -it } + androidx.compose.animation.fadeIn(tween(200)))
+                    .togetherWith(androidx.compose.animation.slideOutVertically(tween(200)) { it } + androidx.compose.animation.fadeOut(tween(200)))
+            },
+            label = "counter",
+        ) { v ->
+            Text(
+                v,
+                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = TabularNums),
+                color = if (gold) GColors.OnGold else GColors.Ivory,
+            )
+        }
     }
 }
 
