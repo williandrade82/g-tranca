@@ -207,7 +207,7 @@ class EndScreensTest {
     @Test
     fun faixaDeTrocaDeOutroAssentoDizQuemECarta() {
         val playing = view(phase = Phase.AWAITING_DRAW, result = null)
-        val banner = RedThreeNotice(1, Side(0), Seat(2), listOf(Card.parse("3H")), atDeal = true)
+        val banner = RedThreeNotice(1, Side(0), Seat(2), listOf(Card.parse("3H")), atTurnStart = true)
         val snapshot = GameSnapshot(
             GameConfig(mode, Difficulty.MEDIO, 3000), Seat(0), playing, 1, listOf(0, 0), emptyList(), Stage.PLAYING,
             null, emptyList(), Seat(2), List(4) { emptyList() },
@@ -219,9 +219,9 @@ class EndScreensTest {
             confirmDecline = false, confirmResign = false, message = null, endScreen = null,
         )
         rule.setContent { GTrancaTheme { Box(Modifier.width(360.dp).height(760.dp)) { TableScreen(state, noEvents) } } }
-        // §3.5 quem trocou (o parceiro) e a carta; a reposição dele não é mostrada.
+        // §3.5 quem trocou (o parceiro) e a carta, no início da vez; a reposição dele não é mostrada.
         rule.onNodeWithTag("red-three-banner").assertIsDisplayed()
-        rule.onNodeWithText("Parceiro baixou 3♥︎ na distribuição", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Parceiro baixou 3♥︎ no início da vez", useUnmergedTree = true).assertExists()
     }
 
     @Test

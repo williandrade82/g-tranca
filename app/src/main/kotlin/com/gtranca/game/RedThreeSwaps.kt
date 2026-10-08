@@ -6,10 +6,10 @@ import com.gtranca.engine.model.Side
 
 /**
  * Troca pública de 3 vermelho (§3.5, §6.5) a encenar: o 3 vermelho [cards] foi à mesa do [side], baixado por [seat]
- * na distribuição ([atDeal]) ou durante a partida (compra, morto, reposição em cadeia). A carta de reposição nunca é
+ * no início da vez ([atTurnStart], §3.5) ou durante a jogada (compra, morto, reposição em cadeia). A carta de reposição nunca é
  * conhecida aqui. [id] identifica a troca na partida (estável entre snapshots), e cresce com o tempo.
  */
-data class RedThreeNotice(val id: Long, val side: Side, val seat: Seat, val cards: List<Card>, val atDeal: Boolean)
+data class RedThreeNotice(val id: Long, val side: Side, val seat: Seat, val cards: List<Card>, val atTurnStart: Boolean)
 
 /**
  * Origem das trocas públicas de 3 vermelho mostradas pela interface: dado o snapshot anterior já mostrado
@@ -38,7 +38,7 @@ object LogRedThreeSource : RedThreeSwapSource {
                 side = mode.sideOf(entry.seat),
                 seat = entry.seat,
                 cards = listOf(entry.card),
-                atDeal = entry.atDeal,
+                atTurnStart = entry.atTurnStart,
             )
         }
     }

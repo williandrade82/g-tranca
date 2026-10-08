@@ -174,8 +174,8 @@ class GameController(
             // Retomada: a vista da última vez de cada assento vem do log; trocas já passadas não se reencenam.
             roundEvents = restored.events
             restored.events.forEach(::recordEvent)
-        } else if (human != null && hasDealSwaps()) {
-            // §3.5 com humano, a 1ª jogada espera a encenação das trocas da distribuição (ver [dealPresentationDone]).
+        } else if (human != null && hasStartSwaps()) {
+            // §3.5 com humano, a 1ª jogada espera a encenação das trocas do início da vez do 1º jogador (ver [dealPresentationDone]).
             awaitingPresentation.set(PresentationKey(1, match.currentRound.redThreeLog.size))
         }
     }
@@ -251,9 +251,9 @@ class GameController(
                 }
                 turnEvents = List(config.mode.seatCount) { emptyList() }
                 roundEvents = emptyList()
-                // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho da
-                // distribuição (§3.5), na ordem. Sem humano (bots, :sim), não há espera.
-                val wait = human != null && hasDealSwaps()
+                // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho do início da
+                // vez do 1º jogador (§3.5). Sem humano (bots, :sim), não há espera.
+                val wait = human != null && hasStartSwaps()
                 // Na 1ª partida a espera já foi armada na construção (o 1º snapshot pode ser igual ao inicial).
                 if (wait && match.roundNumber > 1) {
                     awaitingPresentation.set(PresentationKey(match.roundNumber, match.currentRound.redThreeLog.size))
@@ -307,12 +307,12 @@ class GameController(
                     // morto) só é seguida da próxima depois de a interface encenar essas trocas: assim a ordem vista é a
                     // real (compra/troca → baixas → descarte) e o descarte é sempre o último movimento de quem joga.
                     val after = match.currentRound
-                    val wait = human != null && after.phase != Phase.FINISHED &&
-                        after.redThreeLog.drop(round.redThreeLog.size).any { !it.atDeal }
+                    // Inclui as trocas do início da vez do PRÓXIMO jogador (§3.5), feitas na mesma passagem de vez.
+                    val wait = human != null && after.phase != Phase.FINISHED && after.redThreeLog.size > round.redThreeLog.size
                     if (wait) awaitingPresentation.set(PresentationKey(match.roundNumber, after.redThreeLog.size))
                     // Durante a encenação, quem trocou continua "jogando" (a vez passa ao humano só depois): o texto e o
                     // destaque seguem o adversário em vez de um "Aguarde…" neutro.
-                    publishLocked(Stage.PLAYING, thinkingSeat = seat.takeIf { wait && it != viewerSeat })
+                    publishLocked(Stage.PLAYING, thinkingSeat = after.redThreeLog.lastOrNull()?.seat.takeIf { wait && it != viewerSeat })
                     wait
                 }
                 if (waitSwaps) presentationSignal.receive()
@@ -362,7 +362,7 @@ class GameController(
      */
     fun dealPresentationDone(roundNumber: Int): Boolean {
         val key = awaitingPresentation.get() ?: return false
-        return key.roundNumber == roundNumber && hasDealSwaps() && presentationDone(roundNumber, key.logSize)
+        return key.roundNumber == roundNumber && hasStartSwaps() && presentationDone(roundNumber, key.logSize)
     }
 
     /**
@@ -435,8 +435,8 @@ class GameController(
         }
     }
 
-    /** §3.5 houve troca de 3 vermelho na distribuição da partida atual (registro público do motor). */
-    private fun hasDealSwaps(): Boolean = match.currentRound.redThreeLog.any { it.atDeal }
+    /** §3.5 houve troca de 3 vermelho no início da vez do 1º jogador (registro público do motor ainda não vazio). */
+    private fun hasStartSwaps(): Boolean = match.currentRound.redThreeLog.isNotEmpty()
 
     private fun publish(stage: Stage, thinkingSeat: Seat? = null) {
         synchronized(lock) { publishLocked(stage, thinkingSeat = thinkingSeat) }

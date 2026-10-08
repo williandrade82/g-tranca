@@ -49,7 +49,7 @@ class PresentationWaitTest {
             val last = log.lastOrNull()
             when {
                 s.isHumanTurn -> human.submit(s.humanLegal.firstOrNull { it is Action.Discard } ?: s.humanLegal.first())
-                last != null && !last.atDeal && last.seat == Seat(1) && s.thinkingSeat == Seat(1) ->
+                last != null && !last.atTurnStart && last.seat == Seat(1) && s.thinkingSeat == Seat(1) ->
                     return Waiting(controller, job, log.size, s.roundNumber)
                 // Distribuição ou troca do próprio humano: confirma a encenação.
                 else -> controller.presentationDone(s.roundNumber, log.size)

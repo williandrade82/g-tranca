@@ -88,7 +88,7 @@ class RestoreTest {
 
     private val mode = GameMode.DUPLAS
     private val seed = 21L
-    private val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 1000)
+    private val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 3000)
 
     /** Joga só com bots e devolve as fotos salvas (todas), passando pelo JSON do arquivo salvo. */
     private suspend fun TestScope.savesOfABotGame(gameSeed: Long = seed): List<SavedGame> {
@@ -111,7 +111,7 @@ class RestoreTest {
         val saves = savesOfABotGame()
         // Uma foto no meio da 2ª partida (com eventos, partida em andamento).
         val saved = saves.first { it.match.roundNumber == 2 && it.events.size >= 10 && !it.match.currentRoundRecorded }
-        saved.config shouldBe SavedConfig(mode, "medio", 1000)
+        saved.config shouldBe SavedConfig(mode, "medio", 3000)
 
         val spies = mode.seats.map { SpyBot(botSeed(saved.gameSeed, it.index), Difficulty.MEDIO) }
         val restored = GameController(
@@ -389,7 +389,7 @@ class RestoreTest {
     fun `falha de E-S ao gravar nao derruba o jogo - a fila segue e o fim ainda e registrado`() = runTest(dispatcher) {
         val store = FailingPersistence()
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 9, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 10, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0, gameId = "e", persistence = store,
             writes = writes(),
         )

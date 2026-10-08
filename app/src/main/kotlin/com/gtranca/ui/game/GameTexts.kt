@@ -195,13 +195,13 @@ fun resignedRes(mode: GameMode): Int =
 @ReadOnlyComposable
 fun revealTitle(notice: RedThreeNotice): String {
     val cards = notice.cards.labels()
-    return stringResource(if (notice.atDeal) R.string.red_three_deal_you else R.string.red_three_you_drew, cards)
+    return stringResource(if (notice.atTurnStart) R.string.red_three_turn_you else R.string.red_three_you_drew, cards)
 }
 
-/** §3.5/§6.5 aviso da troca de 3 vermelho de outro assento: quem, qual carta e se foi na distribuição. */
+/** §3.5/§6.5 aviso da troca de 3 vermelho de outro assento: quem, qual carta e se foi no início da vez. */
 @Composable
 @ReadOnlyComposable
 fun bannerText(mode: GameMode, notice: RedThreeNotice, viewerSeat: Seat): String {
     val name = stringResource(SeatRole.of(mode, notice.seat, viewerSeat).nameRes())
-    return stringResource(if (notice.atDeal) R.string.red_three_banner_deal else R.string.red_three_banner, name, notice.cards.labels())
+    return stringResource(if (notice.atTurnStart) R.string.red_three_banner_turn else R.string.red_three_banner, name, notice.cards.labels())
 }

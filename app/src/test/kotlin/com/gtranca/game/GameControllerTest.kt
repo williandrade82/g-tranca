@@ -43,15 +43,15 @@ class GameControllerTest {
     /**
      * Equivalência com o simulador: mesmos bots e sementes ⇒ mesmo vencedor e mesmos totais finais (§13).
      * Valores obtidos com `.\gradlew.bat :sim:run --args="--games 1 --mode <modo> --sides medio,facil
-     * --seed <semente> --target 1000"` ("Pontuação final média" com 1 jogo = total final), remedidos após a
+     * --seed <semente> --target 1000"` ("Pontuação final média" com 1 jogo = total final), remedidos após a canastra de 7 (§7.1) e o 3 vermelho na vez (§3.5); antes, após a
      * regra das cartas na mesa (§12.1).
      */
     @ParameterizedTest(name = "{0} semente {1}")
     @CsvSource(
-        "INDIVIDUAL, 11, 1, 1244, 2297",
-        "INDIVIDUAL, 12, 0, 1632, 1434",
-        "INDIVIDUAL, 13, 0, 1334, 245",
-        "DUPLAS, 21, 0, 1026, 977",
+        "INDIVIDUAL, 11, 0, 1330, 53",
+        "INDIVIDUAL, 12, 0, 1740, 1467",
+        "INDIVIDUAL, 13, 0, 1060, 423",
+        "DUPLAS, 21, 0, 1736, 470",
     )
     fun `jogo so de bots reproduz o simulador`(mode: GameMode, seed: Long, winner: Int, total0: Int, total1: Int) = runTest {
         val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 1000)
@@ -374,7 +374,7 @@ class GameControllerTest {
                 previous = snapshot
                 val log = snapshot.view.redThreeLog
                 shown.map { it.seat to it.cards.single() } shouldBe log.map { it.seat to it.card }
-                shown.map { it.atDeal } shouldBe log.map { it.atDeal }
+                shown.map { it.atTurnStart } shouldBe log.map { it.atTurnStart }
                 shown.forEach { notice ->
                     notice.cards.single().isRedThree shouldBe true
                     notice.side shouldBe mode.sideOf(notice.seat)
@@ -404,7 +404,7 @@ class GameControllerTest {
             val job = launch { controller.run() }
             advanceUntilIdle()
             val state = controller.state.value
-            if (state.view.redThreeLog.none { it.atDeal }) {
+            if (state.view.redThreeLog.isEmpty()) {
                 job.cancel()
                 continue
             }

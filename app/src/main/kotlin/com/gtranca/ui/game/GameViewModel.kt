@@ -355,17 +355,17 @@ class GameViewModel(
             null
         }
         val takenBy = mortoTaken?.let { (snapshot.view.mortoStatus[it] as MortoStatus.Taken).side }
-        val fromMorto = fresh.filter { !it.atDeal && takenBy != null && it.side == takenBy }
+        val fromMorto = fresh.filter { !it.atTurnStart && takenBy != null && it.side == takenBy }
         val mortoSwaps = (if (sameRound) state.mortoSwaps else emptyMap()) + fromMorto.associate { it.id to mortoTaken!! }
-        fresh.lastOrNull { !it.atDeal && it.seat == snapshot.viewerSeat && it !in fromMorto }
-            ?.let { hidden = hidden + (it.id to gained) }
-        // §3.5 na distribuição, as reposições do humano (informação privada da vista dele) ficam ocultas até a
-        // última troca dele ser confirmada, e então aparecem como novas. Não se casa reposição com troca: numa
-        // reposição em cadeia a carta intermediária era outro 3 vermelho, que não está mais na mão.
-        fresh.lastOrNull { it.atDeal && it.seat == snapshot.viewerSeat }?.let { last ->
-            val replacements = snapshot.view.ownDealReplacements.toSet()
+        // §3.5/§6.5 as reposições do humano (informação privada da vista dele) ficam ocultas até a última troca dele ser
+        // confirmada, e então aparecem como novas. Não se casa reposição com troca: numa reposição em cadeia a carta
+        // intermediária era outro 3 vermelho, que não está mais na mão. Na 1ª vez da partida (sem snapshot anterior da
+        // mesma partida) as reposições são as últimas cartas da mão: o motor as acrescenta ao fim.
+        val ownSwaps = fresh.filter { it.seat == snapshot.viewerSeat && it !in fromMorto }
+        ownSwaps.lastOrNull()?.let { last ->
+            val replacements = if (sameRound && previous != null) gained else snapshot.view.hand.takeLast(ownSwaps.size).toSet()
             hidden = hidden + (last.id to replacements)
-            newCards = newCards + replacements
+            if (!(sameRound && previous != null)) newCards = newCards + replacements
         }
         // Animações da mesa a partir das diferenças com o último snapshot incorporado.
         val (newFlights, newFlashes) = if (effectiveMillis(state) > 0 && previous != null && snapshot.stage == Stage.PLAYING) {
@@ -610,7 +610,7 @@ class GameViewModel(
             notice.id in state.hidden -> TableAnimations.Replacement.Revealed(state.hidden.getValue(notice.id).toList())
             else -> {
                 val next = state.swaps.getOrNull(1)
-                if (!notice.atDeal && next != null && next.seat == viewer && !next.atDeal && next.id !in state.mortoSwaps) {
+                if (!notice.atTurnStart && next != null && next.seat == viewer && !next.atTurnStart && next.id !in state.mortoSwaps) {
                     TableAnimations.Replacement.Revealed(next.cards)
                 } else {
                     TableAnimations.Replacement.None

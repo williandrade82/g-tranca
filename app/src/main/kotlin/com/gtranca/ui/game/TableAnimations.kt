@@ -132,7 +132,7 @@ object TableAnimations {
         // §6.5 3 vermelhos baixados nestas ações (públicos: estão no registro). Se a compra trouxe um 3 vermelho, a carta
         // que chega do monte é ele, aberto; a reposição chega depois, na encenação da troca (redThreeSwap). Assim a
         // compra não aparece duas vezes (antes: uma carta virada aqui e a reposição de novo na troca).
-        val laidNow = new.view.redThreeLog.drop(old.view.redThreeLog.size).filter { !it.atDeal }
+        val laidNow = new.view.redThreeLog.drop(old.view.redThreeLog.size).filter { !it.atTurnStart }
 
         for (event in events) {
             val from = holder(event.seat, viewer)

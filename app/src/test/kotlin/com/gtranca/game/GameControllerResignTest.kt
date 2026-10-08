@@ -158,7 +158,7 @@ class GameControllerResignTest {
             )
             val job = launch { controller.run() }
             advanceUntilIdle()
-            if (controller.state.value.view.redThreeLog.none { it.atDeal }) {
+            if (controller.state.value.view.redThreeLog.isEmpty()) {
                 job.cancel()
                 continue
             }

@@ -192,7 +192,7 @@ class TableAnimationsTest {
         val hand = listOf(c("4S"), c("7H"))
         val old = snapshot(view(hand), List(4) { emptyList() })
         val replacement = c("KD")
-        val laid = RedThreeLaid(Seat(0), c("3H"), atDeal = false)
+        val laid = RedThreeLaid(Seat(0), c("3H"), atTurnStart = false)
         val new = snapshot(
             view(hand + replacement, redThreeLog = listOf(laid)),
             listOf(listOf(PublicEvent(Seat(0), Action.DrawFromStock))) + List(3) { emptyList() },
@@ -212,7 +212,7 @@ class TableAnimationsTest {
     fun `§6_5 compra de outro assento que trouxe 3 vermelho mostra o 3 vermelho e nunca a reposicao`() {
         val hand = listOf(c("4S"), c("7H"))
         val old = snapshot(view(hand), List(4) { emptyList() })
-        val laid = RedThreeLaid(Seat(1), c("3D"), atDeal = false)
+        val laid = RedThreeLaid(Seat(1), c("3D"), atTurnStart = false)
         val new = snapshot(
             view(hand, redThreeLog = listOf(laid)),
             listOf(emptyList<PublicEvent>(), listOf(PublicEvent(Seat(1), Action.DrawFromStock))) + List(2) { emptyList() },
@@ -245,14 +245,14 @@ class TableAnimationsTest {
     @Test
     fun `§6_5 §9_4 voos da troca de 3 vermelho - virada de outro assento, revelada do humano, do morto sem reposicao`() {
         var id = 0L
-        val other = RedThreeNotice(1, Side(1), Seat(1), listOf(c("3H")), atDeal = false)
+        val other = RedThreeNotice(1, Side(1), Seat(1), listOf(c("3H")), atTurnStart = false)
         val fromOther = TableAnimations.redThreeSwap(other, Seat(0), TableAnimations.Replacement.FaceDown, { ++id })
         fromOther[0] shouldBe CardFlight(fromOther[0].id, AnimAnchor.SeatHand(1), AnimAnchor.RedThrees(1), c("3H"))
         fromOther[1].from shouldBe AnimAnchor.Stock
         fromOther[1].to shouldBe AnimAnchor.SeatHand(1)
         fromOther[1].card shouldBe null
 
-        val own = RedThreeNotice(2, Side(0), Seat(0), listOf(c("3D")), atDeal = false)
+        val own = RedThreeNotice(2, Side(0), Seat(0), listOf(c("3D")), atTurnStart = false)
         val revealed = TableAnimations.redThreeSwap(own, Seat(0), TableAnimations.Replacement.Revealed(listOf(c("QS"))), { ++id })
         revealed[0].from shouldBe AnimAnchor.OwnHand
         revealed[1] shouldBe CardFlight(revealed[1].id, AnimAnchor.Stock, AnimAnchor.OwnHand, c("QS"), revealed[1].delayMillis)
@@ -302,13 +302,24 @@ class TableAnimationsTest {
     @Test
     fun `§7 destaque de canastra expira (o pulso nao fica preso)`() = runTest(dispatcher) {
         // Jogo só de bots: acha um destaque de canastra e confere que ele some do estado depois da duração.
-        val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000), gameSeed = 11, computeDispatcher = dispatcher,
+        // Com a canastra de 7 cartas (§7.1) nem toda semente fecha uma: procura uma que feche.
+        var vm = GameViewModel(
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000), gameSeed = 1, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 300,
         )
         var seen = false
+        var seed = 1L
         var guard = 0
-        while (!seen && guard++ < 3_000 && vm.uiState.value.snapshot.stage == Stage.PLAYING) {
+        while (!seen && seed <= 40) {
+            if (vm.uiState.value.snapshot.stage != Stage.PLAYING || guard++ >= 3_000) {
+                seed++
+                guard = 0
+                vm = GameViewModel(
+                    GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000), gameSeed = seed, computeDispatcher = dispatcher,
+                    botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 300,
+                )
+                continue
+            }
             val state = vm.uiState.value
             when {
                 state.reveal != null -> vm.onRevealConfirmed()
@@ -316,13 +327,15 @@ class TableAnimationsTest {
                 state.playing -> {
                     val legal = state.snapshot.humanLegal
                     val meld = legal.filterIsInstance<Action.CreateMeld>().firstOrNull { state.hand.size - it.cards.size >= 2 }
-                    if (meld != null) {
-                        meld.cards.forEach { card -> vm.onCardClick(state.hand.first { it.cardClass == card.cardClass && it !in vm.uiState.value.selected }) }
+                    val meldCards = meld?.let { pickPhysical(state.hand, it.cards) }
+                    if (meld != null && meldCards != null) {
+                        meldCards.forEach(vm::onCardClick)
                         vm.onCreateMeld()
                     } else {
                         val add = legal.filterIsInstance<Action.AddToMeld>().firstOrNull { state.hand.size - it.cards.size >= 2 }
-                        if (add != null) {
-                            add.cards.forEach { card -> vm.onCardClick(state.hand.first { it.cardClass == card.cardClass && it !in vm.uiState.value.selected }) }
+                        val addCards = add?.let { pickPhysical(state.hand, it.cards) }
+                        if (add != null && addCards != null) {
+                            addCards.forEach(vm::onCardClick)
                             vm.onAddToMeld(add.meldId)
                         } else {
                             val discard = legal.filterIsInstance<Action.Discard>().first()
@@ -389,7 +402,7 @@ class TableAnimationsTest {
                 }
                 advanceUntilIdle()
                 // Troca do bot durante a partida: o 3 vermelho dele indo à área de 3 vermelhos, já encenado.
-                val midGame = vm.uiState.value.snapshot.view.redThreeLog.filter { !it.atDeal && it.seat == Seat(1) }.map { it.card }
+                val midGame = vm.uiState.value.snapshot.view.redThreeLog.filter { !it.atTurnStart && it.seat == Seat(1) }.map { it.card }
                 val swap = shown.indexOfFirst { it.from == bot && it.to == AnimAnchor.RedThrees(1) && it.card in midGame }
                 val discardAfter = shown.indexOfLast { it.from == bot && it.to == AnimAnchor.DiscardPile }
                 if (swap >= 0 && discardAfter > swap) {
@@ -407,5 +420,10 @@ class TableAnimationsTest {
         }
         checked shouldBe true
     }
-}
 
+    /** Cartas físicas da [hand] (sem repetir) com as classes de [wanted]; `null` se faltar alguma. */
+    private fun pickPhysical(hand: List<Card>, wanted: List<Card>): List<Card>? {
+        val free = hand.toMutableList()
+        return wanted.map { w -> free.firstOrNull { it.cardClass == w.cardClass }?.also { free.remove(it) } ?: return null }
+    }
+}

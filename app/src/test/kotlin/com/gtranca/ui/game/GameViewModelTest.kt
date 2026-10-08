@@ -318,7 +318,7 @@ class GameViewModelTest {
                 vm.onDraw()
                 advanceUntilIdle()
                 val reveal = vm.uiState.value.reveal
-                if (reveal != null && !reveal.notice.atDeal) {
+                if (reveal != null && !reveal.notice.atTurnStart) {
                     found = vm to reveal
                     break@seeds
                 }
@@ -363,8 +363,8 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§3_5 trocas da distribuicao encenadas uma a uma na ordem do registro, antes da 1a jogada`() = runTest(dispatcher) {
-        var dealChecked = false
+    fun `§3_5 trocas do inicio da vez encenadas uma a uma na ordem do registro, antes de o dono jogar`() = runTest(dispatcher) {
+        var checked = false
         var playBanner: RedThreeNotice? = null
         for (seed in 1L..60L) {
             // Sem avançar o tempo antes de começar a observar (as animações dos bots duram 1 s cada).
@@ -384,29 +384,21 @@ class GameViewModelTest {
                 }
             }
             advanceUntilIdle()
-            val deal = vm.uiState.value.snapshot.view.redThreeLog.filter { it.atDeal }
-            val ownDeal = vm.uiState.value.reveal?.notice?.takeIf { it.atDeal }
-            if (ownDeal != null && deal.size >= 2 && !dealChecked) {
-                // O controlador espera a encenação: ninguém jogou ainda.
-                vm.uiState.value.snapshot.turnEvents.all { it.isEmpty() } shouldBe true
-                vm.uiState.value.snapshot.thinkingSeat.shouldBeNull()
-                ownDeal.seat shouldBe Seat(0)
-                settle(vm)
-                // Todas as trocas da distribuição foram mostradas, uma a uma, na ordem do registro, com quem trocou.
-                presented.filter { it.atDeal }.map { it.seat to it.cards.single() } shouldBe deal.map { it.seat to it.card }
-                dealChecked = true
-            } else {
-                settle(vm)
-            }
-            repeat(10) {
+            settle(vm)
+            repeat(12) {
                 if (vm.uiState.value.awaitingDraw) drawAndDiscard(vm)
                 settle(vm)
             }
-            presented.firstOrNull { !it.atDeal && it.seat != Seat(0) }?.let { playBanner = it }
-            if (dealChecked && playBanner != null) break
+            val log = vm.uiState.value.snapshot.view.redThreeLog
+            // Todas as trocas foram mostradas, uma a uma, na ordem do registro, com quem trocou e a carta.
+            presented.map { it.seat to it.cards.single() } shouldBe log.map { it.seat to it.card }
+            presented.map { it.atTurnStart } shouldBe log.map { it.atTurnStart }
+            if (log.any { it.atTurnStart && it.seat == Seat(0) } && log.any { it.atTurnStart && it.seat != Seat(0) }) checked = true
+            presented.firstOrNull { !it.atTurnStart && it.seat != Seat(0) }?.let { playBanner = it }
+            if (checked && playBanner != null) break
         }
-        dealChecked shouldBe true
-        // Troca de outro assento durante o jogo: aviso com quem trocou (a reposição dele não é revelada).
+        checked shouldBe true
+        // Troca de outro assento durante o jogo (compra): aviso com quem trocou (a reposição dele não é revelada).
         playBanner.shouldNotBeNull().cards.single().isRedThree shouldBe true
     }
 
@@ -546,8 +538,8 @@ class GameViewModelTest {
             emptyList()
         } else {
             listOf(
-                RedThreeNotice(1, Side(1), Seat(1), listOf(Card.parse("3H")), atDeal = false),
-                RedThreeNotice(2, Side(0), Seat(0), listOf(Card.parse("3D")), atDeal = false),
+                RedThreeNotice(1, Side(1), Seat(1), listOf(Card.parse("3H")), atTurnStart = false),
+                RedThreeNotice(2, Side(0), Seat(0), listOf(Card.parse("3D")), atTurnStart = false),
             )
         }
     }
@@ -738,13 +730,14 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§3_5 reposicoes da distribuicao do humano ficam ocultas ate o Baixar e depois aparecem como novas`() = runTest(dispatcher) {
+    fun `§3_5 reposicoes do inicio da vez do humano ficam ocultas ate o Baixar e depois aparecem como novas`() = runTest(dispatcher) {
         var checked = false
         for (seed in 1L..80L) {
             val vm = newGame(seed, mode = GameMode.DUPLAS, settleReveals = false)
-            val replacements = vm.uiState.value.snapshot.view.ownDealReplacements
             val reveal = vm.uiState.value.reveal
-            if (reveal == null || !reveal.notice.atDeal || replacements.isEmpty()) continue
+            if (reveal == null || !reveal.notice.atTurnStart) continue
+            val replacements = reveal.hiddenHandCards
+            if (replacements.isEmpty()) continue
             // Durante a encenação (de todas as trocas do humano), a mão não mostra as reposições e a mesa está bloqueada.
             var guard = 0
             while (vm.uiState.value.reveal != null && guard++ < 8) {
@@ -784,7 +777,7 @@ class GameViewModelTest {
                         mortoBefore[i] != com.gtranca.engine.model.MortoStatus.Taken(Side(0))
                 }
                 val reveal = after.reveal
-                if (tookMorto && reveal != null && !reveal.notice.atDeal) {
+                if (tookMorto && reveal != null && !reveal.notice.atTurnStart) {
                     // As cartas do morto não ficam ocultas como "reposição" (§9.4).
                     reveal.hiddenHandCards.shouldBeEmpty()
                     (after.newCards.size >= 2) shouldBe true
