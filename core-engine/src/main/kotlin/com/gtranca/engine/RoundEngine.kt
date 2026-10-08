@@ -20,7 +20,10 @@ import com.gtranca.engine.model.SideTable
  * se e somente se [step] produz um novo estado.
  *
  * Efeitos automáticos (não são ações):
- * - §6.5 / §9.4 3 vermelho que entra na mão vai para a mesa do lado e é reposto do monte, em cadeia;
+ * - §3.5 / §6.5 início da vez (antes da compra): os 3 vermelhos da mão do assento (distribuição ou morto indireto) vão
+ *   para a mesa do lado e são repostos do monte, em cadeia ([beginTurn]); nada é trocado na distribuição nem fora da vez;
+ * - §6.5 / §9.4 3 vermelho que entra na mão durante a vez (compra, morto direto, reposição) vai para a mesa do lado e é
+ *   reposto do monte, em cadeia, na hora;
  * - §10.1 monte vazio quando é preciso comprar (compra ou reposição): o primeiro morto disponível
  *   (menor índice) vira monte; sem monte nem morto, a reposição de 3 vermelho não acontece;
  * - §9.2 / §9.3 ficar sem cartas com o lado sem morto e morto disponível: o jogador pega o primeiro
@@ -29,7 +32,7 @@ import com.gtranca.engine.model.SideTable
  * - §11 ficar sem cartas com o lado já tendo morto e ao menos uma canastra: batida;
  * - §8 / §11.2 se, após a compra, o jogador ficou com 1 carta (3 vermelho sem reposição) e não
  *   pode bater descartando-a, a partida termina sem vencedor;
- * - §10.2 / §11.2 ao passar a vez, se o próximo jogador não pode comprar (monte vazio, nenhum morto
+ * - §10.2 / §11.2 no início da vez (depois da troca dos 3 vermelhos), se o jogador não pode comprar (monte vazio, nenhum morto
  *   disponível) nem pegar o lixo, a partida termina sem vencedor.
  */
 object RoundEngine {
@@ -70,17 +73,7 @@ object RoundEngine {
                 meldFromHand(state, seat, action.cards, rules) { it.addToMeld(action.meldId, action.cards, rules) }
             is Action.Discard -> discard(state, seat, action.card, rules)
         }
-        return result.clearingDealReplacements(seat)
-    }
-
-    /**
-     * §3.5 / §6.5 as reposições da distribuição só valem até a primeira ação do assento: a partir daí uma carta
-     * pode sair da mão e voltar (ex.: pelo lixo) e deixaria de ser "reposição da distribuição".
-     */
-    private fun RuleResult<RoundState>.clearingDealReplacements(seat: Seat): RuleResult<RoundState> {
-        val next = (this as? RuleResult.Ok)?.value ?: return this
-        if (next.dealReplacementsOf(seat).isEmpty()) return this
-        return RuleResult.Ok(next.copy(dealReplacements = next.dealReplacements.replaceAt(seat.index, emptyList())))
+        return result
     }
 
     // ---------- ações ----------
@@ -91,7 +84,7 @@ object RoundEngine {
         val (afterDraw, card) = drawOne(state)
         if (card == null) return fail(ActionError.STOCK_EXHAUSTED)
         val drawn = afterDraw.withHand(seat, afterDraw.handOf(seat) + card).copy(phase = Phase.PLAYING)
-        val settled = settleRedThrees(drawn, seat)
+        val settled = settleRedThrees(drawn, seat, atTurnStart = false)
         // §8 última carta sem reposição: só acontece se um 3 vermelho comprado ficou sem reposição
         // (a mão nunca começa a vez vazia). Sem poder bater descartando essa carta: fim sem vencedor (§11.2).
         if (settled.handOf(seat).size == 1 && !canGoOut(settled, seat, rules)) {
@@ -135,7 +128,7 @@ object RoundEngine {
         val taken = state.withHand(seat, newHand).withTable(side, updatedTable)
             .copy(discardPile = emptyList(), phase = Phase.PLAYING)
         keepCardsError(taken, seat, rules)?.let { return fail(it) }
-        return resolveEmptyHand(taken, seat, rules)
+        return resolveEmptyHand(taken, seat, rules, direct = true)
     }
 
     /** §4.3 etapa 2: baixar conjunto novo ou acrescentar, com cartas da mão. */
@@ -156,7 +149,7 @@ object RoundEngine {
         }
         val melded = state.withHand(seat, hand - cards.toSet()).withTable(side, table)
         keepCardsError(melded, seat, rules)?.let { return fail(it) }
-        return resolveEmptyHand(melded, seat, rules)
+        return resolveEmptyHand(melded, seat, rules, direct = true)
     }
 
     /** §8 descarte; §9.3 morto indireto; §11 batida descartando a última carta. */
@@ -166,7 +159,7 @@ object RoundEngine {
         if (card !in hand) return fail(ActionError.CARD_NOT_IN_HAND)
         if (card.isRedThree) return fail(ActionError.CANNOT_DISCARD_RED_THREE)
         val discarded = state.withHand(seat, hand - card).copy(discardPile = state.discardPile + card)
-        val resolved = when (val result = resolveEmptyHand(discarded, seat, rules)) {
+        val resolved = when (val result = resolveEmptyHand(discarded, seat, rules, direct = false)) {
             is RuleResult.Failure -> return result
             is RuleResult.Ok -> result.value
         }
@@ -180,7 +173,7 @@ object RoundEngine {
      * §8 / §9 / §11 se a mão do [seat] ficou vazia: morto (lado sem morto e morto disponível, §9.2/§9.3), batida (lado
      * com canastra que já pegou o morto ou que não tem mais morto disponível, §9.5/§11.1) ou jogada inválida.
      */
-    private fun resolveEmptyHand(state: RoundState, seat: Seat, rules: RuleSet): RuleResult<RoundState> {
+    private fun resolveEmptyHand(state: RoundState, seat: Seat, rules: RuleSet, direct: Boolean): RuleResult<RoundState> {
         if (state.handOf(seat).isNotEmpty()) return RuleResult.Ok(state)
         val side = state.mode.sideOf(seat)
         if (state.hasTakenMorto(side)) {
@@ -205,7 +198,10 @@ object RoundEngine {
                 mortos = state.mortos.replaceAt(index, emptyList()),
                 mortoStatus = state.mortoStatus.replaceAt(index, MortoStatus.Taken(side)),
             )
-        return RuleResult.Ok(settleRedThrees(withMorto, seat)) // §9.4
+        // §9.4 morto direto: os 3 vermelhos do morto são trocados na hora; morto indireto (descarte da última carta): ficam
+        // na mão e só são trocados no início da próxima vez (beginTurn). O assento fica marcado, qualquer que seja o morto.
+        if (direct) return RuleResult.Ok(settleRedThrees(withMorto, seat, atTurnStart = false))
+        return RuleResult.Ok(withMorto.copy(unsettledMortoSeats = withMorto.unsettledMortoSeats + seat))
     }
 
     /**
@@ -231,10 +227,26 @@ object RoundEngine {
         return mortoResolved && state.tableOf(side).melds.any { it.meld.isCanasta(rules) }
     }
 
-    /** §4.2 passa a vez; §10.2 / §11.2 fim sem vencedor se o próximo não pode comprar nem pegar o lixo. */
+    /** §4.2 passa a vez; o início da vez do próximo jogador troca os 3 vermelhos da mão dele (§3.5, [beginTurn]). */
     private fun passTurn(state: RoundState, seat: Seat, rules: RuleSet): RoundState {
-        val next = state.copy(currentSeat = state.mode.nextSeat(seat), phase = Phase.AWAITING_DRAW)
-        if (cannotDraw(next) && !LegalActions.canTakeDiscardPile(next, next.currentSeat, rules)) {
+        val nextSeat = state.mode.nextSeat(seat)
+        return beginTurn(state.copy(currentSeat = nextSeat, phase = Phase.AWAITING_DRAW), nextSeat, rules)
+    }
+
+    /**
+     * §3.5 / §4.3 início da vez do [seat] (já é o [RoundState.currentSeat], em [Phase.AWAITING_DRAW]), **antes da compra**:
+     * conta o início de vez ([RoundState.turnsBegun]), tira a marca de morto indireto do assento (§9.4) e baixa todos os
+     * 3 vermelhos da mão, repostos na hora do monte em cadeia (§6.5, com §10 para monte vazio), com `atTurnStart = true`.
+     * Só depois confere §10.2 / §11.2: se o assento não pode comprar (monte vazio, nenhum morto disponível) nem pegar o
+     * lixo, a partida termina sem vencedor.
+     */
+    internal fun beginTurn(state: RoundState, seat: Seat, rules: RuleSet): RoundState {
+        val begun = state.copy(
+            turnsBegun = state.turnsBegun + 1,
+            unsettledMortoSeats = state.unsettledMortoSeats - seat,
+        )
+        val next = settleRedThrees(begun, seat, atTurnStart = true)
+        if (cannotDraw(next) && !LegalActions.canTakeDiscardPile(next, seat, rules)) {
             return next.finish(RoundResult.NoWinner)
         }
         return next
@@ -242,9 +254,9 @@ object RoundEngine {
 
     /**
      * §6.5 baixa cada 3 vermelho da mão do [seat] e repõe do monte, em cadeia. Cada 3 vermelho baixado entra
-     * no registro público [RoundState.redThreeLog] (§3.5 / §6.5) com o [seat] e `atDeal = false`.
+     * no registro público [RoundState.redThreeLog] (§3.5 / §6.5) com o [seat] e `atTurnStart` conforme o momento.
      */
-    private fun settleRedThrees(state: RoundState, seat: Seat): RoundState {
+    private fun settleRedThrees(state: RoundState, seat: Seat, atTurnStart: Boolean): RoundState {
         var current = state
         val side = current.mode.sideOf(seat)
         while (true) {
@@ -253,7 +265,7 @@ object RoundEngine {
                 .withHand(seat, current.handOf(seat) - redThree)
                 .copy(
                     redThrees = current.redThrees.replaceAt(side.index, current.redThreesOf(side) + redThree),
-                    redThreeLog = current.redThreeLog + RedThreeLaid(seat, redThree, atDeal = false),
+                    redThreeLog = current.redThreeLog + RedThreeLaid(seat, redThree, atTurnStart = atTurnStart),
                 )
             val (afterDraw, replacement) = drawOne(current)
             current = if (replacement == null) afterDraw else afterDraw.withHand(seat, afterDraw.handOf(seat) + replacement)

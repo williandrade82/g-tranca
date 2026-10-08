@@ -22,16 +22,21 @@ import kotlinx.serialization.Serializable
  *   [MortoStatus.Available] tem a lista correspondente em [mortos] vazia.
  * @property result resultado, presente somente quando [phase] é [Phase.FINISHED].
  * @property redThreeLog registro público (§3.5, §6.5) de quem baixou cada 3 vermelho, em ordem cronológica:
- *   um item por 3 vermelho baixado, primeiro os da distribuição, depois os da jogada. Para cada lado, as cartas
- *   do registro baixadas pelos assentos do lado são as de [redThrees] do lado, na mesma ordem. Vazio por padrão
- *   para que o JSON salvo antes do registro existir continue legível (nesse caso o registro só tem as trocas
- *   posteriores à leitura).
- * @property dealReplacements §3.5 / §6.5 cartas que **ficaram na mão** de cada assento como reposição de 3 vermelho
- *   durante a distribuição, indexadas por [Seat.index], na ordem em que entraram. Reposições em cadeia que também eram
- *   3 vermelho foram baixadas e não entram (estão no [redThreeLog]). Vale só até a **primeira ação** do assento
- *   (o motor zera a lista dele nessa ação): depois, uma carta pode sair da mão e voltar (ex.: pelo lixo). **Informação privada** de cada assento (a reposição é oculta para
- *   os outros, §3.5): só chega ao próprio assento por [com.gtranca.engine.PlayerView.ownDealReplacements]. Só
- *   informativo (interface): não afeta ações válidas nem efeitos. Vazio por padrão (JSON salvo antes do campo existir).
+ *   um item por 3 vermelho baixado, com `atTurnStart` indicando se a troca foi no início da vez ou durante a jogada.
+ *   Para cada lado, as cartas do registro baixadas pelos assentos do lado são as de [redThrees] do lado, na mesma
+ *   ordem. Vazio por padrão para que o JSON salvo antes do registro existir continue legível (nesse caso o registro só
+ *   tem as trocas posteriores à leitura).
+ * @property dealReplacements **obsoleto e inerte** (sempre vazio): na regra antiga guardava as reposições feitas na
+ *   distribuição. Hoje nada é trocado na distribuição (§3.5); o campo só existe para o JSON salvo antes da mudança
+ *   continuar legível.
+ * @property turnsBegun quantos inícios de vez já ocorreram nesta partida (§3.5), contando o do primeiro jogador: 0 logo
+ *   após a distribuição pura, 1 depois de o primeiro jogador ter começado a vez. **Público.** Os assentos que já tiveram
+ *   o início da vez são os primeiros [turnsBegun] da ordem de jogada a partir de [firstSeat] (ver [hasBegunFirstTurn]); a mão
+ *   de quem ainda não começou pode ter 3 vermelho. O padrão (a quantidade de assentos) trata JSON antigo como "todos já
+ *   começaram", pois nele a troca era feita na distribuição.
+ * @property unsettledMortoSeats **público**: assentos que pegaram o morto de forma **indireta** (§9.3) e ainda não tiveram
+ *   o início da vez seguinte; o morto na mão deles pode ter 3 vermelho, trocado só nesse início de vez (§9.4). Independe
+ *   do conteúdo do morto (para não vazar informação).
  */
 @Serializable
 data class RoundState(
@@ -49,11 +54,15 @@ data class RoundState(
     val result: RoundResult? = null,
     val redThreeLog: List<RedThreeLaid> = emptyList(),
     val dealReplacements: List<List<Card>> = List(mode.seatCount) { emptyList() },
+    val turnsBegun: Int = mode.seatCount,
+    val unsettledMortoSeats: List<Seat> = emptyList(),
 ) {
     init {
         require(dealReplacements.size == mode.seatCount) {
             "Esperadas ${mode.seatCount} listas de reposições da distribuição, recebidas ${dealReplacements.size}"
         }
+        require(turnsBegun >= 0) { "turnsBegun negativo: $turnsBegun" }
+        unsettledMortoSeats.forEach { mode.requireSeat(it) }
         require(mortoStatus.size == mortos.size) { "Uma situação por morto" }
         require((phase == Phase.FINISHED) == (result != null)) { "Resultado existe só com a partida encerrada" }
         require(hands.size == mode.seatCount) { "Esperadas ${mode.seatCount} mãos, recebidas ${hands.size}" }
@@ -72,11 +81,8 @@ data class RoundState(
 
     fun redThreesOf(side: Side): List<Card> = redThrees[side.index]
 
-    /** §3.5 / §6.5 reposições de 3 vermelho da distribuição que ficaram na mão de [seat] (privadas do assento). */
-    fun dealReplacementsOf(seat: Seat): List<Card> {
-        mode.requireSeat(seat)
-        return dealReplacements[seat.index]
-    }
+    /** §3.5 o [seat] já teve o início da sua primeira vez nesta partida (ver [turnsBegun]). */
+    fun hasBegunFirstTurn(seat: Seat): Boolean = hasBegunFirstTurn(mode, firstSeat, turnsBegun, seat)
 
     fun tableOf(side: Side): SideTable = tables[side.index]
 
@@ -94,3 +100,10 @@ data class RoundState(
         hands.flatten() + stock + discardPile + mortos.flatten() + redThrees.flatten() +
             tables.flatMap { it.allCards() }
 }
+
+/**
+ * §3.5 o [seat] já teve o início da sua primeira vez, dados o modo, o primeiro jogador e [turnsBegun]: os assentos que
+ * já começaram são os primeiros [turnsBegun] da ordem de jogada a partir de [firstSeat].
+ */
+fun hasBegunFirstTurn(mode: GameMode, firstSeat: Seat, turnsBegun: Int, seat: Seat): Boolean =
+    mode.seatsInPlayOrder(firstSeat).indexOf(seat.also { mode.requireSeat(it) }) < turnsBegun

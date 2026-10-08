@@ -10,6 +10,7 @@ import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.cards
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -22,7 +23,7 @@ import kotlin.random.Random
 
 /**
  * §3.5 / §6.5 as trocas de 3 vermelho são públicas: todos sabem, na ordem em que aconteceram, quem baixou cada
- * 3 vermelho (na distribuição ou durante a jogada). A carta de reposição continua oculta.
+ * 3 vermelho (no início da vez ou durante a jogada). A carta de reposição continua oculta.
  */
 class RedThreeLogTest {
 
@@ -30,7 +31,7 @@ class RedThreeLogTest {
 
     @Test
     fun `3 vermelho comprado entra no registro com o assento de quem comprou`() {
-        // §6.5 a troca é pública e não é da distribuição
+        // §6.5 a troca é pública e feita na hora (durante a jogada: atTurnStart falso)
         val s = round {
             hand(0, "KS QD")
             stock("3H KH 4S")
@@ -51,15 +52,15 @@ class RedThreeLogTest {
 
     @Test
     fun `registro acumula apos as trocas anteriores`() {
-        // §3.5 + §6.5 o registro é cronológico: a troca da jogada vem depois das da distribuição
+        // §3.5 + §6.5 o registro é cronológico: a troca da jogada vem depois das trocas anteriores
         val s = round(GameMode.DUPLAS) {
             hand(3, "KS QD")
             stock("3H KH")
             redThrees(0, "3D")
-            redThreeLog = listOf(laid(2, "3D", atDeal = true))
+            redThreeLog = listOf(laid(2, "3D", atTurnStart = true))
             current = 3
         }.act(3, Action.DrawFromStock)
-        s.redThreeLog shouldContainExactly listOf(laid(2, "3D", atDeal = true), laid(3, "3H"))
+        s.redThreeLog shouldContainExactly listOf(laid(2, "3D", atTurnStart = true), laid(3, "3H"))
         s.redThreeLogViolation() shouldBe null
     }
 
@@ -102,17 +103,22 @@ class RedThreeLogTest {
     }
 
     @Test
-    fun `3 vermelho do morto indireto e registrado`() {
-        // §9.3 + §9.4 o morto vai para a mão no descarte; o 3 vermelho dele é registrado para quem descartou
+    fun `3 vermelho do morto indireto so e registrado no inicio da proxima vez de quem o pegou`() {
+        // §9.3 + §9.4 o morto vai para a mão no descarte, com o 3 vermelho; a troca (pública) só vem no início da próxima vez
         val s = round {
             hand(0, "KS")
             hand(1, "9C 9D")
             morto(0, "3H 4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC'")
-            stock("AS")
+            stock("AS QS JS")
             phase = Phase.PLAYING
         }.act(0, discardCard("KS"))
         s.currentSeat shouldBe Seat(1)
-        s.redThreeLog shouldContainExactly listOf(laid(0, "3H"))
+        s.redThreeLog.shouldBeEmpty()
+        s.hand(0) shouldContain c("3H")
+        // o adversário joga e a vez volta ao assento 0: só então o 3H é baixado, no início da vez
+        val back = s.drawAndDiscardFor(1)
+        back.currentSeat shouldBe Seat(0)
+        back.redThreeLog shouldContainExactly listOf(laid(0, "3H", atTurnStart = true))
     }
 
     @Test
@@ -135,9 +141,14 @@ class RedThreeLogTest {
             hand(0, "KS QD")
             stock("KH 4S")
             redThrees(1, "3H")
-            redThreeLog = listOf(laid(1, "3H", atDeal = true))
+            redThreeLog = listOf(laid(1, "3H", atTurnStart = true))
         }
         before.act(0, Action.DrawFromStock).redThreeLog shouldBe before.redThreeLog
+    }
+
+    private fun RoundState.drawAndDiscardFor(seat: Int): RoundState {
+        val drawn = act(seat, Action.DrawFromStock)
+        return drawn.act(seat, Action.Discard(drawn.hand(seat).first { !it.isRedThree }))
     }
 
     // ---------- vista (§3.5 público, reposição oculta) ----------
@@ -165,11 +176,11 @@ class RedThreeLogTest {
     fun `registro da vista e copia defensiva`() {
         val state = round {
             redThrees(0, "3H")
-            redThreeLog = listOf(laid(0, "3H", atDeal = true))
+            redThreeLog = listOf(laid(0, "3H", atTurnStart = true))
         }
         val view = state.viewFor(Seat(1))
         runCatching { (view.redThreeLog as MutableList<RedThreeLaid>).clear() }
-        state.redThreeLog shouldContainExactly listOf(laid(0, "3H", atDeal = true))
+        state.redThreeLog shouldContainExactly listOf(laid(0, "3H", atTurnStart = true))
     }
 
     // ---------- serialização ----------
@@ -238,11 +249,11 @@ class RedThreeLogTest {
     }
 
     @Test
-    fun `troca da distribuicao depois de uma troca da jogada e uma vista incoerente`() {
-        // §3.5 todas as trocas da distribuição acontecem antes da primeira jogada
+    fun `troca atDeal de JSON antigo depois de uma troca da jogada e uma vista incoerente`() {
+        // compatibilidade: no JSON antigo as trocas da distribuição (atDeal) vinham antes de todas as da jogada
         val state = (0L until 500L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }.first { it.redThreeLog.size >= 2 }
         val view = state.viewFor(Seat(0))
-        val swapped = view.copy(redThreeLog = listOf(view.redThreeLog.first().copy(atDeal = false)) + view.redThreeLog.drop(1))
+        val swapped = view.copy(redThreeLog = view.redThreeLog.dropLast(1) + view.redThreeLog.last().copy(atDeal = true))
         shouldThrow<IllegalArgumentException> { swapped.determinize(Random(1)) }.message shouldContain "registro"
     }
 }

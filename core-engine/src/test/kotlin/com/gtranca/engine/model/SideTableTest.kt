@@ -87,23 +87,23 @@ class SideTableTest {
 
     @Test
     fun `nova sequencia com coringa ao lado de canastra limpa e permitida`() {
-        // §6.4 exceção: não se considera sujar a canastra limpa 4..9♥ → 10♥-J♥-2 pode ser conjunto separado
-        table("4H 5H 6H 7H 8H 9H").createMeld(cards("TH JH 2C")).shouldBeOk().melds shouldHaveSize 2
-        // §6.4 exceção vale também com o coringa no buraco (J♥-2-Q♥ valeria 4..9-2-J-Q)
-        table("4H 5H 6H 7H 8H 9H").createMeld(cards("JH QH 2C")).shouldBeOk().melds shouldHaveSize 2
+        // §6.4 exceção: não se considera sujar a canastra limpa 4..10♥ → J♥-Q♥-2 pode ser conjunto separado
+        table("4H 5H 6H 7H 8H 9H TH").createMeld(cards("JH QH 2C")).shouldBeOk().melds shouldHaveSize 2
+        // §6.4 exceção vale também com o coringa no buraco (Q♥-K♥-2 valeria 4..10-2-Q-K)
+        table("4H 5H 6H 7H 8H 9H TH").createMeld(cards("QH KH 2C")).shouldBeOk().melds shouldHaveSize 2
     }
 
     @Test
     fun `cartas com coringa podem sujar a canastra limpa se o jogador escolher`() {
         // §6.3 / §6.4 a alternativa à sequência separada: acrescentar à canastra, que fica suja
-        val t = table("4H 5H 6H 7H 8H 9H").addToMeld(MeldId(0), cards("TH JH 2C")).shouldBeOk()
+        val t = table("4H 5H 6H 7H 8H 9H TH").addToMeld(MeldId(0), cards("JH QH 2C")).shouldBeOk()
         t.meld(MeldId(0))!!.isDirtyCanasta().shouldBeTrue()
     }
 
     @Test
     fun `nova sequencia sem coringa que cabe em canastra limpa e proibida`() {
-        // §6.4 10♥-J♥-Q♥ cabe na canastra limpa 4..9♥ sem sujá-la → continuação
-        table("4H 5H 6H 7H 8H 9H").createMeld(cards("TH JH QH")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
+        // §6.4 J♥-Q♥-K♥ cabe na canastra limpa 4..10♥ sem sujá-la → continuação
+        table("4H 5H 6H 7H 8H 9H TH").createMeld(cards("JH QH KH")) shouldFailWith MeldError.CONTIGUOUS_SEQUENCE
     }
 
     @Test

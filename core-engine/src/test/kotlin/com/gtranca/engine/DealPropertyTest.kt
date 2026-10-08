@@ -29,17 +29,15 @@ class DealPropertyTest {
                 all shouldHaveSize Deck.SIZE
                 all.toSet() shouldHaveSize Deck.SIZE
                 all shouldContainExactlyInAnyOrder Deck.standard()
-                state.hands.flatten().none { it.isRedThree } shouldBe true
+                state.handOf(state.firstSeat).none { it.isRedThree } shouldBe true // §3.5 o primeiro jogador já trocou
             }
         }
     }
 
     @Test
-    fun `reposicoes da distribuicao batem com a mao original e o registro`(): Unit = runBlocking {
-        // §3.5 / §6.5 reposições guardadas por assento (dealReplacements): mão final = cartas não 3 vermelho da mão
-        // original + reposições, na ordem (logo, reposições ⊆ mão); reposições do assento + 3 vermelhos que vieram como
-        // reposição (cadeia) = trocas atDeal do assento no registro. Na distribuição o monte nunca acaba (≥ 38 cartas
-        // contra no máximo 4 reposições), então cada troca tem reposição.
+    fun `a mao de quem ainda nao comecou e a distribuida e a do primeiro jogador so perde os 3 vermelhos`(): Unit = runBlocking {
+        // §3.5 nada é trocado na distribuição: só o primeiro jogador (início da partida) troca, e o registro (atTurnStart)
+        // cobre exatamente os 3 vermelhos dele, incluindo cadeia (§6.5); as demais mãos são as originais.
         checkAll(300, Arb.long(), Arb.enum<GameMode>(), Arb.int(0, 3)) { seed, mode, first ->
             val firstSeat = Seat(first % mode.seatCount)
             val deck = Deck.shuffled(Random(seed))
@@ -48,16 +46,16 @@ class DealPropertyTest {
             val handCards = RuleSet.DEFAULT.cardsPerHand * mode.seatCount
             for (seat in mode.seats) {
                 val original = deck.subList(0, handCards).filterIndexed { i, _ -> order[i % mode.seatCount] == seat }
-                val replacements = state.dealReplacementsOf(seat)
-                state.handOf(seat) shouldBe original.filterNot { it.isRedThree } + replacements
-                state.handOf(seat).containsAll(replacements) shouldBe true
-                replacements.none { it.isRedThree } shouldBe true
-                val logged = state.redThreeLog.filter { it.seat == seat && it.atDeal }
-                val chained = logged.count { it.card !in original }
-                (replacements.size + chained) shouldBe logged.size
-                replacements.size shouldBe original.count { it.isRedThree }
-                state.viewFor(seat).ownDealReplacements shouldBe replacements
+                if (seat == firstSeat) {
+                    state.handOf(seat).none { it.isRedThree } shouldBe true
+                    state.handOf(seat).containsAll(original.filterNot { it.isRedThree }) shouldBe true
+                    state.handOf(seat) shouldHaveSize original.size
+                    state.redThreeLog.map { it.card }.containsAll(original.filter { it.isRedThree }) shouldBe true
+                } else {
+                    state.handOf(seat) shouldBe original
+                }
             }
+            state.redThreeLog.all { it.seat == firstSeat && it.atTurnStart } shouldBe true
         }
     }
 

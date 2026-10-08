@@ -61,8 +61,14 @@ class RoundSimulationPropertyTest {
             val result = state.result
             (result is RoundResult.GoOut && result.seat == seat) shouldBe true
         }
-        // §6.5 nenhuma mão guarda 3 vermelho
-        state.hands.flatten().none { it.isRedThree } shouldBe true
+        // §3.5 / §9.4 3 vermelho só fica na mão de quem ainda não começou a primeira vez ou do morto indireto pendente;
+        // nunca na mão do assento da vez (a troca do início da vez já aconteceu)
+        state.mode.seats.filter { seat -> state.handOf(seat).any { it.isRedThree } }.forEach { seat ->
+            withClue("3 vermelho na mão do assento ${seat.index}") {
+                (!state.hasBegunFirstTurn(seat) || seat in state.unsettledMortoSeats) shouldBe true
+                (state.phase == Phase.FINISHED || seat != state.currentSeat) shouldBe true
+            }
+        }
         // §3.5 / §6.5 registro público: por lado, as cartas registradas são os 3 vermelhos do lado, na mesma ordem
         withClue("registro de 3 vermelhos") { state.redThreeLogViolation() shouldBe null }
     }

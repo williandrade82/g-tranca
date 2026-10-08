@@ -36,16 +36,15 @@
 - Os mortos ficam na mesa como **dois montes separados**, com as cartas **viradas para baixo**: todos sabem que eles existem, mas ninguém pode ver suas cartas até pegá-los.
 
 ### **3.3. Monte**
-- As cartas restantes formam o **monte**, virado para baixo (60 cartas no modo individual, 38 no modo duplas).
+- As cartas restantes formam o **monte**, virado para baixo (60 cartas no modo individual, 38 no modo duplas). Nada sai do monte na distribuição: as reposições de 3 vermelho (§6.5) só começam na vez de cada jogador (§3.5).
 
 ### **3.4. Lixo inicial**
 - O lixo começa **vazio**. O primeiro jogador, portanto, compra obrigatoriamente do monte.
 
 ### **3.5. Três vermelhos recebidos na distribuição**
-- Após a distribuição, **antes de qualquer jogada**, os 3 vermelhos recebidos são trocados **seguindo a ordem de jogada**, para que cada jogador receba a carta correta do monte:
-  1. O primeiro jogador (§4.1) baixa automaticamente todos os seus 3 vermelhos e repõe cada um com uma carta do topo do monte, incluindo as reposições em cadeia (ver §6.5).
-  2. Só quando ele termina, o próximo jogador (sentido anti-horário, §4.2) faz o mesmo, e assim por diante.
-  3. Quando todos tiverem trocado seus 3 vermelhos, o primeiro jogador inicia sua jogada (§4.3).
+- Os 3 vermelhos recebidos ficam **na mão** do jogador (só ele os vê). **Nada é trocado na distribuição.**
+- Um 3 vermelho só pode ser trocado **na vez do jogador, nunca antes**. No **início de cada vez** (e, para o primeiro jogador, no início da sua primeira jogada), **antes de comprar**, todos os 3 vermelhos da mão são **baixados automaticamente** e **repostos imediatamente** com cartas do topo do monte, incluindo as reposições em cadeia (ver §6.5).
+- Assim, cada jogador troca os seus 3 vermelhos apenas quando chega a sua vez: o 1º jogador antes da sua primeira compra, o seguinte (sentido anti-horário, §4.2) no início da sua primeira vez, e assim por diante.
 - As trocas são **públicas**: todos os jogadores são avisados, na ordem em que aconteceram, de **quem** baixou cada 3 vermelho. As cartas recebidas como reposição continuam ocultas (vão para a mão de quem trocou).
 
 ---
@@ -75,7 +74,7 @@ Cada jogador, na sua vez, executa as ações na seguinte ordem:
 
 3. **Descartar uma carta**, finalizando sua jogada (ver §8), exceto quando bater baixando todas as cartas (ver §11).
 
-> Os 3 vermelhos são baixados e repostos **automaticamente** sempre que entram na mão (ver §6.5); não são uma ação do jogador.
+> Antes da etapa 1, no **início da vez**, os 3 vermelhos que o jogador tem na mão são baixados e repostos **automaticamente** (§3.5, §6.5). Os que chegam durante a jogada (compra do monte, morto direto, reposição) também são trocados na hora. A troca não é uma ação do jogador.
 
 ---
 
@@ -156,8 +155,8 @@ Um conjunto pode ser:
   - 8♥-9♥-2 como conjunto novo: **proibido** (cabe como 4-5-6-2-8-9, com o coringa valendo 7).
   - 8-9-10♥ como conjunto novo: **permitido** (falta o 7, não cabe).
   - 6♥'-7♥-8♥ (6 do 2º baralho) como conjunto novo: **permitido** (o 6 se repetiria, não cabe).
-  - Com a canastra limpa 4…9♥ na mesa, 10♥-J♥-2 como conjunto novo: **permitido** (pela exceção acima; o jogador também pode, se preferir, acrescentar as cartas à canastra, que passa a ser suja).
-  - Com a canastra limpa 4…9♥ na mesa, 10♥-J♥-Q♥ como conjunto novo: **proibido** (cabe na canastra sem sujá-la).
+  - Com a canastra limpa 4…10♥ na mesa, J♥-Q♥-2 como conjunto novo: **permitido** (pela exceção acima; o jogador também pode, se preferir, acrescentar as cartas à canastra, que passa a ser suja).
+  - Com a canastra limpa 4…10♥ na mesa, J♥-Q♥-K♥ como conjunto novo: **proibido** (cabe na canastra sem sujá-la).
   - Com 4-5-6-2♥ na mesa (coringa solto), 8♥-9♥-10♥ como conjunto novo: **permitido** (para caber, o coringa teria de travar no 7).
   - Com K-A-2♥ na mesa, 9♥-10♥-J♥ como conjunto novo: **permitido** (o coringa teria de travar na Q).
   - Com 4-5-6-2♥ na mesa (coringa solto), 7♥-8♥-9♥ como conjunto novo: **proibido** (cabe e o coringa continua solto).
@@ -166,10 +165,10 @@ Um conjunto pode ser:
 
 ### **6.5. Três vermelhos**
 - **3 vermelho (copas ou ouros)**:
-  - É baixado **automaticamente**, sozinho, sempre que entra na mão (distribuição, compra do monte, morto ou reposição).
+  - É baixado **automaticamente**, sozinho, **sempre na vez do jogador**: no início da vez, se já estava na mão (recebido na distribuição, §3.5, ou vindo do morto indireto, §9.4), ou na hora, durante a vez, se entra na mão pela compra do monte, pelo morto direto (§9.2) ou por reposição.
   - Vale **+100 ou –100 pontos** na mesa, conforme o lado tenha ou não canastra ao fim da partida, e soma ainda **+5** como carta na mesa (§12.1): no total, +105 ou –95.
   - Ao ser baixado, o jogador recebe **uma carta do monte** como reposição. Se a reposição também for 3 vermelho, o processo se repete (**reposição em cadeia**).
-  - A troca é **pública**: todos são avisados de quem baixou o 3 vermelho e em que momento (na distribuição, §3.5, ou durante a jogada). A carta de reposição é oculta.
+  - A troca é **pública**: todos são avisados de quem baixou o 3 vermelho e em que momento (no início da vez, §3.5, ou durante a jogada). A carta de reposição é oculta.
   - Se o monte estiver vazio, a reposição segue §10. Se não houver monte nem morto, o 3 vermelho é baixado **sem reposição**.
   - **Não pode ser descartado.**
 - Baixar um 3 vermelho não conta como "baixar conjunto" e não altera as regras de morto e batida.
@@ -184,7 +183,7 @@ Um conjunto pode ser:
 # **7. Canastras**
 
 ### **7.1. Definição**
-- Conjunto com **6 ou mais cartas**.
+- Conjunto com **7 ou mais cartas**, limpa ou suja.
 
 ### **7.2. Tipos**
 - **Canastra limpa**: sem coringa → **+200 pontos**
@@ -224,7 +223,8 @@ Um conjunto pode ser:
   - O jogador pega o morto e **joga com ele somente na sua próxima vez**.
 
 ### **9.4. 3 vermelhos no morto**
-- Os 3 vermelhos que vierem no morto são baixados e repostos automaticamente (§6.5).
+- No **morto direto** (§9.2), os 3 vermelhos que vierem no morto são baixados e repostos automaticamente, na hora (§6.5).
+- No **morto indireto** (§9.3), eles ficam na mão e são baixados e repostos no **início da próxima vez** do jogador, como os recebidos na distribuição (§3.5).
 
 ### **9.5. Sem morto disponível**
 - Se o lado ainda não pegou morto e **não há morto disponível** (os dois foram pegos pelo outro lado ou um deles virou monte, §10), o lado **pode bater sem ter pego o morto**, desde que cumpra o restante de §11.1 (pelo menos uma canastra). Vale nos dois modos (individual e duplas).
@@ -280,7 +280,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
   - **Coringa (2)**: +10
   - Não há 3 preto na mesa (nenhum 3 compõe conjuntos, §6.2).
   - Contam todas as cartas de todos os conjuntos do lado (canastras ou não) e os 3 vermelhos baixados, sempre (com ou sem vencedor, com ou sem canastra).
-  - Exemplo: canastra limpa 4-5-6-7-8-9 de copas = 200 (canastra limpa) + 6 × 8 (cartas) = **248**.
+  - Exemplo: canastra limpa 4-5-6-7-8-9-10 de copas = 200 (canastra limpa) + 7 × 8 (cartas) = **256**.
 
 ### **12.2. Penalidades (negativas)**
 - **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto — inclusive o lado que bate quando não havia mais morto disponível (§9.5).
@@ -326,7 +326,7 @@ Definidos pelo jogador **antes do início do jogo**; não mudam durante o jogo.
 - O **avatar** é uma persona de uma profissão: **cabeça, ombros, parte do peito e dos braços** (sem o resto do corpo), com aparência variável (pele, cabelo e uniforme).
 - O avatar e o nome aparecem de forma discreta na mesa, na tela de pontos e na declaração do vencedor.
 
-Todas as demais regras deste documento são **fixas**. No código, elas ficam reunidas no `RuleSet` padrão (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de canastra = 6, máximo de coringas por conjunto = 1, valores de pontuação), para facilitar ajustes futuros, mas não são expostas ao jogador.
+Todas as demais regras deste documento são **fixas**. No código, elas ficam reunidas no `RuleSet` padrão (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de canastra = 7, máximo de coringas por conjunto = 1, valores de pontuação), para facilitar ajustes futuros, mas não são expostas ao jogador.
 
 ---
 
@@ -354,8 +354,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Embaralha e distribui: 11 cartas por jogador, 2 mortos de 11 cartas, o restante no monte; lixo vazio (§1, §3)"] --> B["Trocas dos 3 vermelhos recebidos, na ordem de jogada; cada jogador termina as suas antes do próximo (§3.5)"]
-    B --> C["Jogada do jogador da vez (§15.3), começando pelo primeiro jogador"]
+    A["Embaralha e distribui: 11 cartas por jogador, 2 mortos de 11 cartas, o restante no monte; lixo vazio; 3 vermelhos ficam na mão (§1, §3)"] --> C["Jogada do jogador da vez (§15.3), começando pelo primeiro jogador"]
     C --> D{"A partida terminou? (§11)"}
     D -->|"Sim: batida ou fim sem vencedor"| E["Fim da partida"]
     D -->|Não| F["Próximo jogador, no sentido anti-horário (§4.2)"]
@@ -366,7 +365,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Início da jogada"] --> B{"Pegar o lixo? O lixo pode ser pego (§5) e o jogador quer"}
+    A0["Início da vez: 3 vermelhos da mão são baixados e repostos automaticamente (§3.5, §6.5)"] --> A["Início da jogada"]
+    A --> B{"Pegar o lixo? O lixo pode ser pego (§5) e o jogador quer"}
     B -->|Sim| C["Leva o topo à mesa e recebe as demais cartas do lixo (§5.1, §5.2)"]
     B -->|Não| D{"O monte tem cartas?"}
     D -->|Sim| E["Compra uma carta do monte (§4.3)"]

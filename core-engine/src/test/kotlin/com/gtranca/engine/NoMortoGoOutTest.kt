@@ -30,7 +30,7 @@ class NoMortoGoOutTest {
             hand(0, "KS KD KC")
             hand(1, "9C 9D")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }.act(0, create("KS KD KC"))
         s.phase shouldBe Phase.FINISHED
@@ -44,7 +44,7 @@ class NoMortoGoOutTest {
             hand(0, "KS")
             hand(1, "9C 9D")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H 2C")
+            meld(0, "4H 5H 6H 7H 8H 9H 2C")
             phase = Phase.PLAYING
         }.act(0, discardCard("KS"))
         s.phase shouldBe Phase.FINISHED
@@ -59,7 +59,7 @@ class NoMortoGoOutTest {
             hand(1, "9C 9D")
             discard("6S")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.AWAITING_DRAW
         }
         // O topo (6♠) vai ao conjunto novo 6♠ 7♠ 8♠ e a mão fica vazia: batida.
@@ -71,12 +71,12 @@ class NoMortoGoOutTest {
     @Test
     fun `§9_5 a canastra formada pela propria jogada tambem permite bater sem morto`() {
         val s = round {
-            hand(0, "9H")
+            hand(0, "TH")
             hand(1, "9C 9D")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H")
+            meld(0, "4H 5H 6H 7H 8H 9H")
             phase = Phase.PLAYING
-        }.act(0, addTo(0, "9H"))
+        }.act(0, addTo(0, "TH"))
         s.result shouldBe RoundResult.GoOut(Side(0), Seat(0))
     }
 
@@ -105,7 +105,7 @@ class NoMortoGoOutTest {
             hand(0, "KS KD KC")
             hand(1, "9C 9D")
             mortoTaken(0, 1) // o morto 1 continua disponível
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }.act(0, create("KS KD KC"))
         s.phase shouldBe Phase.PLAYING
@@ -119,7 +119,7 @@ class NoMortoGoOutTest {
             hand(0, "5S 6S 7S KS")
             hand(1, "9C 9D")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }
         s.check(0, create("5S 6S 7S")).shouldBeOk()
@@ -141,7 +141,7 @@ class NoMortoGoOutTest {
             hand(2, "KS KD KC")
             hand(3, "7C 8C")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H 9H") // canastra do lado 0 (parceiros 0 e 2)
+            meld(0, "4H 5H 6H 7H 8H 9H TH") // canastra do lado 0 (parceiros 0 e 2)
             phase = Phase.PLAYING
             current = 2
         }.act(2, create("KS KD KC"))
@@ -154,7 +154,7 @@ class NoMortoGoOutTest {
             hand(0, "KS KD KC")
             hand(1, "9C 9D")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }.act(0, create("KS KD KC"))
         val winner = scoreRound(s)[0]
@@ -175,7 +175,7 @@ class NoMortoGoOutTest {
             hand(1, "9C 9D")
             stock("3H")
             noMortoAvailable()
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
         }.act(0, Action.DrawFromStock)
         s.phase shouldBe Phase.PLAYING
         s.result shouldBe null

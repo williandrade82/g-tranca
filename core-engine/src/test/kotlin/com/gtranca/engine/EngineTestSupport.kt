@@ -41,6 +41,12 @@ class RoundStateBuilder(private val mode: GameMode) {
     var result: RoundResult? = null
     /** §3.5 / §6.5 registro público de quem baixou cada 3 vermelho (vazio por padrão). */
     var redThreeLog: List<RedThreeLaid> = emptyList()
+    /** §3.5 inícios de vez já ocorridos; o padrão trata o cenário como partida em andamento (todos já começaram). */
+    var turnsBegun: Int = mode.seatCount
+    /** §9.4 assentos com morto indireto ainda não resolvido. */
+    var unsettledMortoSeats: List<Seat> = emptyList()
+    /** Assento que começou a partida (§4.1); relevante para [turnsBegun] menor que o número de assentos. */
+    var firstSeat: Int = 0
 
     fun hand(seat: Int, text: String) { hands[seat] = cards(text) }
     fun stock(text: String) { stock = cards(text) }
@@ -69,12 +75,14 @@ class RoundStateBuilder(private val mode: GameMode) {
         mortos = mortos.toList(),
         redThrees = redThrees.toList(),
         tables = tables.toList(),
-        firstSeat = Seat(0),
+        firstSeat = Seat(firstSeat),
         currentSeat = Seat(current),
         phase = if (result != null) Phase.FINISHED else phase,
         result = result,
         mortoStatus = mortoStatus.toList(),
         redThreeLog = redThreeLog,
+        turnsBegun = turnsBegun,
+        unsettledMortoSeats = unsettledMortoSeats,
     )
 }
 
@@ -115,21 +123,36 @@ fun List<Action>.addPlans(): List<Pair<Int, Set<Card>>> =
     filterIsInstance<Action.AddToMeld>().map { it.meldId.value to it.cards.toSet() }
 
 /** Entrada do registro de 3 vermelhos (§3.5 / §6.5). */
-fun laid(seat: Int, card: String, atDeal: Boolean = false) = RedThreeLaid(Seat(seat), c(card), atDeal)
+fun laid(seat: Int, card: String, atDeal: Boolean = false, atTurnStart: Boolean = false) =
+    RedThreeLaid(Seat(seat), c(card), atDeal, atTurnStart)
 
 /**
  * §3.5 / §6.5 invariante do registro público de 3 vermelhos: para cada lado, as cartas do registro baixadas
- * pelos assentos do lado são exatamente os 3 vermelhos do lado, na mesma ordem; e as trocas da distribuição
- * (§3.5) vêm todas antes das trocas durante a jogada.
+ * pelos assentos do lado são exatamente os 3 vermelhos do lado, na mesma ordem; nenhuma entrada é `atDeal` e `atTurnStart`
+ * ao mesmo tempo; e (JSON antigo) as trocas `atDeal` vêm todas antes das demais.
  */
 fun RoundState.redThreeLogViolation(): String? {
     for (side in mode.sides) {
         val logged = redThreeLog.filter { mode.sideOf(it.seat) == side }.map { it.card }
         if (logged != redThreesOf(side)) return "lado ${side.index}: registro $logged != 3 vermelhos ${redThreesOf(side)}"
     }
+    if (redThreeLog.any { it.atDeal && it.atTurnStart }) return "entrada atDeal e atTurnStart ao mesmo tempo: $redThreeLog"
     val firstInPlay = redThreeLog.indexOfFirst { !it.atDeal }
     if (firstInPlay >= 0 && redThreeLog.drop(firstInPlay).any { it.atDeal }) {
         return "troca da distribuição depois de troca durante a jogada: $redThreeLog"
+    }
+    return null
+}
+
+/**
+ * §3.5 / §9.4 invariante de onde pode haver 3 vermelho na mão: só no assento que ainda não começou a primeira vez ou que
+ * pegou o morto indireto e ainda não começou a vez seguinte; nunca no assento da vez com a partida em andamento.
+ */
+fun RoundState.redThreeHandViolation(): String? {
+    for (seat in mode.seats) {
+        if (hands[seat.index].none { it.isRedThree }) continue
+        if (hasBegunFirstTurn(seat) && seat !in unsettledMortoSeats) return "3 vermelho na mão do assento ${seat.index}, que já trocou os seus"
+        if (phase != Phase.FINISHED && seat == currentSeat) return "3 vermelho na mão do assento da vez (${seat.index})"
     }
     return null
 }

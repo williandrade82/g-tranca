@@ -91,25 +91,25 @@ class LegalActionsTest {
 
     @Test
     fun `lista coringa na canastra limpa e sequencia separada com coringa`() {
-        // §6.3 coringa pode sujar a canastra limpa; §6.4 exceção: 10♥-J♥-2 pode ser conjunto separado
+        // §6.3 coringa pode sujar a canastra limpa; §6.4 exceção: J♥-Q♥-2 pode ser conjunto separado
         val s = round {
-            hand(0, "TH JH 2C KS")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            hand(0, "JH QH 2C KS")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }
         val legal = s.legalActions(0)
         legal.addPlans() shouldContain (0 to cards("2C").toSet())
-        legal.createPlans() shouldContain cards("TH JH 2C").toSet()
+        legal.createPlans() shouldContain cards("JH QH 2C").toSet()
         s.allLegalValidate(0)
     }
 
     @Test
     fun `lista plano de lixo com coringa da mao na canastra limpa`() {
-        // §5.1 + §6.3 topo 10♥ com o coringa da mão na canastra limpa 4..9♥
+        // §5.1 + §6.3 topo J♥ com o coringa da mão na canastra limpa 4..10♥ (7 cartas)
         val s = round {
             hand(0, "2C KS QD")
-            meld(0, "4H 5H 6H 7H 8H 9H")
-            discard("TH")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
+            discard("JH")
         }
         s.legalActions(0).takeAddPlans() shouldContain (0 to cards("2C").toSet())
         s.allLegalValidate(0)
@@ -154,13 +154,13 @@ class LegalActionsTest {
     fun `lista conjunto separado e acrescimo com coringa do topo ao lado de canastra limpa`() {
         // §5.4 + §6.4 exceção: as duas escolhas aparecem
         val s = round {
-            hand(0, "TH JH KS")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            hand(0, "JH QH KS")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             discard("2C")
         }
         val legal = s.legalActions(0)
-        legal.takeNewPlans() shouldContain cards("TH JH").toSet()
-        legal.takeAddPlans() shouldContain (0 to cards("TH JH").toSet())
+        legal.takeNewPlans() shouldContain cards("JH QH").toSet()
+        legal.takeAddPlans() shouldContain (0 to cards("JH QH").toSet())
         s.allLegalValidate(0)
     }
 

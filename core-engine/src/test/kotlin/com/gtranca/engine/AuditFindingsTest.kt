@@ -41,7 +41,7 @@ class AuditFindingsTest {
             hand(0, "9H")
             hand(1, "8H 4C")
             meld(0, "4H 5H 6H 7H")
-            meld(0, "4S 5S 6S 7S 8S 9S")
+            meld(0, "4S 5S 6S 7S 8S 9S TS")
             stock("")
             mortoTaken(0, 0)
             mortoTaken(1, 1)
@@ -69,43 +69,43 @@ class AuditFindingsTest {
 
     @Test
     fun `I1 plano de lixo que precisa de mais cartas que o minimo e listado`() {
-        // §5.1 + §11.1 lado com morto sem canastra: 4-5-6-7♥ + topo 8♥ + 9♥ forma a canastra e bate
+        // §5.1 + §11.1 lado com morto sem canastra: 4-5-6-7♥ + topo 8♥ + 9♥ 10♥ forma a canastra de 7 e bate
         val s = round {
-            hand(0, "9H")
+            hand(0, "9H TH")
             meld(0, "4H 5H 6H 7H")
             mortoTaken(0, 0)
             discard("8H")
         }
-        s.legalActions(0).takeAddPlans() shouldContain (0 to cards("9H").toSet())
-        s.act(0, takeAdd(0, "9H")).result shouldBe RoundResult.GoOut(Side(0), Seat(0))
+        s.legalActions(0).takeAddPlans() shouldContain (0 to cards("9H TH").toSet())
+        s.act(0, takeAdd(0, "9H TH")).result shouldBe RoundResult.GoOut(Side(0), Seat(0))
     }
 
     // ---------- I2: §8 + §11.1 batida formando a canastra com as últimas cartas ----------
 
     @Test
     fun `I2 acrescimo de varias cartas que forma a canastra e bate e listado`() {
-        // §11.1 + §8 lado com morto sem canastra; 4-5-6-7♥ + 8♥ 9♥ = canastra e mão vazia
+        // §11.1 + §8 lado com morto sem canastra; 4-5-6-7♥ + 8♥ 9♥ 10♥ = canastra de 7 e mão vazia
         val s = round {
-            hand(0, "8H 9H")
+            hand(0, "8H 9H TH")
             hand(1, "KC KD")
             meld(0, "4H 5H 6H 7H")
             mortoTaken(0, 0)
             phase = Phase.PLAYING
         }
-        s.legalActions(0).addPlans() shouldContain (0 to cards("8H 9H").toSet())
-        s.act(0, addTo(0, "8H 9H")).result shouldBe RoundResult.GoOut(Side(0), Seat(0))
+        s.legalActions(0).addPlans() shouldContain (0 to cards("8H 9H TH").toSet())
+        s.act(0, addTo(0, "8H 9H TH")).result shouldBe RoundResult.GoOut(Side(0), Seat(0))
     }
 
     @Test
-    fun `I2 conjunto novo de 6 cartas que bate e listado`() {
-        // §11.1 + §7.1 canastra de 6 baixada de uma vez esvaziando a mão
+    fun `I2 conjunto novo de 7 cartas que bate e listado`() {
+        // §11.1 + §7.1 canastra de 7 baixada de uma vez esvaziando a mão
         val s = round {
-            hand(0, "4S 5S 6S 7S 8S 9S")
+            hand(0, "4S 5S 6S 7S 8S 9S TS")
             hand(1, "KC KD")
             mortoTaken(0, 0)
             phase = Phase.PLAYING
         }
-        s.legalActions(0).createPlans() shouldContain cards("4S 5S 6S 7S 8S 9S").toSet()
-        s.act(0, create("4S 5S 6S 7S 8S 9S")).result shouldBe RoundResult.GoOut(Side(0), Seat(0))
+        s.legalActions(0).createPlans() shouldContain cards("4S 5S 6S 7S 8S 9S TS").toSet()
+        s.act(0, create("4S 5S 6S 7S 8S 9S TS")).result shouldBe RoundResult.GoOut(Side(0), Seat(0))
     }
 }

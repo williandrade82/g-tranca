@@ -19,15 +19,15 @@ import kotlin.random.Random
 class MatchTest {
 
     /**
-     * Partida encerrada sem vencedor em que cada lado pontua uma canastra limpa (+200) com as cartas 4 a 9 na mesa
-     * (6 × 8 = +48), ou seja 248, e seus 3 vermelhos (+100 cada, pois há canastra, e +5 da carta: +105 cada,
-     * §12.1); mortos pegos, mãos vazias. Um lado com n 3 vermelhos soma 248 + 105 × n.
+     * Partida encerrada sem vencedor em que cada lado pontua uma canastra limpa (+200) com as cartas 4 a 10 na mesa
+     * (7 × 8 = +56), ou seja 256, e seus 3 vermelhos (+100 cada, pois há canastra, e +5 da carta: +105 cada,
+     * §12.1); mortos pegos, mãos vazias. Um lado com n 3 vermelhos soma 256 + 105 × n.
      */
     private fun roundWith(side0RedThrees: String, side1RedThrees: String, mode: GameMode = GameMode.INDIVIDUAL) = round(mode) {
         redThrees(0, side0RedThrees)
         redThrees(1, side1RedThrees)
-        meld(0, "4H 5H 6H 7H 8H 9H")
-        meld(1, "4S 5S 6S 7S 8S 9S")
+        meld(0, "4H 5H 6H 7H 8H 9H TH")
+        meld(1, "4S 5S 6S 7S 8S 9S TS")
         mortoTaken(0, 0)
         mortoTaken(1, 1)
         result = RoundResult.NoWinner
@@ -61,13 +61,13 @@ class MatchTest {
     @Test
     fun `encerrar a partida acumula os pontos e guarda o detalhamento`() {
         // §12 pontuação ao final da partida; §13 total acumulado
-        // partida: lado 0 = 248 + 105 = 353; lado 1 = 248 + 2 × 105 = 458
+        // partida: lado 0 = 256 + 105 = 361; lado 1 = 256 + 2 × 105 = 466
         val m = matchAt(listOf(100, 200), finishedRound = roundWith("3H", "3D 3H'")).finishRound()
-        m.totals shouldContainExactly listOf(453, 658)
+        m.totals shouldContainExactly listOf(461, 666)
         m.history shouldHaveSize 1
         m.history[0].number shouldBe 1
         m.history[0].result shouldBe RoundResult.NoWinner
-        m.history[0].scores.map { it.total } shouldContainExactly listOf(353, 458)
+        m.history[0].scores.map { it.total } shouldContainExactly listOf(361, 466)
         m.winner shouldBe null
         m.isAwaitingNextRound shouldBe true
     }
@@ -83,9 +83,9 @@ class MatchTest {
     @Test
     fun `atingir exatamente o alvo encerra o jogo`() {
         // §13 total maior ou igual (≥) à pontuação-alvo
-        // 2647 + 353 = 3000 exatamente; lado 1: 248
-        val m = matchAt(listOf(2647, 0), finishedRound = roundWith("3H", "")).finishRound()
-        m.totals shouldContainExactly listOf(3000, 248)
+        // 2639 + 361 = 3000 exatamente; lado 1: 256
+        val m = matchAt(listOf(2639, 0), finishedRound = roundWith("3H", "")).finishRound()
+        m.totals shouldContainExactly listOf(3000, 256)
         m.winner shouldBe Side(0)
         m.isOver shouldBe true
         shouldThrow<IllegalArgumentException> { m.startNextRound() }
@@ -94,9 +94,9 @@ class MatchTest {
     @Test
     fun `abaixo do alvo o jogo continua`() {
         // §13 só termina com algum lado ≥ alvo
-        // 2646 + 353 = 2999, um ponto abaixo do alvo
-        val m = matchAt(listOf(2646, 0), finishedRound = roundWith("3H", "")).finishRound()
-        m.totals shouldContainExactly listOf(2999, 248)
+        // 2638 + 361 = 2999, um ponto abaixo do alvo
+        val m = matchAt(listOf(2638, 0), finishedRound = roundWith("3H", "")).finishRound()
+        m.totals shouldContainExactly listOf(2999, 256)
         m.winner shouldBe null
         val next = m.startNextRound()
         next.roundNumber shouldBe 2
@@ -106,18 +106,18 @@ class MatchTest {
     @Test
     fun `dois lados acima do alvo vence o de maior total`() {
         // §13 se mais de um lado atingir o alvo, vence a maior pontuação
-        // lado 0: 2950 + 248 + 2 × 105 = 3408; lado 1: 2990 + 353 = 3343
+        // lado 0: 2950 + 256 + 2 × 105 = 3416; lado 1: 2990 + 361 = 3351
         val m = matchAt(listOf(2950, 2990), finishedRound = roundWith("3H 3D", "3H'")).finishRound()
-        m.totals shouldContainExactly listOf(3408, 3343)
+        m.totals shouldContainExactly listOf(3416, 3351)
         m.winner shouldBe Side(0)
     }
 
     @Test
     fun `empate no maior total acima do alvo joga-se nova partida`() {
         // §13 empate na maior pontuação: nova partida até desempatar
-        // 2900 + 353 para cada lado
+        // 2900 + 361 para cada lado
         val tied = matchAt(listOf(2900, 2900), finishedRound = roundWith("3H", "3D")).finishRound()
-        tied.totals shouldContainExactly listOf(3253, 3253)
+        tied.totals shouldContainExactly listOf(3261, 3261)
         tied.winner shouldBe null
         tied.isOver shouldBe false
         val next = tied.startNextRound()
@@ -130,7 +130,7 @@ class MatchTest {
     @Test
     fun `alvo customizado`() {
         // §14 pontuação-alvo configurável
-        // 400 + 353 = 753 ≥ 500 (lado 1: 248 < 500)
+        // 400 + 361 = 761 ≥ 500 (lado 1: 256 < 500)
         val m = matchAt(listOf(400, 0), target = 500, finishedRound = roundWith("3H", "")).finishRound()
         m.winner shouldBe Side(0)
     }

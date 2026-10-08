@@ -101,7 +101,7 @@ class KeepCardsTest {
             hand(0, "5S 6S 7S KS")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }
         s.check(0, create("5S 6S 7S")).shouldBeOk()
@@ -111,13 +111,13 @@ class KeepCardsTest {
     fun `deixar 1 carta e valido quando a propria jogada forma a canastra`() {
         // §8 + §11.1 canastra avaliada depois da jogada
         val s = round {
-            hand(0, "9H KS")
+            hand(0, "TH KS")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H")
+            meld(0, "4H 5H 6H 7H 8H 9H")
             phase = Phase.PLAYING
         }
-        s.check(0, addTo(0, "9H")).shouldBeOk()
+        s.check(0, addTo(0, "TH")).shouldBeOk()
     }
 
     // ---------- §8 última carta sem reposição / §11.2 ----------
@@ -160,7 +160,7 @@ class KeepCardsTest {
             stock("3H")
             mortoTaken(0, 0)
             mortoTaken(1, 1)
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
         }.act(0, Action.DrawFromStock)
         s.phase shouldBe Phase.PLAYING
         s.result shouldBe null

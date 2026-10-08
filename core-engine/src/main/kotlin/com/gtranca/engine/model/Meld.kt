@@ -82,7 +82,7 @@ data class Meld internal constructor(
 
     private fun naturalRanks(): List<Rank> = cards.filterNot { it.isWild }.map { it.rank }
 
-    /** §7.1 canastra: [RuleSet.minCanastaSize] (6) ou mais cartas. */
+    /** §7.1 canastra: [RuleSet.minCanastaSize] (7) ou mais cartas. */
     fun isCanasta(rules: RuleSet = RuleSet.DEFAULT): Boolean = cards.size >= rules.minCanastaSize
 
     /** §7.2 canastra limpa: sem coringa. */

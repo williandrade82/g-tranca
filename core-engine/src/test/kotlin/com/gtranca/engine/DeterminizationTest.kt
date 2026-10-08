@@ -18,6 +18,7 @@ import com.gtranca.engine.model.Suit
 import com.gtranca.engine.model.TableMeld
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.ints.shouldBeGreaterThan
@@ -58,7 +59,7 @@ class DeterminizationTest {
             state = RoundEngine.apply(state, seat, choose(legal, random))
             count++
             state.allCards() shouldContainExactlyInAnyOrder Deck.standard()
-            state.hands.flatten().none { it.isRedThree } shouldBe true
+            state.redThreeHandViolation() shouldBe null
             // §3.5 / §6.5 o mundo sorteado mantém o registro coerente ao continuar jogando
             state.redThreeLogViolation() shouldBe null
         }
@@ -105,8 +106,8 @@ class DeterminizationTest {
                             hiddenCards(sampled, seat) shouldContainExactlyInAnyOrder hiddenCards(state, seat)
                             // legalActions é a única fonte de validade: o que o assento pode fazer só depende do que vê
                             RoundEngine.legalActions(sampled, seat) shouldBe RoundEngine.legalActions(state, seat)
-                            // §6.5 3 vermelho nunca fica em mão
-                            sampled.hands.flatten().none { it.isRedThree } shouldBe true
+                            // §3.5 / §9.4 3 vermelho só na mão de quem ainda não trocou os seus
+                            sampled.redThreeHandViolation() shouldBe null
                         }
                         checked++
                         // o motor joga a partir do estado sorteado até o fim (amostra, para manter o teste rápido)
@@ -171,24 +172,130 @@ class DeterminizationTest {
     }
 
     @Test
-    fun `3 vermelhos ocultos so caem no monte ou nos mortos`() {
-        // §6.5 3 vermelho é baixado assim que entra na mão: nenhuma mão sorteada pode tê-lo
+    fun `3 vermelho oculto cai no monte, nos mortos ou na mao de quem ainda nao comecou`() {
+        // §3.5 / §6.5 os 3 vermelhos são trocados só na vez do dono: o assento 2 (que vê a partida logo após o
+        // início da vez do primeiro jogador) sabe que só quem ainda não começou pode ter 3 vermelho na mão
         val state = dealRound(GameMode.DUPLAS, Random(11))
-        val view = state.viewFor(Seat(2))
-        val hiddenRed = Deck.standard().filter { it.isRedThree } - view.redThrees.flatten().toSet()
+        val viewer = state.mode.nextSeat(state.mode.nextSeat(state.firstSeat)) // ainda não começou
+        val view = state.viewFor(viewer)
+        val begun = state.mode.seats.filter { view.hasBegunFirstTurn(it) }
+        begun shouldContainExactlyInAnyOrder listOf(state.firstSeat)
+        val hiddenRed = Deck.standard().filter { it.isRedThree } - view.redThrees.flatten().toSet() - view.hand.toSet()
         hiddenRed.size shouldBeGreaterThan 0
         var inStock = 0
         var inMorto = 0
+        var inUnbegunHand = 0
         repeat(500) { k ->
             val s = view.determinize(Random(k.toLong()))
-            s.hands.flatten().none { it.isRedThree } shouldBe true
+            // §3.5 quem já começou nunca tem 3 vermelho na mão
+            s.handOf(state.firstSeat).none { it.isRedThree } shouldBe true
+            s.redThreeHandViolation() shouldBe null
             hiddenRed.forEach { red ->
-                if (red in s.stock) inStock++ else if (s.mortos.any { red in it }) inMorto++
+                when {
+                    red in s.stock -> inStock++
+                    s.mortos.any { red in it } -> inMorto++
+                    else -> inUnbegunHand++
+                }
             }
         }
         inStock shouldBeGreaterThan 0
         inMorto shouldBeGreaterThan 0
-        (inStock + inMorto) shouldBe 500 * hiddenRed.size
+        inUnbegunHand shouldBeGreaterThan 0
+        (inStock + inMorto + inUnbegunHand) shouldBe 500 * hiddenRed.size
+    }
+
+    @Test
+    fun `depois que todos comecaram os 3 vermelhos ocultos so caem no monte ou nos mortos`() {
+        // §3.5 com os dois assentos já tendo começado a vez, 3 vermelho na mão alheia é impossível
+        val start = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }.first { s ->
+            val view = s.viewFor(s.firstSeat)
+            (Deck.standard().filter { it.isRedThree } - view.redThrees.flatten().toSet() - view.hand.toSet()).isNotEmpty()
+        }
+        val afterFirst = start.act(start.currentSeat.index, Action.DrawFromStock).let { drawn ->
+            drawn.act(start.currentSeat.index, Action.Discard(drawn.handOf(start.currentSeat).first { !it.isRedThree }))
+        }
+        afterFirst.turnsBegun shouldBe 2
+        val viewer = start.firstSeat
+        val view = afterFirst.viewFor(viewer)
+        val other = afterFirst.mode.nextSeat(viewer)
+        view.hasBegunFirstTurn(other) shouldBe true
+        val hiddenRed = Deck.standard().filter { it.isRedThree } - view.redThrees.flatten().toSet() - view.hand.toSet()
+        hiddenRed.size shouldBeGreaterThan 0
+        repeat(300) { k ->
+            val s = view.determinize(Random(k.toLong()))
+            s.handOf(other).none { it.isRedThree } shouldBe true
+            hiddenRed.forEach { red -> (red in s.stock || s.mortos.any { red in it }) shouldBe true }
+        }
+    }
+
+    /**
+     * Vista do assento 1 (o da vez) no estado [noStockNoMorto], com 1 dos 4 3 vermelhos escondido: saiu da mesa e a
+     * mão do assento 0 ganhou uma vaga. [firstSeat] e [turnsBegun] dizem quem já começou; [unsettled] marca o morto indireto.
+     */
+    private fun viewWithHiddenRed(firstSeat: Seat, turnsBegun: Int, unsettled: List<Seat> = emptyList()): PlayerView {
+        val state = noStockNoMorto().copy(firstSeat = firstSeat, turnsBegun = turnsBegun, unsettledMortoSeats = unsettled)
+        val view = state.viewFor(Seat(1))
+        return view.copy(
+            redThrees = listOf(view.redThrees[0].drop(1), emptyList()),
+            handSizes = listOf(view.handSizes[0] + 1, view.handSizes[1]),
+        )
+    }
+
+    @Test
+    fun `3 vermelho oculto na mao de assento que ainda nao comecou e aceito e vai para ela`() {
+        // §3.5 o assento 0 ainda não teve a sua primeira vez (o 1 começou): o 3 vermelho que falta só pode estar na mão dele
+        val view = viewWithHiddenRed(firstSeat = Seat(1), turnsBegun = 1)
+        view.hasBegunFirstTurn(Seat(0)) shouldBe false
+        val hiddenRed = noStockNoMorto().redThrees[0].first()
+        repeat(20) { k ->
+            val s = view.determinize(Random(k.toLong()))
+            s.handOf(Seat(0)) shouldContain hiddenRed
+            s.viewFor(Seat(1)) shouldBe view
+            s.allCards() shouldContainExactlyInAnyOrder Deck.standard()
+        }
+    }
+
+    @Test
+    fun `3 vermelho oculto na mao de assento que ja comecou e uma vista incoerente`() {
+        // §3.5 os dois já tiveram a vez: o 3 vermelho escondido não tem onde estar (sem monte nem morto)
+        val view = viewWithHiddenRed(firstSeat = Seat(1), turnsBegun = 2)
+        view.hasBegunFirstTurn(Seat(0)) shouldBe true
+        shouldThrow<IllegalArgumentException> { view.determinize(Random(1)) }.message shouldContain "3 vermelho"
+    }
+
+    @Test
+    fun `3 vermelho oculto na mao de quem pegou o morto indireto e aceito`() {
+        // §9.4 o assento 0 já começou a vez, mas pegou o morto indireto e ainda não o resolveu: o 3 vermelho pode estar lá
+        val view = viewWithHiddenRed(firstSeat = Seat(1), turnsBegun = 2, unsettled = listOf(Seat(0)))
+        val hiddenRed = noStockNoMorto().redThrees[0].first()
+        val s = view.determinize(Random(3))
+        s.handOf(Seat(0)) shouldContain hiddenRed
+        s.unsettledMortoSeats shouldBe listOf(Seat(0))
+        s.viewFor(Seat(1)) shouldBe view
+    }
+
+    @Test
+    fun `3 vermelho na propria mao de quem ja trocou os seus e uma vista incoerente`() {
+        // §3.5 / §6.5 a própria mão só tem 3 vermelho se o assento ainda não começou (ou tem morto indireto pendente)
+        val state = dealRound(GameMode.INDIVIDUAL, Random(5))
+        val begunSeat = state.firstSeat
+        val view = state.viewFor(begunSeat)
+        val someRed = (Deck.standard().filter { it.isRedThree } - view.redThrees.flatten().toSet() - view.hand.toSet()).first()
+        val withRed = view.copy(hand = view.hand.drop(1) + someRed)
+        shouldThrow<IllegalArgumentException> { withRed.determinize(Random(1)) }.message shouldContain "própria mão"
+    }
+
+    @Test
+    fun `a vista do assento que ainda nao comecou mostra e determiniza os 3 vermelhos da propria mao`() {
+        // §3.5 o dono vê os 3 vermelhos que tem; a determinização os mantém na mão dele, na mesma ordem
+        val state = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }
+            .first { s -> s.handOf(s.mode.nextSeat(s.firstSeat)).any { it.isRedThree } }
+        val owner = state.mode.nextSeat(state.firstSeat)
+        val view = state.viewFor(owner)
+        view.hand.any { it.isRedThree } shouldBe true
+        val s = view.determinize(Random(1))
+        s.handOf(owner) shouldBe state.handOf(owner)
+        s.viewFor(owner) shouldBe view
     }
 
     // ---------- cartas conhecidas ----------
@@ -258,14 +365,20 @@ class DeterminizationTest {
     }
 
     @Test
-    fun `3 vermelho conhecido em mao e rejeitado`() {
-        // §6.5 3 vermelho nunca fica na mão
+    fun `3 vermelho conhecido em mao so e aceito de assento que ainda nao comecou`() {
+        // §3.5 3 vermelho só fica na mão até o início da vez do dono: o primeiro jogador já trocou os seus
         val state = (0L until 50L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }
             .first { (it.stock + it.mortos.flatten()).any(Card::isRedThree) }
         val red = (state.stock + state.mortos.flatten()).first { it.isRedThree }
+        val begun = state.firstSeat
+        val notBegun = state.mode.nextSeat(begun)
         shouldThrow<IllegalArgumentException> {
-            state.viewFor(Seat(0)).determinize(Random(1), mapOf(Seat(1) to listOf(red)))
+            state.viewFor(notBegun).determinize(Random(1), mapOf(begun to listOf(red)))
         }.message shouldContain "3 vermelho"
+        // já o assento que ainda não começou pode ter o 3 vermelho conhecido na mão
+        val s = state.viewFor(begun).determinize(Random(1), mapOf(notBegun to listOf(red)))
+        s.handOf(notBegun) shouldContain red
+        s.viewFor(begun) shouldBe state.viewFor(begun)
     }
 
     @Test

@@ -94,7 +94,8 @@ class MortoTest {
 
     @Test
     fun `morto indireto com 3 vermelho e monte vazio usa o outro morto como monte`() {
-        // §9.3 + §9.4 3 vermelho do morto reposto; §10.1 monte vazio: o outro morto disponível vira monte
+        // §9.3 + §9.4 o 3 vermelho do morto indireto fica na mão e só é reposto no início da próxima vez do dono; §10.1 monte
+        // vazio: nesse momento o outro morto disponível vira monte
         val s = round {
             hand(0, "KS")
             hand(1, "9C 9D")
@@ -103,12 +104,19 @@ class MortoTest {
             phase = Phase.PLAYING
         }.act(0, discardCard("KS"))
         s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0))
-        s.mortoStatus[1] shouldBe MortoStatus.BecameStock
-        s.redThreesOf(Side(0)) shouldContainExactly cards("3H")
-        s.hand(0) shouldContainExactlyInAnyOrder cards("4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC' 4D'")
-        s.stock shouldContainExactly cards("5D' 6D' 7D' 8D' 9D' TD' JD' QD' KD' AD'")
+        s.mortoStatus[1] shouldBe MortoStatus.Available
+        s.redThrees.flatten().shouldBeEmpty()
+        s.hand(0) shouldContainExactlyInAnyOrder cards("3H 4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC'")
         s.currentSeat shouldBe Seat(1)
-        s.phase shouldBe Phase.AWAITING_DRAW
+        // o assento 1 compra (o monte está vazio: o morto 1 vira monte) e descarta; a vez volta ao assento 0
+        val bought = s.act(1, Action.DrawFromStock)
+        bought.mortoStatus[1] shouldBe MortoStatus.BecameStock
+        val back = bought.act(1, discardCard("4D'"))
+        back.currentSeat shouldBe Seat(0)
+        back.redThreesOf(Side(0)) shouldContainExactly cards("3H")
+        back.hand(0) shouldContainExactlyInAnyOrder cards("4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC' 5D'")
+        back.stock shouldContainExactly cards("6D' 7D' 8D' 9D' TD' JD' QD' KD' AD'")
+        back.phase shouldBe Phase.AWAITING_DRAW
     }
 
     @Test
@@ -164,7 +172,7 @@ class MortoTest {
             hand(1, "8C 8D")
             hand(3, "7C 7D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             current = 2
             phase = Phase.PLAYING
         }.act(2, create("KS KD KC"))

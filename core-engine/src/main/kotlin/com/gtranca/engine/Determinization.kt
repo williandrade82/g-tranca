@@ -22,8 +22,10 @@ import kotlin.random.Random
  * As cartas ocultas (as 104 de [Deck.standard] menos as visíveis) vão para as mãos alheias (inclusive a do
  * parceiro), o monte (§3.3) e os mortos disponíveis (§3.2), uniformemente entre as distribuições coerentes:
  * - as cartas de [known] vão obrigatoriamente para a mão do assento indicado;
- * - §6.5 3 vermelho nunca fica na mão (é baixado assim que entra), então os 3 vermelhos ocultos só caem no
- *   monte ou nos mortos;
+ * - §3.5 / §6.5 3 vermelho só fica na mão até o início da vez do dono: um 3 vermelho oculto pode estar no monte, num
+ *   morto ou na mão de um assento alheio que **ainda não começou a primeira vez** ([PlayerView.hasBegunFirstTurn]) ou que
+ *   pegou o morto indireto e ainda não começou a vez seguinte ([PlayerView.unsettledMortoSeats], §9.4); nunca na mão
+ *   de quem já começou (as mãos desses assentos são preenchidas só com cartas que não são 3 vermelho);
  * - §10/§11.2 se o assento da vez ainda vai comprar ([Phase.AWAITING_DRAW]) e não há monte nem morto
  *   disponível, ele tem de poder pegar o lixo (senão a partida já teria terminado sem vencedor). O sorteio é
  *   então condicionado por amostragem com rejeição: sorteia-se como acima e descarta-se a distribuição em que
@@ -34,11 +36,6 @@ import kotlin.random.Random
  *   `(1 - p)^MAX_DETERMINIZATION_ATTEMPTS`. Isso não afeta o bot Difícil, que só busca na própria vez: aí a
  *   mão do assento da vez é a própria, conhecida, e a condição é conferida uma única vez, sem sorteio.
  *
- * §3.5 reposições de 3 vermelho da distribuição ([RoundState.dealReplacements]): as do próprio assento são as de
- * [PlayerView.ownDealReplacements]; as dos demais assentos são ocultas e ficam vazias no mundo sorteado. O campo é só
- * informativo (não afeta ações válidas nem efeitos), então isso não muda a simulação, e `viewFor(seat) == this` continua
- * valendo para o próprio assento.
- *
  * A ordem do monte (índice 0 = topo) e dos mortos também é sorteada. A ordem das mãos alheias não tem
  * significado: primeiro as cartas de [known], depois as sorteadas.
  *
@@ -47,25 +44,29 @@ import kotlin.random.Random
  * @param known cartas que o assento sabe estarem na mão de outro assento (ex.: as cartas do lixo que ele
  *   levou ao pegá-lo, §5.2/§5.6). Cada carta é uma cópia física específica ([Card.deck]).
  * @throws IllegalArgumentException se a vista for incoerente (lado que não é o do assento, cartas visíveis
- *   repetidas, contagens que não somam 104, 3 vermelho na própria mão, no lixo ou num conjunto da mesa, carta
+ *   repetidas, contagens que não somam 104, 3 vermelho no lixo ou num conjunto da mesa, carta
  *   que não é 3 vermelho na área de 3 vermelhos, conjunto da mesa diferente do que [Meld.create] produz com
- *   as mesmas cartas, morto indisponível com cartas, registro de 3 vermelhos que não corresponde à área de 3 vermelhos, reposições da distribuição repetidas ou fora da própria mão, 3 vermelho oculto sem lugar fora das mãos, assento da
+ *   as mesmas cartas, morto indisponível com cartas, registro de 3 vermelhos que não corresponde à área de 3 vermelhos,
+ *   3 vermelho oculto sem lugar (monte, mortos e mãos de assentos que ainda podem tê-lo), 3 vermelho na própria mão de
+ *   quem já trocou os seus, assento da
  *   vez sem monte nem morto que não pode pegar o lixo) ou se [known] for incoerente (assento fora do modo ou o próprio, carta visível, carta repetida,
- *   3 vermelho, mais cartas do que o tamanho da mão).
+ *   3 vermelho em mão que não pode tê-lo, mais cartas do que o tamanho da mão).
  */
 fun PlayerView.determinize(random: Random, known: Map<Seat, List<Card>> = emptyMap()): RoundState {
     val hidden = hiddenCardsOrThrow()
     val knownBySeat = validateKnown(known, hidden)
 
-    // §6.5 3 vermelhos ocultos estão necessariamente no monte ou num morto
+    // §3.5 / §6.5 3 vermelhos ocultos estão no monte, num morto ou na mão de assento alheio que ainda pode tê-lo
     val knownCards = knownBySeat.values.flatten().toSet()
     val free = hidden.filterNot { it in knownCards }
     val freeRedThrees = free.filter { it.isRedThree }
     val freeOthers = free.filterNot { it.isRedThree }
     val outsideHands = stockSize + mortoSizes.sum()
-    require(freeRedThrees.size <= outsideHands) {
-        "Vista incoerente: ${freeRedThrees.size} 3 vermelho(s) oculto(s), mas só $outsideHands lugar(es) " +
-            "fora das mãos (monte e mortos); 3 vermelho nunca fica na mão (§6.5)"
+    val eligibleSlots = mode.seats.filter { it != seat && mayHoldRedThree(it) }
+        .sumOf { handSizes[it.index] - knownBySeat[it].orEmpty().size }
+    require(freeRedThrees.size <= outsideHands + eligibleSlots) {
+        "Vista incoerente: ${freeRedThrees.size} 3 vermelho(s) oculto(s), mas só ${outsideHands + eligibleSlots} lugar(es) " +
+            "possíveis (monte e mortos: $outsideHands; mãos de assentos que ainda não trocaram os seus: $eligibleSlots) (§3.5, §6.5)"
     }
 
     // §10/§11.2 sem monte nem morto, o assento da vez que vai comprar tem de poder pegar o lixo
@@ -109,21 +110,30 @@ private fun PlayerView.sample(
     val otherSeats = mode.seats.filter { it != seat }
     val openSlots = otherSeats.associateWith { handSizes[it.index] - knownBySeat[it].orEmpty().size }
 
-    // Uniforme entre as distribuições coerentes: as cartas comuns, embaralhadas, enchem primeiro as vagas das
-    // mãos; as que sobram, junto com os 3 vermelhos, são embaralhadas de novo para o monte e os mortos.
+    // Uniforme entre as distribuições coerentes. As mãos que não podem ter 3 vermelho (assentos que já trocaram os seus,
+    // §3.5) recebem cartas comuns sorteadas; todo o resto (as cartas comuns que sobram e os 3 vermelhos), embaralhado,
+    // enche as vagas das mãos que podem ter 3 vermelho e depois o monte e os mortos. Dada a escolha das cartas das mãos
+    // restritas, o restante é uma permutação uniforme, então toda distribuição coerente é igualmente provável.
+    val restricted = otherSeats.filterNot { mayHoldRedThree(it) }
+    val restrictedSlotCount = restricted.sumOf { openSlots.getValue(it) }
     val shuffledOthers = freeOthers.shuffled(random)
-    val handSlotCount = openSlots.values.sum()
-    val toHands = shuffledOthers.take(handSlotCount)
-    val outside = (shuffledOthers.drop(handSlotCount) + freeRedThrees).shuffled(random)
+    val toRestricted = shuffledOthers.take(restrictedSlotCount)
+    val pool = (shuffledOthers.drop(restrictedSlotCount) + freeRedThrees).shuffled(random)
 
     val hands = MutableList(mode.seatCount) { emptyList<Card>() }
     hands[seat.index] = hand.toList()
-    var next = 0
+    var nextRestricted = 0
+    var nextPool = 0
     for (other in otherSeats) {
         val slots = openSlots.getValue(other)
-        hands[other.index] = knownBySeat[other].orEmpty() + toHands.subList(next, next + slots)
-        next += slots
+        val drawn = if (other in restricted) {
+            toRestricted.subList(nextRestricted, nextRestricted + slots).also { nextRestricted += slots }
+        } else {
+            pool.subList(nextPool, nextPool + slots).also { nextPool += slots }
+        }
+        hands[other.index] = knownBySeat[other].orEmpty() + drawn
     }
+    val outside = pool.drop(nextPool)
     val stock = outside.subList(0, stockSize).toList()
     var offset = stockSize
     val mortos = mortoSizes.map { size -> outside.subList(offset, offset + size).toList().also { offset += size } }
@@ -142,8 +152,8 @@ private fun PlayerView.sample(
         mortoStatus = mortoStatus.toList(),
         result = result,
         redThreeLog = redThreeLog.toList(), // §3.5 / §6.5 público: o mundo sorteado tem o mesmo registro
-        // §3.5 reposições: as do próprio assento são conhecidas; as alheias são ocultas e ficam vazias
-        dealReplacements = List(mode.seatCount) { if (it == seat.index) ownDealReplacements.toList() else emptyList() },
+        turnsBegun = turnsBegun,
+        unsettledMortoSeats = unsettledMortoSeats.toList(),
     )
 }
 
@@ -165,7 +175,9 @@ private fun PlayerView.hiddenCardsOrThrow(): List<Card> {
     require(hand.size == handSizes[seat.index]) {
         "Vista incoerente: a própria mão tem ${hand.size} cartas, mas o tamanho informado é ${handSizes[seat.index]}"
     }
-    require(hand.none { it.isRedThree }) { "Vista incoerente: 3 vermelho na própria mão (§6.5 é baixado na hora)" }
+    require(hand.none { it.isRedThree } || mayHoldRedThree(seat)) {
+        "Vista incoerente: 3 vermelho na própria mão de quem já trocou os seus (§3.5, §6.5: só fica na mão até o início da vez)"
+    }
     require(mortoSizes.size == mortoStatus.size) { "Vista incoerente: ${mortoSizes.size} tamanhos para ${mortoStatus.size} mortos" }
     mortoStatus.forEachIndexed { i, status ->
         require(status == MortoStatus.Available || mortoSizes[i] == 0) {
@@ -187,29 +199,13 @@ private fun PlayerView.hiddenCardsOrThrow(): List<Card> {
     }
     // depois das demais conferências, para que os 3 vermelhos da mesa já estejam validados
     validateRedThreeLog()
-    validateOwnDealReplacements()
     return hidden
 }
 
 /**
- * §3.5 / §6.5 as reposições da distribuição do próprio assento ([PlayerView.ownDealReplacements]) são cartas distintas
- * da própria mão (a vista só mostra as que ainda estão nela; como a mão não tem 3 vermelho, elas também não têm).
- * Não se confere a contagem contra o [PlayerView.redThreeLog], que pode ser parcial (JSON antigo).
- */
-private fun PlayerView.validateOwnDealReplacements() {
-    require(ownDealReplacements.toSet().size == ownDealReplacements.size) {
-        "Vista incoerente: carta repetida nas reposições da distribuição ($ownDealReplacements)"
-    }
-    val notInHand = ownDealReplacements.filterNot { it in hand }
-    require(notInHand.isEmpty()) {
-        "Vista incoerente: reposições da distribuição fora da própria mão ($notInHand) (§3.5)"
-    }
-}
-
-/**
  * §3.5 / §6.5 o registro público é coerente com a área de 3 vermelhos: cada assento é do modo e, para cada lado, as
- * cartas registradas pelos assentos do lado são o **final** de [PlayerView.redThrees] do lado, na mesma ordem; e as
- * trocas da distribuição vêm antes de todas as da jogada (§3.5: elas acontecem antes da primeira jogada).
+ * cartas registradas pelos assentos do lado são o **final** de [PlayerView.redThrees] do lado, na mesma ordem. Entradas
+ * `atDeal` (só em JSON antigo, quando a troca era feita na distribuição) vêm antes de todas as outras.
  * Na partida normal o registro cobre todos os 3 vermelhos (igualdade); aceitar só o final mantém determinizáveis as
  * partidas salvas antes de o registro existir (JSON antigo, registro vazio, que só ganha as trocas posteriores).
  */
@@ -277,8 +273,8 @@ private fun PlayerView.validateKnown(known: Map<Seat, List<Card>>, hidden: List<
         val visible = cards.filterNot { it in hiddenSet }
         require(visible.isEmpty()) { "Cartas conhecidas incoerentes: $visible já está(ão) visível(is) ao assento" }
         val redThrees = cards.filter { it.isRedThree }
-        require(redThrees.isEmpty()) {
-            "Cartas conhecidas incoerentes: $redThrees na mão do assento ${owner.index}, mas 3 vermelho nunca fica na mão (§6.5)"
+        require(redThrees.isEmpty() || mayHoldRedThree(owner)) {
+            "Cartas conhecidas incoerentes: $redThrees na mão do assento ${owner.index}, que já trocou os seus 3 vermelhos (§3.5, §6.5)"
         }
         require(cards.size <= handSizes[owner.index]) {
             "Cartas conhecidas incoerentes: ${cards.size} cartas para o assento ${owner.index}, " +
@@ -287,3 +283,10 @@ private fun PlayerView.validateKnown(known: Map<Seat, List<Card>>, hidden: List<
     }
     return known.filterValues { it.isNotEmpty() }
 }
+
+/**
+ * §3.5 / §9.4 a mão de [owner] ainda pode ter 3 vermelho: o assento ainda não teve o início da sua primeira vez (os 3
+ * vermelhos da distribuição só são trocados nela) ou pegou o morto indireto e ainda não teve o início da vez seguinte.
+ */
+private fun PlayerView.mayHoldRedThree(owner: Seat): Boolean =
+    !hasBegunFirstTurn(owner) || owner in unsettledMortoSeats

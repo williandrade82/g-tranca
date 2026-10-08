@@ -10,6 +10,7 @@ import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.SideTable
+import com.gtranca.engine.model.hasBegunFirstTurn
 import kotlinx.serialization.Serializable
 
 /**
@@ -29,13 +30,11 @@ import kotlinx.serialization.Serializable
  * @property tables conjuntos na mesa de cada lado (§6.4), indexados por [Side.index].
  * @property redThreeLog registro público (§3.5, §6.5) de quem baixou cada 3 vermelho, em ordem cronológica, igual
  *   ao [RoundState.redThreeLog]. Não contém as cartas de reposição (ocultas). Vazio por padrão (JSON antigo).
- * @property ownDealReplacements **informação privada do [seat]**: as cartas que entraram na mão dele como reposição
- *   de 3 vermelho na distribuição (§3.5 / §6.5) e **ainda estão na mão**, na ordem em que entraram
- *   ([RoundState.dealReplacements] do próprio assento, filtrado por [hand]). Sempre ⊆ [hand]: a carta que saiu da
- *   mão (descartada, baixada) sai da lista, para a vista nunca carregar carta que hoje possa estar oculta (ex.: levada
- *   por outro com o lixo). Nunca contém reposições de outros assentos (ocultas, §3.5), nem do parceiro. Só informativo
- *   (a interface pode escondê-las até o jogador ver a troca e depois destacá-las); não afeta o jogo. Vazio a
- *   partir da primeira ação do assento na partida, e por padrão (JSON antigo).
+ * @property turnsBegun quantos inícios de vez já ocorreram na partida (§3.5), igual ao [RoundState.turnsBegun]; com [firstSeat] e
+ *   o modo, dá para saber quais assentos já tiveram o início da vez ([hasBegunFirstTurn]). A mão de um assento que ainda
+ *   não começou a primeira vez pode ter 3 vermelho (só trocado na vez do jogador). Padrão: todos já começaram (JSON antigo).
+ * @property unsettledMortoSeats assentos que pegaram o morto indireto (§9.3) e ainda não tiveram o início da vez seguinte:
+ *   a mão deles pode ter 3 vermelho do morto (§9.4). Igual ao [RoundState.unsettledMortoSeats] (público).
  */
 @Serializable
 data class PlayerView(
@@ -55,8 +54,12 @@ data class PlayerView(
     val redThrees: List<List<Card>>,
     val tables: List<SideTable>,
     val redThreeLog: List<RedThreeLaid> = emptyList(),
-    val ownDealReplacements: List<Card> = emptyList(),
+    val turnsBegun: Int = mode.seatCount,
+    val unsettledMortoSeats: List<Seat> = emptyList(),
 ) {
+    /** §3.5 o [seat] já teve o início da sua primeira vez nesta partida. */
+    fun hasBegunFirstTurn(seat: Seat): Boolean = hasBegunFirstTurn(mode, firstSeat, turnsBegun, seat)
+
     /** Topo do lixo (último elemento), ou `null` se vazio. */
     val discardTop: Card? get() = discardPile.lastOrNull()
 }
@@ -84,17 +87,9 @@ fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
     redThrees = redThrees.map { it.toList() },
     tables = tables.map { it.defensiveCopy() },
     redThreeLog = redThreeLog.toList(),
-    ownDealReplacements = ownDealReplacementsInHand(seat), // §3.5 só as do próprio assento
+    turnsBegun = turnsBegun,
+    unsettledMortoSeats = unsettledMortoSeats.toList(),
 )
-
-/**
- * §3.5 / §6.5 reposições da distribuição de [seat] que ainda estão na mão dele, na ordem em que entraram: o que
- * [PlayerView.ownDealReplacements] mostra. Lista nova (cópia).
- */
-fun RoundState.ownDealReplacementsInHand(seat: Seat): List<Card> {
-    val hand = handOf(seat)
-    return dealReplacementsOf(seat).filter { it in hand }
-}
 
 /** Cópia de [SideTable] sem compartilhar nenhuma lista com o original. */
 internal fun SideTable.defensiveCopy(): SideTable =

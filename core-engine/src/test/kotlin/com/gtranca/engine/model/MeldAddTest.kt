@@ -154,10 +154,10 @@ class MeldAddTest {
     @Test
     fun `coringa acrescentado a canastra limpa a torna suja`() {
         // §6.3 / §7.3 canastra limpa pode receber coringa e passa a ser suja
-        val seq = meld("4H 5H 6H 7H 8H 9H").add(cards("2C")).shouldBeOk()
+        val seq = meld("4H 5H 6H 7H 8H 9H TH").add(cards("2C")).shouldBeOk()
         seq.wildState shouldBe WildState.Loose
         seq.isDirtyCanasta().shouldBeTrue()
-        meld("7H 7S 7C 7D 7H' 7S'").add(cards("2C")).shouldBeOk().isDirtyCanasta().shouldBeTrue()
+        meld("7H 7S 7C 7D 7H' 7S' 7C'").add(cards("2C")).shouldBeOk().isDirtyCanasta().shouldBeTrue()
     }
 
     @Test
@@ -169,8 +169,8 @@ class MeldAddTest {
     @Test
     fun `coringa aceito em conjunto que ainda nao e canastra`() {
         // §6.3 coringa completa a canastra (suja)
-        val m = meld("4H 5H 6H 7H 8H").add(cards("2C")).shouldBeOk()
-        m.cards.size shouldBe 6
+        val m = meld("4H 5H 6H 7H 8H 9H").add(cards("2C")).shouldBeOk()
+        m.cards.size shouldBe 7
         m.isCanasta().shouldBeTrue()
         m.isClean.shouldBeFalse()
     }
@@ -178,20 +178,21 @@ class MeldAddTest {
     // ---------- §7 canastras ----------
 
     @Test
-    fun `canastra exige 6 ou mais cartas`() {
-        // §7.1 conjunto com 6 ou mais cartas
-        meld("4H 5H 6H 7H 8H").isCanasta().shouldBeFalse()
-        meld("4H 5H 6H 7H 8H 9H").isCanasta().shouldBeTrue()
+    fun `canastra exige 7 ou mais cartas`() {
+        // §7.1 conjunto com 7 ou mais cartas
+        meld("4H 5H 6H 7H 8H 9H").isCanasta().shouldBeFalse()
+        meld("7H 7S 7C 7D 7H' 7S'").isCanasta().shouldBeFalse()
+        meld("4H 5H 6H 7H 8H 9H TH").isCanasta().shouldBeTrue()
         meld("7H 7S 7C 7D 7H' 7S' 7C'").isCanasta().shouldBeTrue()
     }
 
     @Test
     fun `canastra limpa sem coringa e suja com coringa`() {
         // §7.2 limpa: sem coringa; suja: com coringa
-        val clean = meld("4H 5H 6H 7H 8H 9H")
+        val clean = meld("4H 5H 6H 7H 8H 9H TH")
         clean.isCleanCanasta().shouldBeTrue()
         clean.isDirtyCanasta().shouldBeFalse()
-        val dirty = meld("4H 5H 6H 7H 8H 2C")
+        val dirty = meld("4H 5H 6H 7H 8H 9H 2C")
         dirty.isDirtyCanasta().shouldBeTrue()
         dirty.isCleanCanasta().shouldBeFalse()
         meld("4H 5H 2C").isDirtyCanasta().shouldBeFalse()
@@ -200,8 +201,8 @@ class MeldAddTest {
     @Test
     fun `canastra continua recebendo naturais`() {
         // §7.3 canastra pode continuar recebendo cartas naturais
-        meld("4H 5H 6H 7H 8H 9H").add(cards("TH")).shouldBeOk().isCleanCanasta().shouldBeTrue()
-        meld("4H 5H 6H 7H 8H 2C").add(cards("TH")).shouldBeOk().isDirtyCanasta().shouldBeTrue()
+        meld("4H 5H 6H 7H 8H 9H TH").add(cards("JH")).shouldBeOk().isCleanCanasta().shouldBeTrue()
+        meld("4H 5H 6H 7H 8H 9H 2C").add(cards("TH")).shouldBeOk().isDirtyCanasta().shouldBeTrue()
     }
 
     @Test
@@ -218,7 +219,7 @@ class MeldAddTest {
     @Test
     fun `tamanho minimo de canastra vem do RuleSet`() {
         // §14 tamanho mínimo de canastra no RuleSet
-        RuleSet.DEFAULT.minCanastaSize shouldBe 6
-        meld("4H 5H 6H 7H 8H 9H").isCanasta(RuleSet(minCanastaSize = 7)).shouldBeFalse()
+        RuleSet.DEFAULT.minCanastaSize shouldBe 7
+        meld("4H 5H 6H 7H 8H 9H TH").isCanasta(RuleSet(minCanastaSize = 8)).shouldBeFalse()
     }
 }

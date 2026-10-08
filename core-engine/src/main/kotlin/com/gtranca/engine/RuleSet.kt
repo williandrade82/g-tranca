@@ -14,7 +14,7 @@ data class RuleSet(
     /** §6.2 mínimo de cartas por conjunto. */
     val minMeldSize: Int = 3,
     /** §7.1 mínimo de cartas para ser canastra. */
-    val minCanastaSize: Int = 6,
+    val minCanastaSize: Int = 7,
     /** §6.3 máximo de coringas por conjunto. */
     val maxWildsPerMeld: Int = 1,
     /** §12.1 cada 3 vermelho na mesa, se o lado tiver pelo menos uma canastra (limpa ou suja). */

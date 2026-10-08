@@ -19,7 +19,7 @@ class GoOutTest {
             hand(0, "KS KD KC")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }.act(0, create("KS KD KC"))
         s.phase shouldBe Phase.FINISHED
@@ -30,14 +30,14 @@ class GoOutTest {
 
     @Test
     fun `canastra formada pela propria jogada que esvazia a mao conta`() {
-        // §11.1 canastra avaliada depois da jogada; §7.1 6 cartas
+        // §11.1 canastra avaliada depois da jogada; §7.1 7 cartas
         val s = round {
-            hand(0, "9H")
+            hand(0, "TH")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H")
+            meld(0, "4H 5H 6H 7H 8H 9H")
             phase = Phase.PLAYING
-        }.act(0, addTo(0, "9H"))
+        }.act(0, addTo(0, "TH"))
         s.result shouldBe RoundResult.GoOut(Side(0), Seat(0))
     }
 
@@ -48,7 +48,7 @@ class GoOutTest {
             hand(0, "KS")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H 2C")
+            meld(0, "4H 5H 6H 7H 8H 9H 2C")
             phase = Phase.PLAYING
         }.act(0, discardCard("KS"))
         s.phase shouldBe Phase.FINISHED
@@ -63,7 +63,7 @@ class GoOutTest {
             hand(0, "7S 7D")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             discard("7H")
         }.act(0, takeNew("7S 7D"))
         s.result shouldBe RoundResult.GoOut(Side(0), Seat(0))
@@ -76,7 +76,7 @@ class GoOutTest {
             hand(0, "KS KD KC")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H")
+            meld(0, "4H 5H 6H 7H 8H 9H")   // §7.1 6 cartas ainda não são canastra
             phase = Phase.PLAYING
         }
         s.check(0, create("KS KD KC")) shouldFailWith ActionError.NO_CANASTA_TO_GO_OUT
@@ -96,7 +96,7 @@ class GoOutTest {
             hand(0, "KS")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(1, "4H 5H 6H 7H 8H 9H")
+            meld(1, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }
         s.check(0, discardCard("KS")) shouldFailWith ActionError.NO_CANASTA_TO_GO_OUT
@@ -109,7 +109,7 @@ class GoOutTest {
             hand(0, "KS")
             hand(1, "9C 9D")
             mortoTaken(0, 0)
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }.act(0, discardCard("KS"))
         s.check(1, Action.DrawFromStock) shouldFailWith ActionError.ROUND_FINISHED

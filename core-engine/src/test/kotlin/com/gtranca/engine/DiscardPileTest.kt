@@ -80,11 +80,11 @@ class DiscardPileTest {
 
     @Test
     fun `pegar o lixo acrescentando topo e coringa da mao a canastra limpa`() {
-        // §5.1 + §6.3 topo 10♥ e coringa da mão entram na canastra limpa 4..9♥, que fica suja
+        // §5.1 + §6.3 topo J♥ e coringa da mão entram na canastra limpa 4..10♥ (7 cartas, §7.1), que fica suja
         val s = round {
             hand(0, "2C KS QD")
-            meld(0, "4H 5H 6H 7H 8H 9H")
-            discard("TH")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
+            discard("JH")
         }.act(0, takeAdd(0, "2C"))
         s.table(0).meld(MeldId(0))!!.isDirtyCanasta() shouldBe true
         s.hand(0) shouldContainExactlyInAnyOrder cards("KS QD")
@@ -92,12 +92,12 @@ class DiscardPileTest {
 
     @Test
     fun `pegar o lixo formando sequencia com coringa ao lado de canastra limpa`() {
-        // §5.1 + §6.4 exceção: 10♥ do topo + J♥ e coringa da mão como conjunto separado
+        // §5.1 + §6.4 exceção: J♥ do topo + Q♥ e coringa da mão como conjunto separado
         val s = round {
-            hand(0, "JH 2C KS")
-            meld(0, "4H 5H 6H 7H 8H 9H")
-            discard("TH")
-        }.act(0, takeNew("JH 2C"))
+            hand(0, "QH 2C KS")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
+            discard("JH")
+        }.act(0, takeNew("QH 2C"))
         s.table(0).melds.size shouldBe 2
         s.table(0).meld(MeldId(0))!!.isCleanCanasta() shouldBe true
     }
@@ -238,7 +238,7 @@ class DiscardPileTest {
         // §5.4 + §6.3 o coringa do topo pode entrar na canastra limpa, que passa a ser suja
         val s = round {
             hand(0, "KS QD")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             discard("TS 2C")
         }.act(0, takeAdd(0))
         s.table(0).meld(MeldId(0))!!.isDirtyCanasta() shouldBe true
@@ -247,16 +247,16 @@ class DiscardPileTest {
 
     @Test
     fun `coringa no topo ao lado de canastra limpa pode formar conjunto separado ou suja-la`() {
-        // §5.4 + §6.4 exceção: 10♥-J♥ da mão com o coringa do topo, separado ou na canastra limpa 4..9♥
+        // §5.4 + §6.4 exceção: J♥-Q♥ da mão com o coringa do topo, separado ou na canastra limpa 4..10♥
         val s = round {
-            hand(0, "TH JH KS")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            hand(0, "JH QH KS")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             discard("2C")
         }
-        val separate = s.act(0, takeNew("TH JH"))
+        val separate = s.act(0, takeNew("JH QH"))
         separate.table(0).melds.size shouldBe 2
         separate.table(0).meld(MeldId(0))!!.isCleanCanasta() shouldBe true
-        s.act(0, takeAdd(0, "TH JH")).table(0).meld(MeldId(0))!!.isDirtyCanasta() shouldBe true
+        s.act(0, takeAdd(0, "JH QH")).table(0).meld(MeldId(0))!!.isDirtyCanasta() shouldBe true
     }
 
     @Test

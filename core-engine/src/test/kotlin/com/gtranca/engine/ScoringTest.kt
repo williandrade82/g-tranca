@@ -32,11 +32,11 @@ class ScoringTest {
         // §12.1 3 vermelho: +100 cada, se o lado tiver pelo menos uma canastra na mesa
         val s = finished {
             redThrees(0, "3H 3D")
-            meld(0, "4H 5H 6H 7H 8H 9H")      // canastra limpa +200; cartas 6 × 8 = +48
+            meld(0, "4H 5H 6H 7H 8H 9H TH")      // canastra limpa +200; cartas 7 × 8 = +56
         }
         score(s, 0).redThrees shouldBe ScoreLine(2, 200)
-        // 200 (3 vermelhos) + 200 (canastra limpa) + 48 (cartas 4 a 9) + 2 × 5 (cartas 3 vermelho)
-        score(s, 0).total shouldBe 200 + 200 + 48 + 10
+        // 200 (3 vermelhos) + 200 (canastra limpa) + 56 (cartas 4 a 10) + 2 × 5 (cartas 3 vermelho)
+        score(s, 0).total shouldBe 200 + 200 + 56 + 10
         score(s, 1).redThrees shouldBe ScoreLine(0, 0)
     }
 
@@ -57,11 +57,11 @@ class ScoringTest {
         // §12.1 basta uma canastra, limpa ou suja
         val s = finished {
             redThrees(0, "3H")
-            meld(0, "7S 7C 7D 7H 7S' 2C")     // canastra suja +100; cartas 5 × 8 + 10 = +50
+            meld(0, "7S 7C 7D 7H 7S' 7C' 2C")     // canastra suja +100; cartas 6 × 8 + 10 = +58
         }
         score(s, 0).redThrees shouldBe ScoreLine(1, 100)
-        // 100 (3 vermelho) + 100 (canastra suja) + 50 (cartas do conjunto) + 5 (carta 3 vermelho)
-        score(s, 0).total shouldBe 100 + 100 + 50 + 5
+        // 100 (3 vermelho) + 100 (canastra suja) + 58 (cartas do conjunto) + 5 (carta 3 vermelho)
+        score(s, 0).total shouldBe 100 + 100 + 58 + 5
     }
 
     @Test
@@ -70,7 +70,7 @@ class ScoringTest {
         val s = round {
             mortoTaken(0, 0)
             mortoTaken(1, 1)
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             redThrees(1, "3D")
             result = RoundResult.GoOut(Side(0), Seat(0))
         }
@@ -83,13 +83,13 @@ class ScoringTest {
     fun `3 vermelho na mao nao depende da canastra`() {
         // §12.1 a regra da canastra vale só para o 3 vermelho baixado na mesa; na mão ele é −5 (§12.2)
         val s = finished {
-            meld(0, "4H 5H 6H 7H 8H 9H")      // canastra limpa +200; cartas +48
+            meld(0, "4H 5H 6H 7H 8H 9H TH")      // canastra limpa +200; cartas +56
             hand(0, "3D")
         }
         score(s, 0).redThrees shouldBe ScoreLine(0, 0)
         score(s, 0).tableCards.redThrees shouldBe ScoreLine(0, 0)
         score(s, 0).hand.redThrees shouldBe ScoreLine(1, -5)
-        score(s, 0).total shouldBe 200 + 48 - 5
+        score(s, 0).total shouldBe 200 + 56 - 5
     }
 
     @Test
@@ -98,7 +98,7 @@ class ScoringTest {
         val s = finished(GameMode.DUPLAS) {
             redThrees(1, "3H 3D")
             meld(1, "5C 6C 7C")               // não é canastra; cartas 3 × 8 = +24
-            meld(0, "QS QC QD QH QS' QC'")    // a canastra é da outra dupla
+            meld(0, "QS QC QD QH QS' QC' QD'")    // a canastra é da outra dupla
         }
         score(s, 1).redThrees shouldBe ScoreLine(2, -200)
         // −200 (3 vermelhos) + 24 (cartas 5 a 7) + 2 × 5 (cartas 3 vermelho)
@@ -110,7 +110,7 @@ class ScoringTest {
         // §12.1 + §6.4 a mesa é do lado: a canastra baixada pelo parceiro libera os +100 da dupla
         val s = finished(GameMode.DUPLAS) {
             redThrees(0, "3H 3D'")
-            meld(0, "QS QC QD QH QS' QC'")    // canastra limpa do lado 0 (assentos 0 e 2)
+            meld(0, "QS QC QD QH QS' QC' QD'")    // canastra limpa do lado 0 (assentos 0 e 2)
         }
         score(s, 0).redThrees shouldBe ScoreLine(2, 200)
         score(s, 1).redThrees shouldBe ScoreLine(0, 0)
@@ -120,13 +120,13 @@ class ScoringTest {
     fun `canastra limpa vale 200 e conjunto que nao e canastra so vale as cartas`() {
         // §12.1 canastra limpa +200; o conjunto que não é canastra não tem bônus, só o valor das cartas
         val s = finished {
-            meld(0, "4H 5H 6H 7H 8H 9H")      // 200 + 6 × 8
+            meld(0, "4H 5H 6H 7H 8H 9H TH")      // 200 + 7 × 8
             meld(0, "7S 7C 7D")               // 3 × 8
         }
         score(s, 0).cleanCanastas shouldBe ScoreLine(1, 200)
         score(s, 0).dirtyCanastas shouldBe ScoreLine(0, 0)
-        score(s, 0).tableCards.fourToTen shouldBe ScoreLine(9, 72)
-        score(s, 0).total shouldBe 200 + 48 + 24
+        score(s, 0).tableCards.fourToTen shouldBe ScoreLine(10, 80)
+        score(s, 0).total shouldBe 200 + 56 + 24
     }
 
     @Test
@@ -136,7 +136,7 @@ class ScoringTest {
             mortoTaken(0, 0)
             mortoTaken(1, 1)
             hand(0, "2C KS")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
             phase = Phase.PLAYING
         }.act(0, addTo(0, "2C"))
         val s = played.copy(phase = Phase.FINISHED, result = RoundResult.NoWinner)
@@ -149,26 +149,26 @@ class ScoringTest {
     @Test
     fun `canastra suja vale 100`() {
         // §12.1 canastra suja +100
-        val s = finished { meld(0, "4H 5H 6H 7H 8H 2C") }
+        val s = finished { meld(0, "4H 5H 6H 7H 8H 9H 2C") }
         score(s, 0).dirtyCanastas shouldBe ScoreLine(1, 100)
         score(s, 0).cleanCanastas shouldBe ScoreLine(0, 0)
-        // 100 (canastra suja) + 5 × 8 (4 a 8) + 10 (coringa)
-        score(s, 0).total shouldBe 100 + 40 + 10
+        // 100 (canastra suja) + 6 × 8 (4 a 9) + 10 (coringa)
+        score(s, 0).total shouldBe 100 + 48 + 10
     }
 
     @Test
-    fun `exemplo da regra - canastra limpa de 4 a 9 de copas vale 248`() {
-        // §12.1 exemplo: canastra limpa 4-5-6-7-8-9 de copas = 200 + 6 × 8 = 248
-        val s = finished { meld(0, "4H 5H 6H 7H 8H 9H") }
+    fun `exemplo da regra - canastra limpa de 4 a 10 de copas vale 256`() {
+        // §12.1 exemplo: canastra limpa 4-5-6-7-8-9-10 de copas = 200 + 7 × 8 = 256
+        val s = finished { meld(0, "4H 5H 6H 7H 8H 9H TH") }
         score(s, 0).cleanCanastas shouldBe ScoreLine(1, 200)
         score(s, 0).tableCards shouldBe TableCards(
             redThrees = ScoreLine.ZERO,
-            fourToTen = ScoreLine(6, 48),
+            fourToTen = ScoreLine(7, 56),
             faceCardsAndAces = ScoreLine.ZERO,
             wilds = ScoreLine.ZERO,
         )
-        score(s, 0).tableCards.points shouldBe 48
-        score(s, 0).total shouldBe 248
+        score(s, 0).tableCards.points shouldBe 56
+        score(s, 0).total shouldBe 256
     }
 
     @Test
@@ -215,10 +215,10 @@ class ScoringTest {
         // §12.1 o 3 vermelho soma +5 de carta além do ±100
         val with = finished {
             redThrees(0, "3H")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
         }
         val without = finished { redThrees(0, "3H") }
-        val base = finished { meld(0, "4H 5H 6H 7H 8H 9H") }
+        val base = finished { meld(0, "4H 5H 6H 7H 8H 9H TH") }
         (score(with, 0).total - score(base, 0).total) shouldBe 105
         score(without, 0).total shouldBe -95
         score(without, 0).redThrees shouldBe ScoreLine(1, -100)
@@ -348,8 +348,8 @@ class ScoringTest {
         // §12.1 + §12.2: lado 0 bateu; lado 1 ficou sem morto e com cartas na mão
         val s = round {
             redThrees(0, "3H")                // +100 (há canastra) e +5 da carta
-            meld(0, "4H 5H 6H 7H 8H 9H")      // canastra limpa +200; cartas 6 × 8 = +48
-            meld(0, "7S 7C 7D 7H 7S' 2C")     // canastra suja +100; cartas 5 × 8 + 10 = +50
+            meld(0, "4H 5H 6H 7H 8H 9H TH")      // canastra limpa +200; cartas 7 × 8 = +56
+            meld(0, "7S 7C 7D 7H 7S' 7C' 2C")     // canastra suja +100; cartas 6 × 8 + 10 = +58
             meld(0, "KS KC KD")               // não é canastra; cartas 3 × 10 = +30
             mortoTaken(0, 0)
             redThrees(1, "3D 3D'")            // −100 cada (sem canastra) e +5 de cada carta
@@ -358,9 +358,9 @@ class ScoringTest {
             result = RoundResult.GoOut(Side(0), Seat(0))
         }
         // lado 0: 100 (3 vermelho) + 200 + 100 + 100 (batida) = 500 de especiais;
-        // cartas na mesa: 5 + 48 + 50 + 30 = 133 ⇒ 633
-        score(s, 0).tableCards.points shouldBe 133
-        score(s, 0).total shouldBe 633
+        // cartas na mesa: 5 + 56 + 58 + 30 = 149 ⇒ 649
+        score(s, 0).tableCards.points shouldBe 149
+        score(s, 0).total shouldBe 649
         // lado 1: −200 (3 vermelhos sem canastra) − 100 (morto não pego) − 33 (mão) = −333;
         // cartas na mesa: 10 + 24 = 34 ⇒ −299
         score(s, 1).tableCards.points shouldBe 34
@@ -381,10 +381,10 @@ class ScoringTest {
         scoreRound(s, RuleSet(redThreeWithoutCanastaPoints = -50))[0].total shouldBe -50 + 5
         val withCanasta = finished {
             redThrees(0, "3H")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
         }
-        // 50 do RuleSet + 200 (canastra limpa) + 48 + 5 (cartas na mesa)
-        scoreRound(withCanasta, RuleSet(redThreePoints = 50))[0].total shouldBe 50 + 200 + 48 + 5
+        // 50 do RuleSet + 200 (canastra limpa) + 56 + 5 (cartas na mesa)
+        scoreRound(withCanasta, RuleSet(redThreePoints = 50))[0].total shouldBe 50 + 200 + 56 + 5
     }
 
     @Test
@@ -396,7 +396,7 @@ class ScoringTest {
         RuleSet.DEFAULT.tableWildPoints shouldBe 10
         val s = finished {
             redThrees(0, "3H")
-            meld(0, "4D 5D 6D 7D 8D 9D")      // canastra limpa
+            meld(0, "4D 5D 6D 7D 8D 9D TD")      // canastra limpa
             meld(0, "KS KC 2H")
         }
         val rules = RuleSet(
@@ -407,9 +407,9 @@ class ScoringTest {
             handFourToTenPoints = -1000,       // a tabela da mão não interfere na da mesa
         )
         val table = scoreRound(s, rules)[0].tableCards
-        table shouldBe TableCards(ScoreLine(1, 1), ScoreLine(6, 12), ScoreLine(2, 6), ScoreLine(1, 4))
-        // 100 (3 vermelho) + 200 (canastra limpa) + 1 + 12 + 6 + 4
-        scoreRound(s, rules)[0].total shouldBe 100 + 200 + 23
+        table shouldBe TableCards(ScoreLine(1, 1), ScoreLine(7, 14), ScoreLine(2, 6), ScoreLine(1, 4))
+        // 100 (3 vermelho) + 200 (canastra limpa) + 1 + 14 + 6 + 4
+        scoreRound(s, rules)[0].total shouldBe 100 + 200 + 25
     }
 
     @Test
@@ -417,7 +417,7 @@ class ScoringTest {
         // §12 o histórico salvo de versões anteriores (sem cartas na mesa) continua legível: o campo vale zero
         val s = finished {
             redThrees(0, "3H")
-            meld(0, "4H 5H 6H 7H 8H 9H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
         }
         val score = score(s, 0)
         val json = Json.encodeToString(SideScore.serializer(), score)
