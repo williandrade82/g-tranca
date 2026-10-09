@@ -1,7 +1,7 @@
-# Plano: pendências do Tranca Família
+# Plano: pendências do Mestre da Canastra: Buraco & Biriba
 
 Status: **em execução** — D1 = não (mão em grade), D2 = não (pilha continua "Lixo"). Ordem: do mais simples ao mais trabalhoso. Cada etapa termina com testes,
-um commit e, se mexer no app, um APK `TrancaFamilia-<hash>-debug.apk` para teste no celular.
+um commit e, se mexer no app, um APK `MestreDaCanastra-<hash>-debug.apk` para teste no celular.
 
 Fora deste plano: redesenho dos avatares e da tela de Perfil (instruções mantidas em
 [plano-revisao-avatares.md](plano-revisao-avatares.md)) e a publicação na loja (Fase 4, adiada pelo usuário,

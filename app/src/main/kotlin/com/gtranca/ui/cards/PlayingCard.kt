@@ -215,7 +215,7 @@ private fun CornerIndex(card: Card, style: TextStyle, modifier: Modifier) {
 
 
 /**
- * Verso da carta: moldura marfim e, dentro dela, losangos dourados sobre bordô, com o monograma "TF".
+ * Verso da carta: moldura marfim e, dentro dela, losangos dourados sobre bordô, com o monograma "MC" (Mestre da Canastra).
  * Isolado para poder ser trocado por imagem no futuro.
  */
 @Composable
@@ -268,7 +268,7 @@ fun CardBack(
         }
         if (size != CardSize.SMALL) {
             Text(
-                "TF",
+                "MC",
                 Modifier.align(Alignment.Center),
                 style = TextStyle(
                     color = GColors.Champagne,

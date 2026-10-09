@@ -2,7 +2,10 @@
 
 ## Nome do app (até 30 caracteres)
 
-Tranca Família — Jogo de Cartas
+Mestre da Canastra: Buraco & Biriba
+
+> Atenção: esse nome tem 35 caracteres e o Google Play aceita até 30. Opções que cabem: "Mestre da Canastra: Buraco" (26),
+> "Mestre da Canastra" (18) ou "Canastra: Buraco & Biriba" (25). O nome dentro do app pode continuar o completo.
 
 ## Descrição curta (até 80 caracteres)
 
@@ -10,7 +13,7 @@ Tranca offline contra a máquina: individual ou em duplas com parceiro virtual.
 
 ## Descrição completa (até 4.000 caracteres)
 
-Jogue **Tranca**, o clássico jogo de cartas da família da Canastra, quando e onde quiser — **sem internet,
+Jogue **Tranca**, o clássico da família da Canastra, do Buraco e do Biriba, quando e onde quiser — **sem internet,
 sem anúncios e sem cadastro**.
 
 **Dois modos de jogo**

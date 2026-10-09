@@ -53,7 +53,7 @@ Carta selecionada: trocar o azul atual por borda ouro + leve elevação. Ouro s�
 - **Botão secundário:** cápsula índigo com borda ametista.
 - **Cápsula contadora:** ícone dourado + número, pílula escura com borda dourada (monte, mortos, cartas dos oponentes, placar).
 - **Medalhão de avatar:** aro dourado biselado 3dp, filete champanhe interno; jogador da vez com aro pulsante.
-- **Verso das cartas:** bordô com losango dourado e monograma "TF".
+- **Verso das cartas:** bordô com losango dourado e monograma "MC" (era "TF" antes da troca de nome).
 
 ## 4. Telas
 

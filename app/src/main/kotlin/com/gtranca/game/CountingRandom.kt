@@ -13,7 +13,8 @@ class CountingRandom(seed: Long, skip: Long = 0) : Random() {
     private val count = AtomicLong(0)
 
     init {
-        repeat(skip.coerceAtLeast(0).toInt()) { next() }
+        var left = skip
+        while (left > 0) { next(); left-- }
     }
 
     /** Sorteios feitos desde o início do jogo (inclui os descartados ao retomar). */

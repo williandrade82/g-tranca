@@ -1,8 +1,8 @@
-# Política de privacidade — Tranca Família
+# Política de privacidade — Mestre da Canastra: Buraco & Biriba
 
 Última atualização: 9 de outubro de 2026
 
-O **Tranca Família** é um jogo de cartas para Android que funciona **totalmente offline**.
+O **Mestre da Canastra: Buraco & Biriba** é um jogo de cartas para Android que funciona **totalmente offline**.
 
 ## Dados coletados
 
@@ -22,7 +22,7 @@ Para o jogo funcionar, ficam salvos **apenas no armazenamento interno do aplicat
 - as estatísticas de jogos (vitórias e derrotas por modo e dificuldade).
 
 Esses dados nunca saem do aparelho. Você pode apagá-los a qualquer momento zerando as estatísticas no app, ou
-em *Configurações do Android › Apps › Tranca Família › Armazenamento › Limpar dados*. Desinstalar o app também
+em *Configurações do Android › Apps › Mestre da Canastra › Armazenamento › Limpar dados*. Desinstalar o app também
 os apaga.
 
 ## Crianças

@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import com.gtranca.ui.theme.Elevation
 import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GButton
@@ -122,6 +123,10 @@ fun HomeScreen(
             }
             CrownOrnament(Modifier.width(120.dp).height(40.dp))
             LogoTitle(stringResource(R.string.home_title))
+            Text(
+                stringResource(R.string.home_title_tagline),
+                style = goldTitleStyle(MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp)),
+            )
             Text(
                 stringResource(R.string.home_subtitle),
                 style = MaterialTheme.typography.bodyLarge,
