@@ -21,6 +21,11 @@ data class MediumWeights(
     val dirtyCanastaBonus: Double = 30.0,
     /** Bônus extra pela primeira canastra do lado, condição para bater (§11.1). */
     val firstCanastaBonus: Double = 40.0,
+    /**
+     * §12.1 cada 3 vermelho do lado vira de −100 para +100 com a primeira canastra (diferença de 200 pontos),
+     * na mesma escala reduzida dos bônus de canastra (≈ 0,3 × placar). 0 desliga.
+     */
+    val redThreeSwing: Double = 60.0,
     /** Custo de gastar um coringa da mão (perde flexibilidade e o conjunto não fecha limpo). */
     val wildUse: Double = 12.0,
     /** Custo de sujar uma canastra limpa (§6.3/§7.3; a suja vale 100 a menos, §7.2; o coringa soma +10 na mesa, §12.1). */
@@ -85,6 +90,11 @@ data class MediumWeights(
     val threatFeedMultiplier: Double = 1.5,
     /** Probabilidade estimada de o adversário conseguir levar um coringa do topo à mesa (§5.4). */
     val wildTakeProbability: Double = 0.9,
+    /**
+     * §5.1 o adversário pode levar o topo a um conjunto dele junto com cartas da mão (ex.: 5-6-7♥ na mesa e 9♥ no
+     * topo, com 8♥ na mão). Fator sobre essa chance; 0 desliga.
+     */
+    val bridgeTakeFactor: Double = 1.0,
     /** Fator sobre a chance de grupo se o próximo adversário já descartou esse número. */
     val discardedRankDiscount: Double = 0.5,
 )

@@ -242,7 +242,10 @@ class MediumBot(
     private fun canastaBonus(ctx: Context, before: Int, after: Int, dirty: Boolean): Double {
         if (before >= CANASTA_SIZE || after < CANASTA_SIZE) return 0.0
         val base = if (dirty) weights.dirtyCanastaBonus else weights.cleanCanastaBonus
-        return base + if (ctx.sideHasCanasta) 0.0 else weights.firstCanastaBonus
+        if (ctx.sideHasCanasta) return base
+        // §12.1 a primeira canastra vira os 3 vermelhos do lado de −100 para +100.
+        val redThrees = ctx.view.redThrees.getOrNull(ctx.ownSide.index)?.size ?: 0
+        return base + weights.firstCanastaBonus + redThrees * weights.redThreeSwing
     }
 
     // =====================================================================================
@@ -327,7 +330,30 @@ class MediumBot(
         val pOneNeighbor = 1.0 - listOf(-2, -1, 1, 2).fold(1.0) { acc, o -> acc * (1.0 - has(o)) }
         val pSequence = 1.0 - (1.0 - pTwoNeighbors) * (1.0 - pWild * pOneNeighbor)
 
-        return 1.0 - (1.0 - pGroup.coerceIn(0.0, 1.0)) * (1.0 - pSequence.coerceIn(0.0, 1.0))
+        // §5.1 o topo vai a uma sequência dele na mesa junto com a carta do buraco (ou um coringa) da mão dele.
+        val pBridge = weights.bridgeTakeFactor * ctx.opponentMelds.maxOfOrNull { meld -> bridgeProbability(ctx, meld, card, known, pWild) }.let { it ?: 0.0 }
+
+        val pNew = 1.0 - (1.0 - pGroup.coerceIn(0.0, 1.0)) * (1.0 - pSequence.coerceIn(0.0, 1.0))
+        return 1.0 - (1.0 - pNew) * (1.0 - pBridge.coerceIn(0.0, 1.0))
+    }
+
+    /**
+     * Chance de o próximo levar [card] à sequência [meld] do lado dele com uma carta da mão: falta exatamente um
+     * valor entre a ponta da sequência e [card] (a natural desse valor, ou um coringa se a sequência não tem).
+     */
+    private fun bridgeProbability(ctx: Context, meld: Meld, card: Card, known: List<Card>, pWild: Double): Double {
+        val kind = meld.kind as? com.gtranca.engine.model.MeldKind.Sequence ?: return 0.0
+        if (kind.suit != card.suit) return 0.0
+        val gapRank = when (card.rank.ordinal) {
+            meld.highRank.ordinal + 2 -> meld.highRank.ordinal + 1
+            meld.lowRank.ordinal - 2 -> meld.lowRank.ordinal - 1
+            else -> return 0.0
+        }
+        val rank = Rank.entries.getOrNull(gapRank) ?: return 0.0
+        if (rank.isWild || rank.isThree) return 0.0
+        val pNatural = ctx.pHas(known.count { it.rank == rank && it.suit == card.suit }, ctx.unseenCopies(rank, card.suit))
+        val pWithWild = if (meld.hasWild) 0.0 else pWild
+        return 1.0 - (1.0 - pNatural) * (1.0 - pWithWild)
     }
 
     /** Valor, para o adversário, do lixo com [card] no topo (§5.2: ele leva todas as cartas). */

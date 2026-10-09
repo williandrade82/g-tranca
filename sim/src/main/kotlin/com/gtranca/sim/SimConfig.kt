@@ -78,7 +78,8 @@ data class SimConfig(
 
     companion object {
         const val RANDOM_BOT = "aleatorio"
-        val BOT_KINDS: List<String> = Difficulty.entries.map { it.id } + RANDOM_BOT
+        const val MEDIUM_BASELINE = "medio-base"
+        val BOT_KINDS: List<String> = Difficulty.entries.map { it.id } + RANDOM_BOT + MEDIUM_BASELINE
 
         const val USAGE = """Uso: gradlew :sim:run --args="[opções]"
   --games N            número de jogos (padrão 100)
@@ -150,4 +151,9 @@ data class SimConfig(
  * (padrão: o orçamento padrão por iterações, sem teto de tempo, para ser reproduzível).
  */
 fun createSimBot(kind: String, random: Random, hardConfig: HardBotConfig = HardBotConfig.DEFAULT.withoutTimeLimit()): BotPlayer =
-    if (kind == SimConfig.RANDOM_BOT) RandomBot(random) else createBot(Difficulty.fromId(kind), random, hardConfig)
+    when (kind) {
+        SimConfig.RANDOM_BOT -> RandomBot(random)
+        // Médio sem os ajustes de 2026-10 (3 vermelho na 1ª canastra, topo + carta da mão): referência de comparação.
+        SimConfig.MEDIUM_BASELINE -> com.gtranca.ai.MediumBot(random, com.gtranca.ai.MediumWeights(redThreeSwing = 0.0, bridgeTakeFactor = 0.0))
+        else -> createBot(Difficulty.fromId(kind), random, hardConfig)
+    }
