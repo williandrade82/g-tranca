@@ -69,6 +69,8 @@ fun AnnouncementScreen(
     outcome: EndOutcome? = null,
     brief: Boolean = false,
     animate: Boolean = true,
+    /** Volta à mesa final, só para olhar (o fluxo de fim continua pelo botão de lá). */
+    onViewTable: (() -> Unit)? = null,
 ) {
     GBackground(Modifier.fillMaxSize().testTag("announcement"), royal = true, rays = outcome == EndOutcome.WIN && animate) {
         outcome?.let { EndCelebration(it, brief, animate) }
@@ -104,6 +106,11 @@ fun AnnouncementScreen(
                 onContinue,
                 Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("announcement-continue"),
             ) { Text(button, style = MaterialTheme.typography.titleMedium) }
+            if (onViewTable != null) {
+                TextButton(onViewTable, Modifier.heightIn(min = 48.dp).testTag("announcement-view-table")) {
+                    Text(stringResource(R.string.announce_view_table), color = OnTable, style = MaterialTheme.typography.titleMedium)
+                }
+            }
         }
         }
     }
@@ -117,6 +124,7 @@ fun RoundAnnouncement(
     onResign: (() -> Unit)? = null,
     personas: List<Persona> = emptyList(),
     animate: Boolean = true,
+    onViewTable: (() -> Unit)? = null,
 ) {
     val record = snapshot.history.last()
     val mode = snapshot.view.mode
@@ -144,12 +152,13 @@ fun RoundAnnouncement(
         },
         brief = true,
         animate = animate,
+        onViewTable = onViewTable,
     )
 }
 
 /** §13 anúncio do fim do jogo, antes da tela final. */
 @Composable
-fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: List<Persona> = emptyList(), animate: Boolean = true) {
+fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: List<Persona> = emptyList(), animate: Boolean = true, onViewTable: (() -> Unit)? = null) {
     val winners = snapshot.winner?.let { personasOfSide(snapshot.view.mode, it, personas) }.orEmpty()
     AnnouncementScreen(
         avatars = winners,
@@ -160,5 +169,6 @@ fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: L
         onContinue = onContinue,
         outcome = if (snapshot.winner == snapshot.viewerSide) EndOutcome.WIN else EndOutcome.LOSE,
         animate = animate,
+        onViewTable = onViewTable,
     )
 }

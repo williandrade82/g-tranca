@@ -309,6 +309,9 @@
     <string name="announce_see_points">Ver pontos</string>
     <string name="announce_continue">Continuar</string>
     <string name="announce_see_result">Ver resultado</string>
+    <string name="announce_view_table">Ver mesa final</string>
+    <string name="table_review_continue">Continuar</string>
+    <string name="home_version">Versão %1$s</string>
 
     <!-- 3 vermelhos (§6.5) -->
     <string name="red_three_value_note">Cada 3 vermelho vale +105 se o seu lado tiver canastra ao fim da partida (+100, mais +5 como carta na mesa); sem canastra, −95.</string>

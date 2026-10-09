@@ -1,5 +1,8 @@
 import java.util.Properties
 
+/** Commits antes do primeiro versionado: o commit 87 do histórico vira a versão 0.1. */
+val VERSION_BASE_COMMITS = 86
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -16,8 +19,12 @@ android {
         applicationId = "br.com.funnyandplay.mestredacanastra"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        // Versão 0.N até a primeira publicação: N sobe a cada commit (contagem do git a partir do commit 87 = 0.1).
+        // Gere o APK depois de commitar para que a versão bata com o hash no nome do arquivo.
+        val build = providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+            .standardOutput.asText.map { it.trim().toInt() - VERSION_BASE_COMMITS }.getOrElse(1).coerceAtLeast(1)
+        versionCode = build
+        versionName = "0.$build"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -48,6 +55,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // Testes locais (JVM) com JUnit 5 + Kotest, como nos módulos puros.

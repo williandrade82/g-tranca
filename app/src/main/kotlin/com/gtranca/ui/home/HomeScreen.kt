@@ -77,6 +77,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gtranca.BuildConfig
 import com.gtranca.R
 import com.gtranca.ui.game.plainPoints
 import androidx.compose.runtime.LaunchedEffect
@@ -132,6 +133,12 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 color = GColors.OnTable,
                 textAlign = TextAlign.Center,
+            )
+            Text(
+                stringResource(R.string.home_version, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.labelMedium,
+                color = GColors.OnTable.copy(alpha = 0.7f),
+                modifier = Modifier.testTag("home-version"),
             )
 
             // Jogo salvo: "Continuar" em destaque, com modo, dificuldade e placar.
