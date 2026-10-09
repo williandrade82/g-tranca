@@ -1,6 +1,6 @@
 # G-Tranca — Mestre da Canastra: Buraco & Biriba
 
-Nome do app na loja e no celular: **Mestre da Canastra: Buraco & Biriba** (sob o ícone: "Mestre da Canastra"). "G-Tranca" é o nome interno do projeto (pacote `com.gtranca`, módulos).
+Nome do app: **Mestre da Canastra**, com o subtítulo **Buraco & Biriba** (descrição curta na loja e na tela inicial). Identificador na loja: `br.com.funnyandplay.mestredacanastra`. "G-Tranca" é o nome interno do projeto (pacote do código `com.gtranca`, módulos).
 
 Jogo de **Tranca** (família Canastra) para Android, 100% offline. Você joga contra a máquina:
 

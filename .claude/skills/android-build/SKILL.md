@@ -32,7 +32,7 @@ Verificação rápida:
 
 ## Rodar e ver o app no emulador
 1. `adb devices`; se vazio, inicie o AVD em segundo plano: `Start-Process emulator -ArgumentList '-avd','Pixel_4_API_33','-no-snapshot-save'` e espere `adb wait-for-device` + `adb shell getprop sys.boot_completed` = `1`.
-2. `.\gradlew.bat :app:installDebug` e `adb shell am start -n com.gtranca/.MainActivity`.
+2. `.\gradlew.bat :app:installDebug` e `adb shell am start -n br.com.funnyandplay.mestredacanastra/com.gtranca.MainActivity`.
 3. Verificação visual com o MCP `mobile-mcp`: `mobile_list_available_devices` → use o id em todas as chamadas; leia a tela com `mobile_list_elements_on_screen` (screenshot só para julgar aparência); agrupe toques com `mobile_batch_commands`.
 4. Travamento: `adb logcat -d -b crash` ou `mobile_list_crashes`.
 

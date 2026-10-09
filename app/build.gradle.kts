@@ -12,7 +12,8 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.gtranca"
+        // Identificador definitivo na loja (não muda depois de publicado). O código continua no pacote com.gtranca.
+        applicationId = "br.com.funnyandplay.mestredacanastra"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1

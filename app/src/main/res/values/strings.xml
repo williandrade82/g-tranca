@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="pt">
-    <string name="app_name">Mestre da Canastra: Buraco &amp; Biriba</string>
-    <!-- Nome sob o ícone do celular (o completo não cabe). -->
-    <string name="app_launcher_name">Mestre da Canastra</string>
+    <string name="app_name">Mestre da Canastra</string>
 
     <!-- Início -->
     <string name="home_title">Mestre da Canastra</string>

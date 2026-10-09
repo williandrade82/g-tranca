@@ -1,6 +1,6 @@
 # G-Tranca
 
-Nome público do app: **Mestre da Canastra: Buraco & Biriba** (`app_name`; sob o ícone, `app_launcher_name` = "Mestre da Canastra"). "G-Tranca" continua o nome interno (pacote, módulos, código).
+Nome público do app: **Mestre da Canastra** (`app_name`), subtítulo **Buraco & Biriba** (`home_title_tagline`). `applicationId` = `br.com.funnyandplay.mestredacanastra` (definitivo); o código continua no pacote `com.gtranca` e "G-Tranca" é o nome interno.
 
 Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a máquina (individual) ou humano + parceiro virtual contra dupla virtual (duplas).
 

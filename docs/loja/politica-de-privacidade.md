@@ -1,8 +1,8 @@
-# Política de privacidade — Mestre da Canastra: Buraco & Biriba
+# Política de privacidade — Mestre da Canastra
 
 Última atualização: 9 de outubro de 2026
 
-O **Mestre da Canastra: Buraco & Biriba** é um jogo de cartas para Android que funciona **totalmente offline**.
+O **Mestre da Canastra** é um jogo de cartas para Android que funciona **totalmente offline**.
 
 ## Dados coletados
 

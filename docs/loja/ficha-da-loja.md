@@ -2,14 +2,13 @@
 
 ## Nome do app (até 30 caracteres)
 
-Mestre da Canastra: Buraco & Biriba
+Mestre da Canastra
 
-> Atenção: esse nome tem 35 caracteres e o Google Play aceita até 30. Opções que cabem: "Mestre da Canastra: Buraco" (26),
-> "Mestre da Canastra" (18) ou "Canastra: Buraco & Biriba" (25). O nome dentro do app pode continuar o completo.
+Identificador do app (definitivo): `br.com.funnyandplay.mestredacanastra`
 
 ## Descrição curta (até 80 caracteres)
 
-Tranca offline contra a máquina: individual ou em duplas com parceiro virtual.
+Buraco & Biriba — Tranca offline contra a máquina, individual ou em duplas.
 
 ## Descrição completa (até 4.000 caracteres)
 
