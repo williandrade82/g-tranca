@@ -35,7 +35,60 @@ internal object LegalActions {
             Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
             Phase.FINISHED -> emptySequence()
         }
+        val fast = FastCheck(state, seat, rules)
+        return candidates.distinct().filter { fast.isValid(it) }.toList()
+    }
+
+    /**
+     * Mesma lista de [generate], validando cada candidato por [RoundEngine.step] (montando o estado seguinte). Mais lenta;
+     * mantida como referência para o teste de equivalência do atalho [FastCheck].
+     */
+    fun generateReference(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
+        if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
+        val candidates: Sequence<Action> = when (state.phase) {
+            Phase.AWAITING_DRAW ->
+                sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
+            Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
+            Phase.FINISHED -> emptySequence()
+        }
         return candidates.distinct().filter { isValid(state, seat, it, rules) }.toList()
+    }
+
+    /**
+     * Validação rápida dos candidatos de baixar, acrescentar e pegar o lixo, com o mesmo resultado de [RoundEngine.step]
+     * sem montar o estado seguinte. Os candidatos já vêm da mão do [seat] e da fase certa (ver os geradores), então
+     * sobram só: o conjunto ser válido na mesa (§6) e a regra de manter carta para descartar / ficar sem cartas
+     * (§8, §9, §11.1, §9.5). As demais ações (comprar, recusar, descartar) passam pelo [RoundEngine.step].
+     */
+    private class FastCheck(private val state: RoundState, private val seat: Seat, private val rules: RuleSet) {
+        private val side = state.mode.sideOf(seat)
+        private val table = state.tableOf(side)
+        private val handSize = state.handOf(seat).size
+        private val tookMorto = state.hasTakenMorto(side)
+        private val mortoAvailable = state.firstAvailableMorto() != null
+        private val hadCanasta = table.melds.any { it.meld.isCanasta(rules) }
+
+        fun isValid(action: Action): Boolean {
+            val (result, leftInHand) = when (action) {
+                is Action.CreateMeld -> table.createMeld(action.cards, rules) to handSize - action.cards.size
+                is Action.AddToMeld -> table.addToMeld(action.meldId, action.cards, rules) to handSize - action.cards.size
+                is Action.TakeDiscardPile -> {
+                    val top = state.discardTop ?: return false
+                    val rest = state.discardPile.size - 1
+                    when (val plan = action.plan) {
+                        is DiscardPlan.NewMeld -> table.createMeld(plan.handCards + top, rules) to handSize - plan.handCards.size + rest
+                        is DiscardPlan.AddToMeld -> table.addToMeld(plan.meldId, plan.handCards + top, rules) to handSize - plan.handCards.size + rest
+                    }
+                }
+                else -> return isValid(state, seat, action, rules)
+            }
+            val newTable = (result as? RuleResult.Ok)?.value ?: return false
+            if (leftInHand >= 2) return true
+            // §8/§9/§11.1/§9.5 ficar com 1 ou 0 cartas: só se isso levar ao morto ou à batida.
+            if (!tookMorto && mortoAvailable) return true
+            val hasCanasta = hadCanasta || newTable.melds.any { it.meld.isCanasta(rules) }
+            return (tookMorto || !mortoAvailable) && hasCanasta
+        }
     }
 
     /** §10.2 existe algum plano válido para pegar o lixo (verificação exata). */
@@ -67,6 +120,14 @@ internal object LegalActions {
             }
 
         fun naturalRanks(): Set<Rank> = byClass.keys.map { it.first }.toSet()
+
+        /** Valores naturais presentes de cada naipe, como máscara de bits (bit = `Rank.ordinal`). */
+        private val suitMasks: IntArray = IntArray(Suit.entries.size).also { masks ->
+            byClass.keys.forEach { (rank, suit) -> masks[suit.ordinal] = masks[suit.ordinal] or (1 shl rank.ordinal) }
+        }
+
+        /** A mão tem todas as naturais de [mask] no [suit] (teste barato antes de montar listas). */
+        fun covers(suit: Suit, mask: Int): Boolean = suitMasks[suit.ordinal] and mask == mask
     }
 
     // ---------- sequências: faixas com no máximo um buraco ----------
@@ -75,19 +136,34 @@ internal object LegalActions {
      * Faixas de valores (4..Ás) e buraco opcional. Para cada uma, devolve os valores naturais necessários
      * (a faixa sem o buraco) e se o coringa é obrigatório (há buraco).
      */
-    private fun ranges(): Sequence<Pair<List<Rank>, Boolean>> = sequence {
+    private class SeqRange(val ranks: List<Rank>, val needsWild: Boolean) {
+        val mask: Int = ranks.fold(0) { m, r -> m or (1 shl r.ordinal) }
+        operator fun component1() = ranks
+        operator fun component2() = needsWild
+    }
+
+    /** Todas as faixas, calculadas uma vez (a ordem é a da enumeração original: a lista de jogadas não muda). */
+    private val RANGES: List<SeqRange> = buildList {
         for (low in SEQUENCE_RANKS.indices) {
             for (high in low until SEQUENCE_RANKS.size) {
-                val range = SEQUENCE_RANKS.subList(low, high + 1)
-                yield(range to false)
-                for (gap in range.drop(1).dropLast(1)) yield(range.filter { it != gap } to true)
+                val range = SEQUENCE_RANKS.subList(low, high + 1).toList()
+                add(SeqRange(range, false))
+                for (gap in range.drop(1).dropLast(1)) add(SeqRange(range.filter { it != gap }, true))
             }
         }
     }
 
+    private fun ranges(): Sequence<SeqRange> = RANGES.asSequence()
+
     /** Naturais do [suit] para os [ranks]; `null` se algum faltar na mão. */
     private fun HandIndex.naturalsFor(ranks: List<Rank>, suit: Suit): List<Card>? =
         ranks.map { natural(it, suit) ?: return null }
+
+    /** Como [naturalsFor], mas descarta antes pela máscara ([extraMask] = valores que não vêm da mão). */
+    private fun HandIndex.naturalsFor(range: SeqRange, suit: Suit, extraMask: Int = 0): List<Card>? {
+        if (!covers(suit, range.mask and extraMask.inv())) return null
+        return naturalsFor(range.ranks.filter { (1 shl it.ordinal) and extraMask == 0 }, suit)
+    }
 
     private fun HandIndex.wildsFor(needsWild: Boolean): List<Card?> = if (needsWild) realWilds else wildOptions
 
@@ -110,9 +186,11 @@ internal object LegalActions {
             }
         }
         // conjunto novo: sequência do naipe do topo contendo o topo (natural)
-        for ((naturalRanks, needsWild) in ranges()) {
-            if (top.rank !in naturalRanks) continue
-            val fromHand = index.naturalsFor(naturalRanks - top.rank, top.suit) ?: continue
+        val topBit = 1 shl top.rank.ordinal
+        for (range in RANGES) {
+            if (range.mask and topBit == 0) continue
+            val needsWild = range.needsWild
+            val fromHand = index.naturalsFor(range, top.suit, topBit) ?: continue
             for (wild in index.wildsFor(needsWild)) {
                 val handCards = fromHand + listOfNotNull(wild)
                 if (handCards.size >= 2) yield(Action.TakeDiscardPile(DiscardPlan.NewMeld(handCards)))
@@ -138,8 +216,8 @@ internal object LegalActions {
             }
         }
         for (suit in Suit.entries) {
-            for ((naturalRanks, _) in ranges()) {
-                val naturals = index.naturalsFor(naturalRanks, suit) ?: continue
+            for (range in RANGES) {
+                val naturals = index.naturalsFor(range, suit) ?: continue
                 if (naturals.size >= 2) yield(Action.TakeDiscardPile(DiscardPlan.NewMeld(naturals)))
             }
         }
@@ -150,8 +228,9 @@ internal object LegalActions {
                 is MeldKind.Group -> index.groupChoices(kind.rank).asSequence()
                 is MeldKind.Sequence -> {
                     val existing = meld.cards.map { it.rank }.toSet()
-                    ranges().mapNotNull { (naturalRanks, _) ->
-                        if (naturalRanks.containsAll(existing)) index.naturalsFor(naturalRanks - existing, kind.suit) else null
+                    val existingMask = existing.fold(0) { m, r -> m or (1 shl r.ordinal) }
+                    ranges().mapNotNull { range ->
+                        if (range.mask and existingMask == existingMask) index.naturalsFor(range, kind.suit, existingMask) else null
                     }
                 }
             }
@@ -173,8 +252,9 @@ internal object LegalActions {
             }
         }
         for (suit in Suit.entries) {
-            for ((naturalRanks, needsWild) in ranges()) {
-                val naturals = index.naturalsFor(naturalRanks, suit) ?: continue
+            for (range in RANGES) {
+                val needsWild = range.needsWild
+                val naturals = index.naturalsFor(range, suit) ?: continue
                 for (wild in index.wildsFor(needsWild)) {
                     val cards = naturals + listOfNotNull(wild)
                     if (cards.size >= 3) yield(Action.CreateMeld(cards))
@@ -210,11 +290,13 @@ internal object LegalActions {
             is MeldKind.Sequence -> {
                 if (extra != null && extra.suit != kind.suit) return@sequence
                 val existing = meld.cards.filterNot { it.isWild }.map { it.rank }.toSet()
-                for ((naturalRanks, needsWild) in ranges()) {
-                    if (!naturalRanks.containsAll(existing)) continue
-                    val newRanks = naturalRanks - existing
-                    if (extra != null && extra.rank !in newRanks) continue
-                    val fromHand = index.naturalsFor(newRanks - listOfNotNull(extra?.rank), kind.suit) ?: continue
+                val existingMask = existing.fold(0) { m, r -> m or (1 shl r.ordinal) }
+                val extraBit = extra?.let { 1 shl it.rank.ordinal } ?: 0
+                for (range in RANGES) {
+                    val needsWild = range.needsWild
+                    if (range.mask and existingMask != existingMask) continue
+                    if (extra != null && (range.mask and existingMask.inv()) and extraBit == 0) continue
+                    val fromHand = index.naturalsFor(range, kind.suit, existingMask or extraBit) ?: continue
                     val wildChoices: List<Card?> = when {
                         meld.hasWild -> listOf(null) // o coringa do conjunto cobre o buraco ou corre
                         needsWild -> index.realWilds
