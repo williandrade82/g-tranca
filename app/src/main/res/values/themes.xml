@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fundo meia-noite desde a abertura: nada pisca em branco antes do Compose desenhar. -->
+    <color name="midnight">#FF0B1026</color>
+    <style name="Theme.Tranca" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/midnight</item>
+        <item name="android:colorBackground">@color/midnight</item>
+        <item name="android:statusBarColor">@color/midnight</item>
+        <item name="android:navigationBarColor">@color/midnight</item>
+    </style>
+</resources>

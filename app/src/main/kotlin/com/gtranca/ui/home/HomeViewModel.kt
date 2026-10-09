@@ -1,5 +1,7 @@
 package com.gtranca.ui.home
 
+import com.gtranca.data.GameResult
+import com.gtranca.data.StatsRepository
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -86,12 +88,14 @@ data class SavedSummary(
     val roundNumber: Int,
     val ownTotal: Int,
     val otherTotal: Int,
+    /** Identificador do jogo salvo (as estatísticas contam cada jogo uma vez). */
+    val gameId: String = "",
 ) {
     companion object {
         fun of(game: SavedGame): SavedSummary? {
             val difficulty = Difficulty.entries.firstOrNull { it.id == game.config.difficultyId } ?: return null
             // O humano senta no assento 0, do lado 0.
-            return SavedSummary(game.config.mode, difficulty, game.match.roundNumber, game.match.totals[0], game.match.totals[1])
+            return SavedSummary(game.config.mode, difficulty, game.match.roundNumber, game.match.totals[0], game.match.totals[1], game.gameId)
         }
     }
 }
@@ -105,6 +109,8 @@ class HomeViewModel(
     private val savedGames: SavedGameStore? = null,
     /** Fila de gravações do app: ler e apagar o salvo depois das gravações pendentes do jogo que acabou de sair. */
     private val writes: WriteQueue? = null,
+    /** Estatísticas: abandonar o jogo salvo por um novo conta como derrota por desistência. */
+    private val stats: StatsRepository? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(loadedSaved = savedGames == null, loadedMode = settings == null))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -169,7 +175,13 @@ class HomeViewModel(
         if (!state.ready) return
         val config = start(state) ?: return
         _uiState.update { it.copy(starting = true) }
+        val abandoned = state.saved
         viewModelScope.launch {
+            // O jogo salvo abandonado conta como desistência (derrota) antes de ser apagado.
+            if (abandoned != null && stats != null) {
+                val record = suspend { stats.record(abandoned.gameId, abandoned.mode, abandoned.difficulty.id, GameResult.RESIGNATION) }
+                if (writes != null) writes.run { record() } else safely { record() }
+            }
             savedGames?.let { store -> if (writes != null) writes.run { store.clear() } else safely { store.clear() } }
             _uiState.update { it.copy(starting = false, saved = null, pendingStart = config) }
         }

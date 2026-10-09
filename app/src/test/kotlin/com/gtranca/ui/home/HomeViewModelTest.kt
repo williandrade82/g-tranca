@@ -168,6 +168,32 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `novo jogo sobre o salvo conta o abandonado como desistencia, uma vez`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val recorded = mutableListOf<List<Any>>()
+            val stats = object : com.gtranca.data.StatsRepository {
+                override val stats = kotlinx.coroutines.flow.flowOf(com.gtranca.data.GameStats())
+                override suspend fun record(gameId: String, mode: GameMode, difficultyId: String, result: com.gtranca.data.GameResult): Boolean {
+                    recorded += listOf(gameId, mode, difficultyId, result)
+                    return true
+                }
+                override suspend fun reset() {}
+            }
+            val store = FakeStore(saved())
+            val vm = HomeViewModel(FakeSettings(), store, stats = stats)
+            advanceUntilIdle()
+            vm.onNewGame().shouldBeNull()
+            vm.onConfirmNewGame()
+            advanceUntilIdle()
+            recorded shouldBe listOf(listOf("g", GameMode.DUPLAS, "dificil", com.gtranca.data.GameResult.RESIGNATION))
+            store.game.shouldBeNull()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `botoes de jogo so ficam ativos depois de ler o salvo e o ultimo modo`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {

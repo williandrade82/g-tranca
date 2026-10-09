@@ -150,7 +150,7 @@ fun HomeScreen(
                     ModeCard(stringResource(R.string.mode_individual), 1, state.mode == GameMode.INDIVIDUAL, "mode-individual") {
                         viewModel.onModeChange(GameMode.INDIVIDUAL)
                     }
-                    ModeCard(stringResource(R.string.mode_duplas), 2, state.mode == GameMode.DUPLAS, "mode-duplas") {
+                    ModeCard(stringResource(R.string.mode_duplas_short), 2, state.mode == GameMode.DUPLAS, "mode-duplas") {
                         viewModel.onModeChange(GameMode.DUPLAS)
                     }
                 }
@@ -341,6 +341,8 @@ private fun CrownOrnament(modifier: Modifier) {
 @Composable
 private fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: String, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
+    // Duplas: nome curto no cartão e a explicação embaixo, menor (não quebra em 3 linhas).
+    val hint = if (seats == 2) stringResource(R.string.mode_duplas_hint) else null
     Column(
         Modifier
             .weight(1f)
@@ -383,6 +385,9 @@ private fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: 
             color = if (selected) GColors.Ivory else GColors.Lavender,
             textAlign = TextAlign.Center,
         )
+        hint?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = if (selected) GColors.Champagne else GColors.Lavender, textAlign = TextAlign.Center)
+        }
     }
 }
 

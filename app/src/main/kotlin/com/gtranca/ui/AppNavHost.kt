@@ -125,7 +125,7 @@ fun AppNavHost() {
     ) {
         composable<HomeRoute> {
             HomeScreen(
-                viewModel { HomeViewModel(data.settings, data.savedGames, WriteQueue.app) },
+                viewModel { HomeViewModel(data.settings, data.savedGames, WriteQueue.app, data.stats) },
                 onStart = { config -> navController.navigateFromHome(GameRoute.of(config)) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onStats = { navController.navigateFromHome(StatsRoute) },

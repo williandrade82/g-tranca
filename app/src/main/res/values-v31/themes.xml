@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: tela de abertura do sistema em meia-noite, com o ícone do app. -->
+    <style name="Theme.Tranca" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/midnight</item>
+        <item name="android:colorBackground">@color/midnight</item>
+        <item name="android:statusBarColor">@color/midnight</item>
+        <item name="android:navigationBarColor">@color/midnight</item>
+        <item name="android:windowSplashScreenBackground">@color/midnight</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/midnight</item>
+    </style>
+</resources>

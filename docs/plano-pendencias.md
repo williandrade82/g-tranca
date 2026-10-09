@@ -14,7 +14,7 @@ listada no fim só como lembrete).
 | D1 | Mão em leque? | (a) não fazer: grade atual, toque garantido de 48dp; (b) leque leve só quando a mão couber em uma linha |
 | D2 | A pilha "Lixo" passa a se chamar "Descarte" em toda a interface? | (a) sim: atualizar `definition.md` primeiro e depois os textos; (b) não: só a ação "Pegar descarte" (situação atual) |
 
-## Etapa 1 — Rápidas (uma sessão curta)
+## Etapa 1 — Rápidas (uma sessão curta) — FEITA
 
 1. **Commitar os planos** em `docs/` (`plano-revisao-visual-luxo.md`, `plano-revisao-avatares.md`, este arquivo).
 2. **"Novo jogo" sobre jogo salvo = derrota por desistência** (já aprovado). Em `HomeViewModel.onConfirmNewGame`,

@@ -19,6 +19,7 @@
     <string name="home_continue">Continuar</string>
     <string name="home_saved_summary">%1$s · %2$s · partida %3$d · %4$s %5$s × %6$s %7$s</string>
     <string name="mode_duplas_short">Duplas</string>
+    <string name="mode_duplas_hint">você e um parceiro virtual</string>
     <string name="home_stats">Estatísticas</string>
     <string name="new_game_confirm_title">Começar um novo jogo?</string>
     <string name="new_game_confirm_text">O jogo salvo será perdido.</string>
