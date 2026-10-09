@@ -12,6 +12,7 @@ import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RuleError
 import com.gtranca.engine.model.Seat
 import com.gtranca.game.CustomHand
+import com.gtranca.game.PlanRanking
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameSnapshot
@@ -574,7 +575,7 @@ class GameViewModel(
         when (resolution) {
             is Resolution.Play -> submit(resolution.action, requestId)
             is Resolution.ChoosePlan ->
-                local.update { it.copy(planChoice = resolution.options, planRequestId = requestId, message = null) }
+                local.update { it.copy(planChoice = PlanRanking.rank(resolution.options, snapshot.view), planRequestId = requestId, message = null) }
             is Resolution.Rejected -> local.update { it.copy(message = UiMessage.Rejected(resolution.reason)) }
             Resolution.SelectOneCardToDiscard -> local.update { it.copy(message = UiMessage.SelectOneCardToDiscard) }
         }
