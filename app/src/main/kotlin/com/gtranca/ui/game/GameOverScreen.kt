@@ -1,5 +1,12 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.text.style.TextAlign
+import com.gtranca.ui.theme.GoldBrush
 import com.gtranca.ui.theme.TabularNums
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -79,26 +86,96 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
                 if (won) GColors.RoyalEnd else GColors.Bordeaux,
                 GColors.Ivory,
             )
-            GPanel(Modifier.fillMaxWidth()) {
-                sides.forEach { side ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        AvatarRow(personasOfSide(view.mode, side, personas), 30.dp)
-                        Text(
-                            sideLabel(view.mode, side, view.side, personas) + ": " + plainPoints(snapshot.totals[side.index]),
-                            style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = TabularNums),
-                            color = if (side == snapshot.winner) GColors.Gold else GColors.Ivory,
-                        )
-                    }
-                }
-                HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
-                Text(stringResource(R.string.game_over_rounds, snapshot.history.size), fontWeight = FontWeight.Bold)
-                snapshot.history.forEach { record ->
-                    val points = sides.map { side -> signed(record.scores.first { it.side == side }.total) }
-                    Text(stringResource(R.string.game_over_round_line, record.number, points[0], points[1]))
-                }
+            GPanel(Modifier.fillMaxWidth().testTag("game-over-table")) {
+                ResultsTable(snapshot, sides, view.mode, view.side, personas)
             }
             GButton(onBackToHome, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("back-home")) {
                 Text(stringResource(R.string.back_to_home))
+            }
+        }
+    }
+}
+
+/**
+ * Tabela do resultado: uma coluna por lado (avatares e nome curto), uma linha por partida e o total em cápsula.
+ * Em cada linha, o maior valor fica em destaque (negrito e ouro); o vencedor do jogo leva a coroa ★ no cabeçalho
+ * e a cápsula dourada no total (forma e texto, não só cor).
+ */
+@Composable
+private fun ResultsTable(
+    snapshot: GameSnapshot,
+    sides: List<com.gtranca.engine.model.Side>,
+    mode: GameMode,
+    viewerSide: com.gtranca.engine.model.Side,
+    personas: List<Persona>,
+) {
+    val numbers = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = TabularNums)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // Cabeçalho.
+        Row(Modifier.fillMaxWidth().padding(bottom = Spacing.xs), verticalAlignment = Alignment.Bottom) {
+            Text(stringResource(R.string.game_over_col_round), Modifier.weight(0.9f), style = MaterialTheme.typography.labelLarge, color = GColors.Lavender)
+            sides.forEach { side ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    AvatarRow(personasOfSide(mode, side, personas), 26.dp)
+                    val winner = side == snapshot.winner
+                    Text(
+                        (if (winner) "★ " else "") + shortSideName(mode, side, viewerSide),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (winner) GColors.Gold else GColors.Ivory,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = GColors.Divider, thickness = 1.dp)
+        // Uma linha por partida, em faixas alternadas.
+        snapshot.history.forEachIndexed { index, record ->
+            val values = sides.map { side -> record.scores.first { it.side == side }.total }
+            val best = values.max()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(if (index % 2 == 0) GColors.IndigoLight.copy(alpha = 0.55f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(8.dp))
+                    .padding(horizontal = Spacing.sm, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(record.number.toString(), Modifier.weight(0.9f), style = numbers, color = GColors.Lavender)
+                values.forEach { v ->
+                    val top = v == best && values.count { it == best } == 1
+                    Text(
+                        signed(v),
+                        Modifier.weight(1f),
+                        style = numbers,
+                        fontWeight = if (top) FontWeight.Bold else FontWeight.Normal,
+                        color = when {
+                            top -> GColors.Gold
+                            v < 0 -> GColors.Ruby.copy(alpha = 0.95f).let { androidx.compose.ui.graphics.lerp(it, GColors.Ivory, 0.35f) }
+                            else -> GColors.Ivory
+                        },
+                        textAlign = TextAlign.End,
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = GColors.Divider, thickness = 1.dp, modifier = Modifier.padding(top = Spacing.xs))
+        // Total em cápsula: dourada para o vencedor.
+        Row(Modifier.fillMaxWidth().padding(top = Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.game_over_col_total), Modifier.weight(0.9f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GColors.Gold)
+            sides.forEach { side ->
+                val winner = side == snapshot.winner
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    Text(
+                        plainPoints(snapshot.totals[side.index]),
+                        Modifier
+                            .background(if (winner) GoldBrush else androidx.compose.ui.graphics.SolidColor(GColors.IndigoLight), CircleShape)
+                            .border(1.dp, if (winner) GColors.Champagne else GColors.Lavender.copy(alpha = 0.5f), CircleShape)
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        style = numbers,
+                        fontWeight = FontWeight.Bold,
+                        color = if (winner) GColors.OnGold else GColors.Ivory,
+                    )
+                }
             }
         }
     }

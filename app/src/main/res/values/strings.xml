@@ -312,7 +312,8 @@
     <!-- 3 vermelhos (§6.5) -->
     <string name="red_three_value_note">Cada 3 vermelho vale +105 se o seu lado tiver canastra ao fim da partida (+100, mais +5 como carta na mesa); sem canastra, −95.</string>
     <string name="game_over_rounds">Partidas jogadas: %1$d</string>
-    <string name="game_over_round_line">Partida %1$d: %2$s × %3$s</string>
+    <string name="game_over_col_round">Partida</string>
+    <string name="game_over_col_total">Total</string>
     <string name="back_to_home">Voltar ao início</string>
     <plurals name="opponent_hand">
         <item quantity="one">%1$d carta na mão</item>
