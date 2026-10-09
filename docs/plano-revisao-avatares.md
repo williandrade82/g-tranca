@@ -1,6 +1,6 @@
 # Plano: redesenho dos avatares e da tela de Perfil
 
-Status: **pendente** — executar quando o usuário pedir. Depende da paleta/componentes do [plano-revisao-visual-luxo.md](plano-revisao-visual-luxo.md) (se ainda não feito, aplicar ao menos a paleta e o medalhão).
+Status: **etapa 1 feita** — prompts em [avatares-prompts.md](avatares-prompts.md) (e [CSV](avatares-prompts.csv)); aguardando as 32 imagens para a etapa 2. Depende da paleta/componentes do [plano-revisao-visual-luxo.md](plano-revisao-visual-luxo.md) (se ainda não feito, aplicar ao menos a paleta e o medalhão).
 
 ## Objetivo
 
@@ -44,7 +44,7 @@ Primeiro passo ao executar: gerar a lista dos 32 prompts prontos (um por profiss
 
 ## Etapas de execução (um commit por etapa)
 
-1. Lista dos 32 prompts (entregar ao usuário).
+1. ~~Lista dos 32 prompts (entregar ao usuário).~~ Feito: [avatares-prompts.md](avatares-prompts.md).
 2. Após receber as imagens: integração + reserva em `Canvas`.
 3. Redesenho da tela de Perfil.
 4. Testes, `:app:assembleDebug`, APK com hash do commit para teste no celular.
