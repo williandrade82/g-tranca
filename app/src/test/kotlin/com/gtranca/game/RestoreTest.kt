@@ -143,6 +143,30 @@ class RestoreTest {
     }
 
     @Test
+    fun `retomado com o sorteio dos bots salvo, o jogo termina exatamente como sem a interrupcao`() = runTest(dispatcher) {
+        fun bots(calls: List<Long> = emptyList()) = mode.seats.map {
+            val random = CountingRandom(botSeed(seed, it.index), calls.getOrElse(it.index) { 0L })
+            BotSeatPlayer(createBot(Difficulty.MEDIO, random), random)
+        }
+        val saves = mutableListOf<SavedGame>()
+        val full = GameController(
+            config, seed, bots(), computeDispatcher = StandardTestDispatcher(testScheduler), botDelayMillis = 0,
+            onSave = { saves += FileSavedGameStore.decode(FileSavedGameStore.encode(savedGameOf("id", config, seed, it)))!! },
+        )
+        full.run()
+        val saved = saves.first { it.match.roundNumber == 2 && it.events.size >= 10 && !it.match.currentRoundRecorded }
+        (saved.botRandomCalls.sum() > 0) shouldBe true
+
+        val resumed = GameController(
+            saved.config.toConfig(), saved.gameSeed, bots(saved.botRandomCalls),
+            computeDispatcher = StandardTestDispatcher(testScheduler), botDelayMillis = 0, restored = saved.toRestored(),
+        )
+        resumed.run()
+        resumed.state.value.history shouldBe full.state.value.history
+        resumed.state.value.totals shouldBe full.state.value.totals
+    }
+
+    @Test
     fun `jogo retomado no fim de uma partida espera a confirmacao e distribui a proxima`() = runTest(dispatcher) {
         val saved = savesOfABotGame().first { it.match.isAwaitingNextRound }
         val human = HumanPlayer()

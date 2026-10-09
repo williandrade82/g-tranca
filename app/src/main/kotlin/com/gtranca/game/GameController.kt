@@ -333,7 +333,7 @@ class GameController(
 
     /** Ponto de salvamento: repassa a foto do jogo (sob a trava; a gravação fica fora do laço). */
     private fun save() {
-        onSave?.invoke(SaveSnapshot(match, roundEvents))
+        onSave?.invoke(SaveSnapshot(match, roundEvents, botRandomCalls()))
     }
 
     /** Etapa do primeiro snapshot (o jogo retomado pode estar no fim de uma partida). */
@@ -344,7 +344,10 @@ class GameController(
     }
 
     /** Foto atual do jogo para salvar (mesmo conteúdo dos pontos de salvamento). */
-    fun saveSnapshot(): SaveSnapshot = synchronized(lock) { SaveSnapshot(match, roundEvents) }
+    fun saveSnapshot(): SaveSnapshot = synchronized(lock) { SaveSnapshot(match, roundEvents, botRandomCalls()) }
+
+    /** Posição do sorteio de cada assento (0 para o humano), para o jogo retomado continuar igual. */
+    private fun botRandomCalls(): List<Long> = players.map { (it as? BotSeatPlayer)?.random?.calls ?: 0L }
 
     /**
      * Confirmação do humano para distribuir a próxima partida (tela de fim de partida). Ignorada fora da
@@ -487,15 +490,22 @@ class GameController(
             human: HumanPlayer,
             humanSeat: Seat = Seat(0),
             botFactory: (Seat, Random) -> BotPlayer = { _, random -> createBot(config.difficulty, random) },
+            /** Sorteios já feitos por assento (jogo salvo): cada bot continua do ponto em que parou. */
+            randomCalls: List<Long> = emptyList(),
         ): List<SeatPlayer> = config.mode.seats.map { seat ->
-            if (seat == humanSeat) human else BotSeatPlayer(botFactory(seat, Random(botSeed(gameSeed, seat.index))))
+            if (seat == humanSeat) {
+                human
+            } else {
+                val random = CountingRandom(botSeed(gameSeed, seat.index), randomCalls.getOrElse(seat.index) { 0L })
+                BotSeatPlayer(botFactory(seat, random), random)
+            }
         }
     }
 }
 
 /** Jogo salvo a retomar: o `Match` e os eventos públicos da partida atual, em ordem. */
-data class RestoredGame(val match: Match, val events: List<PublicEvent>)
+data class RestoredGame(val match: Match, val events: List<PublicEvent>, val botRandomCalls: List<Long> = emptyList())
 
 /** O que salvar: o jogo completo e os eventos públicos da partida atual (para reconstruir a memória dos bots). */
-data class SaveSnapshot(val match: Match, val events: List<PublicEvent>)
+data class SaveSnapshot(val match: Match, val events: List<PublicEvent>, val botRandomCalls: List<Long> = emptyList())
 

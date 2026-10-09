@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 sealed interface SeatPlayer
 
 /** Assento de um jogador virtual; o [GameController] lhe passa só `viewFor(seat)` e o avisa de cada evento. */
-class BotSeatPlayer(val bot: BotPlayer) : SeatPlayer
+class BotSeatPlayer(val bot: BotPlayer, val random: CountingRandom? = null) : SeatPlayer
 
 /**
  * O jogador humano: o [GameController] chama [chooseAction] e fica suspenso até a interface enviar uma

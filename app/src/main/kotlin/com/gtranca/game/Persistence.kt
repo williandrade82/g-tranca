@@ -21,7 +21,7 @@ fun GameConfig.toSaved(): SavedConfig = SavedConfig(mode, difficulty.id, targetS
 
 fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(difficultyId), targetScore)
 
-fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() })
+fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls)
 
 fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot): SavedGame = SavedGame(
     gameId = gameId,
@@ -29,6 +29,7 @@ fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: Sa
     gameSeed = gameSeed,
     match = snapshot.match,
     events = snapshot.events.map { it.toSaved() },
+    botRandomCalls = snapshot.botRandomCalls,
 )
 
 /** O que o jogo em andamento grava. Interface para os testes. */

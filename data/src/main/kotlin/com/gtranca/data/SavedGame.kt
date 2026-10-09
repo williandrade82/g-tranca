@@ -34,6 +34,8 @@ data class SavedGame(
     val gameSeed: Long,
     val match: Match,
     val events: List<SavedEvent>,
+    /** Sorteios já feitos pelo bot de cada assento (vazio em jogos salvos antes desta versão). */
+    val botRandomCalls: List<Long> = emptyList(),
 ) {
     companion object {
         /** Versão atual do formato; arquivos de outra versão são tratados como "sem jogo salvo". */

@@ -27,7 +27,7 @@ listada no fim só como lembrete).
 5. **D2**, se aprovado: `definition.md` → `strings.xml` ("Lixo" → "Descarte") → testes que procuram o texto.
 6. **D1**, se escolhida a opção (b).
 
-## Etapa 2 — Pequenas técnicas
+## Etapa 2 — Pequenas técnicas — FEITA
 
 7. **Testes automáticos da animação de distribuição** (`TableAnimations.deal`): ordem das cartas, origem no
    monte, uma por assento por vez, nenhuma carta revelada de outro assento.

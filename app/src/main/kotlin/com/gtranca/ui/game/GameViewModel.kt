@@ -213,7 +213,7 @@ class GameViewModel(
     private val controller = GameController(
         config = config,
         gameSeed = gameSeed,
-        players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory),
+        players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory, restored?.botRandomCalls.orEmpty()),
         viewerSeat = humanSeat,
         computeDispatcher = computeDispatcher,
         botDelayMillis = botDelayMillis,
