@@ -433,7 +433,8 @@ class GameViewModel(
             confirmDecline = state.confirmDecline,
             confirmResign = state.confirmResign,
             message = state.message,
-            endScreen = endScreen(snapshot, state.endStep),
+            // A última jogada da partida (descarte ou baixa de quem bateu) pousa na mesa antes do anúncio aparecer.
+            endScreen = endScreen(snapshot, state.endStep).takeUnless { state.endStep == 0 && !snapshot.resigned && state.flights.isNotEmpty() },
             flights = state.flights,
             canastaFlashes = state.flashes,
             animationMillis = effectiveMillis(state),
