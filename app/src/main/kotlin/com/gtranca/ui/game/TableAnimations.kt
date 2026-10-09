@@ -73,6 +73,9 @@ object TableAnimations {
     private fun holder(seat: Seat, viewer: Seat): AnimAnchor =
         if (seat == viewer) AnimAnchor.OwnHand else AnimAnchor.SeatHand(seat.index)
 
+    /** Atraso do voo do morto: depois das cartas da jogada que o liberou. */
+    const val MORTO_DELAY_MILLIS = 300L
+
     /**
      * Distribuição do início da partida: uma carta por vez, do monte a cada assento (em ordem a partir de quem
      * começa) e, no fim, uma carta virada a cada morto. As do humano voam abertas ([ownCards]: a mão visível); as
@@ -178,6 +181,16 @@ object TableAnimations {
                 is Action.AddToMeld -> action.cards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
                     flights += CardFlight(nextId(), from, AnimAnchor.Meld(side, action.meldId.value), card, STAGGER_MILLIS * i)
                 }
+            }
+        }
+        // §9 morto pego agora: as cartas voam viradas da pilha do morto até quem o pegou (depois das outras jogadas).
+        new.view.mortoStatus.forEachIndexed { i, status ->
+            val taken = status as? MortoStatus.Taken ?: return@forEachIndexed
+            if (old.view.mortoStatus.getOrNull(i) != MortoStatus.Available) return@forEachIndexed
+            val seat = events.lastOrNull { mode.sideOf(it.seat) == taken.side }?.seat ?: return@forEachIndexed
+            val count = old.view.mortoSizes.getOrElse(i) { 0 }.coerceAtMost(MAX_CARDS_PER_MOVE)
+            repeat(count) { k ->
+                flights += CardFlight(nextId(), AnimAnchor.Morto(i), holder(seat, viewer), null, MORTO_DELAY_MILLIS + STAGGER_MILLIS * k)
             }
         }
         return flights to canastaFlashes(old, new, nextId)

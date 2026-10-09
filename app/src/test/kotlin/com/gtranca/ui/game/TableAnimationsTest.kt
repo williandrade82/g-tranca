@@ -426,4 +426,44 @@ class TableAnimationsTest {
         val free = hand.toMutableList()
         return wanted.map { w -> free.firstOrNull { it.cardClass == w.cardClass }?.also { free.remove(it) } ?: return null }
     }
+
+    @Test
+    fun `distribuicao - do monte, uma carta por assento por vez, mortos no fim, so a propria mao aberta`() {
+        val hand = listOf(c("4S"), c("7H"), c("KD"))
+        val view = view(hand).copy(handSizes = listOf(3, 3, 3, 3))
+        var id = 0L
+        val flights = TableAnimations.deal(snapshot(view, List(4) { emptyList() }), hand) { id++ }
+
+        // 4 assentos × 3 cartas + 1 por morto.
+        flights.size shouldBe 4 * 3 + 2
+        flights.all { it.from == AnimAnchor.Stock } shouldBe true
+        // Rodízio a partir de quem começa: você, assento 1, 2, 3, e de novo.
+        flights.take(8).map { it.to } shouldBe List(2) {
+            listOf(AnimAnchor.OwnHand, AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(3))
+        }.flatten()
+        // Só as cartas do humano voam abertas, na ordem da mão; as dos outros, viradas.
+        flights.filter { it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe hand
+        flights.filter { it.to != AnimAnchor.OwnHand }.all { it.card == null } shouldBe true
+        // Mortos por último, cada um com uma carta.
+        flights.takeLast(2).map { it.to } shouldBe listOf(AnimAnchor.Morto(0), AnimAnchor.Morto(1))
+        // Uma de cada vez: atrasos crescentes e ids únicos.
+        flights.map { it.delayMillis }.zipWithNext().all { (a, b) -> b > a } shouldBe true
+        flights.map { it.id }.toSet().size shouldBe flights.size
+    }
+
+    @Test
+    fun `§9 morto pego - as cartas voam viradas do morto ate o assento que o pegou`() {
+        val hand = listOf(c("4S"), c("7H"))
+        val old = snapshot(view(hand), List(4) { emptyList() })
+        val taken = view(hand).copy(mortoStatus = listOf(MortoStatus.Available, MortoStatus.Taken(Side(1))))
+        val new = snapshot(taken, listOf(emptyList<PublicEvent>(), listOf(PublicEvent(Seat(1), Action.Discard(c("9C"))))) + List(2) { emptyList() })
+        var id = 0L
+        val (flights, _) = TableAnimations.derive(old, new, emptySet()) { id++ }
+
+        val morto = flights.filter { it.from == AnimAnchor.Morto(1) }
+        morto.isNotEmpty() shouldBe true
+        morto.all { it.to == AnimAnchor.SeatHand(1) && it.card == null } shouldBe true
+        // Depois do descarte que o liberou.
+        morto.minOf { it.delayMillis } shouldBe TableAnimations.MORTO_DELAY_MILLIS
+    }
 }
