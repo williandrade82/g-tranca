@@ -361,7 +361,7 @@ private fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: 
         verticalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterVertically),
     ) {
         Canvas(Modifier.width(88.dp).height(36.dp)) {
-            val r = size.height * 0.26f
+            val r = size.height * if (seats == 2) 0.2f else 0.26f
             val ring = if (selected) GColors.Gold else GColors.Lavender
             fun seat(x: Float, y: Float, own: Boolean) {
                 drawCircle(if (own) GColors.Gold.copy(alpha = 0.85f) else GColors.Midnight, r, Offset(x, y))
@@ -371,8 +371,8 @@ private fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: 
             if (seats == 1) {
                 seat(size.width * 0.25f, cy, true); seat(size.width * 0.75f, cy, false)
             } else {
-                seat(size.width * 0.12f, cy, true); seat(size.width * 0.34f, cy, true)
-                seat(size.width * 0.66f, cy, false); seat(size.width * 0.88f, cy, false)
+                seat(size.width * 0.1f, cy, true); seat(size.width * 0.3f, cy, true)
+                seat(size.width * 0.7f, cy, false); seat(size.width * 0.9f, cy, false)
             }
             // "×" no meio.
             val c = Offset(size.width / 2, cy); val d = r * 0.5f

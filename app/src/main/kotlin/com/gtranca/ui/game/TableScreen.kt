@@ -261,7 +261,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
                     Column(
                         Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp).feltTable()
-                            .verticalScroll(tableScroll).padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-scroll"),
+                            .verticalScroll(tableScroll).padding(horizontal = 12.dp, vertical = 18.dp).testTag("table-scroll"),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         SideArea(
