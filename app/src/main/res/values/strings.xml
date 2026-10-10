@@ -185,7 +185,7 @@
     <string name="add_to_meld_hint">Toque num dos seus jogos para acrescentar as cartas selecionadas</string>
     <string name="add_to_meld_hint_team">Toque num jogo da sua dupla para acrescentar as cartas selecionadas</string>
     <string name="action_draw">Comprar</string>
-    <string name="action_take_discard">Pegar descarte</string>
+    <string name="action_take_discard">Pegar</string>
     <string name="action_decline">Recusar compra</string>
     <string name="action_meld">Baixar</string>
     <string name="action_discard">Descartar</string>
