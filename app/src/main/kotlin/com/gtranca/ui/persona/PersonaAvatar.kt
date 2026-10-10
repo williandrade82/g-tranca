@@ -1,6 +1,10 @@
 package com.gtranca.ui.persona
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.gtranca.R
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -60,7 +64,21 @@ private fun Profession.background(): Color = Color(
  */
 @Composable
 fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(size).clip(CircleShape)) { drawPersona(persona) }
+    val portrait = portraitRes(persona.profession, persona.gender)
+    if (portrait != null) {
+        Image(painterResource(portrait), null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+    } else {
+        Canvas(modifier.size(size).clip(CircleShape)) { drawPersona(persona) }
+    }
+}
+
+/**
+ * Retrato 3D da profissão × gênero (docs/avatares-prompts.md), quando já existe; senão `null` e vale o desenho.
+ * Mapa explícito (e não `getIdentifier`) para o encolhimento de recursos do release não descartar as imagens.
+ */
+private fun portraitRes(profession: Profession, gender: Gender): Int? = when (profession to gender) {
+    Profession.DOCTOR to Gender.MALE -> R.drawable.avatar_doctor_m
+    else -> null
 }
 
 // ---------- desenho em coordenadas de 0 a 1 ----------
