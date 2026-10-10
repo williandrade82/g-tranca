@@ -115,6 +115,9 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.navigationBarsPadding
+import com.gtranca.game.PlanRanking
+import com.gtranca.game.HumanTurnResolver
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
@@ -184,6 +187,8 @@ interface TableEvents {
     fun onDismissDecline()
     fun onPlanChosen(action: Action.TakeDiscardPile)
     fun onDismissPlanChoice()
+    fun onMeldChosen(action: Action)
+    fun onDismissMeldChoice()
     fun onMessageShown()
     fun onRevealConfirmed()
     fun onResign()
@@ -320,6 +325,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
+    state.meldChoice?.let { options -> MeldChoiceDialog(options, view, events) }
     state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed, events::onResign) }
     if (state.confirmDecline) {
         GMessage(
@@ -1103,6 +1109,58 @@ private fun DiscardPileDialog(pile: List<Card>, onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+/** "Baixar" com mais de uma possibilidade: cada opção com as cartas, o destino e os pontos que acrescenta. */
+@Composable
+private fun MeldChoiceDialog(options: List<Action>, view: PlayerView, events: TableEvents) {
+    GDialog(
+        onDismissRequest = events::onDismissMeldChoice,
+        title = { Text(stringResource(R.string.meld_choice_title)) },
+        text = {
+            Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).testTag("meld-choice"),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                options.forEach { option ->
+                    val destination = when (option) {
+                        is Action.AddToMeld -> {
+                            val melds = view.tables[view.side.index].melds
+                            val index = melds.indexOfFirst { it.id == option.meldId }
+                            stringResource(
+                                if (view.mode == GameMode.DUPLAS) R.string.plan_dest_add_team else R.string.plan_dest_add,
+                                index + 1,
+                                melds.getOrNull(index)?.meld?.cards?.labels().orEmpty(),
+                            )
+                        }
+                        else -> stringResource(R.string.plan_dest_new)
+                    }
+                    val gain = PlanRanking.meldGain(option, view)
+                    val points = pluralStringResource(R.plurals.meld_choice_points, gain, gain)
+                    val cards = HumanTurnResolver.handCardsOf(option)
+                    val description = cards.labels() + ": " + destination + ", " + points
+                    GButton(
+                        onClick = { events.onMeldChosen(option) },
+                        kind = GButtonKind.Secondary,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description },
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                            }
+                            Text(destination, textAlign = TextAlign.Center)
+                            Text(points, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(events::onDismissMeldChoice) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

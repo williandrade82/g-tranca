@@ -63,9 +63,6 @@ sealed interface UiMessage {
 
     /** Para descartar, selecione exatamente uma carta. */
     data object SelectOneCardToDiscard : UiMessage
-
-    /** As cartas servem em mais de um conjunto da mesa: toque no escolhido. */
-    data object ChooseMeldOnTable : UiMessage
 }
 
 /**
@@ -104,6 +101,8 @@ data class GameUiState(
     val ownSwapPending: Boolean,
     val banner: RedThreeNotice?,
     val planChoice: List<Action.TakeDiscardPile>?,
+    /** "Baixar" com mais de uma possibilidade: opções (conjunto novo/acréscimos), a que mais pontua primeiro. */
+    val meldChoice: List<Action>? = null,
     val confirmDecline: Boolean,
     val confirmResign: Boolean,
     val message: UiMessage?,
@@ -204,6 +203,7 @@ class GameViewModel(
         /** §9.4 trocas de 3 vermelho que vieram no morto (id da troca → morto). */
         val mortoSwaps: Map<Long, Int> = emptyMap(),
         val planChoice: List<Action.TakeDiscardPile>? = null,
+        val meldChoice: List<Action>? = null,
         /** Pedido ([GameSnapshot.humanRequestId]) em que os planos de [planChoice] foram resolvidos. */
         val planRequestId: Long = 0,
         val confirmDecline: Boolean = false,
@@ -402,6 +402,7 @@ class GameViewModel(
             flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
+            meldChoice = state.meldChoice.takeIf { snapshot.isHumanTurn },
             confirmDecline = state.confirmDecline && snapshot.isHumanTurn,
             confirmResign = state.confirmResign && snapshot.stage == old.stage && sameRound,
             endStep = endStep,
@@ -434,6 +435,7 @@ class GameViewModel(
             ownSwapPending = ownSwapPending,
             banner = head?.takeIf { reveal == null && !isOwn(it, snapshot) },
             planChoice = state.planChoice,
+            meldChoice = state.meldChoice,
             confirmDecline = state.confirmDecline,
             confirmResign = state.confirmResign,
             message = state.message,
@@ -512,6 +514,15 @@ class GameViewModel(
 
     override fun onDismissPlanChoice() = local.update { it.copy(planChoice = null) }
 
+    /** Escolha entre as opções de "Baixar" (todas vindas de `legal`). */
+    override fun onMeldChosen(action: Action) {
+        val requestId = local.value.planRequestId
+        local.update { it.copy(meldChoice = null) }
+        submit(action, requestId)
+    }
+
+    override fun onDismissMeldChoice() = local.update { it.copy(meldChoice = null) }
+
     override fun onMessageShown() = local.update { it.copy(message = null) }
 
     /** "Baixar 3 vermelho": encerra a encenação; o 3 vermelho aparece na mesa e a reposição, como nova. */
@@ -583,7 +594,8 @@ class GameViewModel(
                 local.update { it.copy(planChoice = PlanRanking.rank(resolution.options, snapshot.view), planRequestId = requestId, message = null) }
             is Resolution.Rejected -> local.update { it.copy(message = UiMessage.Rejected(resolution.reason)) }
             Resolution.SelectOneCardToDiscard -> local.update { it.copy(message = UiMessage.SelectOneCardToDiscard) }
-            Resolution.ChooseMeldOnTable -> local.update { it.copy(message = UiMessage.ChooseMeldOnTable) }
+            is Resolution.ChooseMeld ->
+                local.update { it.copy(meldChoice = PlanRanking.rankMelds(resolution.options, snapshot.view), planRequestId = requestId, message = null) }
         }
     }
 

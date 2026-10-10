@@ -38,6 +38,22 @@ object PlanRanking {
         ).map { it.option }
     }
 
+    /**
+     * Ordem das opções de "Baixar" (só apresentação): a que mais acrescenta pontos à mesa primeiro (pontos do
+     * conjunto depois da jogada menos os de antes, contando a canastra que fecha); empate: conjunto novo antes.
+     */
+    fun rankMelds(options: List<Action>, view: PlayerView, rules: RuleSet = RuleSet.DEFAULT): List<Action> =
+        options.sortedWith(compareByDescending<Action> { meldGain(it, view, rules) }.thenBy { it !is Action.CreateMeld })
+
+    /** Pontos que a jogada acrescenta à mesa do lado (`Int.MIN_VALUE` se o conjunto não se forma). */
+    fun meldGain(action: Action, view: PlayerView, rules: RuleSet = RuleSet.DEFAULT): Int = when (action) {
+        is Action.CreateMeld -> Meld.create(action.cards, rules).okOrNull()?.let { meldPoints(it, rules) }
+        is Action.AddToMeld -> view.tables[view.side.index].meld(action.meldId)?.let { before ->
+            before.add(action.cards, rules).okOrNull()?.let { meldPoints(it, rules) - meldPoints(before, rules) }
+        }
+        else -> null
+    } ?: Int.MIN_VALUE
+
     private data class Scored(val option: Action.TakeDiscardPile, val wild: Boolean, val potential: Int, val now: Int, val handCards: Int)
 
     private fun resultingMeld(plan: DiscardPlan, top: Card, view: PlayerView, rules: RuleSet): Meld? = when (plan) {

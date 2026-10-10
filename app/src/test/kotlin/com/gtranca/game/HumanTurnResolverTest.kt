@@ -104,12 +104,19 @@ class HumanTurnResolverTest {
     }
 
     @Test
-    fun `Baixar com mais de um jogo possivel pede para tocar no jogo (nada automatico)`() {
+    fun `Baixar com mais de uma possibilidade mostra as opcoes, a que mais pontua primeiro (nada automatico)`() {
         val table = SideTable(
             listOf(TableMeld(MeldId(0), meld("4H", "5H", "6H")), TableMeld(MeldId(1), meld("8H'", "9H'", "TH"))),
             nextMeldId = 2,
         )
-        resolve(state(hand, table = table), PlayIntent.CreateMeld, cards("7H")) shouldBe Resolution.ChooseMeldOnTable
+        val choice = resolve(state(hand, table = table), PlayIntent.CreateMeld, cards("7H")).shouldBeInstanceOf<Resolution.ChooseMeld>()
+        choice.options.map { (it as Action.AddToMeld).meldId } shouldContainExactlyInAnyOrder listOf(MeldId(0), MeldId(1))
+        // Jogo novo e acréscimo ao mesmo tempo: as duas opções aparecem.
+        // §6.4 grupos podem se repetir: três 5 formam um grupo novo ou completam o grupo de 5 da mesa.
+        val one = SideTable(listOf(TableMeld(MeldId(0), meld("5C", "5D", "5S"))), nextMeldId = 1)
+        val mixed = resolve(state(cards("5H", "5D'", "5S'", "KH"), table = one), PlayIntent.CreateMeld, cards("5H", "5D'", "5S'"))
+            .shouldBeInstanceOf<Resolution.ChooseMeld>()
+        mixed.options.map { it::class } shouldContainExactlyInAnyOrder listOf(Action.CreateMeld::class, Action.AddToMeld::class)
     }
 
     @Test

@@ -207,6 +207,11 @@
     <string name="plan_dest_new">Novo jogo</string>
     <string name="plan_dest_add">Ao seu jogo %1$d (%2$s)</string>
     <string name="plan_dest_add_team">Ao jogo %1$d da sua dupla (%2$s)</string>
+    <string name="meld_choice_title">Onde baixar?</string>
+    <plurals name="meld_choice_points">
+        <item quantity="one">+%1$d ponto na mesa</item>
+        <item quantity="other">+%1$d pontos na mesa</item>
+    </plurals>
     <string name="plan_choice_hint">Ou selecione as cartas da mão antes de tocar no lixo.</string>
     <string name="decline_title">Recusar a compra?</string>
     <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem vencedor.</string>
@@ -225,7 +230,6 @@
 
     <!-- Mensagens -->
     <string name="msg_select_one_to_discard">Selecione exatamente uma carta para descartar.</string>
-    <string name="msg_choose_meld_on_table">Essas cartas servem em mais de um jogo da mesa: toque no jogo onde quer acrescentar.</string>
     <string name="msg_invalid_generic">Essa jogada não é válida agora.</string>
 
     <!-- Motivos de recusa (ActionError) -->

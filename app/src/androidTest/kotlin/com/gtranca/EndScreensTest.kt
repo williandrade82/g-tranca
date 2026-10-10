@@ -197,6 +197,8 @@ class EndScreensTest {
         override fun onDismissDecline() {}
         override fun onPlanChosen(action: Action.TakeDiscardPile) {}
         override fun onDismissPlanChoice() {}
+        override fun onMeldChosen(action: com.gtranca.engine.Action) {}
+        override fun onDismissMeldChoice() {}
         override fun onMessageShown() {}
         override fun onRevealConfirmed() {}
         override fun onResign() {}

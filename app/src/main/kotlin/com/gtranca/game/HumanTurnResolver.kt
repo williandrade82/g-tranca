@@ -28,8 +28,8 @@ sealed interface PlayIntent {
     data object TakeDiscardPile : PlayIntent
 
     /**
-     * "Baixar": conjunto novo com as cartas selecionadas; se não formam conjunto novo mas completam exatamente um
-     * conjunto do lado, acrescenta nele. Em mais de um conjunto possível o humano toca no escolhido (nada automático).
+     * "Baixar": com uma única possibilidade (conjunto novo ou acréscimo a um conjunto do lado), aplica-a; com mais
+     * de uma, o humano escolhe entre elas (nada automático).
      */
     data object CreateMeld : PlayIntent
 
@@ -54,8 +54,8 @@ sealed interface Resolution {
     /** Para descartar, a seleção deve ter exatamente uma carta. */
     data object SelectOneCardToDiscard : Resolution
 
-    /** As cartas completam mais de um conjunto da mesa: o humano toca no conjunto onde acrescentar. */
-    data object ChooseMeldOnTable : Resolution
+    /** "Baixar" com mais de uma possibilidade (conjunto novo e/ou acréscimos): o humano escolhe entre [options]. */
+    data class ChooseMeld(val options: List<Action>) : Resolution
 }
 
 /**
@@ -120,13 +120,12 @@ object HumanTurnResolver {
                 }
             }
             PlayIntent.CreateMeld -> {
-                val create = legal.firstOrNull { it is Action.CreateMeld && sameCards(it) }
-                val adds = legal.filter { it is Action.AddToMeld && sameCards(it) }
-                when {
-                    create != null -> Resolution.Play(create)
-                    adds.size == 1 -> Resolution.Play(adds.single())
-                    adds.size > 1 -> Resolution.ChooseMeldOnTable
-                    else -> reject(Action.CreateMeld(selection))
+                val options = listOfNotNull(legal.firstOrNull { it is Action.CreateMeld && sameCards(it) }) +
+                    legal.filter { it is Action.AddToMeld && sameCards(it) }.distinctBy { (it as Action.AddToMeld).meldId }
+                when (options.size) {
+                    0 -> reject(Action.CreateMeld(selection))
+                    1 -> Resolution.Play(options.single())
+                    else -> Resolution.ChooseMeld(options)
                 }
             }
             is PlayIntent.AddToMeld ->
