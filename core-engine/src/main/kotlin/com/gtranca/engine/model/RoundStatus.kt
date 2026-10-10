@@ -38,10 +38,10 @@ sealed interface MortoStatus {
     @SerialName("available")
     data object Available : MortoStatus
 
-    /** Pego pelo [side]. */
+    /** Pego pelo [side], pelo jogador [seat] (informação pública; `null` em partidas salvas antes do campo existir). */
     @Serializable
     @SerialName("taken")
-    data class Taken(val side: Side) : MortoStatus
+    data class Taken(val side: Side, val seat: Seat? = null) : MortoStatus
 
     /** §10.1 virou o monte. */
     @Serializable

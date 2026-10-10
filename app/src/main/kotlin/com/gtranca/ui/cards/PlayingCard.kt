@@ -15,7 +15,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -152,8 +156,12 @@ fun PlayingCard(
         fontWeight = FontWeight.Bold,
         fontFamily = CardFont,
     )
+    // Marcada: cresce de leve (e volta ao desmarcar), com animação; fica por cima das vizinhas.
+    val scale by animateFloatAsState(if (emphasis == CardEmphasis.SELECTED) 1.1f else 1f, label = "card-scale")
     Box(
         modifier
+            .zIndex(if (emphasis == CardEmphasis.SELECTED) 1f else 0f)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .size(size.width, size.height)
             .then(if (describe) Modifier.semantics { contentDescription = description } else Modifier)
             // Selecionada: borda ouro e leve elevação (sombra dourada).

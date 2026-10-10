@@ -87,7 +87,7 @@ data class RoundState(
     fun tableOf(side: Side): SideTable = tables[side.index]
 
     /** §9.1 o lado já pegou um morto. */
-    fun hasTakenMorto(side: Side): Boolean = mortoStatus.any { it == MortoStatus.Taken(side) }
+    fun hasTakenMorto(side: Side): Boolean = mortoStatus.any { (it as? MortoStatus.Taken)?.side == side }
 
     /** §9.1 índice do primeiro morto disponível, ou `null`. */
     fun firstAvailableMorto(): Int? = mortoStatus.indexOfFirst { it == MortoStatus.Available }.takeIf { it >= 0 }

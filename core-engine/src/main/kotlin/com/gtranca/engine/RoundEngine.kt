@@ -196,7 +196,7 @@ object RoundEngine {
             .withHand(seat, state.mortos[index])
             .copy(
                 mortos = state.mortos.replaceAt(index, emptyList()),
-                mortoStatus = state.mortoStatus.replaceAt(index, MortoStatus.Taken(side)),
+                mortoStatus = state.mortoStatus.replaceAt(index, MortoStatus.Taken(side, seat)),
             )
         // §9.4 morto direto: os 3 vermelhos do morto são trocados na hora; morto indireto (descarte da última carta): ficam
         // na mão e só são trocados no início da próxima vez (beginTurn). O assento fica marcado, qualquer que seja o morto.

@@ -773,8 +773,8 @@ class GameViewModelTest {
                 playMeldingNoSettle(vm)
                 val after = vm.uiState.value
                 val tookMorto = after.snapshot.view.mortoStatus.indices.any { i ->
-                    after.snapshot.view.mortoStatus[i] == com.gtranca.engine.model.MortoStatus.Taken(Side(0)) &&
-                        mortoBefore[i] != com.gtranca.engine.model.MortoStatus.Taken(Side(0))
+                    (after.snapshot.view.mortoStatus[i] as? com.gtranca.engine.model.MortoStatus.Taken)?.side == Side(0) &&
+                        (mortoBefore[i] as? com.gtranca.engine.model.MortoStatus.Taken)?.side != Side(0)
                 }
                 val reveal = after.reveal
                 if (tookMorto && reveal != null && !reveal.notice.atTurnStart) {

@@ -177,7 +177,7 @@ class TurnStartRedThreesTest {
         afterDiscard.redThrees.flatten().shouldBeEmpty()
         afterDiscard.redThreeLog.shouldBeEmpty()
         afterDiscard.unsettledMortoSeats shouldContainExactly listOf(Seat(0))
-        afterDiscard.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0))
+        (afterDiscard.mortoStatus[0] as MortoStatus.Taken).side shouldBe Side(0)
 
         val back = afterDiscard.drawAndDiscard(1)
         back.currentSeat shouldBe Seat(0)

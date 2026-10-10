@@ -30,7 +30,7 @@ class MortoTest {
             phase = Phase.PLAYING
         }.act(0, create("5H 6H 7H"))
         s.hand(0) shouldContainExactlyInAnyOrder morto0
-        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0))
+        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0), Seat(0)) // §9.1 quem pegou o morto é público
         s.mortos[0].shouldBeEmpty()
         s.mortoStatus[1] shouldBe MortoStatus.Available
         s.phase shouldBe Phase.PLAYING
@@ -51,7 +51,7 @@ class MortoTest {
             phase = Phase.PLAYING
         }.act(0, create("5H 6H 7H"))
         s.hand(0) shouldContainExactlyInAnyOrder morto1
-        s.mortoStatus[1] shouldBe MortoStatus.Taken(Side(0))
+        (s.mortoStatus[1] as MortoStatus.Taken).side shouldBe Side(0)
     }
 
     @Test
@@ -76,7 +76,7 @@ class MortoTest {
         }.act(0, discardCard("KS"))
         s.discardPile.last() shouldBe c("KS")
         s.hand(0) shouldContainExactlyInAnyOrder morto0
-        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0))
+        (s.mortoStatus[0] as MortoStatus.Taken).side shouldBe Side(0)
         s.currentSeat shouldBe Seat(1)
         s.phase shouldBe Phase.AWAITING_DRAW
         s.check(0, create("4C' 5C' 6C'")) shouldFailWith ActionError.NOT_YOUR_TURN
@@ -103,7 +103,7 @@ class MortoTest {
             stock("")
             phase = Phase.PLAYING
         }.act(0, discardCard("KS"))
-        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0))
+        (s.mortoStatus[0] as MortoStatus.Taken).side shouldBe Side(0)
         s.mortoStatus[1] shouldBe MortoStatus.Available
         s.redThrees.flatten().shouldBeEmpty()
         s.hand(0) shouldContainExactlyInAnyOrder cards("3H 4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC'")
@@ -192,7 +192,7 @@ class MortoTest {
             current = 1
             phase = Phase.PLAYING
         }.act(1, create("5H 6H 7H"))
-        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(1))
+        (s.mortoStatus[0] as MortoStatus.Taken).side shouldBe Side(1)
         s.hand(1) shouldContainExactlyInAnyOrder morto0
         s.hand(3) shouldContainExactly cards("7C 7D")
     }

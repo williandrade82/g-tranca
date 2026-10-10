@@ -126,7 +126,7 @@ class MediumBotTest {
                 (action is Action.AddToMeld && card("2C") in action.cards)
         } shouldBe true
         state.tables[0].allCards().contains(card("2C")) shouldBe true
-        state.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0))
+        (state.mortoStatus[0] as MortoStatus.Taken).side shouldBe Side(0)
         state.phase shouldBe Phase.PLAYING
         state.currentSeat shouldBe Seat(0)
     }

@@ -91,6 +91,28 @@ class HumanTurnResolverTest {
     }
 
     @Test
+    fun `Baixar so vale quando a selecao forma jogo novo ou completa um jogo da mesa`() {
+        val table = SideTable(listOf(TableMeld(MeldId(4), meld("4H", "5H", "6H"))), nextMeldId = 5)
+        val legal = RoundEngine.legalActions(state(hand, table = table), Seat(0))
+        HumanTurnResolver.canMeld(legal, cards("7H", "8H", "9H")) shouldBe true // §6.1 jogo novo
+        HumanTurnResolver.canMeld(legal, cards("7H")) shouldBe true // §6.4 completa o jogo da mesa
+        HumanTurnResolver.canMeld(legal, cards("7H", "QS")) shouldBe false
+        HumanTurnResolver.canMeld(legal, emptyList()) shouldBe false
+        // Só um jogo aceita: "Baixar" acrescenta nele.
+        val add = resolve(state(hand, table = table), PlayIntent.CreateMeld, cards("7H")).shouldBeInstanceOf<Resolution.Play>()
+        add.action.shouldBeInstanceOf<Action.AddToMeld>().meldId shouldBe MeldId(4)
+    }
+
+    @Test
+    fun `Baixar com mais de um jogo possivel pede para tocar no jogo (nada automatico)`() {
+        val table = SideTable(
+            listOf(TableMeld(MeldId(0), meld("4H", "5H", "6H")), TableMeld(MeldId(1), meld("8H'", "9H'", "TH"))),
+            nextMeldId = 2,
+        )
+        resolve(state(hand, table = table), PlayIntent.CreateMeld, cards("7H")) shouldBe Resolution.ChooseMeldOnTable
+    }
+
+    @Test
     fun `acrescimo casa com o conjunto indicado`() {
         val table = SideTable(listOf(TableMeld(MeldId(4), meld("4H", "5H", "6H"))), nextMeldId = 5)
         val result = resolve(state(hand, table = table), PlayIntent.AddToMeld(MeldId(4)), cards("7H'"))

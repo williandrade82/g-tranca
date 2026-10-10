@@ -63,6 +63,9 @@ sealed interface UiMessage {
 
     /** Para descartar, selecione exatamente uma carta. */
     data object SelectOneCardToDiscard : UiMessage
+
+    /** As cartas servem em mais de um conjunto da mesa: toque no escolhido. */
+    data object ChooseMeldOnTable : UiMessage
 }
 
 /**
@@ -126,7 +129,8 @@ data class GameUiState(
     /** §5.3/§5.5 só com algum plano de pegar o lixo em `legalActions`. */
     val canTakeDiscardPile: Boolean get() = legal.any { it is Action.TakeDiscardPile }
     val canDecline: Boolean get() = Action.DeclineDraw in legal
-    val canMeld: Boolean get() = playing && selected.isNotEmpty()
+    /** "Baixar" só quando a seleção forma conjunto novo ou completa um conjunto da mesa (em `legalActions`). */
+    val canMeld: Boolean get() = playing && HumanTurnResolver.canMeld(legal, selected)
     val canDiscard: Boolean get() = playing && selected.size == 1
 
     /** A carta selecionada pode ser descartada agora (há um `Discard` dela em `legalActions`). */
@@ -579,6 +583,7 @@ class GameViewModel(
                 local.update { it.copy(planChoice = PlanRanking.rank(resolution.options, snapshot.view), planRequestId = requestId, message = null) }
             is Resolution.Rejected -> local.update { it.copy(message = UiMessage.Rejected(resolution.reason)) }
             Resolution.SelectOneCardToDiscard -> local.update { it.copy(message = UiMessage.SelectOneCardToDiscard) }
+            Resolution.ChooseMeldOnTable -> local.update { it.copy(message = UiMessage.ChooseMeldOnTable) }
         }
     }
 

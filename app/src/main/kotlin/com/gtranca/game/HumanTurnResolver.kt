@@ -27,7 +27,10 @@ sealed interface PlayIntent {
     /** Pegar o lixo levando o topo à mesa com as cartas selecionadas. */
     data object TakeDiscardPile : PlayIntent
 
-    /** Baixar as cartas selecionadas como conjunto novo. */
+    /**
+     * "Baixar": conjunto novo com as cartas selecionadas; se não formam conjunto novo mas completam exatamente um
+     * conjunto do lado, acrescenta nele. Em mais de um conjunto possível o humano toca no escolhido (nada automático).
+     */
     data object CreateMeld : PlayIntent
 
     /** Acrescentar as cartas selecionadas ao conjunto [meldId] do lado. */
@@ -50,6 +53,9 @@ sealed interface Resolution {
 
     /** Para descartar, a seleção deve ter exatamente uma carta. */
     data object SelectOneCardToDiscard : Resolution
+
+    /** As cartas completam mais de um conjunto da mesa: o humano toca no conjunto onde acrescentar. */
+    data object ChooseMeldOnTable : Resolution
 }
 
 /**
@@ -72,6 +78,13 @@ object HumanTurnResolver {
         }
         is Action.Discard -> listOf(action.card)
         Action.DrawFromStock, Action.DeclineDraw -> emptyList()
+    }
+
+    /** "Baixar" tem efeito: a [selection] forma um conjunto novo ou completa algum conjunto do lado em [legal]. */
+    fun canMeld(legal: List<Action>, selection: List<Card>): Boolean {
+        if (selection.isEmpty()) return false
+        val wanted = selection.classCounts()
+        return legal.any { (it is Action.CreateMeld || it is Action.AddToMeld) && handCardsOf(it).classCounts() == wanted }
     }
 
     fun resolve(
@@ -106,9 +119,16 @@ object HumanTurnResolver {
                     }
                 }
             }
-            PlayIntent.CreateMeld ->
-                legal.firstOrNull { it is Action.CreateMeld && sameCards(it) }?.let(Resolution::Play)
-                    ?: reject(Action.CreateMeld(selection))
+            PlayIntent.CreateMeld -> {
+                val create = legal.firstOrNull { it is Action.CreateMeld && sameCards(it) }
+                val adds = legal.filter { it is Action.AddToMeld && sameCards(it) }
+                when {
+                    create != null -> Resolution.Play(create)
+                    adds.size == 1 -> Resolution.Play(adds.single())
+                    adds.size > 1 -> Resolution.ChooseMeldOnTable
+                    else -> reject(Action.CreateMeld(selection))
+                }
+            }
             is PlayIntent.AddToMeld ->
                 legal.firstOrNull { it is Action.AddToMeld && it.meldId == intent.meldId && sameCards(it) }
                     ?.let(Resolution::Play)

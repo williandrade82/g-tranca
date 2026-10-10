@@ -183,7 +183,7 @@ class MediumBot(
     }
 
     /** §9.1 o lado do jogador já pegou um morto (condição de batida, §11.1). */
-    private fun sideHasMorto(view: PlayerView): Boolean = view.mortoStatus.any { it == MortoStatus.Taken(view.side) }
+    private fun sideHasMorto(view: PlayerView): Boolean = view.mortoStatus.any { (it as? MortoStatus.Taken)?.side == view.side }
 
     // =====================================================================================
     // Etapa 2: baixar
@@ -378,7 +378,7 @@ class MediumBot(
         val opponentSide: Side = Side(1 - ownSide.index)
         val ownMelds: List<Meld> = view.tables[ownSide.index].melds.map { it.meld }
         val opponentMelds: List<Meld> = view.tables[opponentSide.index].melds.map { it.meld }
-        val sideHasMorto: Boolean = view.mortoStatus.any { it == MortoStatus.Taken(ownSide) }
+        val sideHasMorto: Boolean = view.mortoStatus.any { (it as? MortoStatus.Taken)?.side == ownSide }
         val sideHasCanasta: Boolean = ownMelds.any { it.isCanasta() }
 
         /** §9.5 sem morto disponível, bate-se sem ter pego o morto. */
@@ -394,7 +394,7 @@ class MediumBot(
          * Ameaça de o adversário bater logo (0..1): lado com morto (§9) e canastra (§11.1) e mão pequena.
          */
         val threat: Double = run {
-            val oppHasMorto = view.mortoStatus.any { it == MortoStatus.Taken(opponentSide) }
+            val oppHasMorto = view.mortoStatus.any { (it as? MortoStatus.Taken)?.side == opponentSide }
             // §9.5 sem morto disponível, o adversário também pode bater sem ter pego o morto.
             val oppMayGoOut = oppHasMorto || noMortoLeft
             val oppHasCanasta = opponentMelds.any { it.isCanasta() }

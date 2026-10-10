@@ -110,6 +110,11 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
@@ -250,6 +255,8 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
             .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
             .testTag("table-screen"),
         containerColor = Color.Transparent,
+        // Sem a margem de baixo: a barra de ações cobre a área da navegação e põe o espaço dentro dela.
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         snackbarHost = { SnackbarHost(snackbar) { data -> GSnack(data.visuals.message) } },
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
@@ -287,8 +294,9 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                         )
                         Spacer(Modifier.height(4.dp))
                     }
-                    StatusAndActions(state, events)
                     HandArea(state, events)
+                    // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
+                    StatusAndActions(state, events)
                 }
                 FlightsLayer(state.flights, anchors, state.animationMillis) { id ->
                     arrived[id] = true
@@ -707,7 +715,8 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     val statusText = when (status) {
                         MortoStatus.Available -> countText(R.plurals.card_count, R.string.card_count_zero, view.mortoSizes[i])
                         MortoStatus.BecameStock -> stringResource(R.string.morto_became_stock)
-                        is MortoStatus.Taken -> stringResource(mortoTakenRes(view.mode, own = status.side == view.side))
+                        is MortoStatus.Taken -> mortoTakerName(state, status)?.let { stringResource(R.string.morto_taken_by, it) }
+                            ?: stringResource(mortoTakenRes(view.mode, own = status.side == view.side))
                     }
                     val title = stringResource(R.string.morto_title, i + 1)
                     Row(
@@ -721,7 +730,13 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                         Column(if (available) Modifier else Modifier.anchor(AnimAnchor.Morto(i))) {
                             Text(title, color = OnTable, style = MaterialTheme.typography.labelMedium)
                             if (available) GCounterPill(view.mortoSizes[i].toString(), icon = { CardsGlyph(TableAccent) })
-                            else Text(statusText, color = GColors.Lavender, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                            else if (status is MortoStatus.Taken && mortoTakerName(state, status) != null) {
+                                // Quem pegou: ícone verde (você ou parceiro) ou vermelho (rival) e o nome.
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    PersonGlyph(if (status.side == view.side) GColors.Emerald else GColors.Ruby)
+                                    Text(mortoTakerName(state, status)!!, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            } else Text(statusText, color = GColors.Lavender, style = MaterialTheme.typography.labelSmall, maxLines = 2)
                         }
                     }
                 }
@@ -788,6 +803,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             .shadow(Elevation.dialog, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .testTag("action-bar"),
     ) {
@@ -1344,6 +1360,25 @@ private fun Modifier.feltTable(): Modifier {
         .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f), shape)
         .goldFrame(36.dp, 3.dp)
         .clip(shape)
+}
+
+/** Nome de quem pegou o morto ("Você" para o próprio jogador); `null` sem o assento (partida salva antiga). */
+@Composable
+private fun mortoTakerName(state: GameUiState, status: MortoStatus.Taken): String? {
+    val seat = status.seat ?: return null
+    if (seat == state.snapshot.viewerSeat) return stringResource(R.string.side_you)
+    return state.personas.getOrNull(seat.index)?.firstName
+}
+
+/** Ícone de pessoa num círculo: verde = seu lado (você ou parceiro), vermelho = rival. */
+@Composable
+private fun PersonGlyph(color: Color) {
+    Canvas(Modifier.size(14.dp)) {
+        val w = size.width
+        drawCircle(color, w / 2)
+        drawCircle(Color.White, w * 0.17f, Offset(w / 2, w * 0.36f))
+        drawArc(Color.White, 180f, 180f, true, Offset(w * 0.22f, w * 0.58f), Size(w * 0.56f, w * 0.5f))
+    }
 }
 
 /** Ícone de "cartas" (duas cartas sobrepostas) para as cápsulas contadoras. */
