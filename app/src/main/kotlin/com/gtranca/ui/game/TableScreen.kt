@@ -143,6 +143,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.NonCancellable
 import kotlin.math.PI
@@ -260,7 +263,15 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                 top < viewport.top + margin -> top - viewport.top - margin
                 else -> 0f
             }
-            if (delta != 0f) tableScroll.animateScrollBy(delta)
+            // Outra rolagem (ex.: a mesa se mantendo no fim quando a mão cresce com o morto) cancela esta; os voos
+            // são liberados mesmo assim, senão expiram sem animar.
+            if (delta != 0f) {
+                try {
+                    tableScroll.animateScrollBy(delta)
+                } catch (e: CancellationException) {
+                    if (!currentCoroutineContext().isActive) throw e
+                }
+            }
         }
         fresh.forEach { readyFlights[it.id] = true }
         // Esquece os voos que já terminaram.

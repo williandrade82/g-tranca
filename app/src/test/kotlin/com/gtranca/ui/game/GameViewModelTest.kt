@@ -791,6 +791,49 @@ class GameViewModelTest {
         checked shouldBe true
     }
 
+    @Test
+    fun `§9_2 morto direto do humano (baixou tudo) - as cartas do morto voam ate a mao`() = runTest(dispatcher) {
+        var checked = false
+        seeds@ for (seed in 1L..300L) {
+            val vm = newGame(seed, target = 1_000_000, animationMillis = 450)
+            repeat(80) {
+                val state = vm.uiState.value
+                if (state.snapshot.stage != Stage.PLAYING) return@repeat
+                if (state.reveal != null) { vm.onRevealConfirmed(); advanceUntilIdle(); return@repeat }
+                if (!state.isHumanTurn) { advanceUntilIdle(); return@repeat }
+                if (state.awaitingDraw) { vm.onDraw(); advanceUntilIdle(); return@repeat }
+                val legal = state.snapshot.humanLegal
+                val meld = legal.filterIsInstance<Action.CreateMeld>().maxByOrNull { it.cards.size }
+                    ?: legal.filterIsInstance<Action.AddToMeld>().firstOrNull()
+                if (meld == null) {
+                    val discard = legal.filterIsInstance<Action.Discard>().first()
+                    vm.select(state.physical(listOf(discard.card))); vm.onDiscard(); advanceUntilIdle(); return@repeat
+                }
+                val cards = if (meld is Action.CreateMeld) meld.cards else (meld as Action.AddToMeld).cards
+                val emptiesHand = cards.size == state.snapshot.view.hand.size
+                val mortoBefore = state.snapshot.view.mortoStatus
+                vm.select(state.physical(cards))
+                if (meld is Action.AddToMeld) vm.onAddToMeld(meld.meldId) else vm.onCreateMeld()
+                runCurrent()
+                if (emptiesHand) {
+                    val after = vm.uiState.value
+                    val i = after.snapshot.view.mortoStatus.indices.firstOrNull { k ->
+                        after.snapshot.view.mortoStatus[k] is com.gtranca.engine.model.MortoStatus.Taken && mortoBefore[k] !is com.gtranca.engine.model.MortoStatus.Taken
+                    } ?: -1
+                    if (i >= 0) {
+                        val morto = after.flights.filter { it.from == AnimAnchor.Morto(i) }
+                        morto.isNotEmpty() shouldBe true
+                        morto.all { it.to == AnimAnchor.OwnHand } shouldBe true
+                        checked = true
+                        break@seeds
+                    }
+                }
+                advanceUntilIdle()
+            }
+        }
+        checked shouldBe true
+    }
+
     /** Uma vez do humano que baixa o que puder e descarta, sem confirmar a encenação final. */
     private fun TestScope.playMeldingNoSettle(vm: GameViewModel) {
         vm.onDraw()

@@ -417,7 +417,10 @@ class GameViewModel(
         val hidden = state.hidden.values.flatten().toSet()
         // Os 3 vermelhos ainda não encenados não aparecem na mesa (o atual entra quando a encenação termina).
         val staged = state.swaps.flatMap { it.cards }.toSet()
-        val visibleHand = snapshot.view.hand.filter { it !in hidden }
+        // §6.5 o próprio 3 vermelho ainda não confirmado continua à vista na mão (o motor já o baixou): a compra pousa
+        // nele e só depois vem o alerta da troca.
+        val ownPending = state.swaps.filter { isOwn(it, snapshot) }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
+        val visibleHand = snapshot.view.hand.filter { it !in hidden } + ownPending
         val split = if (state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
         val hand = split?.all ?: HandOrder.sort(visibleHand, state.sort)
         val ownSwapPending = state.swaps.any { isOwn(it, snapshot) }
