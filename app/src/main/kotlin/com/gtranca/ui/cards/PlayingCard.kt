@@ -70,10 +70,10 @@ enum class CardSize(val width: Dp, val height: Dp, val cornerFont: Dp, val cente
 /**
  * Realce de uma carta da mão (derivado de `legalActions` pelo ViewModel; a carta não decide nada).
  * - [NONE]: sem realce.
- * - [SUBTLE]: participa de alguma jogada (sem seleção): só um ponto laranja no canto, para a mão cheia não
+ * - [SUBTLE]: participa de alguma jogada (sem seleção): só um ponto verde no canto, para a mão cheia não
  *   ficar toda contornada.
- * - [STRONG]: completa uma jogada junto com a seleção atual: borda âmbar grossa e o ponto.
- * - [SELECTED]: selecionada: borda azul, fundo azul-claro e marca de seleção.
+ * - [STRONG]: completa uma jogada junto com a seleção atual: borda ametista grossa e o ponto.
+ * - [SELECTED]: selecionada: borda ouro profundo, fundo creme, marca de seleção e leve aumento.
  * - [DIMMED]: há seleção e a carta não combina com ela: esmaecida (continua tocável).
  */
 enum class CardEmphasis { NONE, SUBTLE, STRONG, SELECTED, DIMMED }

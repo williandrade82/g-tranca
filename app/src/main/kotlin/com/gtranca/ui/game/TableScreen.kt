@@ -118,6 +118,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import com.gtranca.game.PlanRanking
 import com.gtranca.game.HumanTurnResolver
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.foundation.gestures.animateScrollBy
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
@@ -237,6 +239,32 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
     // Posições dos elementos da mesa, para as animações (cartas voando entre eles).
     val anchors = remember { mutableStateMapOf<AnimAnchor, Rect>() }
     val tableScroll = rememberScrollState()
+    // Área visível da mesa (coordenadas da tela) e voos já liberados: um voo para os jogos de um lado só começa
+    // depois que o destino está à vista (a mesa rola até ele, se preciso), para qualquer jogador.
+    var tableViewport by remember { mutableStateOf<Rect?>(null) }
+    val readyFlights = remember { mutableStateMapOf<Long, Boolean>() }
+    val density = LocalDensity.current
+    LaunchedEffect(state.flights.map { it.id }) {
+        val fresh = state.flights.filter { readyFlights[it.id] != true }
+        if (fresh.isEmpty()) return@LaunchedEffect
+        val viewport = tableViewport
+        val targets = fresh.mapNotNull { flight -> anchors.tableTarget(flight.to) }
+        if (viewport != null && targets.isNotEmpty()) {
+            val margin = with(density) { 12.dp.toPx() }
+            val top = targets.minOf { it.top }
+            val bottom = targets.maxOf { it.bottom }
+            val delta = when {
+                bottom > viewport.bottom - margin -> bottom - viewport.bottom + margin
+                top < viewport.top + margin -> top - viewport.top - margin
+                else -> 0f
+            }
+            if (delta != 0f) tableScroll.animateScrollBy(delta)
+        }
+        fresh.forEach { readyFlights[it.id] = true }
+        // Esquece os voos que já terminaram.
+        val live = state.flights.map { it.id }.toSet()
+        readyFlights.keys.retainAll(live)
+    }
     // Voos que já chegaram: a carta aparece no destino só então (sai da origem, voa, aparece no destino).
     val arrived = remember { mutableStateMapOf<Long, Boolean>() }
     val landing = if (state.animationMillis <= 0) emptySet() else
@@ -273,6 +301,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
                     Column(
                         Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp).feltTable()
+                            .onGloballyPositioned { tableViewport = Rect(it.positionInRoot(), it.size.toSize()) }
                             .verticalScroll(tableScroll).padding(horizontal = 12.dp, vertical = 18.dp).testTag("table-scroll"),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -303,7 +332,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
                     StatusAndActions(state, events)
                 }
-                FlightsLayer(state.flights, anchors, state.animationMillis) { id ->
+                FlightsLayer(state.flights, anchors, state.animationMillis, { readyFlights[it] == true }) { id ->
                     arrived[id] = true
                     // O som acompanha a chegada da carta ao destino.
                     state.flights.firstOrNull { it.id == id }?.let(SoundMap::forFlight)?.let(sound::play)
@@ -563,7 +592,7 @@ private fun SideArea(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = TableAccent, style = MaterialTheme.typography.labelLarge.copy(fontFamily = Cinzel, fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+            Text(title, color = TableAccent, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
             // Alvo dos 3 vermelhos que chegam (§6.5), mesmo antes do primeiro.
             Spacer(Modifier.size(1.dp).anchor(AnimAnchor.RedThrees(side)))
             if (redThrees.isNotEmpty()) {
@@ -612,7 +641,7 @@ private fun MeldView(
     flash: CanastaFlash? = null,
     animationMillis: Long = 0,
 ) {
-    // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em azul-claro). [animationMillis] já vem
+    // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em bronze). [animationMillis] já vem
     // escalado; se o destaque for removido no meio, o pulso volta a 0 (nunca fica preso maior/colorido).
     val pulse = remember(tableMeld.id) { Animatable(0f) }
     LaunchedEffect(flash?.id) {
@@ -637,7 +666,7 @@ private fun MeldView(
     }
     val borderColor = when {
         canasta && meld.isClean -> GColors.CanastraClean
-        canasta -> GColors.Lavender
+        canasta -> GColors.CanastraDirty
         onClick != null -> OnTable.copy(alpha = 0.6f) // tocável para acrescentar
         else -> Color.Transparent
     }
@@ -793,6 +822,9 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
 
 private val MortoWidth = 96.dp
 
+/** Espaço acima e abaixo da mão para a carta marcada crescer (10%) sem ser cortada. */
+private val HandGrowMargin = 6.dp
+
 @Composable
 private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     val snapshot = state.snapshot
@@ -823,13 +855,10 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
                 ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard", ActionKind.DISCARD)
             }
-            val clearEnabled = state.selected.isNotEmpty()
-            OutlinedButton(
+            GButton(
                 onClick = events::onClearSelection,
-                enabled = clearEnabled,
-                shape = CircleShape,
-                border = BorderStroke(1.dp, if (clearEnabled) GColors.Amethyst else GColors.OnTableDisabled.copy(alpha = 0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnTable, disabledContentColor = GColors.OnTableDisabled),
+                enabled = state.selected.isNotEmpty(),
+                kind = GButtonKind.Secondary,
                 modifier = Modifier.heightIn(min = 48.dp).testTag("action-clear"),
             ) { Text(stringResource(R.string.action_clear)) }
         }
@@ -844,24 +873,10 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     }
 }
 
-/** Botão de ação. Desabilitado: só o contorno, sem preenchimento, com texto claro legível sobre o verde. */
+/** Botão de ação: o mesmo [GButton] dourado das outras telas (afundar ao tocar, brilho), com ícone. */
 @Composable
 private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String, icon: ActionKind? = null) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.heightIn(min = 48.dp).testTag(tag)
-            .then(if (enabled) Modifier.background(GoldBrush, CircleShape) else Modifier),
-        shape = CircleShape,
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, disabledElevation = 0.dp),
-        border = if (enabled) BorderStroke(1.dp, GColors.Champagne) else BorderStroke(1.dp, GColors.OnTableDisabled.copy(alpha = 0.5f)),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color.Transparent,
-            contentColor = GColors.OnGold,
-            disabledContainerColor = Color.Transparent,
-            disabledContentColor = GColors.OnTableDisabled,
-        ),
-    ) {
+    GButton(onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp).testTag(tag)) {
         if (icon != null) {
             ActionIcon(icon, if (enabled) GColors.OnGold else GColors.OnTableDisabled, Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
@@ -900,10 +915,12 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
             )
             SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
-        // 7 cartas de 48dp por linha em 360dp; com 20+ cartas, a área rola.
+        // 7 cartas de 48dp por linha em 360dp; 2 linhas à vista (sobra mesa para os jogos), o resto rola. A margem
+        // dentro da rolagem deixa a carta marcada crescer sem ser cortada pela borda.
         val custom = state.customHand
         Box(
-            Modifier.fillMaxWidth().heightIn(max = 74.dp * 3).anchor(AnimAnchor.OwnHand).verticalScroll(rememberScrollState())
+            Modifier.fillMaxWidth().heightIn(max = 74.dp * 2 + HandGrowMargin * 2).anchor(AnimAnchor.OwnHand)
+                .verticalScroll(rememberScrollState()).padding(vertical = HandGrowMargin, horizontal = 3.dp)
                 .testTag("hand"),
         ) {
             if (custom == null || custom.special.isEmpty()) {
@@ -1278,7 +1295,13 @@ private fun Modifier.anchor(key: AnimAnchor): Modifier = composed {
  * com animações desligadas (duração 0 ou escala do sistema 0) não desenha nada.
  */
 @Composable
-private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rect>, durationMillis: Long, onArrived: (Long) -> Unit) {
+private fun FlightsLayer(
+    flights: List<CardFlight>,
+    anchors: Map<AnimAnchor, Rect>,
+    durationMillis: Long,
+    isReady: (Long) -> Boolean,
+    onArrived: (Long) -> Unit,
+) {
     // [durationMillis] e os atrasos dos voos já vêm escalados pelo ViewModel (escala 0 = nenhum voo).
     if (durationMillis <= 0 || flights.isEmpty()) return
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -1290,7 +1313,7 @@ private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rec
             .testTag("flights-layer"),
     ) {
         flights.forEach { flight ->
-            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, onArrived) }
+            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, { isReady(flight.id) }, onArrived) }
         }
     }
 }
@@ -1299,6 +1322,19 @@ private fun FlightsLayer(flights: List<CardFlight>, anchors: Map<AnimAnchor, Rec
  * Posição de [anchor] na tela. Com a [card] do voo, o ponto é o da própria carta (na mão, no conjunto, no lixo ou
  * nos 3 vermelhos): o voo sai de onde ela estava e chega onde ela aparece. Sem a posição exata, cai na região.
  */
+/**
+ * Região da mesa (dentro da rolagem) que precisa estar à vista para o voo até [anchor]: o conjunto, se já existe;
+ * senão (conjunto novo) o fim da área de jogos do lado. `null` para destinos fora da rolagem (mão, monte, lixo...).
+ */
+private fun Map<AnimAnchor, Rect>.tableTarget(anchor: AnimAnchor): Rect? = when (anchor) {
+    is AnimAnchor.Meld -> this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]?.let { area ->
+        Rect(area.left, area.bottom - 1f, area.right, area.bottom)
+    }
+    is AnimAnchor.SideArea -> this[anchor]
+    is AnimAnchor.RedThrees -> this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
+    else -> null
+}
+
 private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect? = when (anchor) {
     is AnimAnchor.OwnHand -> card?.let { this[AnimAnchor.HandCard(it)] } ?: this[anchor]
     is AnimAnchor.DiscardPile -> card?.let { this[AnimAnchor.DiscardCard(it)] } ?: this[anchor]
@@ -1316,11 +1352,14 @@ private fun FlyingCard(
     origin: () -> Offset,
     durationMillis: Long,
     delayMillis: Long,
+    isReady: () -> Boolean,
     onArrived: (Long) -> Unit,
 ) {
     val progress = remember { Animatable(0f) }
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
+        // Espera a mesa mostrar o destino (rolagem até os jogos do lado).
+        snapshotFlow { isReady() }.first { it }
         delay(delayMillis)
         visible = true
         progress.animateTo(1f, tween(durationMillis.toInt().coerceAtLeast(1), easing = FastOutSlowInEasing))
@@ -1412,11 +1451,11 @@ private fun DeckStack(count: Int, anchor: AnimAnchor) {
 
 /** Feltro esmeralda da mesa (quase oval: cantos bem grandes) com a moldura dourada biselada. */
 private fun Modifier.feltTable(): Modifier {
-    val shape = RoundedCornerShape(36.dp)
+    val shape = RoundedCornerShape(16.dp)
     return this
         .shadow(Elevation.dialog, shape)
         .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f), shape)
-        .goldFrame(36.dp, 3.dp)
+        .goldFrame(16.dp, 3.dp)
         .clip(shape)
 }
 

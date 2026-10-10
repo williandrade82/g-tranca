@@ -51,7 +51,8 @@ object GColors {
     val CardRed = Color(0xFFC0263C)
     val CardBlack = Color(0xFF1B1B1B)
     val CardBorder = Color(0xFFB9AE96)
-    val CardSelectedBorder = Gold
+    // Ouro profundo: ~3:1 sobre a carta (o ouro claro dava 1,6:1).
+    val CardSelectedBorder = GoldDeep
     val CardSelectedFill = Color(0xFFFFF1C4)
     val CardHighlightBorder = Amethyst
     val CardPlayableMark = Color(0xFF1F8A5E)
@@ -63,4 +64,7 @@ object GColors {
     // Canastras
     val CanastraClean = Emerald
     val CanastraDirtyFlash = Champagne
+
+    // Bronze: cor própria da canastra suja (a lavanda lia como "inativo").
+    val CanastraDirty = Color(0xFFCD8A45)
 }
