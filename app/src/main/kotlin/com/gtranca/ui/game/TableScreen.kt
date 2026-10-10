@@ -217,7 +217,13 @@ private val HandCardSlot = CardSize.MEDIUM.width + 1.dp
  * rola até o fim, deixando lixo e seus jogos logo acima dos botões.
  */
 @Composable
-fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Modifier) {
+fun TableScreen(
+    state: GameUiState,
+    events: TableEvents,
+    modifier: Modifier = Modifier,
+    /** Revisão da mesa final: no lugar da barra de ações, só "Continuar" (não há jogada possível). */
+    onReviewContinue: (() -> Unit)? = null,
+) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val snackbar = remember { SnackbarHostState() }
@@ -343,7 +349,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     }
                     HandArea(state, events)
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
-                    StatusAndActions(state, events)
+                    if (onReviewContinue != null) ReviewContinueBar(onReviewContinue) else StatusAndActions(state, events)
                 }
                 FlightsLayer(state.flights, anchors, state.animationMillis, { readyFlights[it] == true }) { id ->
                     arrived[id] = true
@@ -837,6 +843,25 @@ private val MortoWidth = 96.dp
 
 /** Espaço acima e abaixo da mão para a carta marcada crescer (10%) sem ser cortada. */
 private val HandGrowMargin = 6.dp
+
+/** Barra da revisão da mesa final: no mesmo lugar e estilo da barra de ações, só com "Continuar". */
+@Composable
+private fun ReviewContinueBar(onContinue: () -> Unit) {
+    val shape = RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .shadow(Elevation.dialog, shape)
+            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), shape)
+            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), shape)
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = Spacing.sm),
+    ) {
+        GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("review-continue")) {
+            Text(stringResource(R.string.table_review_continue))
+        }
+    }
+}
 
 @Composable
 private fun StatusAndActions(state: GameUiState, events: TableEvents) {

@@ -82,17 +82,11 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     }
 }
 
-/** Mesa final só para olhar, com um botão fixo para seguir o fluxo de fim da partida. */
+/** Mesa final só para olhar; "Continuar" fica no lugar da barra de ações e segue o fluxo de fim da partida. */
 @Composable
 private fun FinalTableReview(state: GameUiState, events: TableEvents, onContinue: () -> Unit) {
     BackHandler(onBack = onContinue)
-    Box(Modifier.fillMaxSize()) {
-        TableScreen(state, events)
-        GButton(
-            onContinue,
-            Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp).heightIn(min = 48.dp).testTag("review-continue"),
-        ) { Text(stringResource(R.string.table_review_continue)) }
-    }
+    TableScreen(state, events, onReviewContinue = onContinue)
 }
 
 /** §13.1 confirmação da desistência; cancelar volta exatamente ao estado anterior. */
