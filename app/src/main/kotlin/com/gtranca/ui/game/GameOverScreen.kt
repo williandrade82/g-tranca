@@ -137,7 +137,7 @@ private fun ResultsTable(
                 Modifier
                     .fillMaxWidth()
                     .background(if (index % 2 == 0) GColors.IndigoLight.copy(alpha = 0.55f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(8.dp))
-                    .padding(horizontal = Spacing.sm, vertical = 6.dp),
+                    .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(record.number.toString(), Modifier.weight(0.9f), style = numbers, color = GColors.Lavender)

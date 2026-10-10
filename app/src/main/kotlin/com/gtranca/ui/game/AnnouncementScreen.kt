@@ -1,5 +1,6 @@
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.Corner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.gtranca.ui.theme.GColors
@@ -86,8 +87,8 @@ fun AnnouncementScreen(
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(GColors.Indigo.copy(alpha = 0.9f), RoundedCornerShape(24.dp))
-                .goldFrame(24.dp, 3.dp)
+                .background(GColors.Indigo.copy(alpha = 0.9f), RoundedCornerShape(Corner.lg))
+                .goldFrame(Corner.lg, 3.dp)
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,

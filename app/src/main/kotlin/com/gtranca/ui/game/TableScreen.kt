@@ -2,6 +2,8 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.theme.Spacing
+import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.sound.SoundButton
 
 import com.gtranca.ui.sound.LocalSound
@@ -300,7 +302,7 @@ fun TableScreen(state: GameUiState, events: TableEvents, modifier: Modifier = Mo
                     // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
                     Column(
-                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp).feltTable()
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
                             .onGloballyPositioned { tableViewport = Rect(it.positionInRoot(), it.size.toSize()) }
                             .verticalScroll(tableScroll).padding(horizontal = 12.dp, vertical = 18.dp).testTag("table-scroll"),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -458,13 +460,13 @@ private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
     val right = byRole.getValue(SeatRole.RIGHT_OPPONENT)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (maxWidth >= 340.dp) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 listOf(left, partner, right).forEach { SeatPill(state, it, Modifier.weight(1f), onSeatClick) }
             }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 SeatPill(state, partner, Modifier.fillMaxWidth(), onSeatClick)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     SeatPill(state, left, Modifier.weight(1f), onSeatClick)
                     SeatPill(state, right, Modifier.weight(1f), onSeatClick)
                 }
@@ -484,7 +486,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     val countText = countText(R.plurals.card_count, R.string.card_count_zero, handSize)
     val thinkingText = stringResource(R.string.seat_thinking)
     val events = snapshot.turnEvents[seat.index]
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(Corner.sm)
     val detailHint = stringResource(R.string.seat_detail_hint)
     Column(
         modifier
@@ -493,11 +495,11 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             .clickable(enabled = events.isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
             .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = Spacing.sm)
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             // §14.1 avatar discreto e nome curto; o papel (esquerda, parceiro, direita) vai embaixo, bem pequeno.
             val persona = state.personas.getOrNull(seat.index)
             if (persona != null) {
@@ -518,7 +520,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                     stringResource(role.pillNameRes()),
                     color = if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = if (persona != null) 0.8f else 1f),
                     fontWeight = if (persona != null) FontWeight.Normal else FontWeight.Bold,
-                    style = if (persona != null) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     maxLines = if (persona != null) 1 else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -584,10 +586,10 @@ private fun SideArea(
 ) {
     Column(
         Modifier.fillMaxWidth()
-            .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(14.dp))
-            .border(1.dp, GColors.Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+            .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
+            .border(1.dp, GColors.Gold.copy(alpha = 0.3f), RoundedCornerShape(Corner.sm))
             .anchor(AnimAnchor.SideArea(side))
-            .padding(6.dp)
+            .padding(Spacing.sm)
             .testTag("side-$sideTag"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -616,7 +618,7 @@ private fun SideArea(
         if (melds.isEmpty()) {
             Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
         } else {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 melds.forEach { meld ->
                     MeldView(
                         side,
@@ -683,17 +685,17 @@ private fun MeldView(
             }
             .semantics { canastaPulse = pulse.value }
             .heightIn(min = 48.dp)
-            .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(6.dp))
-            .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(6.dp))
+            .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(Corner.xs))
+            .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(Corner.xs))
             .then(if (onClick != null) Modifier.clickable { onClick(tableMeld.id) } else Modifier)
             .semantics(mergeDescendants = true) { contentDescription = description }
             .padding(3.dp),
     ) {
         OverlappedCards(meld.cards, step = 14.dp, anchorFor = { AnimAnchor.MeldCard(side, tableMeld.id.value, it) })
         if (label != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 CanastaSeal(meld.isClean, borderColor, pulse.value, Modifier.size(12.dp))
-                Text(label, color = borderColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(label, color = borderColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -729,7 +731,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
             Row(
                 Modifier
                     .heightIn(min = 48.dp)
-                    .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(6.dp))
+                    .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(Corner.xs))
                     .clickable(enabled = state.canDraw, onClick = events::onDraw)
                     .semantics(mergeDescendants = true) { contentDescription = stockLabel }
                     .testTag("stock")
@@ -769,9 +771,9 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                                 // Quem pegou: ícone verde (você ou parceiro) ou vermelho (rival) e o nome.
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     PersonGlyph(if (status.side == view.side) GColors.Emerald else GColors.Ruby)
-                                    Text(mortoTakerName(state, status)!!, color = OnTable, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(mortoTakerName(state, status)!!, color = OnTable, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                            } else Text(statusText, color = GColors.Lavender, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                            } else Text(statusText, color = GColors.Lavender, style = MaterialTheme.typography.labelMedium, maxLines = 2)
                         }
                     }
                 }
@@ -803,8 +805,8 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
-                .background(GColors.Midnight.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-                .border(if (pileActive) 2.dp else 1.dp, if (pileActive) TableAccent else OnTable.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                .background(GColors.Midnight.copy(alpha = 0.25f), RoundedCornerShape(Corner.sm))
+                .border(if (pileActive) 2.dp else 1.dp, if (pileActive) TableAccent else OnTable.copy(alpha = 0.35f), RoundedCornerShape(Corner.sm))
                 .clickable(enabled = state.awaitingDraw || state.playing, onClick = events::onDiscardPileClick)
                 .semantics(mergeDescendants = true) { contentDescription = pileLabel }
                 .anchor(AnimAnchor.DiscardPile)
@@ -838,15 +840,15 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     Column(
         Modifier
             .fillMaxWidth()
-            .shadow(Elevation.dialog, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .shadow(Elevation.dialog, RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
+            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
+            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 12.dp, vertical = Spacing.sm)
             .testTag("action-bar"),
     ) {
         Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             if (snapshot.view.phase != Phase.PLAYING || !state.isHumanTurn) {
                 ActionButton(stringResource(R.string.action_draw), state.canDraw, events::onDraw, "action-draw", ActionKind.DRAW)
                 ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard", ActionKind.TAKE)
@@ -879,7 +881,7 @@ private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, ta
     GButton(onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp).testTag(tag)) {
         if (icon != null) {
             ActionIcon(icon, if (enabled) GColors.OnGold else GColors.OnTableDisabled, Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(Spacing.sm))
         }
         Text(text)
     }
@@ -905,7 +907,7 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // §14.1 seu avatar, bem discreto, junto do título da mão.
             state.personas.getOrNull(state.snapshot.viewerSeat.index)?.let {
-                GMedallion(Modifier.padding(end = 6.dp).size(30.dp), active = state.isHumanTurn) { PersonaAvatar(it, 24.dp) }
+                GMedallion(Modifier.padding(end = Spacing.sm).size(30.dp), active = state.isHumanTurn) { PersonaAvatar(it, 24.dp) }
             }
             Text(
                 stringResource(R.string.your_hand, state.hand.size),
@@ -1091,7 +1093,7 @@ private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit, onResi
         title = { Text(revealTitle(reveal.notice)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     reveal.notice.cards.forEach { PlayingCard(it, size = CardSize.LARGE) }
                 }
                 Text(stringResource(R.string.red_three_value_note), style = MaterialTheme.typography.bodySmall)
@@ -1164,8 +1166,8 @@ private fun MeldChoiceDialog(options: List<Action>, view: PlayerView, events: Ta
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
-                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterHorizontally),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                             ) {
                                 cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
                             }
@@ -1222,8 +1224,8 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
-                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterHorizontally),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                             ) {
                                 used.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
                             }
@@ -1250,10 +1252,10 @@ private fun SwapBanner(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat)
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 2.dp)
-            .shadow(Elevation.button, RoundedCornerShape(16.dp))
-            .background(GColors.Indigo, RoundedCornerShape(16.dp))
-            .goldFrame(16.dp, 2.dp, lights = false)
-            .padding(6.dp)
+            .shadow(Elevation.button, RoundedCornerShape(Corner.md))
+            .background(GColors.Indigo, RoundedCornerShape(Corner.md))
+            .goldFrame(Corner.md, 2.dp, lights = false)
+            .padding(Spacing.sm)
             .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
             .testTag("red-three-banner"),
         verticalAlignment = Alignment.CenterVertically,
@@ -1451,11 +1453,11 @@ private fun DeckStack(count: Int, anchor: AnimAnchor) {
 
 /** Feltro esmeralda da mesa (quase oval: cantos bem grandes) com a moldura dourada biselada. */
 private fun Modifier.feltTable(): Modifier {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(Corner.md)
     return this
         .shadow(Elevation.dialog, shape)
         .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f), shape)
-        .goldFrame(16.dp, 3.dp)
+        .goldFrame(Corner.md, 3.dp)
         .clip(shape)
 }
 

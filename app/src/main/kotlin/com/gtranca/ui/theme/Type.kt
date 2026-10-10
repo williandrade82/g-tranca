@@ -57,5 +57,6 @@ val GTypography = Typography(
     bodySmall = Base.bodySmall.ui(FontWeight.Normal),
     labelLarge = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, letterSpacing = 0.5.sp),
     labelMedium = Base.labelMedium.ui(FontWeight.Medium),
-    labelSmall = Base.labelSmall.ui(FontWeight.Medium),
+    // 12sp no mínimo (o padrão de 11sp lia mal no feltro).
+    labelSmall = Base.labelSmall.ui(FontWeight.Medium).copy(fontSize = 12.sp, lineHeight = 16.sp),
 )

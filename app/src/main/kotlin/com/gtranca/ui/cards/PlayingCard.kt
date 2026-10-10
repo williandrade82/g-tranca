@@ -205,7 +205,8 @@ fun PlayingCard(
             // Rótulo (ex.: "nova") sobre a parte de baixo da carta, branco sobre verde-escuro (contraste ≥ 7:1).
             Text(
                 badge,
-                style = TextStyle(color = Color.White, fontSize = 10.dp.asFont(), lineHeight = 11.dp.asFont(), fontWeight = FontWeight.Bold),
+                // Proporcional à carta (era fixo em 10dp): na carta grande cresce junto.
+                style = TextStyle(color = Color.White, fontSize = (size.width * 0.22f).asFont(), lineHeight = (size.width * 0.25f).asFont(), fontWeight = FontWeight.Bold),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(GColors.CardNewBadge).padding(vertical = 1.dp),
             )

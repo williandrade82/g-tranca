@@ -1,5 +1,6 @@
 package com.gtranca.ui.home
 
+import com.gtranca.ui.theme.Corner
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
@@ -112,34 +113,25 @@ fun HomeScreen(
         }
     }
     GBackground(Modifier.fillMaxSize(), royal = true, rays = true) {
+        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.xl),
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.xl, vertical = Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(Modifier.padding(top = Spacing.sm), horizontalArrangement = Arrangement.spacedBy(-Spacing.sm)) {
+            // Topo enxuto (leque menor, sem a coroa e sem a descrição): a ação chega mais cedo.
+            Row(horizontalArrangement = Arrangement.spacedBy(-Spacing.sm)) {
                 Fan(Card.parse("AS"), -12f)
                 Fan(Card.parse("KH"), 0f)
                 Fan(null, 12f)
             }
-            CrownOrnament(Modifier.width(120.dp).height(40.dp))
-            LogoTitle(stringResource(R.string.home_title))
-            Text(
-                stringResource(R.string.home_title_tagline),
-                style = goldTitleStyle(MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp)),
-            )
-            Text(
-                stringResource(R.string.home_subtitle),
-                style = MaterialTheme.typography.bodyLarge,
-                color = GColors.OnTable,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                stringResource(R.string.home_version, BuildConfig.VERSION_NAME),
-                style = MaterialTheme.typography.labelMedium,
-                color = GColors.OnTable.copy(alpha = 0.7f),
-                modifier = Modifier.testTag("home-version"),
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                LogoTitle(stringResource(R.string.home_title))
+                Text(
+                    stringResource(R.string.home_title_tagline),
+                    style = goldTitleStyle(MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp)),
+                )
+            }
 
             // Jogo salvo: "Continuar" em destaque, com modo, dificuldade e placar.
             state.saved?.let { saved ->
@@ -206,9 +198,12 @@ fun HomeScreen(
             ) {
                 Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
             }
-            // Barra inferior em cápsula: Perfil e Estatísticas lado a lado (cabem na tela sem rolar).
+        }
+            // Barra inferior fixa (fora da rolagem): Perfil e Estatísticas; a versão, discreta, logo abaixo.
             Row(
                 Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = Spacing.sm)
                     .background(GColors.Midnight.copy(alpha = 0.6f), CircleShape)
                     .border(1.dp, GColors.Gold.copy(alpha = 0.4f), CircleShape)
                     .padding(horizontal = Spacing.sm),
@@ -226,6 +221,12 @@ fun HomeScreen(
                     Text(stringResource(R.string.home_stats))
                 }
             }
+            Text(
+                stringResource(R.string.home_version, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.labelSmall,
+                color = GColors.OnTable.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = Spacing.xs).testTag("home-version"),
+            )
         }
         // Por cima da rolagem (senão a coluna rolável engole o toque): sempre à vista, mesmo com jogo salvo.
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) { SoundButton(GColors.OnTable) }
@@ -252,8 +253,8 @@ fun HomeScreen(
 @Composable
 private fun Fan(card: Card?, angle: Float) {
     Box(Modifier.rotate(angle).shadow(Elevation.dialog, MaterialTheme.shapes.small)) {
-        if (card != null) PlayingCard(card, size = CardSize.LARGE, describe = false)
-        else CardBack(size = CardSize.LARGE, describe = false)
+        if (card != null) PlayingCard(card, size = CardSize.MEDIUM, describe = false)
+        else CardBack(size = CardSize.MEDIUM, describe = false)
     }
 }
 
@@ -352,7 +353,7 @@ private fun CrownOrnament(modifier: Modifier) {
 /** Cartão grande de modo com ilustração ([seats] medalhões por lado: 1 × 1 ou 2 × 2). */
 @Composable
 private fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: String, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(Corner.md)
     // Duplas: nome curto no cartão e a explicação embaixo, menor (não quebra em 3 linhas).
     val hint = if (seats == 2) stringResource(R.string.mode_duplas_hint) else null
     Column(

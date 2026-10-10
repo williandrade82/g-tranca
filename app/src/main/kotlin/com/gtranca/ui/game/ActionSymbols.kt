@@ -67,7 +67,7 @@ fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier) {
     val description = stringResource(R.string.opponent_last_turn, turnText(events))
     FlowRow(
         modifier.semantics(mergeDescendants = true) { contentDescription = description },
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         events.forEach { SymbolWithDetail(it.symbol()) }
@@ -218,7 +218,7 @@ fun SeatDetailDialog(persona: Persona?, roleLabel: String, events: List<PublicEv
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                             Text(eventText(event).replaceFirstChar { it.uppercase() })
                             if (cards.isNotEmpty()) {
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                                     cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
                                 }
                             }

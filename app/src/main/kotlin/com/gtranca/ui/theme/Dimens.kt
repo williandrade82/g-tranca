@@ -21,11 +21,20 @@ object Elevation {
     val dialog = 12.dp
 }
 
+/** Escala de raios de canto (use estes, não valores soltos). */
+object Corner {
+    val xs = 6.dp
+    val sm = 12.dp
+    val md = 16.dp
+    val lg = 24.dp
+    val xl = 32.dp
+}
+
 /** Formas arredondadas do app. */
 val GShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraSmall = RoundedCornerShape(Corner.xs),
+    small = RoundedCornerShape(Corner.sm),
+    medium = RoundedCornerShape(Corner.md),
+    large = RoundedCornerShape(Corner.lg),
+    extraLarge = RoundedCornerShape(Corner.xl),
 )

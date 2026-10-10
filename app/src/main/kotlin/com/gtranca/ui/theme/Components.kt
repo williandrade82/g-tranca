@@ -220,7 +220,7 @@ fun DrawScope.drawRays(angle: Float, alpha: Float, center: Offset = Offset(size.
 /** Painel índigo translúcido de cantos 20dp, com borda dourada fina e sombra arroxeada. */
 @Composable
 fun GPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(Corner.md)
     CompositionLocalProvider(LocalContentColor provides GColors.Ivory) {
         Column(
             modifier
@@ -352,13 +352,13 @@ fun GTitle(text: String, modifier: Modifier = Modifier) {
 /** Faixa de destaque (resultado): [color] de fundo com moldura dourada, texto em [onColor]. */
 @Composable
 fun GBanner(text: String, color: Color, onColor: Color, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(Corner.md)
     Box(
         modifier
             .fillMaxWidth()
             .shadow(Elevation.button, shape)
             .background(Brush.verticalGradient(listOf(color, color.darken(0.75f))), shape)
-            .goldFrame(16.dp, 2.dp, lights = false),
+            .goldFrame(Corner.md, 2.dp, lights = false),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -377,8 +377,8 @@ fun GSubPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
     Column(
         modifier
             .fillMaxWidth()
-            .background(GColors.IndigoLight, RoundedCornerShape(16.dp))
-            .border(1.dp, GColors.Gold.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+            .background(GColors.IndigoLight, RoundedCornerShape(Corner.md))
+            .border(1.dp, GColors.Gold.copy(alpha = 0.18f), RoundedCornerShape(Corner.md))
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         content = content,
