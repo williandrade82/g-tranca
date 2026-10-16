@@ -46,6 +46,9 @@ val com.gtranca.engine.RuleSet.noWilds: Boolean get() = maxWildsPerMeld == 0
 fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ObserveAnimationScale(viewModel::onAnimationScaleChanged)
+    // Velocidade das animações (Perfil ou botão da mesa): vale já na jogada seguinte.
+    val slowAnimations = com.gtranca.ui.speed.LocalSpeedSettings.current.slow
+    androidx.compose.runtime.LaunchedEffect(slowAnimations) { viewModel.onSpeedChanged(slowAnimations) }
     val snapshot = state.snapshot
     var confirmExit by rememberSaveable { mutableStateOf(false) }
 

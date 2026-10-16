@@ -308,8 +308,8 @@ class DealTest {
         val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0))
         state.redThreeLog shouldContainExactly listOf(
             laid(0, "3H", atTurnStart = true),
-            laid(0, "3D", atTurnStart = true),
-            laid(0, "3H'", atTurnStart = true),
+            laid(0, "3D", atTurnStart = true, chained = true),
+            laid(0, "3H'", atTurnStart = true, chained = true),
         )
         state.redThreeLogViolation() shouldBe null
     }

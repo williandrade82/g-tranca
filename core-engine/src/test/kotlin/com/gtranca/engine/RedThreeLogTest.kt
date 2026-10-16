@@ -47,7 +47,7 @@ class RedThreeLogTest {
             hand(0, "KS QD")
             stock("3H 3D 3H' KH 4S")
         }.act(0, Action.DrawFromStock)
-        s.redThreeLog shouldContainExactly listOf(laid(0, "3H"), laid(0, "3D"), laid(0, "3H'"))
+        s.redThreeLog shouldContainExactly listOf(laid(0, "3H"), laid(0, "3D", chained = true), laid(0, "3H'", chained = true))
     }
 
     @Test
@@ -85,7 +85,7 @@ class RedThreeLogTest {
             morto(0, "3D 4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC'")
         }.act(0, Action.DrawFromStock)
         s.mortoStatus[0] shouldBe MortoStatus.BecameStock
-        s.redThreeLog shouldContainExactly listOf(laid(0, "3H"), laid(0, "3D"))
+        s.redThreeLog shouldContainExactly listOf(laid(0, "3H"), laid(0, "3D", chained = true))
         s.redThreeLogViolation() shouldBe null
     }
 

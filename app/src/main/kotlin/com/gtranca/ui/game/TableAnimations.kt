@@ -62,10 +62,10 @@ data class CanastaFlash(val id: Long, val side: Int, val meldId: Int, val clean:
 object TableAnimations {
 
     /** Espaço entre cartas do mesmo movimento. */
-    const val STAGGER_MILLIS: Long = 91
+    const val STAGGER_MILLIS: Long = 70
 
     /** Espaço entre cartas na distribuição (são muitas: 11 por jogador). */
-    const val DEAL_STAGGER_MILLIS: Long = 52
+    const val DEAL_STAGGER_MILLIS: Long = 40
 
     /** Máximo de cartas animadas num movimento (o lixo pode ter muitas; as demais chegam sem voo). */
     const val MAX_CARDS_PER_MOVE: Int = 5
@@ -74,7 +74,7 @@ object TableAnimations {
         if (seat == viewer) AnimAnchor.OwnHand else AnimAnchor.SeatHand(seat.index)
 
     /** Atraso do voo do morto: depois das cartas da jogada que o liberou. */
-    const val MORTO_DELAY_MILLIS = 390L
+    const val MORTO_DELAY_MILLIS = 300L
 
     /**
      * Distribuição do início da partida: uma carta por vez, do monte a cada assento (em ordem a partir de quem

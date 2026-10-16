@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.map
  * @property handSortId ordem da mão preferida (identificador da interface), ou `null` para o padrão dela.
  * @property profileId §14.1 perfil do jogador (texto da interface), ou `null` para o padrão dela.
  * @property soundOn chave de som do jogador (ligado por padrão).
+ * @property slowAnimations velocidade das animações: `true` = 30% mais lentas (padrão), `false` = normal.
  * @property customRules §14.4 regras personalizadas do jogador, ou `null` se ainda não salvou (a interface parte da Clássica).
  */
 data class Settings(
@@ -28,6 +29,7 @@ data class Settings(
     val handSortId: String? = null,
     val profileId: String? = null,
     val soundOn: Boolean = true,
+    val slowAnimations: Boolean = true,
     val customRules: RuleSet? = null,
 )
 
@@ -41,6 +43,8 @@ interface SettingsRepository {
     suspend fun setProfile(id: String) = Unit
 
     suspend fun setSoundOn(on: Boolean) = Unit
+
+    suspend fun setSlowAnimations(slow: Boolean) = Unit
 
     suspend fun setCustomRules(rules: RuleSet) = Unit
 }
@@ -57,6 +61,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             handSortId = prefs[HAND_SORT],
             profileId = prefs[PROFILE],
             soundOn = prefs[SOUND_ON] ?: true,
+            slowAnimations = prefs[SLOW_ANIMATIONS] ?: true,
             customRules = prefs[CUSTOM_RULES]?.let(::decodeRules),
         )
     }
@@ -77,6 +82,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[SOUND_ON] = on }
     }
 
+    override suspend fun setSlowAnimations(slow: Boolean) {
+        store.edit { it[SLOW_ANIMATIONS] = slow }
+    }
+
     override suspend fun setCustomRules(rules: RuleSet) {
         store.edit { it[CUSTOM_RULES] = RULES_JSON.encodeToString(RuleSet.serializer(), rules) }
     }
@@ -87,6 +96,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
 
     private companion object {
         val SOUND_ON = booleanPreferencesKey("sound_on")
+        val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")
         val RULES_JSON = Json { ignoreUnknownKeys = true }
         val PROFILE = stringPreferencesKey("profile")

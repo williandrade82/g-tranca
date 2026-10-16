@@ -69,6 +69,7 @@ class TurnStartRedThreesTest {
         s.redThreesOf(Side(1)) shouldContainExactly cards("3H 3D 3H' 3D'")
         s.hand(1) shouldContainExactly cards("5S 8S 7S")
         s.redThreeLog.map { it.card } shouldContainExactly cards("3H 3D 3H' 3D'")
+        s.redThreeLog.map { it.chained } shouldContainExactly listOf(false, false, true, true) // §3.5 só as repostas vindas do monte
         s.redThreeLog.all { it.atTurnStart } shouldBe true
         s.redThreeLogViolation() shouldBe null
     }

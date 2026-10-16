@@ -139,6 +139,10 @@ class GameController(
     private val started = AtomicBoolean(false)
     private val nextRoundSignal = Channel<Unit>(Channel.CONFLATED)
     private val awaitingNextRound = AtomicBoolean(false)
+
+    /** Escala da pausa da distribuição (velocidade das animações escolhida pelo jogador; 1 = normal). */
+    @Volatile
+    var dealDelayScale: Double = 1.0
     private val requestCounter = AtomicLong(0)
     private val presentationSignal = Channel<Unit>(Channel.CONFLATED)
 
@@ -264,7 +268,7 @@ class GameController(
             resuming = false
             // A pausa da distribuição vem antes da espera das trocas do início da vez: elas só são encenadas depois da
             // distribuição, então o tempo total é o maior dos dois, e não a soma (sem pausa morta depois do "Baixar").
-            if (freshDeal && human != null && dealDelayMillis > 0) delay(dealDelayMillis)
+            if (freshDeal && human != null && dealDelayMillis > 0) delay((dealDelayMillis * dealDelayScale).toLong())
             if (waitDeal) presentationSignal.receive()
             while (true) {
                 val round = synchronized(lock) {

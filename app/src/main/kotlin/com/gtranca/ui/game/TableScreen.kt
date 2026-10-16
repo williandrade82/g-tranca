@@ -5,6 +5,7 @@ package com.gtranca.ui.game
 import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.sound.SoundButton
+import com.gtranca.ui.speed.SpeedButton
 
 import com.gtranca.ui.sound.LocalSound
 import com.gtranca.ui.sound.SoundEffect
@@ -432,6 +433,7 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
             )
         }
         SoundButton(OnTable)
+        SpeedButton(OnTable)
         // Legenda dos símbolos das jogadas dos outros assentos.
         val legendText = stringResource(R.string.legend_button)
         Box(

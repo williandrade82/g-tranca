@@ -158,6 +158,8 @@ class GameViewModel(
      * São só da interface: o laço do controlador não espera por elas.
      */
     private val animationMillis: Long = DEFAULT_ANIMATION_MILLIS,
+    /** Velocidade inicial das animações: `true` = [SLOW_FACTOR] vezes mais lenta (Perfil). */
+    slowAnimations: Boolean = false,
     /** Jogo salvo a retomar (então [config] e [gameSeed] devem ser os dele), ou `null` para um jogo novo. */
     restored: RestoredGame? = null,
     /** Identificador do jogo (estatísticas contam cada jogo uma vez); o do jogo salvo, ao retomar. */
@@ -202,9 +204,14 @@ class GameViewModel(
         val flights: List<CardFlight> = emptyList(),
         /** Voos da distribuição ainda no ar: as trocas do início da vez só são encenadas depois deles. */
         val dealIds: Set<Long> = emptySet(),
+        /** §3.5 troca própria do início da vez → troca em cadeia que chega à mão quando ela é confirmada. */
+        val delivers: Map<Long, Long> = emptyMap(),
         val flashes: List<CanastaFlash> = emptyList(),
         /** Escala de duração das animações do sistema (`ANIMATOR_DURATION_SCALE`; 0 = desligadas). */
         val animationScale: Float = 1f,
+        /** Escala do sistema (`ANIMATOR_DURATION_SCALE`) e a velocidade escolhida pelo jogador (1 ou [SLOW_FACTOR]); [animationScale] é o produto. */
+        val systemScale: Float = 1f,
+        val speed: Float = 1f,
         /** §9.4 trocas de 3 vermelho que vieram no morto (id da troca → morto). */
         val mortoSwaps: Map<Long, Int> = emptyMap(),
         val planChoice: List<Action.TakeDiscardPile>? = null,
@@ -233,6 +240,10 @@ class GameViewModel(
     )
     private val animationIds = AtomicLong(0)
 
+    init {
+        controller.dealDelayScale = speedFor(slowAnimations).toDouble()
+    }
+
     /** §14.1 perfis por assento: o do jogador no seu e, nos demais, os sorteados com a semente deste jogo. */
     val personas: List<Persona> = run {
         val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, playerProfile.name).iterator()
@@ -248,6 +259,8 @@ class GameViewModel(
                 initial,
                 sort = initialHand.sort,
                 separateSpecial = initialHand.separateSpecial,
+                speed = speedFor(slowAnimations),
+                animationScale = speedFor(slowAnimations),
                 endStep = if (restored != null && initial.stage == Stage.ROUND_OVER) 1 else 0,
             )
             absorb(base, initial, previous = if (restored != null) initial else null)
@@ -283,7 +296,7 @@ class GameViewModel(
                 .distinctUntilChanged()
                 .collectLatest { head ->
                     if (head != null) {
-                        delay(swapAnimationMillis)
+                        delay((swapAnimationMillis * local.value.speed).toLong())
                         var landing = 0L
                         local.update { state ->
                             if (state.swaps.firstOrNull()?.id == head.id) {
@@ -375,15 +388,26 @@ class GameViewModel(
         // mesma partida) as reposições são as últimas cartas da mão: o motor as acrescenta ao fim.
         val ownSwaps = fresh.filter { it.seat == snapshot.viewerSeat && it !in fromMorto }
         val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING && (previous == null || !sameRound)
+        var delivers = if (sameRound) state.delivers else emptyMap()
         if (ownSwaps.isNotEmpty()) {
             val fromDeal = !(sameRound && previous != null)
-            val replacements = if (fromDeal) snapshot.view.hand.takeLast(ownSwaps.size).toSet() else gained
-            if (ownSwaps.all { it.atTurnStart }) {
-                // §3.5 início da vez: cada troca recebe a sua reposição (na ordem da mão), que chega quando ela é confirmada.
+            val startOnly = ownSwaps.all { it.atTurnStart }
+            // §3.5 as trocas "em cadeia" (chained) chegaram como reposição de outra troca: só as demais têm reposição que
+            // fica na mão.
+            val chained = if (startOnly) ownSwaps.filter { it.chained } else emptyList()
+            val kept = ownSwaps.size - chained.size
+            val replacements = if (fromDeal) snapshot.view.hand.takeLast(kept).toSet() else gained
+            if (startOnly) {
+                // Início da vez: nas primeiras confirmações chegam os 3 vermelhos em cadeia, nas demais, as reposições
+                // que ficam (uma por troca, na ordem da mão; a última leva o que sobrar).
                 val ordered = snapshot.view.hand.filter { it in replacements }
-                ownSwaps.forEachIndexed { i, swap ->
-                    val mine = if (i == ownSwaps.lastIndex) ordered.drop(i) else ordered.drop(i).take(1)
-                    hidden = hidden + (swap.id to mine.toSet())
+                ownSwaps.forEachIndexed { p, swap ->
+                    if (p < chained.size) {
+                        delivers = delivers + (swap.id to chained[p].id)
+                    } else {
+                        val mine = if (p == ownSwaps.lastIndex) ordered.drop(p - chained.size) else ordered.drop(p - chained.size).take(1)
+                        hidden = hidden + (swap.id to mine.toSet())
+                    }
                 }
             } else {
                 hidden = hidden + (ownSwaps.last().id to replacements)
@@ -403,7 +427,7 @@ class GameViewModel(
             // Os 3 vermelhos do início da vez (já baixados pelo motor) fazem parte das 11 cartas dadas: chegam à mão e só
             // então vão à área de 3 vermelhos, na confirmação.
             val dealt = snapshot.view.hand.filter { it !in hiddenCards } +
-                fresh.filter { it.seat == snapshot.viewerSeat && it.atTurnStart }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
+                fresh.filter { it.seat == snapshot.viewerSeat && it.atTurnStart && !it.chained }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
             TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet)
                 .map { it.scaled(state.animationScale) }
         } else {
@@ -422,6 +446,7 @@ class GameViewModel(
             dealIds = (if (playing && sameRound) state.dealIds else emptySet()) + dealFlights.map { it.id },
             flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
+            delivers = if (playing) delivers.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
             meldChoice = state.meldChoice.takeIf { snapshot.isHumanTurn },
             confirmDecline = state.confirmDecline && snapshot.isHumanTurn,
@@ -445,7 +470,7 @@ class GameViewModel(
         val ownQueue = state.swaps.filter { isOwn(it, snapshot) }
         val chainHead = ownQueue.firstOrNull { !it.atTurnStart && it.id !in state.mortoSwaps }
         val ownPending = ownQueue
-            .filter { it.atTurnStart || it.id in state.mortoSwaps || it == chainHead }
+            .filter { (it.atTurnStart && (!it.chained || delivered(it, state))) || it.id in state.mortoSwaps || it == chainHead }
             .flatMap { it.cards }
             .filter { it !in snapshot.view.hand }
         val visibleHand = snapshot.view.hand.filter { it !in hidden } + ownPending
@@ -478,6 +503,10 @@ class GameViewModel(
             personas = personas,
         )
     }
+
+    /** §3.5 o 3 vermelho em cadeia de [notice] já chegou à mão: a troca que o traz foi confirmada. */
+    private fun delivered(notice: RedThreeNotice, state: Local): Boolean =
+        state.delivers.any { (from, to) -> to == notice.id && state.swaps.none { it.id == from } }
 
     private fun endScreen(snapshot: GameSnapshot, step: Int): EndScreen? = when {
         snapshot.stage == Stage.PLAYING -> null
@@ -631,12 +660,25 @@ class GameViewModel(
     }
 
     /** Escala de animação do sistema mudou (a tela observa `ANIMATOR_DURATION_SCALE`); 0 desliga os voos. */
-    fun onAnimationScaleChanged(scale: Float) = local.update { state ->
-        if (scale == state.animationScale) {
-            state
-        } else {
-            state.copy(animationScale = scale, flights = if (scale <= 0f) emptyList() else state.flights, flashes = if (scale <= 0f) emptyList() else state.flashes)
-        }
+    fun onAnimationScaleChanged(scale: Float) = local.update { state -> state.withScales(systemScale = scale, speed = state.speed) }
+
+    /** Velocidade das animações escolhida pelo jogador (Perfil ou botão da mesa): normal ou [SLOW_FACTOR] vezes mais lenta. */
+    fun onSpeedChanged(slow: Boolean) {
+        val speed = speedFor(slow)
+        controller.dealDelayScale = speed.toDouble()
+        local.update { state -> state.withScales(systemScale = state.systemScale, speed = speed) }
+    }
+
+    private fun Local.withScales(systemScale: Float, speed: Float): Local {
+        val scale = systemScale * speed
+        if (scale == animationScale) return copy(systemScale = systemScale, speed = speed)
+        return copy(
+            systemScale = systemScale,
+            speed = speed,
+            animationScale = scale,
+            flights = if (scale <= 0f) emptyList() else flights,
+            flashes = if (scale <= 0f) emptyList() else flashes,
+        )
     }
 
     /** Duração efetiva de cada animação (configurada × escala do sistema). */
@@ -656,6 +698,8 @@ class GameViewModel(
         val fromMorto = state.mortoSwaps[notice.id]
         val replacement = when {
             fromMorto != null -> TableAnimations.Replacement.None
+            state.delivers[notice.id] != null ->
+                TableAnimations.Replacement.Revealed(state.swaps.first { it.id == state.delivers.getValue(notice.id) }.cards)
             notice.seat != viewer -> TableAnimations.Replacement.FaceDown
             notice.id in state.hidden -> TableAnimations.Replacement.Revealed(state.hidden.getValue(notice.id).toList())
             else -> {
@@ -679,11 +723,16 @@ class GameViewModel(
         /** Folga para a limpeza de uma animação depois do fim do desenho. */
         private const val EXPIRY_MARGIN_MILLIS: Long = 150
 
-        /** Duração padrão de cada animação da mesa (390–780 ms). */
-        const val DEFAULT_ANIMATION_MILLIS: Long = 585
+        /** Duração padrão de cada animação da mesa (300–600 ms). */
+        const val DEFAULT_ANIMATION_MILLIS: Long = 450
 
         /** Duração padrão da animação de troca de 3 vermelho de outro assento. */
-        const val DEFAULT_SWAP_ANIMATION_MILLIS: Long = 2_340
+        const val DEFAULT_SWAP_ANIMATION_MILLIS: Long = 1_800
+
+        /** Fator de duração da velocidade "lenta" (30% mais lenta). */
+        const val SLOW_FACTOR: Float = 1.3f
+
+        fun speedFor(slow: Boolean): Float = if (slow) SLOW_FACTOR else 1f
     }
 
     private fun submit(action: Action, requestId: Long) {
