@@ -360,7 +360,7 @@ fun TableScreen(
         }
     }
 
-    if (showLegend) LegendDialog { showLegend = false }
+    if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }
     detailSeat?.let { index ->
         val events = snapshot.turnEvents.getOrNull(index).orEmpty()
         if (events.isEmpty()) {
@@ -890,7 +890,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard", ActionKind.TAKE)
                 if (state.canDecline) ActionButton(stringResource(R.string.action_decline), true, events::onDeclineDraw, "action-decline", ActionKind.DECLINE)
             } else {
-                ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
+                ActionButton(stringResource(R.string.action_meld), state.canTryMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
                 ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard", ActionKind.DISCARD)
             }
             GButton(

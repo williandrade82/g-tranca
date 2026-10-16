@@ -1,5 +1,9 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.rememberScrollState
+
+import androidx.compose.foundation.verticalScroll
+
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.gtranca.game.Persona
@@ -155,12 +159,14 @@ fun ActionIcon(kind: ActionKind, color: Color, modifier: Modifier = Modifier) {
 
 /** Legenda dos símbolos (botão "?" da mesa). */
 @Composable
-fun LegendDialog(onDismiss: () -> Unit) {
+fun LegendDialog(rules: com.gtranca.engine.RuleSet, targetScore: Int, onDismiss: () -> Unit) {
     GDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.legend_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                // §14.4 regras desta mesa, sempre à mão durante o jogo.
+                com.gtranca.ui.tables.RulesSummary(rules, targetScore)
                 listOf(
                     ActionKind.DRAW to R.string.legend_draw,
                     ActionKind.TAKE to R.string.legend_take,

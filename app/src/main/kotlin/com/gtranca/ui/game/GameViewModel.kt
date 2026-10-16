@@ -130,6 +130,12 @@ data class GameUiState(
     val canDecline: Boolean get() = Action.DeclineDraw in legal
     /** "Baixar" só quando a seleção forma conjunto novo ou completa um conjunto da mesa (em `legalActions`). */
     val canMeld: Boolean get() = playing && HumanTurnResolver.canMeld(legal, selected)
+
+    /**
+     * "Baixar" tocável com cartas selecionadas, mesmo sem jogada válida: o toque mostra o motivo da recusa (ex.: §6.1
+     * regras da mesa que não deixam esse número formar grupo), em vez de um botão apagado sem explicação.
+     */
+    val canTryMeld: Boolean get() = playing && selected.isNotEmpty()
     val canDiscard: Boolean get() = playing && selected.size == 1
 
     /** A carta selecionada pode ser descartada agora (há um `Discard` dela em `legalActions`). */
