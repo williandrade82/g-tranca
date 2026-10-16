@@ -97,10 +97,18 @@ class RuleProfilesTest {
     }
 
     @Test
+    fun `coringa no buraco da sequencia vale em todos os perfis da casa`() {
+        // §6.3 sequência 7-8-(2)-10 com o coringa travado no 9
+        RuleSet.HOUSE.forEach { Meld.create(cards("7C 8C 2H TC"), it).shouldBeOk() }
+        RuleSet.HOUSE.forEach { Meld.create(cards("KD AD 2H"), it).shouldBeOk() }
+    }
+
+    @Test
     fun `maxWildsPerMeld zero proibe coringa em conjuntos`() {
         // §6.3 / §14.2 com 0, o coringa não entra em nenhum conjunto
         val noWilds = RuleSet(maxWildsPerMeld = 0)
-        Meld.create(cards("5H 6H 2C"), noWilds) shouldFailWith MeldError.TOO_MANY_WILDS
+        Meld.create(cards("5H 6H 2C"), noWilds) shouldFailWith MeldError.WILDS_NOT_ALLOWED
+        (Meld.create(cards("5H 6H 7H"), noWilds) as com.gtranca.engine.model.RuleResult.Ok).value.add(cards("2C"), noWilds) shouldFailWith MeldError.WILDS_NOT_ALLOWED
         Meld.create(cards("5H 6H 7H"), noWilds).shouldBeOk()
     }
 

@@ -45,6 +45,7 @@ fun RuleError?.messageRes(): Int = when (this) {
     MeldError.DUPLICATE_CARD -> R.string.error_duplicate_card
     MeldError.CONTAINS_THREE -> R.string.error_contains_three
     MeldError.TOO_MANY_WILDS -> R.string.error_too_many_wilds
+    MeldError.WILDS_NOT_ALLOWED -> R.string.error_wilds_not_allowed
     MeldError.NOT_A_SEQUENCE_OR_GROUP -> R.string.error_not_sequence_or_group
     MeldError.REPEATED_RANK -> R.string.error_repeated_rank
     MeldError.NOT_CONSECUTIVE -> R.string.error_not_consecutive

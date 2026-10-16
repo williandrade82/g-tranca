@@ -106,7 +106,7 @@ data class Meld internal constructor(
         val all = cards + newCards
         if (all.toSet().size != all.size) return fail(MeldError.DUPLICATE_CARD)
         if (newCards.any { it.rank.isThree }) return fail(MeldError.CONTAINS_THREE)
-        if (all.count { it.isWild } > rules.maxWildsPerMeld) return fail(MeldError.TOO_MANY_WILDS)
+        if (all.count { it.isWild } > rules.maxWildsPerMeld) return fail(wildError(rules))
         val newNaturals = newCards.filterNot { it.isWild }
         return when (kind) {
             is MeldKind.Group ->
@@ -125,7 +125,7 @@ data class Meld internal constructor(
             if (cards.size < rules.minMeldSize) return fail(MeldError.TOO_FEW_CARDS)
             if (cards.toSet().size != cards.size) return fail(MeldError.DUPLICATE_CARD)
             if (cards.any { it.rank.isThree }) return fail(MeldError.CONTAINS_THREE)
-            if (cards.count { it.isWild } > rules.maxWildsPerMeld) return fail(MeldError.TOO_MANY_WILDS)
+            if (cards.count { it.isWild } > rules.maxWildsPerMeld) return fail(wildError(rules))
             // Com ≥ 3 cartas e no máximo 1 coringa, há pelo menos 2 naturais (§6.3).
             val naturals = cards.filterNot { it.isWild }
             return when {
@@ -139,6 +139,10 @@ data class Meld internal constructor(
         }
 
         private fun fail(error: MeldError): RuleResult<Nothing> = RuleResult.Failure(error)
+
+        /** §6.3 / §14.2 coringa demais: com `maxWildsPerMeld` = 0, o motivo é que o perfil não aceita coringa. */
+        internal fun wildError(rules: RuleSet): MeldError =
+            if (rules.maxWildsPerMeld == 0) MeldError.WILDS_NOT_ALLOWED else MeldError.TOO_MANY_WILDS
 
         /** Grupo (§6.1): naturais já conferidas como do número [rank]. */
         private fun buildGroup(rank: Rank, cards: List<Card>): RuleResult<Meld> {

@@ -259,6 +259,7 @@
     <string name="error_not_consecutive">As cartas da sequência não são consecutivas (o Ás só vale como carta alta).</string>
     <string name="error_wrong_suit">Essa sequência é de outro naipe.</string>
     <string name="error_wrong_rank">Esse grupo é de outro número.</string>
+    <string name="error_wilds_not_allowed">Nas regras desta mesa, coringa não entra em jogos.</string>
     <string name="error_group_rank_not_allowed">Nas regras desta mesa, esse número não forma grupo.</string>
     <string name="error_contiguous_sequence">Essa sequência continua outra do mesmo naipe na mesa: acrescente as cartas a ela.</string>
     <string name="error_meld_not_found">Esse conjunto não está na mesa do seu lado.</string>

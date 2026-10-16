@@ -63,6 +63,8 @@ enum class MeldError : RuleError {
     CONTAINS_THREE,
     /** §6.3 mais de 1 coringa no conjunto (inclui "grupo de 2"). */
     TOO_MANY_WILDS,
+    /** §6.3 / §14.2 o perfil não aceita coringa em conjuntos (`maxWildsPerMeld` = 0). */
+    WILDS_NOT_ALLOWED,
     /** §6.1 / §14.2 o perfil não permite grupo desse número (`groupRanks`). */
     GROUP_RANK_NOT_ALLOWED,
     /** §6.1 as naturais não são do mesmo naipe nem do mesmo número. */
