@@ -11,6 +11,7 @@
 
 - O jogo utiliza **2 baralhos padrão**, sem curingas de fábrica (total de **104 cartas**).
 - Cada baralho contém cartas de **2 a 10**, **Valete (J)**, **Dama (Q)**, **Rei (K)** e **Ás (A)**, nos quatro naipes tradicionais.
+- Com o parâmetro `maxWildsPerMeld` em **0** (§6.3, §14.2), os **oito 2** (coringas) **saem do jogo**: o baralho fica com **96 cartas**.
 - As cartas são embaralhadas aleatoriamente no início de cada partida, formando **um único monte**.
 
 ### **1.1. Lados**
@@ -38,7 +39,7 @@
 - Os mortos ficam na mesa como **dois montes separados**, com as cartas **viradas para baixo**: todos sabem que eles existem, mas ninguém pode ver suas cartas até pegá-los.
 
 ### **3.3. Monte**
-- As cartas restantes formam o **monte**, virado para baixo (60 cartas no modo individual, 38 no modo duplas). Nada sai do monte na distribuição: as reposições de 3 vermelho (§6.5) só começam na vez de cada jogador (§3.5).
+- As cartas restantes formam o **monte**, virado para baixo (60 cartas no modo individual, 38 no modo duplas; sem os 2, §1: 52 e 30). Nada sai do monte na distribuição: as reposições de 3 vermelho (§6.5) só começam na vez de cada jogador (§3.5).
 
 ### **3.4. Lixo inicial**
 - O lixo começa **vazio**. O primeiro jogador, portanto, compra obrigatoriamente do monte.
@@ -136,7 +137,7 @@ Um conjunto pode ser:
 ### **6.3. Coringa (2)**
 - O **2 é sempre coringa**; nunca é usado como carta natural. Não existe grupo de 2.
 - O coringa substitui uma carta de uma sequência ou grupo (na sequência, conforme as situações abaixo).
-- **Máximo de 1 coringa por conjunto** *(parâmetro `maxWildsPerMeld`; base: 1; opções 0 ou 1)*. Todo conjunto tem, portanto, pelo menos 2 cartas naturais. Com o parâmetro em **0**, o coringa não entra em nenhum conjunto (nem pelo lixo, §5.4): só pode ser descartado ou ficar na mão.
+- **Máximo de 1 coringa por conjunto** *(parâmetro `maxWildsPerMeld`; base: 1; opções 0 ou 1)*. Todo conjunto tem, portanto, pelo menos 2 cartas naturais. Com o parâmetro em **0**, não há coringa no jogo: os 2 saem do baralho (§1).
 - **Posição do coringa na sequência:** é definida pelas cartas naturais do conjunto, nunca escolhida pelo jogador. Há três situações:
   - **Travado:** se falta exatamente um valor entre as cartas naturais, o coringa ocupa esse buraco e vale esse número. Ex.: em 5-2-7 o coringa vale 6; só se acrescentam cartas do 4 para baixo ou do 8 para cima.
   - **Solto:** se as cartas naturais não têm buraco, o coringa fica numa ponta **sem valor fixo** e pode servir em qualquer um dos lados. Ex.: em 6-7-2 o jogador pode acrescentar 8 (o coringa continua solto), 5 (continua solto), 5 e 4 (continua solto), apenas 4 (o coringa passa a valer 5 e fica travado) ou apenas 9 (o coringa passa a valer 8 e fica travado). Se a sequência já chega ao Ás (ex.: Q-K-A-2), o coringa só pode estar na ponta de baixo.
@@ -336,7 +337,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 | Parâmetro | Seção | Opções | Base (Clássica) |
 |---|---|---|---|
 | `groupRanks` — números que podem formar grupo | §6.1 | **qualquer número** (4 a A) / **só A, K, Q, J** / **nenhum** (grupos proibidos) | qualquer número |
-| `maxWildsPerMeld` — máximo de coringas por conjunto | §6.3 | 0 / 1 | 1 |
+| `maxWildsPerMeld` — máximo de coringas por conjunto | §1, §6.3 | 0 (sem coringas: os 2 saem do baralho) / 1 | 1 |
 | `cleanCanastaPoints` — canastra limpa | §7.2, §12.1 | inteiro ≥ 0 | 200 |
 | `dirtyCanastaPoints` — canastra suja | §7.2, §12.1 | inteiro ≥ 0 | 100 |
 | `mortoBecomesStock` — morto vira monte quando o monte acaba | §10 | sim / não | sim |
