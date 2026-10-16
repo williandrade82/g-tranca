@@ -104,6 +104,24 @@ class RuleProfilesTest {
     }
 
     @Test
+    fun `sem coringas os 2 saem do baralho`() {
+        // §1 / §6.3 / §14.2 maxWildsPerMeld = 0: 96 cartas, nenhum 2; monte 52 (individual) e 30 (duplas)
+        val noWilds = RuleSet(maxWildsPerMeld = 0)
+        com.gtranca.engine.model.Deck.forRules(noWilds).size shouldBe 96
+        com.gtranca.engine.model.Deck.forRules(noWilds).any { it.isWild } shouldBe false
+        val solo = dealRound(GameMode.INDIVIDUAL, Random(3), noWilds)
+        val all = solo.hands.flatten() + solo.mortos.flatten() + solo.stock + solo.redThrees.flatten()
+        all.size shouldBe 96
+        all.any { it.isWild } shouldBe false
+        dealRound(GameMode.DUPLAS, Random(3), noWilds).let { it.stock.size + it.redThrees.flatten().size } shouldBe 30
+        (solo.stock.size + solo.redThrees.flatten().size) shouldBe 52
+        // a vista sorteada pelo bot Difícil também não tem 2
+        solo.viewFor(Seat(0), noWilds).determinize(Random(1)).let { w ->
+            (w.hands.flatten() + w.mortos.flatten() + w.stock).any { it.isWild } shouldBe false
+        }
+    }
+
+    @Test
     fun `maxWildsPerMeld zero proibe coringa em conjuntos`() {
         // §6.3 / §14.2 com 0, o coringa não entra em nenhum conjunto
         val noWilds = RuleSet(maxWildsPerMeld = 0)

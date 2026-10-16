@@ -21,7 +21,7 @@ fun dealRound(
     rules: RuleSet = RuleSet.DEFAULT,
     firstSeat: Seat? = null,
 ): RoundState {
-    val deck = Deck.shuffled(random)
+    val deck = Deck.shuffled(random, rules)
     val first = firstSeat ?: Seat(random.nextInt(mode.seatCount))
     return dealFromOrderedDeck(mode, deck, first, rules)
 }
@@ -54,8 +54,10 @@ internal fun distributeOrderedDeck(
     firstSeat: Seat,
     rules: RuleSet = RuleSet.DEFAULT,
 ): RoundState {
-    require(deck.size == Deck.SIZE) { "Baralho deve ter ${Deck.SIZE} cartas, tem ${deck.size}" }
-    require(deck.toSet().size == Deck.SIZE) { "Baralho com cartas repetidas" }
+    val size = Deck.size(rules) // §1 sem coringas, 96
+    require(deck.size == size) { "Baralho deve ter $size cartas, tem ${deck.size}" }
+    require(deck.toSet().size == size) { "Baralho com cartas repetidas" }
+    require(rules.maxWildsPerMeld > 0 || deck.none { it.isWild }) { "Sem coringas (§1), o baralho não tem 2" }
     mode.requireSeat(firstSeat)
 
     val playOrder = mode.seatsInPlayOrder(firstSeat)

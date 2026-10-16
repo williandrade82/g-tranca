@@ -424,7 +424,7 @@ class MediumBot(
         private val visibleCount: Map<Pair<Rank, Suit>, Int> = visible.groupingBy { it.rank to it.suit }.eachCount()
 
         /** Cartas ainda ocultas (mãos alheias, monte e mortos), sem contar as sabidas. */
-        private val unseenTotal: Int = (Deck.SIZE - visible.size).coerceAtLeast(1)
+        private val unseenTotal: Int = (Deck.size(view.rules) - visible.size).coerceAtLeast(1)
 
         /** Chance de uma carta oculta qualquer estar na parte desconhecida da mão do próximo jogador. */
         val q: Double = run {

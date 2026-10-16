@@ -191,11 +191,11 @@ private fun PlayerView.hiddenCardsOrThrow(): List<Card> {
     val repeated = visible.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
     require(repeated.isEmpty()) { "Vista incoerente: carta visível repetida: $repeated" }
     val visibleSet = visible.toSet()
-    val hidden = Deck.standard().filterNot { it in visibleSet }
+    val hidden = Deck.forRules(rules).filterNot { it in visibleSet }
     val hiddenSlots = handSizes.sum() - hand.size + stockSize + mortoSizes.sum()
     require(hidden.size == hiddenSlots) {
         "Vista incoerente: ${visible.size} cartas visíveis + $hiddenSlots ocultas (mãos alheias, monte, mortos) " +
-            "não somam ${Deck.SIZE}"
+            "não somam ${Deck.size(rules)}"
     }
     // depois das demais conferências, para que os 3 vermelhos da mesa já estejam validados
     validateRedThreeLog()
