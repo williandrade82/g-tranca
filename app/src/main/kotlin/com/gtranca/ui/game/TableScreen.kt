@@ -892,7 +892,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard", ActionKind.TAKE)
                 if (state.canDecline) ActionButton(stringResource(R.string.action_decline), true, events::onDeclineDraw, "action-decline", ActionKind.DECLINE)
             } else {
-                ActionButton(stringResource(R.string.action_meld), state.canTryMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
+                ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
                 ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard", ActionKind.DISCARD)
             }
             GButton(
@@ -1210,7 +1210,6 @@ private fun MeldChoiceDialog(options: List<Action>, view: PlayerView, events: Ta
                             }
                             Text(destination, textAlign = TextAlign.Center)
                             DestinationMeld(option, view)
-                            DestinationMeld(option, view)
                             Text(points, style = MaterialTheme.typography.labelMedium)
                         }
                     }
@@ -1287,6 +1286,7 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                                 used.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
                             }
                             Text(destination, textAlign = TextAlign.Center)
+                            DestinationMeld(option, view)
                         }
                     }
                 }
