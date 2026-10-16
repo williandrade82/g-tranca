@@ -223,7 +223,7 @@ class EndScreensTest {
         rule.setContent { GTrancaTheme { Box(Modifier.width(360.dp).height(760.dp)) { TableScreen(state, noEvents) } } }
         // §3.5 quem trocou (o parceiro) e a carta, no início da vez; a reposição dele não é mostrada.
         rule.onNodeWithTag("red-three-banner").assertIsDisplayed()
-        rule.onNodeWithText("Parceiro baixou 3♥︎ no início da vez", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Parceiro baixou um 3 vermelho no início da vez", useUnmergedTree = true).assertExists()
     }
 
     @Test

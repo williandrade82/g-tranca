@@ -1187,7 +1187,6 @@ private fun MeldChoiceDialog(options: List<Action>, view: PlayerView, events: Ta
                             stringResource(
                                 if (view.mode == GameMode.DUPLAS) R.string.plan_dest_add_team else R.string.plan_dest_add,
                                 index + 1,
-                                melds.getOrNull(index)?.meld?.cards?.labels().orEmpty(),
                             )
                         }
                         else -> stringResource(R.string.plan_dest_new)
@@ -1209,6 +1208,8 @@ private fun MeldChoiceDialog(options: List<Action>, view: PlayerView, events: Ta
                                 cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
                             }
                             Text(destination, textAlign = TextAlign.Center)
+                            DestinationMeld(option, view)
+                            DestinationMeld(option, view)
                             Text(points, style = MaterialTheme.typography.labelMedium)
                         }
                     }
@@ -1218,6 +1219,25 @@ private fun MeldChoiceDialog(options: List<Action>, view: PlayerView, events: Ta
         confirmButton = {},
         dismissButton = { TextButton(events::onDismissMeldChoice) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/** Cartas do jogo da mesa que recebe o acréscimo (desenhadas, menores), ou nada para jogo novo. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DestinationMeld(option: Action, view: PlayerView) {
+    val meldId = when (option) {
+        is Action.AddToMeld -> option.meldId
+        is Action.TakeDiscardPile -> (option.plan as? DiscardPlan.AddToMeld)?.meldId
+        else -> null
+    } ?: return
+    val cards = view.tables[view.side.index].meld(meldId)?.cards ?: return
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy((-12).dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        modifier = Modifier.alpha(0.85f),
+    ) {
+        cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+    }
 }
 
 @Composable
@@ -1248,7 +1268,6 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                             stringResource(
                                 if (view.mode == GameMode.DUPLAS) R.string.plan_dest_add_team else R.string.plan_dest_add,
                                 index + 1,
-                                melds.getOrNull(index)?.meld?.cards?.labels().orEmpty(),
                             )
                         }
                     }

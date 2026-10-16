@@ -425,7 +425,14 @@ class GameViewModel(
         val staged = state.swaps.flatMap { it.cards }.toSet()
         // §6.5 o próprio 3 vermelho ainda não confirmado continua à vista na mão (o motor já o baixou): a compra pousa
         // nele e só depois vem o alerta da troca.
-        val ownPending = state.swaps.filter { isOwn(it, snapshot) }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
+        // Numa reposição em cadeia (§6.5), só o 3 vermelho da compra aparece: o seguinte chega como reposição dele, depois
+        // da confirmação. Os do início da vez (§3.5) e os do morto (§9.4) já estavam juntos na mão.
+        val ownQueue = state.swaps.filter { isOwn(it, snapshot) }
+        val chainHead = ownQueue.firstOrNull { !it.atTurnStart && it.id !in state.mortoSwaps }
+        val ownPending = ownQueue
+            .filter { it.atTurnStart || it.id in state.mortoSwaps || it == chainHead }
+            .flatMap { it.cards }
+            .filter { it !in snapshot.view.hand }
         val visibleHand = snapshot.view.hand.filter { it !in hidden } + ownPending
         val split = if (state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
         val hand = split?.all ?: HandOrder.sort(visibleHand, state.sort)

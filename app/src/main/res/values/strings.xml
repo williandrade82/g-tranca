@@ -206,8 +206,8 @@
     <!-- Escolha de plano / recusa -->
     <string name="plan_choice_title">Como usar o descarte?</string>
     <string name="plan_dest_new">Novo jogo</string>
-    <string name="plan_dest_add">Ao seu jogo %1$d (%2$s)</string>
-    <string name="plan_dest_add_team">Ao jogo %1$d da sua dupla (%2$s)</string>
+    <string name="plan_dest_add">Ao seu jogo %1$d</string>
+    <string name="plan_dest_add_team">Ao jogo %1$d da sua dupla</string>
     <string name="meld_choice_title">Onde baixar?</string>
     <plurals name="meld_choice_points">
         <item quantity="one">+%1$d ponto na mesa</item>
@@ -228,6 +228,9 @@
     <string name="event_add_to_meld">acrescentou %1$s</string>
     <string name="event_discard">descartou %1$s</string>
     <string name="event_separator">"; "</string>
+    <string name="event_create_meld_short">baixou um jogo</string>
+    <string name="event_add_to_meld_short">acrescentou a um jogo</string>
+    <string name="event_discard_short">descartou</string>
 
     <!-- Mensagens -->
     <string name="msg_select_one_to_discard">Selecione exatamente uma carta para descartar.</string>
@@ -344,10 +347,11 @@
         <item quantity="other">Lixo (%1$d cartas, topo à direita)</item>
         <item quantity="many">Lixo (%1$d cartas, topo à direita)</item>
     </plurals>
-    <string name="red_three_you_drew">Você tirou %1$s!</string>
-    <string name="red_three_turn_you">Na sua vez, você baixou %1$s</string>
-    <string name="red_three_banner">%1$s baixou %2$s</string>
-    <string name="red_three_banner_turn">%1$s baixou %2$s no início da vez</string>
+    <string name="red_three_you_drew">Você tirou um 3 vermelho!</string>
+    <string name="red_three_turn_you">Na sua vez, você baixou o seu 3 vermelho</string>
+    <string name="red_three_turn_you_many">Na sua vez, você baixou os seus 3 vermelhos</string>
+    <string name="red_three_banner">%1$s baixou um 3 vermelho</string>
+    <string name="red_three_banner_turn">%1$s baixou um 3 vermelho no início da vez</string>
     <string name="red_three_button">Baixar 3 vermelho</string>
     <!-- Zero tratado à parte: em pt, a forma "one" cobre o 0 ("0 carta"). -->
     <string name="card_count_zero">nenhuma carta</string>

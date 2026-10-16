@@ -222,7 +222,11 @@ fun SeatDetailDialog(persona: Persona?, roleLabel: String, events: List<PublicEv
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                         ActionIcon(event.symbol().kind, GColors.Gold, Modifier.padding(top = 2.dp).size(22.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            Text(eventText(event).replaceFirstChar { it.uppercase() })
+                            val full = eventText(event)
+                            Text(
+                                eventShortText(event).replaceFirstChar { it.uppercase() },
+                                Modifier.semantics { contentDescription = full },
+                            )
                             if (cards.isNotEmpty()) {
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                                     cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }

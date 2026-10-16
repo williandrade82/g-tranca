@@ -345,6 +345,8 @@ class GameViewModelTest {
             state.redThrees[own].any { it in current.notice.cards } shouldBe false
             state.hand.any { it in current.hiddenHandCards } shouldBe false
             state.isHumanTurn shouldBe false
+            // §6.5 cadeia: só o 3 vermelho desta troca aparece na mão; o seguinte chega depois, como reposição dele.
+            state.hand.filter { it.isRedThree } shouldBe current.notice.cards
             vm.onCreateMeld()
             advanceUntilIdle()
             vm.uiState.value.message.shouldBeNull()

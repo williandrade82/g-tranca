@@ -158,6 +158,19 @@ fun eventText(event: PublicEvent): String = when (val action = event.action) {
     is Action.Discard -> stringResource(R.string.event_discard, action.card.shortLabel)
 }
 
+/** Frase curta de uma ação pública, sem as cartas (que aparecem desenhadas ao lado). */
+@Composable
+@ReadOnlyComposable
+fun eventShortText(event: PublicEvent): String = when (val action = event.action) {
+    Action.DrawFromStock -> stringResource(R.string.event_draw)
+    Action.DeclineDraw -> stringResource(R.string.event_decline)
+    is Action.TakeDiscardPile ->
+        countText(R.plurals.event_take_discard, R.string.event_take_discard_zero, event.takenFromDiscard.size)
+    is Action.CreateMeld -> stringResource(R.string.event_create_meld_short)
+    is Action.AddToMeld -> stringResource(R.string.event_add_to_meld_short)
+    is Action.Discard -> stringResource(R.string.event_discard_short)
+}
+
 @Composable
 @ReadOnlyComposable
 fun turnText(events: List<PublicEvent>): String =
@@ -196,8 +209,14 @@ fun resignedRes(mode: GameMode): Int =
 @Composable
 @ReadOnlyComposable
 fun revealTitle(notice: RedThreeNotice): String {
-    val cards = notice.cards.labels()
-    return stringResource(if (notice.atTurnStart) R.string.red_three_turn_you else R.string.red_three_you_drew, cards)
+    // As cartas aparecem desenhadas no diálogo: o título não as repete em texto.
+    return stringResource(
+        when {
+            !notice.atTurnStart -> R.string.red_three_you_drew
+            notice.cards.size > 1 -> R.string.red_three_turn_you_many
+            else -> R.string.red_three_turn_you
+        },
+    )
 }
 
 /** §3.5/§6.5 aviso da troca de 3 vermelho de outro assento: quem, qual carta e se foi no início da vez. */
@@ -205,5 +224,5 @@ fun revealTitle(notice: RedThreeNotice): String {
 @ReadOnlyComposable
 fun bannerText(mode: GameMode, notice: RedThreeNotice, viewerSeat: Seat): String {
     val name = stringResource(SeatRole.of(mode, notice.seat, viewerSeat).nameRes())
-    return stringResource(if (notice.atTurnStart) R.string.red_three_banner_turn else R.string.red_three_banner, name, notice.cards.labels())
+    return stringResource(if (notice.atTurnStart) R.string.red_three_banner_turn else R.string.red_three_banner, name)
 }
