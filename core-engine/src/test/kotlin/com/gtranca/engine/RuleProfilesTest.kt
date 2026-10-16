@@ -147,6 +147,20 @@ class RuleProfilesTest {
     }
 
     @Test
+    fun `coringa que suja a unica canastra limpa nao permite ficar sem cartas`() {
+        // §11.1 / §14.2 / §8 a mesa resultante precisa ter a canastra limpa (legalActions e motor concordam)
+        val s = round {
+            hand(0, "2C")
+            stock("9D 5C 6C")
+            mortoTaken(0, 0)
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
+        }.act(0, Action.DrawFromStock)
+        (s.checkP(0, addTo(0, "2C")) is RuleResult.Failure) shouldBe true
+        s.legalP(0) shouldNotContain addTo(0, "2C")
+        s.check(0, addTo(0, "2C")).shouldBeOk()
+    }
+
+    @Test
     fun `3 preto na mao vale o parametro do perfil`() {
         // §12.2 / §14.2 handBlackThreePoints: –5 na Clássica, –100 na Paulista
         val s = round {

@@ -4,6 +4,7 @@ import com.gtranca.ai.MediumBot
 import com.gtranca.ai.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.RoundEngine
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
@@ -30,9 +31,9 @@ internal object Rollout {
         }
 
     /** Aplica [action] do [seat] e avisa todas as políticas do evento público correspondente. */
-    fun step(state: RoundState, seat: Seat, action: Action, policies: List<MediumBot>): RoundState {
+    fun step(state: RoundState, seat: Seat, action: Action, policies: List<MediumBot>, rules: RuleSet = RuleSet.DEFAULT): RoundState {
         val event = PublicEvent.of(state.discardPile, seat, action)
-        val next = RoundEngine.apply(state, seat, action)
+        val next = RoundEngine.apply(state, seat, action, rules)
         policies.forEach { it.observe(event) }
         return next
     }
@@ -41,19 +42,19 @@ internal object Rollout {
      * Joga com as [policies] até a partida terminar ou até [maxTurns] passagens de vez e devolve a recompensa
      * ([Evaluation.reward]) do [side].
      */
-    fun play(start: RoundState, policies: List<MediumBot>, maxTurns: Int, scale: Double, side: Side): Double {
+    fun play(start: RoundState, policies: List<MediumBot>, maxTurns: Int, scale: Double, side: Side, rules: RuleSet = RuleSet.DEFAULT): Double {
         var state = start
         var turns = 0
         var actions = 0
         while (state.phase != Phase.FINISHED && turns < maxTurns && actions < MAX_ACTIONS) {
             val seat = state.currentSeat
-            val legal = RoundEngine.legalActions(state, seat)
+            val legal = RoundEngine.legalActions(state, seat, rules)
             if (legal.isEmpty()) break
-            val action = if (legal.size == 1) legal.single() else policies[seat.index].chooseAction(state.sampledView(seat), legal)
-            state = step(state, seat, action, policies)
+            val action = if (legal.size == 1) legal.single() else policies[seat.index].chooseAction(state.sampledView(seat, rules), legal)
+            state = step(state, seat, action, policies, rules)
             if (state.currentSeat != seat) turns++
             actions++
         }
-        return Evaluation.reward(state, side, scale)
+        return Evaluation.reward(state, side, scale, rules)
     }
 }

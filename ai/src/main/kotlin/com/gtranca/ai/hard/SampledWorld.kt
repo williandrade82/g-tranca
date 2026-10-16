@@ -27,7 +27,7 @@ import com.gtranca.engine.tableCardPoints
  * listas mutáveis; (3) esta função roda a cada ação simulada, e copiar mãos, lixo e mesas ali teria custo
  * sem benefício. A vista real entregue aos bots continua vindo do motor, com cópias defensivas.
  */
-internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
+internal fun RoundState.sampledView(seat: Seat, rules: RuleSet = RuleSet.DEFAULT): PlayerView = PlayerView(
     mode = mode,
     seat = seat,
     side = mode.sideOf(seat),
@@ -46,6 +46,7 @@ internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
     redThreeLog = redThreeLog,
     turnsBegun = turnsBegun, // §3.5 público: quem ainda não começou pode ter 3 vermelho na mão
     unsettledMortoSeats = unsettledMortoSeats, // §9.4 público
+    rules = rules, // §14.4 público
 )
 
 /**
@@ -63,57 +64,59 @@ internal fun RoundState.sampledView(seat: Seat): PlayerView = PlayerView(
  *   que já pode bater (morto e canastra, §11.1) ganha um bônus.
  */
 internal object Evaluation {
-    private val RULES = RuleSet.DEFAULT
     private const val CLEAN_MELD_PROGRESS = 25.0
     private const val DIRTY_MELD_PROGRESS = 15.0
     private const val HAND_PENALTY_WEIGHT = 0.6
     private const val READY_TO_GO_OUT_BONUS = 60.0
 
     /** `0,5 + diferença / (2 × scale)`, limitada a [0, 1]: linear, para a média estimar a diferença esperada. */
-    fun reward(state: RoundState, side: Side, scale: Double): Double =
-        (0.5 + scoreDiff(state, side) / (2 * scale)).coerceIn(0.0, 1.0)
+    fun reward(state: RoundState, side: Side, scale: Double, rules: RuleSet = RuleSet.DEFAULT): Double =
+        (0.5 + scoreDiff(state, side, rules) / (2 * scale)).coerceIn(0.0, 1.0)
 
     /** Diferença de pontos (lado [side] menos o adversário), exata ou estimada. */
-    fun scoreDiff(state: RoundState, side: Side): Double {
+    fun scoreDiff(state: RoundState, side: Side, rules: RuleSet = RuleSet.DEFAULT): Double {
         val opponent = Side(1 - side.index)
         if (state.phase == Phase.FINISHED) {
-            val scores = scoreRound(state, RULES)
+            val scores = scoreRound(state, rules)
             return (scores[side.index].total - scores[opponent.index].total).toDouble()
         }
-        return estimate(state, side) - estimate(state, opponent)
+        return estimate(state, side, rules) - estimate(state, opponent, rules)
     }
 
-    private fun estimate(state: RoundState, side: Side): Double {
+    private fun estimate(state: RoundState, side: Side, rules: RuleSet): Double {
         var value = 0.0
         var hasCanasta = false
+        var canGoOutCanasta = false
         for (tableMeld in state.tableOf(side).melds) {
             val meld = tableMeld.meld
             when {
-                meld.isCleanCanasta(RULES) -> { value += RULES.cleanCanastaPoints; hasCanasta = true }
-                meld.isDirtyCanasta(RULES) -> { value += RULES.dirtyCanastaPoints; hasCanasta = true }
+                meld.isCleanCanasta(rules) -> { value += rules.cleanCanastaPoints; hasCanasta = true }
+                meld.isDirtyCanasta(rules) -> { value += rules.dirtyCanastaPoints; hasCanasta = true }
                 // Potencial (não é regra): só para conjuntos que ainda não são canastra.
                 else -> value += (meld.cards.size - 2) * if (meld.hasWild) DIRTY_MELD_PROGRESS else CLEAN_MELD_PROGRESS
             }
+            // §11.1 / §14.2 canastra que permite bater (só a limpa com goOutRequiresCleanCanasta)
+            if (meld.allowsGoOut(rules)) canGoOutCanasta = true
         }
         // §12.1 cartas na mesa (todas, canastras ou não, e os 3 vermelhos baixados): exato como o motor.
-        value += tableCardPoints(state, side, RULES).points
+        value += tableCardPoints(state, side, rules).points
         // §12.1 o 3 vermelho vale +100 só com canastra do lado; sem ela, −100.
-        val redThreePoints = if (hasCanasta) RULES.redThreePoints else RULES.redThreeWithoutCanastaPoints
+        val redThreePoints = if (hasCanasta) rules.redThreePoints else rules.redThreeWithoutCanastaPoints
         value += state.redThreesOf(side).size * redThreePoints
         val hasMorto = state.hasTakenMorto(side)
-        if (!hasMorto) value += RULES.mortoNotTakenPoints
+        if (!hasMorto) value += rules.mortoNotTakenPoints
         // §9.5 sem morto disponível, o lado também pode bater sem ter pego o morto.
         val mayGoOut = hasMorto || state.firstAvailableMorto() == null
-        if (mayGoOut && hasCanasta) value += READY_TO_GO_OUT_BONUS
-        val handPenalty = state.mode.seatsOf(side).sumOf { seat -> state.handOf(seat).sumOf(::cardPenalty) }
+        if (mayGoOut && canGoOutCanasta) value += READY_TO_GO_OUT_BONUS
+        val handPenalty = state.mode.seatsOf(side).sumOf { seat -> state.handOf(seat).sumOf { cardPenalty(it, rules) } }
         return value + HAND_PENALTY_WEIGHT * handPenalty
     }
 
     /** §12.2 penalidade de uma carta na mão (negativa). */
-    private fun cardPenalty(card: Card): Int = when {
-        card.rank.isThree -> if (card.isRedThree) RULES.handRedThreePoints else RULES.handBlackThreePoints
-        card.isWild -> RULES.handWildPoints
-        card.rank in Rank.FOUR..Rank.TEN -> RULES.handFourToTenPoints
-        else -> RULES.handFaceCardOrAcePoints
+    private fun cardPenalty(card: Card, rules: RuleSet): Int = when {
+        card.rank.isThree -> if (card.isRedThree) rules.handRedThreePoints else rules.handBlackThreePoints
+        card.isWild -> rules.handWildPoints
+        card.rank in Rank.FOUR..Rank.TEN -> rules.handFourToTenPoints
+        else -> rules.handFaceCardOrAcePoints
     }
 }

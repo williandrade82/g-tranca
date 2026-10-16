@@ -7,6 +7,7 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.RoundEngine
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.determinize
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.Phase
@@ -90,6 +91,9 @@ internal class Ismcts(
      * @param known cartas sabidas nas mãos alheias, já normalizadas ([normalizeKnown]).
      * @param events eventos públicos desta partida até agora, para montar o histórico das políticas.
      */
+    /** §14.4 regras da mesa (da vista), usadas em todas as simulações desta busca. */
+    private var rules: RuleSet = RuleSet.DEFAULT
+
     fun search(
         view: PlayerView,
         legal: List<Action>,
@@ -97,6 +101,7 @@ internal class Ismcts(
         known: Map<Seat, List<Card>>,
         events: List<PublicEvent>,
     ): Result {
+        rules = view.rules
         val rootCandidates = scorer.rankedCandidates(view, legal, config.candidatesPerKind)
         val baseline = rootCandidates.first()
         if (rootCandidates.size == 1) return Result(baseline, 0, baseline)
@@ -169,17 +174,17 @@ internal class Ismcts(
             } else {
                 selectUcb(node, candidates)
             }
-            state = Rollout.step(state, me, action, policies)
+            state = Rollout.step(state, me, action, policies, rules)
             path += child
             node = child
             if (unexpanded != null) break
         }
-        val reward = Rollout.play(state, policies, config.rolloutTurns, config.rewardScale, side)
+        val reward = Rollout.play(state, policies, config.rolloutTurns, config.rewardScale, side, rules)
 
         // referência pareada: a preferida do Médio no mesmo mundo, com as mesmas sementes
         val basePolicies = Rollout.policies(world, Random(policySeed), events)
-        val afterBaseline = Rollout.step(world, me, rootCandidates.first(), basePolicies)
-        val baselineReward = Rollout.play(afterBaseline, basePolicies, config.rolloutTurns, config.rewardScale, side)
+        val afterBaseline = Rollout.step(world, me, rootCandidates.first(), basePolicies, rules)
+        val baselineReward = Rollout.play(afterBaseline, basePolicies, config.rolloutTurns, config.rewardScale, side, rules)
 
         val advantage = reward - baselineReward
         for (n in path) {
@@ -190,9 +195,9 @@ internal class Ismcts(
     }
 
     private fun candidatesIn(state: RoundState, me: Seat, scorer: MediumBot): List<Action> {
-        val legal = RoundEngine.legalActions(state, me)
+        val legal = RoundEngine.legalActions(state, me, rules)
         if (legal.isEmpty()) return legal
-        return scorer.rankedCandidates(state.sampledView(me), legal, config.candidatesPerKind)
+        return scorer.rankedCandidates(state.sampledView(me, rules), legal, config.candidatesPerKind)
     }
 
     private fun selectUcb(node: Node, candidates: List<Action>): Pair<Action, Node> {

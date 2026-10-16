@@ -224,16 +224,17 @@ class MediumBot(
         score += canastaBonus(ctx, before, after, dirty)
         if (remaining == 0) score += weights.emptyHand else if (closesHand) score += weights.oneCardLeft
         if (usesWild && !closesHand) {
-            // coringa para formar a primeira canastra (condição para bater, §11.1) é bem gasto;
+            // coringa para formar a primeira canastra (condição para bater, §11.1) é bem gasto — salvo quando
+            // bater exige canastra limpa (§14.2): aí a suja não abre a batida;
             // perto do fim, coringa na mão é só penalidade (−10, §12.2)
             val factor = when {
-                formsCanasta && !ctx.sideHasCanasta -> 0.25
+                formsCanasta && !ctx.sideHasCanasta && !view.rules.goOutRequiresCleanCanasta -> 0.25
                 ctx.canGoOut -> weights.wildUseGoingOutFactor
                 else -> 1.0
             }
             score -= weights.wildUse * factor * (1.0 - ctx.threat)
         }
-        if (usesWild && target != null && target.isCleanCanasta() && !closesHand) {
+        if (usesWild && target != null && target.isCleanCanasta(view.rules) && !closesHand) {
             score -= weights.dirtyCleanCanasta // §6.3/§7.3 sujar a canastra limpa custa 100 (§7.2)
         }
         return score
@@ -242,7 +243,11 @@ class MediumBot(
     private fun canastaBonus(ctx: Context, before: Int, after: Int, dirty: Boolean): Double {
         if (before >= CANASTA_SIZE || after < CANASTA_SIZE) return 0.0
         val base = if (dirty) weights.dirtyCanastaBonus else weights.cleanCanastaBonus
-        if (ctx.sideHasCanasta) return base
+        // §11.1 / §14.2 com bater exigindo canastra limpa, a primeira limpa também abre a batida.
+        if (ctx.sideHasCanasta) {
+            val firstClean = !dirty && ctx.view.rules.goOutRequiresCleanCanasta && !ctx.sideHasGoOutCanasta
+            return if (firstClean) base + weights.firstCanastaBonus else base
+        }
         // §12.1 a primeira canastra vira os 3 vermelhos do lado de −100 para +100.
         val redThrees = ctx.view.redThrees.getOrNull(ctx.ownSide.index)?.size ?: 0
         return base + weights.firstCanastaBonus + redThrees * weights.redThreeSwing
@@ -269,7 +274,9 @@ class MediumBot(
         if (card.isWild) return weights.wildKeep
         if (card.isBlackThree) {
             // §5.3 reserva para travar o lixo depois; perto de pegar o morto ou de bater, só atrapalha
-            val reserve = !ctx.canGoOut && ctx.view.hand.size >= weights.blackThreeReserveMinHand
+            // §12.2 / §14.2 com penalidade alta (ex.: −100 na Paulista) o risco de ficar com ele na mão não compensa
+            val cheap = ctx.view.rules.handBlackThreePoints >= RuleSet.CLASSICA.handBlackThreePoints
+            val reserve = cheap && !ctx.canGoOut && ctx.view.hand.size >= weights.blackThreeReserveMinHand
             return if (reserve) weights.blackThreeReserve else weights.blackThreeDump
         }
         val others = ctx.view.hand.toMutableList().apply { remove(card) }.filter { !it.isWild && !it.rank.isThree }
@@ -379,13 +386,16 @@ class MediumBot(
         val ownMelds: List<Meld> = view.tables[ownSide.index].melds.map { it.meld }
         val opponentMelds: List<Meld> = view.tables[opponentSide.index].melds.map { it.meld }
         val sideHasMorto: Boolean = view.mortoStatus.any { (it as? MortoStatus.Taken)?.side == ownSide }
-        val sideHasCanasta: Boolean = ownMelds.any { it.isCanasta() }
+        val sideHasCanasta: Boolean = ownMelds.any { it.isCanasta(view.rules) }
+
+        /** §11.1 / §14.2 o lado tem a canastra exigida para bater (só a limpa com `goOutRequiresCleanCanasta`). */
+        val sideHasGoOutCanasta: Boolean = ownMelds.any { it.allowsGoOut(view.rules) }
 
         /** §9.5 sem morto disponível, bate-se sem ter pego o morto. */
         val noMortoLeft: Boolean = view.mortoStatus.none { it == MortoStatus.Available }
 
         /** §11.1 o lado já cumpre morto (ou não há mais morto, §9.5) e canastra: basta esvaziar a mão para bater. */
-        val canGoOut: Boolean = (sideHasMorto || noMortoLeft) && sideHasCanasta
+        val canGoOut: Boolean = (sideHasMorto || noMortoLeft) && sideHasGoOutCanasta
 
         /** §4.2 o próximo no sentido anti-horário é sempre adversário (em duplas, os parceiros ficam opostos). */
         val nextSeat: Seat = view.mode.nextSeat(view.seat)
@@ -397,7 +407,7 @@ class MediumBot(
             val oppHasMorto = view.mortoStatus.any { (it as? MortoStatus.Taken)?.side == opponentSide }
             // §9.5 sem morto disponível, o adversário também pode bater sem ter pego o morto.
             val oppMayGoOut = oppHasMorto || noMortoLeft
-            val oppHasCanasta = opponentMelds.any { it.isCanasta() }
+            val oppHasCanasta = opponentMelds.any { it.allowsGoOut(view.rules) }
             val oppMinHand = view.mode.seats.filter { view.mode.sideOf(it) == opponentSide }.minOf { view.handSizes[it.index] }
             var t = 0.0
             if (oppHasMorto) t += 0.4
