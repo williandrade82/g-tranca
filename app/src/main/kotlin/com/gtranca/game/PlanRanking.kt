@@ -19,7 +19,7 @@ import com.gtranca.engine.model.RuleResult
  */
 object PlanRanking {
 
-    fun rank(options: List<Action.TakeDiscardPile>, view: PlayerView, rules: RuleSet = RuleSet.DEFAULT): List<Action.TakeDiscardPile> {
+    fun rank(options: List<Action.TakeDiscardPile>, view: PlayerView, rules: RuleSet = view.rules): List<Action.TakeDiscardPile> {
         val top = view.discardPile.lastOrNull() ?: return options
         val rest = view.discardPile.dropLast(1)
         val scored = options.map { option ->
@@ -42,11 +42,11 @@ object PlanRanking {
      * Ordem das opções de "Baixar" (só apresentação): a que mais acrescenta pontos à mesa primeiro (pontos do
      * conjunto depois da jogada menos os de antes, contando a canastra que fecha); empate: conjunto novo antes.
      */
-    fun rankMelds(options: List<Action>, view: PlayerView, rules: RuleSet = RuleSet.DEFAULT): List<Action> =
+    fun rankMelds(options: List<Action>, view: PlayerView, rules: RuleSet = view.rules): List<Action> =
         options.sortedWith(compareByDescending<Action> { meldGain(it, view, rules) }.thenBy { it !is Action.CreateMeld })
 
     /** Pontos que a jogada acrescenta à mesa do lado (`Int.MIN_VALUE` se o conjunto não se forma). */
-    fun meldGain(action: Action, view: PlayerView, rules: RuleSet = RuleSet.DEFAULT): Int = when (action) {
+    fun meldGain(action: Action, view: PlayerView, rules: RuleSet = view.rules): Int = when (action) {
         is Action.CreateMeld -> Meld.create(action.cards, rules).okOrNull()?.let { meldPoints(it, rules) }
         is Action.AddToMeld -> view.tables[view.side.index].meld(action.meldId)?.let { before ->
             before.add(action.cards, rules).okOrNull()?.let { meldPoints(it, rules) - meldPoints(before, rules) }

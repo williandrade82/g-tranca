@@ -71,7 +71,7 @@ fun PlayerView.determinize(random: Random, known: Map<Seat, List<Card>> = emptyM
 
     // §10/§11.2 sem monte nem morto, o assento da vez que vai comprar tem de poder pegar o lixo
     val mustTakeDiscardPile = phase == Phase.AWAITING_DRAW && stockSize == 0 &&
-        mortoStatus.none { it == MortoStatus.Available }
+        (!rules.mortoBecomesStock || mortoStatus.none { it == MortoStatus.Available }) // §14.2 mortoBecomesStock
     if (!mustTakeDiscardPile) return sample(random, knownBySeat, freeOthers, freeRedThrees)
 
     val top = discardTop
@@ -84,7 +84,7 @@ fun PlayerView.determinize(random: Random, known: Map<Seat, List<Card>> = emptyM
     val attempts = if (currentSeat == seat) 1 else MAX_DETERMINIZATION_ATTEMPTS
     repeat(attempts) {
         val sampled = sample(random, knownBySeat, freeOthers, freeRedThrees)
-        if (LegalActions.canTakeDiscardPile(sampled, currentSeat, RuleSet.DEFAULT)) return sampled
+        if (LegalActions.canTakeDiscardPile(sampled, currentSeat, rules)) return sampled
     }
     throw IllegalArgumentException(
         "Vista incoerente: sem monte nem morto, o assento ${currentSeat.index} da vez não pode pegar o lixo " +
@@ -245,7 +245,7 @@ private fun PlayerView.validateTableCards() {
         for (tableMeld in table.melds) {
             val meld = tableMeld.meld
             // a mesma validação do motor: o conjunto tem de ser exatamente o que Meld.create produz com as cartas
-            val created = Meld.create(meld.cards, RuleSet.DEFAULT)
+            val created = Meld.create(meld.cards, rules)
             require(created is RuleResult.Ok && created.value == meld) {
                 val reason = when (created) {
                     is RuleResult.Failure -> created.error.toString()
