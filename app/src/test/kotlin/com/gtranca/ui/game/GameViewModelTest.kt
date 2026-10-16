@@ -365,6 +365,47 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `§3_5 distribuicao do humano inclui os seus 3 vermelhos e cada troca do inicio traz a sua reposicao`() = runTest(dispatcher) {
+        var checked = 0
+        for (seed in 1L..80L) {
+            val vm = GameViewModel(
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+                gameSeed = seed,
+                computeDispatcher = dispatcher,
+                botDelayMillis = 0,
+                swapAnimationMillis = 0,
+                animationMillis = 450,
+            )
+            val own = vm.uiState.value.snapshot.view.redThreeLog.filter { it.seat == Seat(0) && it.atTurnStart }
+            if (own.isEmpty()) continue
+            // Sem avançar o tempo: ainda é a distribuição. Chegam as 11 cartas, com os 3 vermelhos entre elas.
+            val dealt = vm.uiState.value.flights.filter { it.to == AnimAnchor.OwnHand }.mapNotNull { it.card }
+            dealt.size shouldBe 11
+            dealt shouldContainAll own.map { it.card }
+            advanceUntilIdle()
+            var confirmed = 0
+            while (true) {
+                val reveal = vm.uiState.value.reveal ?: break
+                confirmed++
+                // Uma reposição por troca (a última leva o que sobrar); o 3 vermelho vai à mesa e a reposição chega do monte.
+                if (confirmed < own.size) (reveal.hiddenHandCards.size <= 1) shouldBe true
+                val hadReplacement = reveal.hiddenHandCards.isNotEmpty()
+                vm.onRevealConfirmed()
+                runCurrent()
+                if (hadReplacement) {
+                    vm.uiState.value.flights.any { it.from == AnimAnchor.Stock && it.to == AnimAnchor.OwnHand } shouldBe true
+                }
+                advanceUntilIdle()
+            }
+            confirmed shouldBe own.size
+            vm.uiState.value.isHumanTurn shouldBe true
+            checked++
+            if (checked >= 3) break
+        }
+        (checked > 0) shouldBe true
+    }
+
+    @Test
     fun `§3_5 trocas do inicio da vez encenadas uma a uma na ordem do registro, antes de o dono jogar`() = runTest(dispatcher) {
         var checked = false
         var playBanner: RedThreeNotice? = null

@@ -262,8 +262,10 @@ class GameController(
                 wait
             }
             resuming = false
-            if (waitDeal) presentationSignal.receive()
+            // A pausa da distribuição vem antes da espera das trocas do início da vez: elas só são encenadas depois da
+            // distribuição, então o tempo total é o maior dos dois, e não a soma (sem pausa morta depois do "Baixar").
             if (freshDeal && human != null && dealDelayMillis > 0) delay(dealDelayMillis)
+            if (waitDeal) presentationSignal.receive()
             while (true) {
                 val round = synchronized(lock) {
                     if (resigned) return

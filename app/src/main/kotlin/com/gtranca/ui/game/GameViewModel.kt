@@ -200,6 +200,8 @@ class GameViewModel(
         /** Cartas da mão escondidas até a troca do humano ([RedThreeNotice.id]) ser confirmada. */
         val hidden: Map<Long, Set<Card>> = emptyMap(),
         val flights: List<CardFlight> = emptyList(),
+        /** Voos da distribuição ainda no ar: as trocas do início da vez só são encenadas depois deles. */
+        val dealIds: Set<Long> = emptySet(),
         val flashes: List<CanastaFlash> = emptyList(),
         /** Escala de duração das animações do sistema (`ANIMATOR_DURATION_SCALE`; 0 = desligadas). */
         val animationScale: Float = 1f,
@@ -275,7 +277,9 @@ class GameViewModel(
         if (restored == null) enqueueSave(controller.saveSnapshot())
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
-            local.map { state -> state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) } }
+            local.map { state ->
+                state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) && state.flights.none { f -> f.id in state.dealIds } }
+            }
                 .distinctUntilChanged()
                 .collectLatest { head ->
                     if (head != null) {
@@ -370,10 +374,21 @@ class GameViewModel(
         // intermediária era outro 3 vermelho, que não está mais na mão. Na 1ª vez da partida (sem snapshot anterior da
         // mesma partida) as reposições são as últimas cartas da mão: o motor as acrescenta ao fim.
         val ownSwaps = fresh.filter { it.seat == snapshot.viewerSeat && it !in fromMorto }
-        ownSwaps.lastOrNull()?.let { last ->
-            val replacements = if (sameRound && previous != null) gained else snapshot.view.hand.takeLast(ownSwaps.size).toSet()
-            hidden = hidden + (last.id to replacements)
-            if (!(sameRound && previous != null)) newCards = newCards + replacements
+        val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING && (previous == null || !sameRound)
+        if (ownSwaps.isNotEmpty()) {
+            val fromDeal = !(sameRound && previous != null)
+            val replacements = if (fromDeal) snapshot.view.hand.takeLast(ownSwaps.size).toSet() else gained
+            if (ownSwaps.all { it.atTurnStart }) {
+                // §3.5 início da vez: cada troca recebe a sua reposição (na ordem da mão), que chega quando ela é confirmada.
+                val ordered = snapshot.view.hand.filter { it in replacements }
+                ownSwaps.forEachIndexed { i, swap ->
+                    val mine = if (i == ownSwaps.lastIndex) ordered.drop(i) else ordered.drop(i).take(1)
+                    hidden = hidden + (swap.id to mine.toSet())
+                }
+            } else {
+                hidden = hidden + (ownSwaps.last().id to replacements)
+            }
+            if (fromDeal) newCards = newCards + replacements
         }
         // Animações da mesa a partir das diferenças com o último snapshot incorporado.
         val (newFlights, newFlashes) = if (effectiveMillis(state) > 0 && previous != null && snapshot.stage == Stage.PLAYING) {
@@ -383,11 +398,13 @@ class GameViewModel(
             emptyList<CardFlight>() to emptyList()
         }
         // Início de partida (jogo novo ou partida seguinte): distribuição do monte aos assentos.
-        val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING &&
-            (previous == null || !sameRound)
         val dealFlights = if (dealing) {
             val hiddenCards = hidden.values.flatten().toSet()
-            TableAnimations.deal(snapshot, snapshot.view.hand.filter { it !in hiddenCards }, animationIds::incrementAndGet)
+            // Os 3 vermelhos do início da vez (já baixados pelo motor) fazem parte das 11 cartas dadas: chegam à mão e só
+            // então vão à área de 3 vermelhos, na confirmação.
+            val dealt = snapshot.view.hand.filter { it !in hiddenCards } +
+                fresh.filter { it.seat == snapshot.viewerSeat && it.atTurnStart }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
+            TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet)
                 .map { it.scaled(state.animationScale) }
         } else {
             emptyList()
@@ -402,6 +419,7 @@ class GameViewModel(
             swaps = if (playing) swaps else emptyList(),
             mortoSwaps = if (playing) mortoSwaps.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             flights = if (playing && sameRound) state.flights + newFlights + dealFlights else dealFlights,
+            dealIds = (if (playing && sameRound) state.dealIds else emptySet()) + dealFlights.map { it.id },
             flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
@@ -661,11 +679,11 @@ class GameViewModel(
         /** Folga para a limpeza de uma animação depois do fim do desenho. */
         private const val EXPIRY_MARGIN_MILLIS: Long = 150
 
-        /** Duração padrão de cada animação da mesa (300–600 ms). */
-        const val DEFAULT_ANIMATION_MILLIS: Long = 450
+        /** Duração padrão de cada animação da mesa (390–780 ms). */
+        const val DEFAULT_ANIMATION_MILLIS: Long = 585
 
         /** Duração padrão da animação de troca de 3 vermelho de outro assento. */
-        const val DEFAULT_SWAP_ANIMATION_MILLIS: Long = 1_800
+        const val DEFAULT_SWAP_ANIMATION_MILLIS: Long = 2_340
     }
 
     private fun submit(action: Action, requestId: Long) {
