@@ -128,4 +128,76 @@ class ProfileViewModelTest {
         // Padrão: ligado.
         ProfileViewModel(FakeSettings(), WriteQueue(CoroutineScope(dispatcher))).also { advanceUntilIdle() }.uiState.value.soundOn shouldBe true
     }
+
+    private class FakePhotos(var importOk: Boolean = true) : PhotoStore {
+        override val savedPath = "/app/profile_photo.jpg"
+        override val draftPath = "/app/profile_photo_draft.jpg"
+        var hasDraft = false
+        var hasSaved = false
+        override suspend fun importDraft(uri: String): Boolean {
+            if (importOk) hasDraft = true
+            return importOk
+        }
+        override suspend fun commitDraft(): Boolean {
+            if (!hasDraft) return false
+            hasDraft = false
+            hasSaved = true
+            return true
+        }
+        override suspend fun deleteSaved() {
+            hasSaved = false
+        }
+    }
+
+    @Test
+    fun `§14_1 foto escolhida vira rascunho e so vale ao salvar`() = runTest(dispatcher) {
+        val settings = FakeSettings()
+        val photos = FakePhotos()
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)), photos)
+        advanceUntilIdle()
+        vm.uiState.value.photo shouldBe PhotoState.NONE
+        vm.previewPhoto shouldBe null
+        vm.onPhotoPicked("content://galeria/1")
+        advanceUntilIdle()
+        vm.uiState.value.photo shouldBe PhotoState.DRAFT
+        vm.previewPhoto shouldBe photos.draftPath
+        photos.hasSaved shouldBe false
+        val saved = vm.onSave()
+        advanceUntilIdle()
+        saved.hasPhoto shouldBe true
+        photos.hasSaved shouldBe true
+        PlayerProfile.decode(settings.state.value.profileId).hasPhoto shouldBe true
+        // Reabrindo: a foto gravada aparece.
+        val again = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)), photos)
+        advanceUntilIdle()
+        again.uiState.value.photo shouldBe PhotoState.SAVED
+        again.previewPhoto shouldBe photos.savedPath
+    }
+
+    @Test
+    fun `§14_1 remover a foto volta para a persona e apaga o arquivo ao salvar`() = runTest(dispatcher) {
+        val settings = FakeSettings(Settings(profileId = PlayerProfile("Bia", hasPhoto = true).encode()))
+        val photos = FakePhotos().apply { hasSaved = true }
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)), photos)
+        advanceUntilIdle()
+        vm.uiState.value.photo shouldBe PhotoState.SAVED
+        vm.onRemovePhoto()
+        vm.previewPhoto shouldBe null
+        vm.onSave().hasPhoto shouldBe false
+        advanceUntilIdle()
+        photos.hasSaved shouldBe false
+        PlayerProfile.decode(settings.state.value.profileId).hasPhoto shouldBe false
+    }
+
+    @Test
+    fun `§14_1 foto que nao pode ser lida avisa e mantem o avatar`() = runTest(dispatcher) {
+        val vm = ProfileViewModel(FakeSettings(), WriteQueue(CoroutineScope(dispatcher)), FakePhotos(importOk = false))
+        advanceUntilIdle()
+        vm.onPhotoPicked("content://galeria/quebrada")
+        advanceUntilIdle()
+        vm.uiState.value.photoError shouldBe true
+        vm.uiState.value.photo shouldBe PhotoState.NONE
+        vm.onPhotoErrorShown()
+        vm.uiState.value.photoError shouldBe false
+    }
 }

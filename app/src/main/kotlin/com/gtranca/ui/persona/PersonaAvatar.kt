@@ -2,6 +2,7 @@ package com.gtranca.ui.persona
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.gtranca.R
@@ -64,6 +65,19 @@ private fun Profession.background(): Color = Color(
  */
 @Composable
 fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier) {
+    // §14.1 foto pessoal do jogador: lida do arquivo (relida quando muda); enquanto carrega ou se falhar, vale a persona.
+    val photo = persona.photo?.let { path ->
+        val version = com.gtranca.ui.profile.ProfilePhoto.version
+        androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, path, version) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { android.graphics.BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
+            }
+        }.value
+    }
+    if (photo != null) {
+        Image(photo, null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+        return
+    }
     val portrait = portraitRes(persona.profession, persona.gender)
     if (portrait != null) {
         Image(painterResource(portrait), null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)

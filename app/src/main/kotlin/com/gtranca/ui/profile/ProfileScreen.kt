@@ -81,9 +81,10 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
             GTitle(stringResource(R.string.profile_title))
             GPanel(Modifier.fillMaxWidth()) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    val preview = profile.persona(youName)
+                    val preview = profile.copy(hasPhoto = state.photo != PhotoState.NONE).persona(youName, viewModel.previewPhoto)
                     PersonaAvatar(preview, 112.dp, Modifier.semantics { contentDescription = preview.firstName }.testTag("profile-preview"))
                 }
+                PhotoButtons(state, viewModel)
                 OutlinedTextField(
                     value = profile.name,
                     onValueChange = viewModel::onName,
@@ -94,6 +95,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
                     modifier = Modifier.fillMaxWidth().testTag("profile-name"),
                 )
 
+                // §14.1 avatar pronto: gênero e profissão (vale quando não há foto).
                 Section(stringResource(R.string.profile_gender)) {
                     Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Gender.entries.forEach { gender ->
@@ -126,61 +128,6 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
                     }
                 }
 
-                Section(stringResource(R.string.profile_face)) {
-                    FlowRow(
-                        Modifier.fillMaxWidth().selectableGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    ) {
-                        FaceShape.entries.forEach { face ->
-                            val option = profile.copy(look = profile.look.copy(face = face)).persona(youName)
-                            Choice(
-                                selected = profile.look.face == face,
-                                onClick = { viewModel.onFace(face) },
-                                description = stringResource(face.labelRes()),
-                                tag = "face-${face.name.lowercase()}",
-                            ) { PersonaAvatar(option, 52.dp) }
-                        }
-                    }
-                }
-
-                Section(stringResource(R.string.profile_skin)) {
-                    Swatches(SkinTones, profile.look.skin, "skin", viewModel::onSkin)
-                }
-
-                Section(stringResource(R.string.profile_hair)) {
-                    FlowRow(
-                        Modifier.fillMaxWidth().selectableGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    ) {
-                        HairStyle.entries.filter { it.gender == profile.gender }.forEach { style ->
-                            val option = profile.copy(look = profile.look.copy(hair = style)).persona(youName)
-                            Choice(
-                                selected = profile.look.hair == style,
-                                onClick = { viewModel.onHair(style) },
-                                description = stringResource(style.labelRes()),
-                                tag = "hair-${style.name.lowercase()}",
-                            ) { PersonaAvatar(option, 44.dp) }
-                        }
-                    }
-                    Swatches(HairColors, profile.look.hairColor, "haircolor", viewModel::onHairColor)
-                }
-
-                if (profile.gender == Gender.MALE) {
-                    val beardLabel = stringResource(R.string.profile_beard)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .toggleable(profile.look.beard, role = Role.Switch, onValueChange = viewModel::onBeard)
-                            .testTag("profile-beard"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(beardLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                        Switch(checked = profile.look.beard, onCheckedChange = null)
-                    }
-                }
             }
             GPanel(Modifier.fillMaxWidth()) {
                 val sound = LocalSound.current
@@ -220,6 +167,42 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
                 Text(stringResource(R.string.back))
             }
         }
+    }
+}
+
+/** §14.1 escolher, trocar ou remover a foto do avatar (galeria do aparelho, sem pedir permissão). */
+@Composable
+private fun PhotoButtons(state: ProfileUiState, viewModel: ProfileViewModel) {
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> uri?.let { viewModel.onPhotoPicked(it.toString()) } }
+    val hasPhoto = state.photo != PhotoState.NONE
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        GButton(
+            onClick = {
+                picker.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+                    ),
+                )
+            },
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("profile-photo-pick"),
+            enabled = !state.importingPhoto,
+            kind = GButtonKind.Secondary,
+        ) { Text(stringResource(if (hasPhoto) R.string.profile_photo_change else R.string.profile_photo_pick)) }
+        if (hasPhoto) {
+            GButton(
+                onClick = viewModel::onRemovePhoto,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("profile-photo-remove"),
+                kind = GButtonKind.Text,
+            ) { Text(stringResource(R.string.profile_photo_remove)) }
+        }
+    }
+    if (state.photoError) {
+        Text(stringResource(R.string.profile_photo_error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+    if (hasPhoto) {
+        Text(stringResource(R.string.profile_photo_hint), style = MaterialTheme.typography.bodySmall)
     }
 }
 

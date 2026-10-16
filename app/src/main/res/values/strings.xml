@@ -410,4 +410,9 @@
     <string name="rule_target">Pontuação-alvo</string>
     <string name="rule_target_value">%1$s pontos</string>
     <string name="profile_my_rules">Meu padrão para regras personalizadas</string>
+    <string name="profile_photo_pick">Usar uma foto</string>
+    <string name="profile_photo_change">Trocar foto</string>
+    <string name="profile_photo_remove">Remover foto</string>
+    <string name="profile_photo_error">Não foi possível usar essa foto. Tente outra.</string>
+    <string name="profile_photo_hint">A foto fica só neste aparelho. Sem foto, vale o avatar escolhido abaixo.</string>
 </resources>

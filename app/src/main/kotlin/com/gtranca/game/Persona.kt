@@ -52,6 +52,8 @@ data class Persona(
     val gender: Gender,
     val profession: Profession,
     val look: Look,
+    /** §14.1 foto pessoal do jogador (caminho do arquivo no aparelho); `null` = vale o desenho da persona. */
+    val photo: String? = null,
 ) {
     init {
         require(look.hair.gender == gender) { "Penteado incompatível com o gênero" }

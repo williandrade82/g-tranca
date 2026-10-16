@@ -179,7 +179,7 @@ fun AppNavHost() {
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
         composable<ProfileRoute> {
             ProfileScreen(
-                viewModel { ProfileViewModel(data.settings, WriteQueue.app) },
+                viewModel { ProfileViewModel(data.settings, WriteQueue.app, com.gtranca.ui.profile.ProfilePhoto(context.applicationContext)) },
                 onRules = { navController.navigate(RulesEditorRoute()) { launchSingleTop = true } },
             ) { navController.popBackStack() }
         }
@@ -279,6 +279,8 @@ class GameSession : ViewModel() {
 @Composable
 private fun GameDestination(route: GameRoute, data: GameData, navController: NavHostController) {
     val goHome = { navController.popBackStack(HomeRoute, inclusive = false) }
+    // §14.1 foto do jogador no aparelho (o avatar usa se o perfil pede).
+    val photoPath = com.gtranca.ui.profile.ProfilePhoto.savedPath(LocalContext.current)
     val session = viewModel { GameSession() }
     if (session.started) {
         val existing = viewModel<GameViewModel> { error("O jogo desta tela já foi criado") }
@@ -319,9 +321,10 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             persistence = persistence,
                             initialHand = ready.hand,
                             playerProfile = ready.profile,
+                            playerPhoto = photoPath,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile)
+                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath)
                     }
                 }
                 session.started = true
