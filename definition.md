@@ -363,14 +363,17 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 | `targetScore` | 3.000 | 3.000 |
 
 - **Perfis personalizados:** o jogador pode **duplicar** qualquer perfil (da casa ou personalizado), dar um nome e alterar os parâmetros de §14.2. A origem fica registrada, e o app mostra o que difere dela.
-- Enquanto o app estiver em desenvolvimento, os perfis da casa também podem ser **editados** na mesma tela.
+- No editor das regras personalizadas, o jogador pode **começar a partir** dos valores de qualquer perfil da casa e ajustá-los (os perfis da casa em si não mudam).
 - Alterar um perfil **não afeta** jogos já iniciados: cada jogo guarda uma cópia completa das regras com que começou (§14.4).
 
 ### **14.4. Mesa**
 
 - Uma **mesa** reúne o perfil de regras, a pontuação-alvo e o modo (individual ou duplas).
 - Antes de entrar numa mesa, o jogador pode **ver as regras** (as diferenças em relação à Clássica). Ao entrar, as regras são aceitas e **não mudam mais** até o fim do jogo; o jogo salvo ("Continuar") retoma com as mesmas regras.
-- **Mesas dos jogadores virtuais:** o app oferece algumas mesas já abertas por jogadores virtuais, cada uma com um **perfil da casa** sorteado e uma pontuação-alvo sorteada entre valores usuais (ex.: 1.500, 2.000, 3.000). O jogador entra numa delas ou **cria a própria mesa**.
+- Uma mesa reúne também a **dificuldade** dos jogadores virtuais.
+- **Mesas dos jogadores virtuais:** em "Novo jogo", o app lista algumas mesas já abertas por jogadores virtuais, cada uma com **perfil da casa**, **modo**, **dificuldade** e **pontuação-alvo** (1.500, 2.000 ou 3.000) sorteados. Tocar numa mesa mostra as **regras da mesa**; o jogador **inicia o jogo** ou volta.
+- **Criar mesa:** o jogador escolhe dificuldade, modo, regras (**Clássica**, **Tranca Paulista** ou **Personalizada**) e pontuação-alvo (padrão 3.000). Ao criar, as vagas de parceiro e adversários são preenchidas por jogadores virtuais e o jogo começa (distribuição, §3).
+- **Regras personalizadas do jogador:** cada jogador tem **um** perfil personalizado (origem: Clássica na primeira vez), que é o seu padrão ao escolher "Personalizada". Ele é editado no **Perfil** do jogador ou a partir de "Criar mesa"; ao salvar na criação da mesa, volta-se a ela com "Personalizada" escolhida. Os parâmetros editáveis são os de §14.2, exceto a pontuação-alvo, escolhida na mesa.
 
 ---
 
