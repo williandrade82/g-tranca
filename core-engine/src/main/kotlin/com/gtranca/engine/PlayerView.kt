@@ -56,6 +56,8 @@ data class PlayerView(
     val redThreeLog: List<RedThreeLaid> = emptyList(),
     val turnsBegun: Int = mode.seatCount,
     val unsettledMortoSeats: List<Seat> = emptyList(),
+    /** §14.4 perfil de regras da mesa (público: todos aceitaram as mesmas regras). JSON antigo: Clássica. */
+    val rules: RuleSet = RuleSet.DEFAULT,
 ) {
     /** §3.5 o [seat] já teve o início da sua primeira vez nesta partida. */
     fun hasBegunFirstTurn(seat: Seat): Boolean = hasBegunFirstTurn(mode, firstSeat, turnsBegun, seat)
@@ -70,7 +72,7 @@ data class PlayerView(
  * As listas são cópias defensivas (inclusive as aninhadas): quem recebe a vista não consegue
  * alterar o [RoundState] nem com cast para `MutableList`.
  */
-fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
+fun RoundState.viewFor(seat: Seat, rules: RuleSet = RuleSet.DEFAULT): PlayerView = PlayerView(
     mode = mode,
     seat = seat,
     side = mode.sideOf(seat),
@@ -89,6 +91,7 @@ fun RoundState.viewFor(seat: Seat): PlayerView = PlayerView(
     redThreeLog = redThreeLog.toList(),
     turnsBegun = turnsBegun,
     unsettledMortoSeats = unsettledMortoSeats.toList(),
+    rules = rules,
 )
 
 /** Cópia de [SideTable] sem compartilhar nenhuma lista com o original. */

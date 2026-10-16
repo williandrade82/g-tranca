@@ -66,7 +66,7 @@ internal object LegalActions {
         private val handSize = state.handOf(seat).size
         private val tookMorto = state.hasTakenMorto(side)
         private val mortoAvailable = state.firstAvailableMorto() != null
-        private val hadCanasta = table.melds.any { it.meld.isCanasta(rules) }
+        private val hadCanasta = table.melds.any { it.meld.allowsGoOut(rules) }
 
         fun isValid(action: Action): Boolean {
             val (result, leftInHand) = when (action) {
@@ -86,7 +86,7 @@ internal object LegalActions {
             if (leftInHand >= 2) return true
             // §8/§9/§11.1/§9.5 ficar com 1 ou 0 cartas: só se isso levar ao morto ou à batida.
             if (!tookMorto && mortoAvailable) return true
-            val hasCanasta = hadCanasta || newTable.melds.any { it.meld.isCanasta(rules) }
+            val hasCanasta = hadCanasta || newTable.melds.any { it.meld.allowsGoOut(rules) }
             return (tookMorto || !mortoAvailable) && hasCanasta
         }
     }

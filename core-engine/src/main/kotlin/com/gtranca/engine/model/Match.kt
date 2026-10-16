@@ -1,5 +1,6 @@
 package com.gtranca.engine.model
 
+import com.gtranca.engine.RuleSet
 import kotlinx.serialization.Serializable
 
 /** Partida já encerrada e pontuada, guardada no histórico do jogo. */
@@ -25,6 +26,7 @@ data class RoundRecord(
  * @property currentRound partida atual (em andamento, ou encerrada).
  * @property currentRoundRecorded a partida atual já foi pontuada e está em [history].
  * @property winner lado vencedor do jogo, quando terminado (§13).
+ * @property rules cópia do perfil de regras aceito na mesa (§14.4), fixa durante o jogo. JSON antigo: Clássica.
  */
 @Serializable
 data class Match(
@@ -36,6 +38,7 @@ data class Match(
     val currentRound: RoundState,
     val currentRoundRecorded: Boolean = false,
     val winner: Side? = null,
+    val rules: RuleSet = RuleSet.DEFAULT,
 ) {
     init {
         require(targetScore > 0) { "Pontuação-alvo deve ser um inteiro positivo: $targetScore" }

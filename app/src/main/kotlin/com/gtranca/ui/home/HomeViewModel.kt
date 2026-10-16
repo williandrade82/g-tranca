@@ -37,7 +37,7 @@ enum class TargetError {
 data class HomeUiState(
     val mode: GameMode = GameMode.INDIVIDUAL,
     val difficulty: Difficulty = Difficulty.MEDIO,
-    val targetText: String = RuleSet.DEFAULT.defaultTargetScore.toString(),
+    val targetText: String = RuleSet.DEFAULT.targetScore.toString(),
     /** Jogo salvo que pode ser continuado, ou `null`. */
     val saved: SavedSummary? = null,
     /** "Novo jogo" com jogo salvo: pedindo confirmação (o salvo será perdido). */

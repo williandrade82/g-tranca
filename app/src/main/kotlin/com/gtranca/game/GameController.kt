@@ -271,13 +271,13 @@ class GameController(
                 }
                 if (round.phase == Phase.FINISHED) break
                 val seat = round.currentSeat
-                val legal = RoundEngine.legalActions(round, seat)
+                val legal = RoundEngine.legalActions(round, seat, match.rules)
                 check(legal.isNotEmpty()) { "Assento ${seat.index} sem ações legais na fase ${round.phase}" }
                 val action = when (val player = players[seat.index]) {
                     is BotSeatPlayer -> {
                         publish(Stage.PLAYING, thinkingSeat = seat)
                         if (botDelayMillis > 0) delay(botDelayMillis)
-                        player.bot.chooseAction(round.viewFor(seat), legal)
+                        player.bot.chooseAction(round.viewFor(seat, match.rules), legal)
                     }
                     is HumanPlayer -> {
                         val requestId = requestCounter.incrementAndGet()
@@ -399,7 +399,7 @@ class GameController(
     fun explain(action: Action, requestId: Long): RuleError? {
         val (id, round) = humanRequest ?: return null
         if (id != requestId || resigned) return null
-        return (RoundEngine.validate(round, viewerSeat, action) as? RuleResult.Failure)?.error
+        return (RoundEngine.validate(round, viewerSeat, action, match.rules) as? RuleResult.Failure)?.error
     }
 
     /**
@@ -461,7 +461,7 @@ class GameController(
         return GameSnapshot(
             config = config,
             viewerSeat = viewerSeat,
-            view = current.currentRound.viewFor(viewerSeat),
+            view = current.currentRound.viewFor(viewerSeat, current.rules),
             roundNumber = current.roundNumber,
             totals = current.totals,
             history = current.history,

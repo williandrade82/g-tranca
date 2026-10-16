@@ -93,7 +93,7 @@ class Simulator internal constructor(
     constructor(config: SimConfig) : this(
         config,
         botFactory = { seat, random -> createSimBot(config.sides[config.mode.sideOf(seat).index], random, config.hardConfig) },
-        legalActionsOf = { state, seat -> RoundEngine.legalActions(state, seat) },
+        legalActionsOf = { state, seat -> RoundEngine.legalActions(state, seat, config.rules) },
         playAction = { match, seat, action -> match.play(seat, action) },
     )
 
@@ -109,7 +109,7 @@ class Simulator internal constructor(
         var lastAction: Action? = null
         val timing = MutableList(mode.sideCount) { DecisionTiming() }
         try {
-            match = startMatch(mode, config.target, Random(gameSeed))
+            match = startMatch(mode, config.target, Random(gameSeed), config.rules)
             checkRoundInvariants(match.currentRound)
             while (!match!!.isOver) {
                 bots.forEach { it.onNewRound() }
@@ -122,7 +122,7 @@ class Simulator internal constructor(
                     val legal = legalActionsOf(round, seat)
                     if (legal.isEmpty()) throw SimFailure(FailureKind.NO_LEGAL_ACTIONS, "assento ${seat.index} na fase ${round.phase}")
                     val started = System.nanoTime()
-                    val action = bots[seat.index].chooseAction(round.viewFor(seat), legal)
+                    val action = bots[seat.index].chooseAction(round.viewFor(seat, config.rules), legal)
                     if (legal.size > 1) {
                         val side = mode.sideOf(seat).index
                         timing[side] = timing[side] + (System.nanoTime() - started)
@@ -201,7 +201,7 @@ class Simulator internal constructor(
         }
         state.tables.forEachIndexed { sideIndex, table ->
             for (tableMeld in table.melds) {
-                val rebuilt = Meld.create(tableMeld.meld.cards)
+                val rebuilt = Meld.create(tableMeld.meld.cards, config.rules)
                 if (rebuilt !is RuleResult.Ok || rebuilt.value.kind != tableMeld.meld.kind) {
                     return "conjunto inválido na mesa do lado $sideIndex: ${tableMeld.meld.cards}"
                 }
@@ -224,7 +224,7 @@ class Simulator internal constructor(
         state.redThrees.forEachIndexed { sideIndex, threes ->
             if (threes.any { !it.isRedThree }) return "carta que não é 3 vermelho entre os 3 vermelhos do lado $sideIndex"
         }
-        if (state.phase == Phase.FINISHED && RoundEngine.legalActions(state, state.currentSeat).isNotEmpty()) {
+        if (state.phase == Phase.FINISHED && RoundEngine.legalActions(state, state.currentSeat, config.rules).isNotEmpty()) {
             return "partida encerrada com ações legais"
         }
         return null

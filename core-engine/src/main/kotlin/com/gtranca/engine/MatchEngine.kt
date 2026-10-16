@@ -18,24 +18,27 @@ import kotlin.random.Random
  */
 fun startMatch(
     mode: GameMode,
-    targetScore: Int = RuleSet.DEFAULT.defaultTargetScore,
+    targetScore: Int? = null,
     random: Random,
     rules: RuleSet = RuleSet.DEFAULT,
 ): Match {
-    require(targetScore > 0) { "Pontuação-alvo deve ser um inteiro positivo: $targetScore" }
+    // §14 a mesa pode ajustar a pontuação-alvo do perfil; o jogo guarda a cópia das regras com o alvo usado (§14.4).
+    val target = targetScore ?: rules.targetScore
+    require(target > 0) { "Pontuação-alvo deve ser um inteiro positivo: $target" }
     val seed = random.nextLong()
     return Match(
         mode = mode,
-        targetScore = targetScore,
+        targetScore = target,
         seed = seed,
         totals = List(mode.sideCount) { 0 },
         history = emptyList(),
         currentRound = dealRound(mode, roundRandom(seed, 0), rules),
+        rules = rules.copy(targetScore = target),
     )
 }
 
 /** Aplica uma ação na partida atual via [RoundEngine.apply] (lança se inválida). */
-fun Match.play(seat: Seat, action: Action, rules: RuleSet = RuleSet.DEFAULT): Match =
+fun Match.play(seat: Seat, action: Action, rules: RuleSet = this.rules): Match =
     copy(currentRound = RoundEngine.apply(currentRound, seat, action, rules))
 
 /**
@@ -43,7 +46,7 @@ fun Match.play(seat: Seat, action: Action, rules: RuleSet = RuleSet.DEFAULT): Ma
  * detalhamento no histórico. §13: se algum lado tiver total ≥ alvo, vence o de maior total; empate
  * no maior total ⇒ o jogo continua com nova partida.
  */
-fun Match.finishRound(rules: RuleSet = RuleSet.DEFAULT): Match {
+fun Match.finishRound(rules: RuleSet = this.rules): Match {
     require(currentRound.phase == Phase.FINISHED) { "A partida atual ainda não terminou" }
     require(!currentRoundRecorded) { "A partida atual já foi registrada" }
     val scores = scoreRound(currentRound, rules)
@@ -61,7 +64,7 @@ fun Match.finishRound(rules: RuleSet = RuleSet.DEFAULT): Match {
  * Distribui a próxima partida (§3). §4.1 ela é iniciada pelo jogador seguinte (§4.2) ao que iniciou
  * a partida anterior.
  */
-fun Match.startNextRound(rules: RuleSet = RuleSet.DEFAULT): Match {
+fun Match.startNextRound(rules: RuleSet = this.rules): Match {
     require(isAwaitingNextRound) { "Só se inicia nova partida depois de registrar a atual e com o jogo em andamento" }
     val firstSeat = mode.nextSeat(currentRound.firstSeat)
     return copy(

@@ -50,6 +50,7 @@ fun RuleError?.messageRes(): Int = when (this) {
     MeldError.NOT_CONSECUTIVE -> R.string.error_not_consecutive
     MeldError.WRONG_SUIT -> R.string.error_wrong_suit
     MeldError.WRONG_RANK -> R.string.error_wrong_rank
+    MeldError.GROUP_RANK_NOT_ALLOWED -> R.string.error_group_rank_not_allowed
     MeldError.CONTIGUOUS_SEQUENCE -> R.string.error_contiguous_sequence
     MeldError.MELD_NOT_FOUND -> R.string.error_meld_not_found
 }

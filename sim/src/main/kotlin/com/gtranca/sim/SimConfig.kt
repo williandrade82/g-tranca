@@ -26,7 +26,7 @@ data class SimConfig(
     val games: Int = 100,
     val seed: Long = 42,
     val mode: GameMode = GameMode.INDIVIDUAL,
-    val target: Int = RuleSet.DEFAULT.defaultTargetScore,
+    val target: Int = RuleSet.DEFAULT.targetScore,
     val sides: List<String> = listOf("facil", "facil"),
     val checkInvariants: Boolean = false,
     val maxActionsPerRound: Int = 5_000,
@@ -41,6 +41,8 @@ data class SimConfig(
     val hardMinVisits: Int = HardBotConfig.DEFAULT.minVisitsToOverride,
     val hardConfidence: Double = HardBotConfig.DEFAULT.overrideConfidence,
     val threads: Int = 1,
+    /** Perfil de regras (§14.3) de todos os jogos: `--rules classica|paulista`. */
+    val rules: RuleSet = RuleSet.DEFAULT,
 ) {
     init {
         require(games > 0) { "--games deve ser positivo" }
@@ -86,6 +88,7 @@ data class SimConfig(
   --seed S             semente base; o jogo i usa S + i (padrão 42)
   --mode M             individual | duplas (padrão individual)
   --target P           pontuação-alvo (padrão 3000)
+  --rules R            perfil de regras: classica | paulista (padrão classica)
   --sides A,B          bot de cada lado: facil, medio, dificil, aleatorio (padrão facil,facil)
   --check-invariants   verificações extras após cada ação (mais lento)
   --max-actions N      limite de ações por partida antes de acusar travamento (padrão 5000)
@@ -117,6 +120,7 @@ data class SimConfig(
                     "--seed" -> config = config.copy(seed = value(arg).toLongOrNull() ?: throw IllegalArgumentException("--seed deve ser inteiro"))
                     "--mode" -> config = config.copy(mode = parseMode(value(arg)))
                     "--target" -> config = config.copy(target = int(arg))
+                    "--rules" -> config = config.copy(rules = value(arg).lowercase().let { id -> RuleSet.HOUSE.firstOrNull { it.id == id } ?: throw IllegalArgumentException("--rules inválido: $id (use ${RuleSet.HOUSE.joinToString { it.id }})") })
                     "--sides" -> config = config.copy(sides = value(arg).split(",").map { it.trim().lowercase() })
                     "--check-invariants" -> config = config.copy(checkInvariants = true)
                     "--max-actions" -> config = config.copy(maxActionsPerRound = int(arg))

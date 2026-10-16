@@ -13,7 +13,7 @@ import com.gtranca.engine.model.GameMode
 data class GameConfig(
     val mode: GameMode = GameMode.INDIVIDUAL,
     val difficulty: Difficulty = Difficulty.MEDIO,
-    val targetScore: Int = RuleSet.DEFAULT.defaultTargetScore,
+    val targetScore: Int = RuleSet.DEFAULT.targetScore,
 ) {
     init {
         require(targetScore > 0) { "Pontuação-alvo deve ser um inteiro positivo: $targetScore" }

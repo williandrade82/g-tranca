@@ -88,6 +88,10 @@ data class Meld internal constructor(
     /** §7.2 canastra limpa: sem coringa. */
     fun isCleanCanasta(rules: RuleSet = RuleSet.DEFAULT): Boolean = isCanasta(rules) && isClean
 
+    /** §11.1 / §14.2 canastra que permite bater: qualquer canastra, ou só a limpa com `goOutRequiresCleanCanasta`. */
+    fun allowsGoOut(rules: RuleSet = RuleSet.DEFAULT): Boolean =
+        if (rules.goOutRequiresCleanCanasta) isCleanCanasta(rules) else isCanasta(rules)
+
     /** §7.2 canastra suja: com coringa. */
     fun isDirtyCanasta(rules: RuleSet = RuleSet.DEFAULT): Boolean = isCanasta(rules) && hasWild
 
@@ -125,7 +129,10 @@ data class Meld internal constructor(
             // Com ≥ 3 cartas e no máximo 1 coringa, há pelo menos 2 naturais (§6.3).
             val naturals = cards.filterNot { it.isWild }
             return when {
-                naturals.all { it.rank == naturals.first().rank } -> buildGroup(naturals.first().rank, cards)
+                naturals.all { it.rank == naturals.first().rank } ->
+                    // §6.1 / §14.2 `groupRanks`: o número precisa poder formar grupo no perfil.
+                    if (!rules.groupRanks.allows(naturals.first().rank)) fail(MeldError.GROUP_RANK_NOT_ALLOWED)
+                    else buildGroup(naturals.first().rank, cards)
                 naturals.all { it.suit == naturals.first().suit } -> buildSequence(naturals.first().suit, cards)
                 else -> fail(MeldError.NOT_A_SEQUENCE_OR_GROUP)
             }

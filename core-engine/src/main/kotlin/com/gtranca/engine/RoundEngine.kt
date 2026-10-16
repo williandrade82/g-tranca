@@ -66,7 +66,7 @@ object RoundEngine {
         if (seat != state.currentSeat) return fail(ActionError.NOT_YOUR_TURN)
         val result = when (action) {
             Action.DrawFromStock -> drawFromStock(state, seat, rules)
-            Action.DeclineDraw -> declineDraw(state)
+            Action.DeclineDraw -> declineDraw(state, rules)
             is Action.TakeDiscardPile -> takeDiscardPile(state, seat, action.plan, rules)
             is Action.CreateMeld -> meldFromHand(state, seat, action.cards, rules) { it.createMeld(action.cards, rules) }
             is Action.AddToMeld ->
@@ -81,10 +81,10 @@ object RoundEngine {
     /** §4.3 etapa 1; §10.1 morto vira monte; §6.5 3 vermelho comprado. */
     private fun drawFromStock(state: RoundState, seat: Seat, rules: RuleSet): RuleResult<RoundState> {
         if (state.phase != Phase.AWAITING_DRAW) return fail(ActionError.ALREADY_DREW)
-        val (afterDraw, card) = drawOne(state)
+        val (afterDraw, card) = drawOne(state, rules)
         if (card == null) return fail(ActionError.STOCK_EXHAUSTED)
         val drawn = afterDraw.withHand(seat, afterDraw.handOf(seat) + card).copy(phase = Phase.PLAYING)
-        val settled = settleRedThrees(drawn, seat, atTurnStart = false)
+        val settled = settleRedThrees(drawn, seat, atTurnStart = false, rules)
         // §8 última carta sem reposição: só acontece se um 3 vermelho comprado ficou sem reposição
         // (a mão nunca começa a vez vazia). Sem poder bater descartando essa carta: fim sem vencedor (§11.2).
         if (settled.handOf(seat).size == 1 && !canGoOut(settled, seat, rules)) {
@@ -94,9 +94,9 @@ object RoundEngine {
     }
 
     /** §10.2 recusar a compra com monte vazio e sem morto disponível: fim sem vencedor. */
-    private fun declineDraw(state: RoundState): RuleResult<RoundState> {
+    private fun declineDraw(state: RoundState, rules: RuleSet): RuleResult<RoundState> {
         if (state.phase != Phase.AWAITING_DRAW) return fail(ActionError.ALREADY_DREW)
-        if (!cannotDraw(state)) return fail(ActionError.DECLINE_NOT_ALLOWED)
+        if (!cannotDraw(state, rules)) return fail(ActionError.DECLINE_NOT_ALLOWED)
         return RuleResult.Ok(state.finish(RoundResult.NoWinner))
     }
 
@@ -200,7 +200,7 @@ object RoundEngine {
             )
         // §9.4 morto direto: os 3 vermelhos do morto são trocados na hora; morto indireto (descarte da última carta): ficam
         // na mão e só são trocados no início da próxima vez (beginTurn). O assento fica marcado, qualquer que seja o morto.
-        if (direct) return RuleResult.Ok(settleRedThrees(withMorto, seat, atTurnStart = false))
+        if (direct) return RuleResult.Ok(settleRedThrees(withMorto, seat, atTurnStart = false, rules))
         return RuleResult.Ok(withMorto.copy(unsettledMortoSeats = withMorto.unsettledMortoSeats + seat))
     }
 
@@ -224,7 +224,7 @@ object RoundEngine {
     private fun canGoOut(state: RoundState, seat: Seat, rules: RuleSet): Boolean {
         val side = state.mode.sideOf(seat)
         val mortoResolved = state.hasTakenMorto(side) || state.firstAvailableMorto() == null
-        return mortoResolved && state.tableOf(side).melds.any { it.meld.isCanasta(rules) }
+        return mortoResolved && state.tableOf(side).melds.any { it.meld.allowsGoOut(rules) }
     }
 
     /** §4.2 passa a vez; o início da vez do próximo jogador troca os 3 vermelhos da mão dele (§3.5, [beginTurn]). */
@@ -245,8 +245,8 @@ object RoundEngine {
             turnsBegun = state.turnsBegun + 1,
             unsettledMortoSeats = state.unsettledMortoSeats - seat,
         )
-        val next = settleRedThrees(begun, seat, atTurnStart = true)
-        if (cannotDraw(next) && !LegalActions.canTakeDiscardPile(next, seat, rules)) {
+        val next = settleRedThrees(begun, seat, atTurnStart = true, rules)
+        if (cannotDraw(next, rules) && !LegalActions.canTakeDiscardPile(next, seat, rules)) {
             return next.finish(RoundResult.NoWinner)
         }
         return next
@@ -256,7 +256,7 @@ object RoundEngine {
      * §6.5 baixa cada 3 vermelho da mão do [seat] e repõe do monte, em cadeia. Cada 3 vermelho baixado entra
      * no registro público [RoundState.redThreeLog] (§3.5 / §6.5) com o [seat] e `atTurnStart` conforme o momento.
      */
-    private fun settleRedThrees(state: RoundState, seat: Seat, atTurnStart: Boolean): RoundState {
+    private fun settleRedThrees(state: RoundState, seat: Seat, atTurnStart: Boolean, rules: RuleSet): RoundState {
         var current = state
         val side = current.mode.sideOf(seat)
         while (true) {
@@ -267,15 +267,18 @@ object RoundEngine {
                     redThrees = current.redThrees.replaceAt(side.index, current.redThreesOf(side) + redThree),
                     redThreeLog = current.redThreeLog + RedThreeLaid(seat, redThree, atTurnStart = atTurnStart),
                 )
-            val (afterDraw, replacement) = drawOne(current)
+            val (afterDraw, replacement) = drawOne(current, rules)
             current = if (replacement == null) afterDraw else afterDraw.withHand(seat, afterDraw.handOf(seat) + replacement)
         }
     }
 
-    /** Tira a carta do topo do monte; §10.1 com monte vazio, o primeiro morto disponível vira monte. */
-    private fun drawOne(state: RoundState): Pair<RoundState, Card?> {
+    /**
+     * Tira a carta do topo do monte; §10.1 com monte vazio, o primeiro morto disponível vira monte (só se o perfil
+     * permitir, `mortoBecomesStock`, §14.2).
+     */
+    private fun drawOne(state: RoundState, rules: RuleSet): Pair<RoundState, Card?> {
         var current = state
-        if (current.stock.isEmpty()) {
+        if (current.stock.isEmpty() && rules.mortoBecomesStock) {
             val index = current.firstAvailableMorto() ?: return current to null
             current = current.copy(
                 stock = current.mortos[index],
@@ -287,8 +290,9 @@ object RoundEngine {
         return current.copy(stock = current.stock.drop(1)) to current.stock.first()
     }
 
-    /** §10.2 não há como comprar: monte vazio e nenhum morto disponível. */
-    private fun cannotDraw(state: RoundState): Boolean = state.stock.isEmpty() && state.firstAvailableMorto() == null
+    /** §10.2 não há como comprar: monte vazio e nenhum morto que possa virar monte (`mortoBecomesStock`, §14.2). */
+    private fun cannotDraw(state: RoundState, rules: RuleSet): Boolean =
+        state.stock.isEmpty() && (!rules.mortoBecomesStock || state.firstAvailableMorto() == null)
 
     // ---------- utilitários ----------
 
