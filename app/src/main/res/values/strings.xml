@@ -181,6 +181,7 @@
     <string name="other_team_melds">Jogos da dupla adversária</string>
     <string name="meld_description">Conjunto: %1$s</string>
     <string name="canasta_clean">Canastra limpa</string>
+    <string name="canasta_plain">Canastra</string>
     <string name="canasta_dirty">Canastra suja</string>
     <string name="add_to_meld_hint">Toque num dos seus jogos para acrescentar as cartas selecionadas</string>
     <string name="add_to_meld_hint_team">Toque num jogo da sua dupla para acrescentar as cartas selecionadas</string>
@@ -276,6 +277,7 @@
     <string name="score_item">Item</string>
     <string name="score_red_threes">3 vermelhos na mesa (±100)</string>
     <string name="score_clean_canastas">Canastras limpas</string>
+    <string name="score_canastas">Canastras</string>
     <string name="score_dirty_canastas">Canastras sujas</string>
     <string name="score_go_out">Batida</string>
     <string name="score_morto_not_taken">Morto não pego</string>
@@ -384,6 +386,9 @@
     <string name="rule_wilds_one">Até 1</string>
     <string name="rule_wilds_none">Nenhum</string>
     <string name="rule_canasta">Canastra limpa / suja</string>
+    <string name="rule_canasta_plain">Canastra</string>
+    <string name="rule_canasta_plain_value">%1$d pontos</string>
+    <string name="rule_canasta_points">Pontos da canastra</string>
     <string name="rule_canasta_value">%1$d / %2$d pontos</string>
     <string name="rule_clean_points">Pontos da canastra limpa</string>
     <string name="rule_dirty_points">Pontos da canastra suja</string>

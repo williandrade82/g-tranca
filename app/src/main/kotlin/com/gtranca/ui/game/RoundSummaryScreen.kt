@@ -171,8 +171,12 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
             fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { heading() },
         )
-        ScoreItem.entries.filter { it.section == section }.forEach { item ->
-            ScoreRow(stringResource(item.labelRes()), lines.map { it.getValue(item).text() })
+        // §1 sem coringas: sem canastra suja nem linhas de coringa; "Canastras" sem "limpas".
+        val noWilds = LocalTableRules.current.noWilds
+        val hidden = if (noWilds) setOf(ScoreItem.DIRTY_CANASTAS, ScoreItem.TABLE_WILDS, ScoreItem.HAND_WILDS) else emptySet()
+        ScoreItem.entries.filter { it.section == section && it !in hidden }.forEach { item ->
+            val label = if (noWilds && item == ScoreItem.CLEAN_CANASTAS) R.string.score_canastas else item.labelRes()
+            ScoreRow(stringResource(label), lines.map { it.getValue(item).text() })
         }
         HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
         ScoreRow(

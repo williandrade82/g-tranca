@@ -35,6 +35,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.gtranca.ui.theme.GButton
 
+/** Regras da mesa do jogo em andamento (§14.4), para os textos que dependem delas. */
+val LocalTableRules = androidx.compose.runtime.staticCompositionLocalOf { com.gtranca.engine.RuleSet.DEFAULT }
+
+/** Sem coringas (§1, §6.3) não há canastra suja: os textos dizem só "Canastra". */
+val com.gtranca.engine.RuleSet.noWilds: Boolean get() = maxWildsPerMeld == 0
+
 /** Tela do jogo: mesa, fim de partida (§12) ou fim de jogo (§13), conforme o estado. */
 @Composable
 fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
@@ -52,6 +58,8 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     // Revisão da mesa final, aberta pelo anúncio; "Continuar" volta ao anúncio e segue o fluxo de fim.
     var reviewingTable by rememberSaveable(state.endScreen) { mutableStateOf(false) }
     val review = { reviewingTable = true }
+    // §14.4 regras da mesa para os textos (sem coringa, §1: só "Canastra", sem limpa/suja).
+    androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules) {
     if (reviewingTable) FinalTableReview(state, viewModel) { reviewingTable = false }
     else when (state.endScreen) {
         null -> TableScreen(state, viewModel)
@@ -60,6 +68,7 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
             RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
         EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext, state.personas, state.animationMillis > 0, review)
         EndScreen.FINAL -> GameOverScreen(snapshot, onExit, state.personas, state.animationMillis > 0)
+    }
     }
 
     // §13.1 desistência: disponível na mesa, na encenação e na tela de anúncio (não na de pontos, decisão do usuário).

@@ -680,6 +680,7 @@ private fun MeldView(
     val canasta = meld.isCanasta()
     val label = when {
         !canasta -> null
+        LocalTableRules.current.noWilds -> stringResource(R.string.canasta_plain)
         meld.isClean -> stringResource(R.string.canasta_clean)
         else -> stringResource(R.string.canasta_dirty)
     }

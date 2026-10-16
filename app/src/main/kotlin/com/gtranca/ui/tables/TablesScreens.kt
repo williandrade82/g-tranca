@@ -205,17 +205,27 @@ fun RulesSummary(rules: RuleSet, targetScore: Int, modifier: Modifier = Modifier
             stringResource(if (rules.maxWildsPerMeld == 0) R.string.rule_wilds_none else R.string.rule_wilds_one),
             rules.maxWildsPerMeld != base.maxWildsPerMeld,
         )
-        RuleLine(
-            stringResource(R.string.rule_canasta),
-            stringResource(R.string.rule_canasta_value, rules.cleanCanastaPoints, rules.dirtyCanastaPoints),
-            rules.cleanCanastaPoints != base.cleanCanastaPoints || rules.dirtyCanastaPoints != base.dirtyCanastaPoints,
-        )
+        val noWilds = rules.maxWildsPerMeld == 0
+        if (noWilds) {
+            // §1 sem coringas não há canastra suja: um valor só.
+            RuleLine(
+                stringResource(R.string.rule_canasta_plain),
+                stringResource(R.string.rule_canasta_plain_value, rules.cleanCanastaPoints),
+                rules.cleanCanastaPoints != base.cleanCanastaPoints,
+            )
+        } else {
+            RuleLine(
+                stringResource(R.string.rule_canasta),
+                stringResource(R.string.rule_canasta_value, rules.cleanCanastaPoints, rules.dirtyCanastaPoints),
+                rules.cleanCanastaPoints != base.cleanCanastaPoints || rules.dirtyCanastaPoints != base.dirtyCanastaPoints,
+            )
+        }
         RuleLine(
             stringResource(R.string.rule_stock),
             stringResource(if (rules.mortoBecomesStock) R.string.rule_stock_morto else R.string.rule_stock_end),
             rules.mortoBecomesStock != base.mortoBecomesStock,
         )
-        RuleLine(
+        if (!noWilds) RuleLine(
             stringResource(R.string.rule_go_out),
             stringResource(if (rules.goOutRequiresCleanCanasta) R.string.rule_go_out_clean else R.string.rule_go_out_any),
             rules.goOutRequiresCleanCanasta != base.goOutRequiresCleanCanasta,
@@ -367,9 +377,14 @@ fun RulesEditorScreen(viewModel: RulesEditorViewModel, onSaved: () -> Unit, onBa
                 Chip(stringResource(R.string.rule_wilds_none), rules.maxWildsPerMeld == 0, "wilds-0") { viewModel.onMaxWilds(0) }
             }
             SwitchLine(stringResource(R.string.rule_stock_switch), rules.mortoBecomesStock, "switch-morto-stock", viewModel::onMortoBecomesStock)
-            SwitchLine(stringResource(R.string.rule_go_out_switch), rules.goOutRequiresCleanCanasta, "switch-go-out-clean", viewModel::onGoOutRequiresClean)
-            PointsField(stringResource(R.string.rule_clean_points), state.cleanText, state.cleanError, "points-clean", viewModel::onCleanText)
-            PointsField(stringResource(R.string.rule_dirty_points), state.dirtyText, state.dirtyError, "points-dirty", viewModel::onDirtyText)
+            if (rules.maxWildsPerMeld == 0) {
+                // §1 sem coringas toda canastra é igual: um valor só e nenhuma exigência de limpa para bater.
+                PointsField(stringResource(R.string.rule_canasta_points), state.cleanText, state.cleanError, "points-clean", viewModel::onCleanText)
+            } else {
+                SwitchLine(stringResource(R.string.rule_go_out_switch), rules.goOutRequiresCleanCanasta, "switch-go-out-clean", viewModel::onGoOutRequiresClean)
+                PointsField(stringResource(R.string.rule_clean_points), state.cleanText, state.cleanError, "points-clean", viewModel::onCleanText)
+                PointsField(stringResource(R.string.rule_dirty_points), state.dirtyText, state.dirtyError, "points-dirty", viewModel::onDirtyText)
+            }
             PointsField(stringResource(R.string.rule_black_three_points), state.blackThreeText, state.blackThreeError, "points-black-three", viewModel::onBlackThreeText)
         }
     }

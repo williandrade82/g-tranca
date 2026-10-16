@@ -184,14 +184,21 @@ data class RulesEditorUiState(
     private fun points(text: String): Int? = text.trim().takeIf { it.isAsciiDigits() }?.toIntOrNull()
 
     val cleanError: Boolean get() = points(cleanText) == null
-    val dirtyError: Boolean get() = points(dirtyText) == null
+    /** §1 sem coringas não há canastra suja: o campo dela não conta. */
+    val dirtyError: Boolean get() = rules.maxWildsPerMeld > 0 && points(dirtyText) == null
     val blackThreeError: Boolean get() = points(blackThreeText) == null
 
     /** As regras com os números digitados, ou `null` se algum é inválido (§14.2 faixas). */
     fun result(): RuleSet? {
         val clean = points(cleanText) ?: return null
-        val dirty = points(dirtyText) ?: return null
         val black = points(blackThreeText) ?: return null
+        // §1 sem coringas toda canastra é "a canastra": a suja e a exigência de limpa para bater não se aplicam.
+        if (rules.maxWildsPerMeld == 0) {
+            return rules.copy(
+                cleanCanastaPoints = clean, dirtyCanastaPoints = clean, goOutRequiresCleanCanasta = false, handBlackThreePoints = -black,
+            )
+        }
+        val dirty = points(dirtyText) ?: return null
         return rules.copy(cleanCanastaPoints = clean, dirtyCanastaPoints = dirty, handBlackThreePoints = -black)
     }
 

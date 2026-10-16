@@ -159,6 +159,20 @@ class TablesViewModelsTest {
     }
 
     @Test
+    fun `§1 sem coringas o editor salva um valor so de canastra`() {
+        val vm = RulesEditorViewModel()
+        vm.onGoOutRequiresClean(true)
+        vm.onMaxWilds(0)
+        vm.onDirtyText("x")
+        vm.onCleanText("300")
+        vm.uiState.value.canSave shouldBe true
+        val rules = vm.uiState.value.result()!!
+        rules.cleanCanastaPoints shouldBe 300
+        rules.dirtyCanastaPoints shouldBe 300
+        rules.goOutRequiresCleanCanasta shouldBe false
+    }
+
+    @Test
     fun `preferencias ilegiveis viram padroes, sem derrubar as telas`() = withMain {
         val broken = object : SettingsRepository {
             override val settings: Flow<Settings> = flow { throw IOException("arquivo corrompido") }
