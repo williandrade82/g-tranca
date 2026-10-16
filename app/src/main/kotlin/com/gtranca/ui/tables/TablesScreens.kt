@@ -292,10 +292,8 @@ fun CreateTableScreen(
             Section(stringResource(R.string.create_rules)) {
                 Chip(RuleSet.CLASSICA.name, state.rulesChoice == RulesChoice.CLASSICA, "rules-classica") { viewModel.onRulesChange(RulesChoice.CLASSICA) }
                 Chip(RuleSet.PAULISTA.name, state.rulesChoice == RulesChoice.PAULISTA, "rules-paulista") { viewModel.onRulesChange(RulesChoice.PAULISTA) }
-                Chip(stringResource(R.string.rules_custom), state.rulesChoice == RulesChoice.CUSTOM, "rules-custom") { viewModel.onRulesChange(RulesChoice.CUSTOM) }
-            }
-            GButton(onCustomize, Modifier.fillMaxWidth().testTag("rules-customize"), kind = GButtonKind.Text) {
-                Text(stringResource(R.string.create_customize))
+                // §14.4 "Personalizada" sempre abre o editor; ao salvar, volta com ela escolhida.
+                Chip(stringResource(R.string.rules_custom), state.rulesChoice == RulesChoice.CUSTOM, "rules-custom", onCustomize)
             }
             OutlinedTextField(
                 value = state.targetText,

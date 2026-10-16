@@ -364,14 +364,13 @@
     <string name="tables_view_rules">Ver regras</string>
     <string name="create_title">Criar mesa</string>
     <string name="create_rules">Regras</string>
-    <string name="create_customize">Personalizar regras</string>
     <string name="create_submit">Criar mesa</string>
     <string name="table_rules_title">Regras da mesa</string>
     <string name="table_rules_start">Iniciar jogo</string>
     <string name="table_rules_differs">Destacado: o que muda em relação à Clássica</string>
     <string name="rules_custom">Personalizada</string>
     <string name="rules_my_rules">Minhas regras</string>
-    <string name="rules_editor_title">Minhas regras</string>
+    <string name="rules_editor_title">Personalizar regra</string>
     <string name="rules_editor_hint">São as suas regras personalizadas, usadas ao escolher \"Personalizada\" na criação da mesa.</string>
     <string name="rules_start_from">Começar a partir de</string>
     <string name="rules_save">Salvar regras</string>
@@ -400,5 +399,5 @@
     <string name="rule_black_three_points">Penalidade do 3 preto na mão (pontos a descontar)</string>
     <string name="rule_target">Pontuação-alvo</string>
     <string name="rule_target_value">%1$s pontos</string>
-    <string name="profile_my_rules">Minhas regras do jogo</string>
+    <string name="profile_my_rules">Meu padrão para regras personalizadas</string>
 </resources>
