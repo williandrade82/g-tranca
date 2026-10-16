@@ -56,18 +56,39 @@ class HomeToTableTest {
     private fun canDraw(): Boolean = rule.onAllNodes(hasTestTag("action-draw") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
 
     @Test
-    fun alvoInvalidoDesabilitaNovoJogo() {
+    fun alvoInvalidoDesabilitaCriarMesa() {
+        openCreateTable()
         rule.onNodeWithTag("target-field").performTextReplacement("0")
         rule.onNodeWithText("Informe um número inteiro positivo").assertExists()
-        rule.onNodeWithTag("new-game").assertIsNotEnabled()
+        rule.onNodeWithTag("create-table").assertIsNotEnabled()
         rule.onNodeWithTag("target-field").performTextReplacement("1500")
-        rule.onNodeWithTag("new-game").assertIsEnabled()
+        rule.onNodeWithTag("create-table").assertIsEnabled()
+    }
+
+    /** §14.4 "Novo jogo" abre as mesas; "Criar mesa" abre a configuração. */
+    private fun openCreateTable() {
+        rule.onNodeWithTag("new-game").performClick()
+        rule.waitUntil(10_000) { exists("tables-screen") }
+        rule.onNodeWithTag("tables-create").performClick()
+        rule.waitUntil(10_000) { exists("create-table-screen") }
+    }
+
+    @Test
+    fun mesaDeJogadorVirtualMostraAsRegrasEIniciaOJogo() {
+        rule.onNodeWithTag("new-game").performClick()
+        rule.waitUntil(10_000) { exists("tables-screen") }
+        rule.onNodeWithTag("table-0").performClick()
+        rule.waitUntil(10_000) { exists("table-rules-screen") }
+        rule.onNodeWithTag("rules-summary").assertExists()
+        rule.onNodeWithTag("table-rules-start").performClick()
+        rule.waitUntil(10_000) { exists("table-screen") }
     }
 
     @Test
     fun novoJogoAbreAMesaEOHumanoCompra() {
+        openCreateTable()
         rule.onNodeWithTag("difficulty-facil").performClick()
-        rule.onNodeWithTag("new-game").performClick()
+        rule.onNodeWithTag("create-table").performClick()
         rule.onNodeWithTag("table-screen").assertExists()
 
         // A vez chega ao humano (o bot pode começar; trocas de 3 vermelho são encenadas antes).
@@ -81,9 +102,10 @@ class HomeToTableTest {
 
     @Test
     fun duplasAbreAMesaComParceiroEAdversariosEOHumanoJoga() {
+        openCreateTable()
         rule.onNodeWithTag("mode-duplas").performClick()
         rule.onNodeWithTag("difficulty-facil").performClick()
-        rule.onNodeWithTag("new-game").performClick()
+        rule.onNodeWithTag("create-table").performClick()
         rule.onNodeWithTag("table-screen").assertExists()
         rule.onNodeWithText("Parceiro").assertExists()
         rule.onNodeWithText("Adv. esq.").assertExists()
@@ -108,7 +130,8 @@ class HomeToTableTest {
 
     @Test
     fun desistirPedeConfirmacaoECancelarVoltaAoJogo() {
-        rule.onNodeWithTag("new-game").performClick()
+        openCreateTable()
+        rule.onNodeWithTag("create-table").performClick()
         rule.onNodeWithTag("table-screen").assertExists()
         waitFor(30_000) { canDraw() }
 

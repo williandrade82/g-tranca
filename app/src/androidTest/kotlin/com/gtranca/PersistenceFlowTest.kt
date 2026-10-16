@@ -50,8 +50,12 @@ class PersistenceFlowTest {
         rule.waitForIdle()
         check(!exists("continue")) { "Continuar sem jogo salvo" }
 
-        rule.onNodeWithTag("difficulty-facil").performClick()
         rule.onNodeWithTag("new-game").performClick()
+        rule.waitUntil(10_000) { exists("tables-screen") }
+        rule.onNodeWithTag("tables-create").performClick()
+        rule.waitUntil(10_000) { exists("create-table-screen") }
+        rule.onNodeWithTag("difficulty-facil").performClick()
+        rule.onNodeWithTag("create-table").performClick()
         rule.waitUntil(30_000) {
             if (exists("red-three-confirm")) rule.onNodeWithTag("red-three-confirm").performClick()
             rule.onAllNodes(hasTestTag("action-draw") and isEnabled()).fetchSemanticsNodes().isNotEmpty()

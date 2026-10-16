@@ -93,11 +93,11 @@ import com.gtranca.ui.cards.PlayingCard
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
 
-/** Início (§14): modo, dificuldade (padrão médio) e pontuação-alvo (padrão 3000, inteiro positivo). */
+/** Início: "Continuar" o jogo salvo ou "Novo jogo", que abre as mesas disponíveis (§14.4). */
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onStart: (GameConfig) -> Unit,
+    onNewGame: () -> Unit,
     onContinue: () -> Unit = {},
     onStats: () -> Unit = {},
     onProfile: () -> Unit = {},
@@ -106,10 +106,10 @@ fun HomeScreen(
     // Ao voltar para esta tela, o jogo salvo pode ter mudado (jogado, terminado).
     LaunchedEffect(Unit) { viewModel.refresh() }
     // Novo jogo confirmado: o salvo antigo já foi apagado.
-    LaunchedEffect(state.pendingStart) {
-        state.pendingStart?.let { config ->
+    LaunchedEffect(state.pendingNewGame) {
+        if (state.pendingNewGame) {
             viewModel.onStartHandled()
-            onStart(config)
+            onNewGame()
         }
     }
     GBackground(Modifier.fillMaxSize(), royal = true, rays = true) {
@@ -149,50 +149,11 @@ fun HomeScreen(
                 }
             }
 
-            GPanel(Modifier.fillMaxWidth()) {
-                Section(stringResource(R.string.home_mode)) {
-                    ModeCard(stringResource(R.string.mode_individual), 1, state.mode == GameMode.INDIVIDUAL, "mode-individual") {
-                        viewModel.onModeChange(GameMode.INDIVIDUAL)
-                    }
-                    ModeCard(stringResource(R.string.mode_duplas_short), 2, state.mode == GameMode.DUPLAS, "mode-duplas") {
-                        viewModel.onModeChange(GameMode.DUPLAS)
-                    }
-                }
-
-                Section(stringResource(R.string.home_difficulty)) {
-                    Difficulty.entries.forEach { difficulty ->
-                        Chip(stringResource(difficulty.labelRes()), state.difficulty == difficulty, "difficulty-${difficulty.id}") {
-                            viewModel.onDifficultyChange(difficulty)
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = state.targetText,
-                    onValueChange = viewModel::onTargetChange,
-                    label = { Text(stringResource(R.string.home_target)) },
-                    isError = state.targetError != null,
-                    supportingText = when (state.targetError) {
-                        null -> null
-                        TargetError.INVALID -> {
-                            { Text(stringResource(R.string.home_target_error)) }
-                        }
-                        TargetError.TOO_LARGE -> {
-                            { Text(stringResource(R.string.home_target_too_large, HomeUiState.MAX_TARGET)) }
-                        }
-                    },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth().testTag("target-field"),
-                )
-            }
-
             val newGameModifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("new-game")
-            val startNew = { viewModel.onNewGame()?.let(onStart) }
+            val startNew = { if (viewModel.onNewGame()) onNewGame() }
             GButton(
                 onClick = { startNew() },
-                enabled = state.canStart,
+                enabled = state.ready,
                 kind = if (state.saved == null) GButtonKind.Primary else GButtonKind.Secondary,
                 modifier = newGameModifier,
             ) {
@@ -352,7 +313,7 @@ private fun CrownOrnament(modifier: Modifier) {
 
 /** Cartão grande de modo com ilustração ([seats] medalhões por lado: 1 × 1 ou 2 × 2). */
 @Composable
-private fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: String, onClick: () -> Unit) {
+internal fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag: String, onClick: () -> Unit) {
     val shape = RoundedCornerShape(Corner.md)
     // Duplas: nome curto no cartão e a explicação embaixo, menor (não quebra em 3 linhas).
     val hint = if (seats == 2) stringResource(R.string.mode_duplas_hint) else null

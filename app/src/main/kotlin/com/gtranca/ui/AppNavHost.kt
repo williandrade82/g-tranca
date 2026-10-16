@@ -58,6 +58,15 @@ import com.gtranca.ui.stats.StatsScreen
 import com.gtranca.ui.stats.StatsViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import com.gtranca.engine.RuleSet
+import com.gtranca.ui.tables.CreateTableScreen
+import com.gtranca.ui.tables.CreateTableViewModel
+import com.gtranca.ui.tables.RulesEditorScreen
+import com.gtranca.ui.tables.RulesEditorViewModel
+import com.gtranca.ui.tables.TableRulesScreen
+import com.gtranca.ui.tables.TablesScreen
+import com.gtranca.ui.tables.TablesViewModel
 
 @Serializable
 object HomeRoute
@@ -68,16 +77,51 @@ object ProfileRoute
 @Serializable
 object StatsRoute
 
+/** §14.4 mesas disponíveis (abertas pelos jogadores virtuais) e "Criar mesa". */
+@Serializable
+object TablesRoute
+
+/** §14.4 regras da mesa [tableId] da lista de mesas (a lista fica na entrada de [TablesRoute]). */
+@Serializable
+data class TableRulesRoute(val tableId: Int)
+
+@Serializable
+object CreateTableRoute
+
+/** §14.4 editor das regras personalizadas; [fromCreate]: ao salvar, "Criar mesa" escolhe "Personalizada". */
+@Serializable
+data class RulesEditorRoute(val fromCreate: Boolean = false)
+
+/** Chave do resultado do editor de regras na entrada de [CreateTableRoute]. */
+private const val CUSTOM_RULES_SAVED = "custom_rules_saved"
+
 /**
  * Jogo: novo, com a configuração escolhida no início (§14), ou retomado do jogo salvo ([resume]; aí a configuração
  * vem do arquivo).
  */
 @Serializable
-data class GameRoute(val mode: String, val difficulty: String, val targetScore: Int, val resume: Boolean = false) {
-    fun toConfig() = GameConfig(GameMode.valueOf(mode), Difficulty.fromId(difficulty), targetScore)
+data class GameRoute(
+    val mode: String,
+    val difficulty: String,
+    val targetScore: Int,
+    val resume: Boolean = false,
+    /** §14.4 regras da mesa em JSON (vazio = Clássica). */
+    val rulesJson: String = "",
+) {
+    fun toConfig() = GameConfig(
+        GameMode.valueOf(mode),
+        Difficulty.fromId(difficulty),
+        targetScore,
+        if (rulesJson.isEmpty()) RuleSet.DEFAULT else Json.decodeFromString(RuleSet.serializer(), rulesJson),
+    )
 
     companion object {
-        fun of(config: GameConfig) = GameRoute(config.mode.name, config.difficulty.id, config.targetScore)
+        fun of(config: GameConfig) = GameRoute(
+            config.mode.name,
+            config.difficulty.id,
+            config.targetScore,
+            rulesJson = Json.encodeToString(RuleSet.serializer(), config.rules),
+        )
 
         /** Continuar o jogo salvo (os campos de configuração não são usados). */
         val RESUME = GameRoute(GameMode.INDIVIDUAL.name, Difficulty.MEDIO.id, 1, resume = true)
@@ -125,8 +169,8 @@ fun AppNavHost() {
     ) {
         composable<HomeRoute> {
             HomeScreen(
-                viewModel { HomeViewModel(data.settings, data.savedGames, WriteQueue.app, data.stats) },
-                onStart = { config -> navController.navigateFromHome(GameRoute.of(config)) },
+                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats) },
+                onNewGame = { navController.navigateFromHome(TablesRoute) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
@@ -134,13 +178,77 @@ fun AppNavHost() {
         }
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
         composable<ProfileRoute> {
-            ProfileScreen(viewModel { ProfileViewModel(data.settings, WriteQueue.app) }) { navController.popBackStack() }
+            ProfileScreen(
+                viewModel { ProfileViewModel(data.settings, WriteQueue.app) },
+                onRules = { navController.navigate(RulesEditorRoute()) { launchSingleTop = true } },
+            ) { navController.popBackStack() }
+        }
+        composable<TablesRoute> {
+            TablesScreen(
+                viewModel { TablesViewModel(settings = data.settings) },
+                onOpen = { table -> navController.navigate(TableRulesRoute(table.id)) { launchSingleTop = true } },
+                onCreate = { navController.navigate(CreateTableRoute) { launchSingleTop = true } },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable<TableRulesRoute> { entry ->
+            val route = entry.toRoute<TableRulesRoute>()
+            // A lista sorteada vive na entrada das mesas: a mesa aberta é a mesma que o jogador tocou.
+            val tablesEntry = remember(entry) { navController.getBackStackEntry(TablesRoute) }
+            val table = viewModel<TablesViewModel>(tablesEntry) { TablesViewModel(settings = data.settings) }.table(route.tableId)
+            if (table == null) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+            } else {
+                TableRulesScreen(
+                    table,
+                    onStart = { config -> navController.startGame(config) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+        composable<CreateTableRoute> { entry ->
+            val vm = viewModel { CreateTableViewModel(data.settings, WriteQueue.app) }
+            // Voltando do editor de regras: relê as regras personalizadas (e escolhe "Personalizada" se salvou).
+            val saved by entry.savedStateHandle.getStateFlow(CUSTOM_RULES_SAVED, false).collectAsStateWithLifecycle()
+            LaunchedEffect(saved) {
+                if (saved) {
+                    entry.savedStateHandle[CUSTOM_RULES_SAVED] = false
+                    vm.reloadCustomRules(select = true)
+                }
+            }
+            CreateTableScreen(
+                vm,
+                onCreate = { config -> navController.startGame(config) },
+                onCustomize = { navController.navigate(RulesEditorRoute(fromCreate = true)) { launchSingleTop = true } },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable<RulesEditorRoute> { entry ->
+            val route = entry.toRoute<RulesEditorRoute>()
+            val defaultName = androidx.compose.ui.res.stringResource(com.gtranca.R.string.rules_my_rules)
+            RulesEditorScreen(
+                viewModel { RulesEditorViewModel(data.settings, WriteQueue.app, defaultName) },
+                onSaved = {
+                    if (route.fromCreate) navController.previousBackStackEntry?.savedStateHandle?.set(CUSTOM_RULES_SAVED, true)
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() },
+            )
         }
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats) }) { navController.popBackStack() }
         }
     }
     }
+    }
+}
+
+/** Abre o jogo da mesa escolhida; voltar do jogo leva ao início (as telas de mesa saem da pilha). */
+private fun NavHostController.startGame(config: GameConfig) {
+    if (currentBackStackEntry?.destination?.hasRoute<GameRoute>() == true) return
+    navigate(GameRoute.of(config)) {
+        popUpTo(HomeRoute) { inclusive = false }
+        launchSingleTop = true
     }
 }
 

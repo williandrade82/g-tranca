@@ -104,15 +104,28 @@ class GameControllerTest {
         delay: Long = 0,
         seed: Long = 5,
         target: Int = 3000,
+        rules: com.gtranca.engine.RuleSet = com.gtranca.engine.RuleSet.DEFAULT,
     ): Triple<GameController, HumanPlayer, SpyBot> {
         val human = HumanPlayer()
         val spy = SpyBot(seed)
         val controller = GameController(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, target), seed, listOf(human, BotSeatPlayer(spy)),
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, target, rules), seed, listOf(human, BotSeatPlayer(spy)),
             computeDispatcher = dispatcher, botDelayMillis = delay,
         )
         acknowledgeDeals(controller)
         return Triple(controller, human, spy)
+    }
+
+    @Test
+    fun `§14_4 o jogo usa as regras da mesa e a vista as mostra`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val paulista = com.gtranca.engine.RuleSet.PAULISTA
+        val (controller, _, _) = humanGame(dispatcher, rules = paulista)
+        val job = launch { controller.run() }
+        advanceUntilIdle()
+        controller.currentMatch.rules shouldBe paulista
+        controller.state.value.view.rules shouldBe paulista
+        job.cancel()
     }
 
     @Test

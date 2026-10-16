@@ -5,7 +5,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
+import kotlinx.serialization.json.Json
 import androidx.datastore.preferences.core.emptyPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -19,12 +21,14 @@ import kotlinx.coroutines.flow.map
  * @property handSortId ordem da mão preferida (identificador da interface), ou `null` para o padrão dela.
  * @property profileId §14.1 perfil do jogador (texto da interface), ou `null` para o padrão dela.
  * @property soundOn chave de som do jogador (ligado por padrão).
+ * @property customRules §14.4 regras personalizadas do jogador, ou `null` se ainda não salvou (a interface parte da Clássica).
  */
 data class Settings(
     val lastMode: GameMode = GameMode.INDIVIDUAL,
     val handSortId: String? = null,
     val profileId: String? = null,
     val soundOn: Boolean = true,
+    val customRules: RuleSet? = null,
 )
 
 interface SettingsRepository {
@@ -37,6 +41,8 @@ interface SettingsRepository {
     suspend fun setProfile(id: String) = Unit
 
     suspend fun setSoundOn(on: Boolean) = Unit
+
+    suspend fun setCustomRules(rules: RuleSet) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -51,6 +57,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             handSortId = prefs[HAND_SORT],
             profileId = prefs[PROFILE],
             soundOn = prefs[SOUND_ON] ?: true,
+            customRules = prefs[CUSTOM_RULES]?.let(::decodeRules),
         )
     }
 
@@ -70,8 +77,18 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[SOUND_ON] = on }
     }
 
+    override suspend fun setCustomRules(rules: RuleSet) {
+        store.edit { it[CUSTOM_RULES] = RULES_JSON.encodeToString(RuleSet.serializer(), rules) }
+    }
+
+    /** Texto ilegível ou valores fora das faixas (§14.2): como se não houvesse regras salvas. */
+    private fun decodeRules(text: String): RuleSet? =
+        runCatching { RULES_JSON.decodeFromString(RuleSet.serializer(), text) }.getOrNull()
+
     private companion object {
         val SOUND_ON = booleanPreferencesKey("sound_on")
+        val CUSTOM_RULES = stringPreferencesKey("custom_rules")
+        val RULES_JSON = Json { ignoreUnknownKeys = true }
         val PROFILE = stringPreferencesKey("profile")
         val LAST_MODE = stringPreferencesKey("last_mode")
         val HAND_SORT = stringPreferencesKey("hand_sort")

@@ -9,11 +9,13 @@ import com.gtranca.engine.model.GameMode
  *
  * @property difficulty dificuldade de **todos** os jogadores virtuais (parceiro e adversários).
  * @property targetScore pontuação-alvo, inteiro positivo.
+ * @property rules perfil de regras da mesa (§14.3, §14.4); ao retomar um jogo salvo valem as regras guardadas nele.
  */
 data class GameConfig(
     val mode: GameMode = GameMode.INDIVIDUAL,
     val difficulty: Difficulty = Difficulty.MEDIO,
     val targetScore: Int = RuleSet.DEFAULT.targetScore,
+    val rules: RuleSet = RuleSet.DEFAULT,
 ) {
     init {
         require(targetScore > 0) { "Pontuação-alvo deve ser um inteiro positivo: $targetScore" }

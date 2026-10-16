@@ -69,7 +69,7 @@ import com.gtranca.ui.theme.Spacing
 /** Perfil do jogador (§14.1): nome e avatar (gênero, profissão, pele, cabelo e barba), com pré-visualização. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel, onDone: () -> Unit) {
+fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val profile = state.profile
     val youName = stringResource(R.string.side_you)
@@ -203,6 +203,10 @@ fun ProfileScreen(viewModel: ProfileViewModel, onDone: () -> Unit) {
                     }
                     Switch(checked = state.soundOn, onCheckedChange = null)
                 }
+            }
+            // §14.4 regras personalizadas do jogador (padrão de "Personalizada" ao criar mesa).
+            GButton(onRules, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("profile-rules"), kind = GButtonKind.Secondary) {
+                Text(stringResource(R.string.profile_my_rules), style = MaterialTheme.typography.titleMedium)
             }
             GButton(
                 onClick = {

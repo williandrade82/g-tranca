@@ -159,7 +159,7 @@ class GameController(
     private val lock = Any()
 
     @Volatile
-    private var match: Match = restored?.match ?: startMatch(config.mode, config.targetScore, Random(gameSeed))
+    private var match: Match = restored?.match ?: startMatch(config.mode, config.targetScore, Random(gameSeed), config.rules)
 
     @Volatile
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }
