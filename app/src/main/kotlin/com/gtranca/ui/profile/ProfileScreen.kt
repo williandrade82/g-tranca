@@ -151,6 +151,27 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
                     Switch(checked = state.soundOn, onCheckedChange = null)
                 }
             }
+            // Velocidade das animações: normal ou 30% mais lenta (grava na hora; vale também para o botão da mesa).
+            GPanel(Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.profile_speed), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.profile_speed_hint), style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(false to R.string.profile_speed_normal, true to R.string.profile_speed_slow).forEach { (slow, label) ->
+                            GButton(
+                                onClick = { viewModel.onSpeedChange(slow) },
+                                modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag(if (slow) "profile-speed-slow" else "profile-speed-normal"),
+                                kind = if (state.slowAnimations == slow) GButtonKind.Primary else GButtonKind.Secondary,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    com.gtranca.ui.speed.SpeedIcon(slow = slow, color = androidx.compose.material3.LocalContentColor.current)
+                                    Text(stringResource(label), style = MaterialTheme.typography.titleSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // §14.4 regras personalizadas do jogador (padrão de "Personalizada" ao criar mesa).
             GButton(onRules, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("profile-rules"), kind = GButtonKind.Secondary) {
                 Text(stringResource(R.string.profile_my_rules), style = MaterialTheme.typography.titleMedium)
