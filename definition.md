@@ -191,6 +191,7 @@ Um conjunto pode ser:
 ### **7.2. Tipos**
 - **Canastra limpa**: sem coringa → **+200 pontos** *(parâmetro `cleanCanastaPoints`; base: 200)*
 - **Canastra suja**: com coringa → **+100 pontos** *(parâmetro `dirtyCanastaPoints`; base: 100)*
+- **Sem coringas** (§1): não existe canastra suja; toda canastra vale `cleanCanastaPoints` e é chamada apenas de **canastra** (a exigência de canastra limpa para bater, §11.1, não se aplica).
 
 ### **7.3. Crescimento**
 - Uma canastra pode continuar recebendo cartas naturais.
