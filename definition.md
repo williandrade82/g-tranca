@@ -373,7 +373,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 - Uma mesa reúne também a **dificuldade** dos jogadores virtuais.
 - **Mesas dos jogadores virtuais:** em "Novo jogo", o app lista algumas mesas já abertas por jogadores virtuais, cada uma com **perfil da casa**, **modo**, **dificuldade** e **pontuação-alvo** (1.500, 2.000 ou 3.000) sorteados. Tocar numa mesa mostra as **regras da mesa**; o jogador **inicia o jogo** ou volta.
 - **Criar mesa:** o jogador escolhe dificuldade, modo, regras (**Clássica**, **Tranca Paulista** ou **Personalizada**) e pontuação-alvo (padrão 3.000). Ao criar, as vagas de parceiro e adversários são preenchidas por jogadores virtuais e o jogo começa (distribuição, §3).
-- **Regras personalizadas do jogador:** cada jogador tem **um** perfil personalizado (origem: Clássica na primeira vez), que é o seu padrão ao escolher "Personalizada". Ele é editado no **Perfil** do jogador ou a partir de "Criar mesa"; ao salvar na criação da mesa, volta-se a ela com "Personalizada" escolhida. Os parâmetros editáveis são os de §14.2, exceto a pontuação-alvo, escolhida na mesa.
+- **Regras personalizadas do jogador:** cada jogador tem **um** perfil personalizado (origem: Clássica na primeira vez), que é o seu padrão ao escolher "Personalizada". Ele é editado no **Perfil** do jogador ("Meu padrão para regras personalizadas") ou em "Criar mesa": tocar em "Personalizada" sempre abre a tela "Personalizar regra" (mesmo já escolhida); ao salvar, volta-se à criação da mesa com "Personalizada" escolhida; ao voltar sem salvar, a escolha anterior é mantida. Os parâmetros editáveis são os de §14.2, exceto a pontuação-alvo, escolhida na mesa.
 
 ---
 
