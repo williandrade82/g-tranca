@@ -312,7 +312,7 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                     val persistence = DataGamePersistence(data)
                     if (saved != null) {
                         GameViewModel(
-                            saved.config.toConfig(),
+                            saved.config.toConfig().copy(rules = saved.match.rules), // §14.4 regras guardadas no jogo
                             gameSeed = saved.gameSeed,
                             restored = saved.toRestored(),
                             gameId = saved.gameId,

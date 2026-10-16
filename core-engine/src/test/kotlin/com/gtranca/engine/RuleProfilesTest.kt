@@ -187,6 +187,22 @@ class RuleProfilesTest {
     }
 
     @Test
+    fun `sem coringas toda canastra vale a da canastra limpa`() {
+        // §7.2 sem coringas não existe canastra suja; §3.3 monte de 52 no individual
+        val noWilds = RuleSet(maxWildsPerMeld = 0, cleanCanastaPoints = 300)
+        val s = round {
+            hand(0, "9D")
+            hand(1, "KS")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
+            phase = Phase.FINISHED
+            result = RoundResult.NoWinner
+        }
+        val score = scoreRound(s, noWilds)[0]
+        score.cleanCanastas.points shouldBe 300
+        score.dirtyCanastas.count shouldBe 0
+    }
+
+    @Test
     fun `3 preto na mao vale o parametro do perfil`() {
         // §12.2 / §14.2 handBlackThreePoints: –5 na Clássica, –100 na Paulista
         val s = round {
