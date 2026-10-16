@@ -2,6 +2,8 @@
 ### *Documento técnico para implementação digital*
 
 > Esta é a **especificação final** usada pelo motor de regras. Cada regra tem um número de seção (ex.: `§5.4`), que deve ser citado nos testes automatizados que a verificam.
+>
+> O documento descreve as **regras-base** (perfil **Clássica**). Os pontos que podem variar de uma mesa para outra são **parâmetros de regra**, marcados no texto como *(parâmetro `nome`; base: valor)*. A lista completa e os perfis que alteram esses valores estão em §14.2 e §14.3; tudo que não é parâmetro vale igual em qualquer perfil.
 
 ---
 
@@ -120,7 +122,7 @@ Ao pegar o lixo de forma válida:
 Um conjunto pode ser:
 
 - **Sequência** de cartas consecutivas do mesmo naipe.
-- **Grupo** de cartas do mesmo número (naipes quaisquer, repetições permitidas).
+- **Grupo** de cartas do mesmo número (naipes quaisquer, repetições permitidas). Os números que podem formar grupo são definidos pelo parâmetro `groupRanks` (base: **qualquer número**, de 4 a A); as opções estão em §14.2. Quando restrito, a restrição vale para todo grupo, inclusive o formado ao pegar o lixo (§5.1); o coringa continua podendo compor um grupo permitido (§6.3).
 
 ### **6.2. Regras gerais**
 - Conjuntos devem ter **mínimo de 3 cartas**.
@@ -134,7 +136,7 @@ Um conjunto pode ser:
 ### **6.3. Coringa (2)**
 - O **2 é sempre coringa**; nunca é usado como carta natural. Não existe grupo de 2.
 - O coringa substitui uma carta de uma sequência ou grupo (na sequência, conforme as situações abaixo).
-- **Máximo de 1 coringa por conjunto**. Todo conjunto tem, portanto, pelo menos 2 cartas naturais.
+- **Máximo de 1 coringa por conjunto** *(parâmetro `maxWildsPerMeld`; base: 1; opções 0 ou 1)*. Todo conjunto tem, portanto, pelo menos 2 cartas naturais. Com o parâmetro em **0**, o coringa não entra em nenhum conjunto (nem pelo lixo, §5.4): só pode ser descartado ou ficar na mão.
 - **Posição do coringa na sequência:** é definida pelas cartas naturais do conjunto, nunca escolhida pelo jogador. Há três situações:
   - **Travado:** se falta exatamente um valor entre as cartas naturais, o coringa ocupa esse buraco e vale esse número. Ex.: em 5-2-7 o coringa vale 6; só se acrescentam cartas do 4 para baixo ou do 8 para cima.
   - **Solto:** se as cartas naturais não têm buraco, o coringa fica numa ponta **sem valor fixo** e pode servir em qualquer um dos lados. Ex.: em 6-7-2 o jogador pode acrescentar 8 (o coringa continua solto), 5 (continua solto), 5 e 4 (continua solto), apenas 4 (o coringa passa a valer 5 e fica travado) ou apenas 9 (o coringa passa a valer 8 e fica travado). Se a sequência já chega ao Ás (ex.: Q-K-A-2), o coringa só pode estar na ponta de baixo.
@@ -186,8 +188,8 @@ Um conjunto pode ser:
 - Conjunto com **7 ou mais cartas**, limpa ou suja.
 
 ### **7.2. Tipos**
-- **Canastra limpa**: sem coringa → **+200 pontos**
-- **Canastra suja**: com coringa → **+100 pontos**
+- **Canastra limpa**: sem coringa → **+200 pontos** *(parâmetro `cleanCanastaPoints`; base: 200)*
+- **Canastra suja**: com coringa → **+100 pontos** *(parâmetro `dirtyCanastaPoints`; base: 100)*
 
 ### **7.3. Crescimento**
 - Uma canastra pode continuar recebendo cartas naturais.
@@ -227,9 +229,9 @@ Um conjunto pode ser:
 - No **morto indireto** (§9.3), eles ficam na mão e são baixados e repostos no **início da próxima vez** do jogador, como os recebidos na distribuição (§3.5).
 
 ### **9.5. Sem morto disponível**
-- Se o lado ainda não pegou morto e **não há morto disponível** (os dois foram pegos pelo outro lado ou um deles virou monte, §10), o lado **pode bater sem ter pego o morto**, desde que cumpra o restante de §11.1 (pelo menos uma canastra). Vale nos dois modos (individual e duplas).
+- Se o lado ainda não pegou morto e **não há morto disponível** (os dois foram pegos pelo outro lado ou um deles virou monte, §10), o lado **pode bater sem ter pego o morto**, desde que cumpra o restante de §11.1 (a canastra exigida para bater). Vale nos dois modos (individual e duplas).
 - A batida segue a pontuação normal (§12): o lado que bate ganha os **+100 da batida** (§12.1) e, por não ter pego morto, sofre os **–100 de morto não pego** (§12.2); um compensa o outro.
-- Sem canastra, o jogador **não pode ficar sem cartas** (§8), como antes.
+- Sem a canastra exigida para bater, o jogador **não pode ficar sem cartas** (§8), como antes.
 
 ---
 
@@ -237,8 +239,8 @@ Um conjunto pode ser:
 
 Quando for necessário comprar do monte (compra da jogada ou reposição de 3 vermelho) e ele estiver vazio:
 
-1. Se houver **morto disponível**, ele se torna o **novo monte** (se houver dois, apenas um deles; o outro continua disponível como morto).
-2. Se não houver morto disponível:
+1. Se houver **morto disponível**, ele se torna o **novo monte** (se houver dois, apenas um deles; o outro continua disponível como morto) *(parâmetro `mortoBecomesStock`; base: sim)*. Com o parâmetro em **não**, nenhum morto vira monte: segue-se direto o item 2, como se não houvesse morto disponível para isso (os mortos continuam disponíveis para serem pegos, §9).
+2. Se não houver morto disponível (ou ele não puder virar monte, item 1):
    - **Reposição de 3 vermelho:** o 3 vermelho fica sem reposição.
    - **Compra da jogada:** o jogador pode pegar o lixo, se for permitido (§5). Caso não possa ou não queira, a **partida termina sem vencedor**.
 
@@ -250,7 +252,7 @@ Quando for necessário comprar do monte (compra da jogada ou reposição de 3 ve
 O jogador bate, encerrando a partida com vitória do seu lado, quando:
 
 1. Seu **lado já pegou o morto** (no modo duplas, vale o morto pego por qualquer um dos parceiros) **ou não há mais morto disponível** (§9.5);
-2. Seu **lado tem pelo menos uma canastra** na mesa (limpa ou suja); e
+2. Seu **lado tem pelo menos uma canastra** na mesa (limpa ou suja) *(parâmetro `goOutRequiresCleanCanasta`; base: não)*. Com o parâmetro em **sim**, é preciso ter **pelo menos uma canastra limpa**; canastras sujas não permitem bater. Em todo o documento, "a canastra exigida para bater" refere-se a esta condição (inclusive em §8 e §9.5); e
 3. O jogador fica **sem cartas na mão**, de uma das formas:
    - **baixando todas as cartas** (sem descarte); ou
    - **descartando a última carta**.
@@ -286,7 +288,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
 - **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto — inclusive o lado que bate quando não havia mais morto disponível (§9.5).
 - **Cartas na mão**, de todos os jogadores do lado:
   - **3 vermelho**: –5
-  - **3 preto**: –5
+  - **3 preto**: –5 *(parâmetro `handBlackThreePoints`; base: –5)*
   - **4 a 10**: –8
   - **J, Q, K, A**: –10
   - **Coringa (2)**: –10
@@ -310,11 +312,12 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
 
 # **14. Parâmetros Configuráveis**
 
-Definidos pelo jogador **antes do início do jogo**; não mudam durante o jogo.
+Definidos **antes do início do jogo**, na criação da mesa (§14.4); não mudam durante o jogo.
 
 | Parâmetro | Valores | Padrão |
 |---|---|---|
-| Pontuação-alvo | número inteiro positivo | **3.000** |
+| Perfil de regras | um perfil da casa (§14.3) ou personalizado | Clássica |
+| Pontuação-alvo | número inteiro positivo | a do perfil (**3.000** nos perfis da casa) |
 | Modo | individual / duplas | o último modo escolhido (individual na primeira vez) |
 | Dificuldade dos jogadores virtuais | fácil / médio / difícil | médio |
 
@@ -326,7 +329,48 @@ Definidos pelo jogador **antes do início do jogo**; não mudam durante o jogo.
 - O **avatar** é uma persona de uma profissão: **cabeça, ombros, parte do peito e dos braços** (sem o resto do corpo), com aparência variável (pele, cabelo e uniforme).
 - O avatar e o nome aparecem de forma discreta na mesa, na tela de pontos e na declaração do vencedor.
 
-Todas as demais regras deste documento são **fixas**. No código, elas ficam reunidas no `RuleSet` padrão (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de canastra = 7, máximo de coringas por conjunto = 1, valores de pontuação), para facilitar ajustes futuros, mas não são expostas ao jogador.
+### **14.2. Parâmetros de regra**
+
+São os únicos pontos das regras que mudam de um perfil para outro. Cada um é citado na seção onde age.
+
+| Parâmetro | Seção | Opções | Base (Clássica) |
+|---|---|---|---|
+| `groupRanks` — números que podem formar grupo | §6.1 | **qualquer número** (4 a A) / **só A, K, Q, J** / **nenhum** (grupos proibidos) | qualquer número |
+| `maxWildsPerMeld` — máximo de coringas por conjunto | §6.3 | 0 / 1 | 1 |
+| `cleanCanastaPoints` — canastra limpa | §7.2, §12.1 | inteiro ≥ 0 | 200 |
+| `dirtyCanastaPoints` — canastra suja | §7.2, §12.1 | inteiro ≥ 0 | 100 |
+| `mortoBecomesStock` — morto vira monte quando o monte acaba | §10 | sim / não | sim |
+| `goOutRequiresCleanCanasta` — bater exige canastra limpa | §11.1 | sim / não | não |
+| `handBlackThreePoints` — cada 3 preto na mão no fim da partida | §12.2 | inteiro ≤ 0 | –5 |
+| `targetScore` — pontuação-alvo | §13, §14 | inteiro > 0 | 3.000 |
+
+- Um perfil com valor **fora das faixas** da tabela não pode ser salvo nem usado numa mesa. Qualquer combinação de valores dentro das faixas é válida (ex.: grupos proibidos e 0 coringas = só sequências naturais).
+- Todas as demais regras deste documento são **fixas** em qualquer perfil (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de conjunto = 3 e de canastra = 7, demais valores de pontuação etc.). No código, ficam no `RuleSet` com os valores-base e não são expostas ao jogador.
+
+### **14.3. Perfis de regras**
+
+- Um **perfil de regras** tem **identificador, nome, versão e perfil de origem**, e define um valor para cada parâmetro de §14.2.
+- **Perfis da casa** (fornecidos pelo app), descritos pelas diferenças em relação à base:
+
+| Parâmetro | Clássica (base) | Tranca Paulista |
+|---|---|---|
+| `groupRanks` | qualquer número | **só A, K, Q, J** (com ou sem coringa) |
+| `maxWildsPerMeld` | 1 | 1 |
+| `cleanCanastaPoints` / `dirtyCanastaPoints` | 200 / 100 | 200 / 100 |
+| `mortoBecomesStock` | sim | **não** (monte acaba → §10 item 2: pega o lixo ou a partida termina sem vencedor) |
+| `goOutRequiresCleanCanasta` | não | **sim** |
+| `handBlackThreePoints` | –5 | **–100** |
+| `targetScore` | 3.000 | 3.000 |
+
+- **Perfis personalizados:** o jogador pode **duplicar** qualquer perfil (da casa ou personalizado), dar um nome e alterar os parâmetros de §14.2. A origem fica registrada, e o app mostra o que difere dela.
+- Enquanto o app estiver em desenvolvimento, os perfis da casa também podem ser **editados** na mesma tela.
+- Alterar um perfil **não afeta** jogos já iniciados: cada jogo guarda uma cópia completa das regras com que começou (§14.4).
+
+### **14.4. Mesa**
+
+- Uma **mesa** reúne o perfil de regras, a pontuação-alvo e o modo (individual ou duplas).
+- Antes de entrar numa mesa, o jogador pode **ver as regras** (as diferenças em relação à Clássica). Ao entrar, as regras são aceitas e **não mudam mais** até o fim do jogo; o jogo salvo ("Continuar") retoma com as mesmas regras.
+- **Mesas dos jogadores virtuais:** o app oferece algumas mesas já abertas por jogadores virtuais, cada uma com um **perfil da casa** sorteado e uma pontuação-alvo sorteada entre valores usuais (ex.: 1.500, 2.000, 3.000). O jogador entra numa delas ou **cria a própria mesa**.
 
 ---
 
