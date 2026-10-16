@@ -143,4 +143,35 @@ class StockExhaustedTest {
         s.phase shouldBe Phase.FINISHED
         s.result shouldBe RoundResult.NoWinner
     }
+
+    @Test
+    fun `morto vira monte assim que termina a jogada que esvaziou o monte`() {
+        // §10 quem comprou a última carta descarta e o morto já vira monte, antes da vez do próximo
+        val s = round {
+            hand(0, "KS QD 9C")
+            hand(1, "7S 8D")
+            stock("5C")
+        }.act(0, Action.DrawFromStock)
+        s.stock.size shouldBe 0
+        s.mortoStatus[0] shouldBe MortoStatus.Available
+        val after = s.act(0, discardCard("9C"))
+        after.mortoStatus[0] shouldBe MortoStatus.BecameStock
+        after.stock.size shouldBe 11
+        after.phase shouldBe Phase.AWAITING_DRAW
+    }
+
+    @Test
+    fun `sem mortoBecomesStock o morto nao vira monte no fim da jogada`() {
+        // §10 / §14.2 com o parâmetro em não, nada muda ao fim da jogada
+        val paulista = RuleSet.PAULISTA
+        val s = RoundEngine.apply(round {
+            hand(0, "KS QD 9C")
+            hand(1, "7S 8D")
+            stock("5C")
+            discard("4H")
+        }, com.gtranca.engine.model.Seat(0), Action.DrawFromStock, paulista)
+        val after = RoundEngine.apply(s, com.gtranca.engine.model.Seat(0), discardCard("9C"), paulista)
+        after.mortoStatus[0] shouldBe MortoStatus.Available
+        after.stock.size shouldBe 0
+    }
 }
