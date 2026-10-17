@@ -3,7 +3,7 @@ package com.gtranca.ai
 import com.gtranca.ai.hard.HardBot
 import kotlin.random.Random
 
-/** Dificuldade dos jogadores virtuais (§14). */
+/** Dificuldade dos jogadores virtuais (§14); no jogo, o nível do personagem (§14.5). */
 enum class Difficulty(val id: String) {
     FACIL("facil"),
     MEDIO("medio"),
@@ -22,9 +22,14 @@ enum class Difficulty(val id: String) {
  * decisão, para o app. O Difícil faz uma busca de CPU em `chooseAction`: chame-o fora da thread principal
  * (ex.: `Dispatchers.Default`).
  */
-fun createBot(difficulty: Difficulty, random: Random, hardConfig: HardBotConfig = HardBotConfig.DEFAULT): BotPlayer =
+fun createBot(
+    difficulty: Difficulty,
+    random: Random,
+    hardConfig: HardBotConfig = HardBotConfig.DEFAULT,
+    style: PlayStyle = PlayStyle.NEUTRO,
+): BotPlayer =
     when (difficulty) {
-        Difficulty.FACIL -> EasyBot(random)
-        Difficulty.MEDIO -> MediumBot(random)
-        Difficulty.DIFICIL -> HardBot(random, hardConfig)
+        Difficulty.FACIL -> EasyBot(random, style = style)
+        Difficulty.MEDIO -> MediumBot(random, style.apply(MediumWeights()))
+        Difficulty.DIFICIL -> HardBot(random, hardConfig, weights = style.apply(MediumWeights()))
     }

@@ -16,7 +16,7 @@ class Report(private val config: SimConfig, private val outcomes: List<GameOutco
             "Modo: ${config.mode.name.lowercase()} | lados: ${config.sides.mapIndexed { i, s -> "lado $i=$s" }.joinToString(", ")}" +
                 " | alvo: ${config.target} | semente base: ${config.seed} | invariantes extras: ${if (config.checkInvariants) "sim" else "não"}",
         )
-        if ("dificil" in config.sides) {
+        if (config.sides.any { it.startsWith("dificil") }) {
             val h = config.hardConfig
             appendLine(
                 "Difícil: ${h.iterations} iterações, teto ${h.timeLimitMillis?.let { "$it ms" } ?: "nenhum"}, simulação ${h.rolloutTurns} vezes, " +
@@ -53,6 +53,15 @@ class Report(private val config: SimConfig, private val outcomes: List<GameOutco
         appendLine("Pontuação final média: " + (0 until sideCount).joinToString(" | ") { side ->
             "lado $side ${avg(completed.map { it.totals[side].toDouble() })}"
         })
+        appendLine("Estilo de jogo por lado (§14.5):")
+        for (side in 0 until sideCount) {
+            val st = styleMetrics(side)
+            appendLine(
+                "  lado $side (${config.sides[side]}): lixo em ${pct1(st.pileTakeRate)} das compras, " +
+                    "canastras limpas ${fmt(st.cleanPerRound)} e sujas ${fmt(st.dirtyPerRound)} por partida, " +
+                    "partidas que bateu duraram ${st.goOutTurns?.let { fmt(it) } ?: "-"} jogadas em média",
+            )
+        }
         appendLine()
 
         appendLine("Tempo por decisão (só decisões com mais de uma ação legal):")
@@ -61,9 +70,9 @@ class Report(private val config: SimConfig, private val outcomes: List<GameOutco
             val mean = if (t.decisions > 0) t.totalNanos / 1e6 / t.decisions else 0.0
             appendLine("  lado $side (${config.sides[side]}): ${t.decisions} decisões, média ${fmt2(mean)} ms, máx ${fmt2(t.maxNanos / 1e6)} ms")
         }
-        if ("dificil" in config.sides) {
+        if (config.sides.any { it.startsWith("dificil") }) {
             for (side in 0 until sideCount) {
-                if (config.sides[side] != "dificil") continue
+                if (!config.sides[side].startsWith("dificil")) continue
                 val hits = outcomes.sumOf { it.hardTimeLimitHits.getOrElse(side) { 0 } }
                 val fails = outcomes.sumOf { it.hardSearchFailures.getOrElse(side) { 0 } }
                 appendLine("  lado $side (dificil): teto de tempo atingido em $hits decisões; busca falhou (jogou como o Médio) em $fails")
@@ -86,6 +95,25 @@ class Report(private val config: SimConfig, private val outcomes: List<GameOutco
             if (failures.size > maxFailuresListed) appendLine("  … e mais ${failures.size - maxFailuresListed}")
         }
     }
+
+    /** Medidas do estilo de um lado, sobre as partidas dos jogos concluídos. */
+    data class StyleMetrics(val pileTakeRate: Double, val cleanPerRound: Double, val dirtyPerRound: Double, val goOutTurns: Double?)
+
+    fun styleMetrics(side: Int): StyleMetrics {
+        val rounds = completed.flatMap { it.rounds }.filter { it.pileTakes.size > side }
+        val takes = rounds.sumOf { it.pileTakes[side] }
+        val draws = rounds.sumOf { it.stockDraws[side] }
+        val n = rounds.size.coerceAtLeast(1)
+        val wins = rounds.filter { it.winner?.index == side }
+        return StyleMetrics(
+            pileTakeRate = if (takes + draws > 0) takes.toDouble() / (takes + draws) else 0.0,
+            cleanPerRound = rounds.sumOf { it.cleanCanastas[side] }.toDouble() / n,
+            dirtyPerRound = rounds.sumOf { it.dirtyCanastas[side] }.toDouble() / n,
+            goOutTurns = if (wins.isEmpty()) null else wins.map { it.turns.toDouble() }.average(),
+        )
+    }
+
+    private fun pct1(rate: Double): String = "${fmt(rate * 100)}%"
 
     private fun ci95(successes: Int, n: Int): Double {
         val p = successes.toDouble() / n

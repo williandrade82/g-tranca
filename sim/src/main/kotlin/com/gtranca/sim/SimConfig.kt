@@ -3,6 +3,7 @@ package com.gtranca.sim
 import com.gtranca.ai.BotPlayer
 import com.gtranca.ai.Difficulty
 import com.gtranca.ai.HardBotConfig
+import com.gtranca.ai.PlayStyle
 import com.gtranca.ai.RandomBot
 import com.gtranca.ai.createBot
 import com.gtranca.engine.RuleSet
@@ -13,7 +14,8 @@ import kotlin.random.Random
  * Configuração da simulação (ver skill `simulate-matches`).
  *
  * @property sides tipo de bot de cada lado, indexado por `Side.index` (`facil`, `medio`, `dificil` ou
- *   `aleatorio`, este último uma referência que escolhe ações legais ao acaso).
+ *   `aleatorio`, este último uma referência que escolhe ações legais ao acaso). Com estilo de jogo (§14.5):
+ *   `medio:agressivo` (estilos: neutro, sagaz, sobrio, ousado, agressivo).
  * @property seed semente base: o jogo i (0, 1, …) usa a semente `seed + i`.
  * @property hardIterations iterações por decisão do bot `dificil`. Por padrão, na simulação ele roda sem teto
  *   de tempo (orçamento só por iterações), para que os resultados sejam reproduzíveis.
@@ -48,7 +50,13 @@ data class SimConfig(
         require(games > 0) { "--games deve ser positivo" }
         require(target > 0) { "--target deve ser positivo" }
         require(sides.size == 2) { "--sides deve ter 2 valores (um por lado), ex.: facil,facil" }
-        sides.forEach { require(it in BOT_KINDS) { "Bot inválido em --sides: '$it' (use ${BOT_KINDS.joinToString()})" } }
+        sides.forEach { side ->
+            require(side.substringBefore(':') in BOT_KINDS) { "Bot inválido em --sides: '$side' (use ${BOT_KINDS.joinToString()})" }
+            require(side.substringBefore(':') in Difficulty.entries.map { it.id } || ':' !in side) { "Só facil, medio e dificil aceitam estilo: '$side'" }
+            side.substringAfter(':', "").takeIf { it.isNotEmpty() }?.let { id ->
+                require(PlayStyle.ALL.any { it.id == id }) { "Estilo inválido em --sides: '$id' (use ${PlayStyle.ALL.joinToString { it.id }})" }
+            }
+        }
         require(maxActionsPerRound > 0 && maxRoundsPerGame > 0) { "Limites devem ser positivos" }
         require(hardIterations > 0) { "--hard-iterations deve ser positivo" }
         require(hardTimeMillis == null || hardTimeMillis > 0) { "--hard-time-ms deve ser positivo" }
@@ -89,7 +97,8 @@ data class SimConfig(
   --mode M             individual | duplas (padrão individual)
   --target P           pontuação-alvo (padrão 3000)
   --rules R            perfil de regras: classica | paulista (padrão classica)
-  --sides A,B          bot de cada lado: facil, medio, dificil, aleatorio (padrão facil,facil)
+  --sides A,B          bot de cada lado: facil, medio, dificil, aleatorio (padrão facil,facil); com estilo
+                       de jogo (§14.5): medio:agressivo (neutro, sagaz, sobrio, ousado, agressivo)
   --check-invariants   verificações extras após cada ação (mais lento)
   --max-actions N      limite de ações por partida antes de acusar travamento (padrão 5000)
   --max-rounds N       limite de partidas por jogo antes de acusar travamento (padrão 200)
@@ -159,5 +168,10 @@ fun createSimBot(kind: String, random: Random, hardConfig: HardBotConfig = HardB
         SimConfig.RANDOM_BOT -> RandomBot(random)
         // Médio sem os ajustes de 2026-10 (3 vermelho na 1ª canastra, topo + carta da mão): referência de comparação.
         SimConfig.MEDIUM_BASELINE -> com.gtranca.ai.MediumBot(random, com.gtranca.ai.MediumWeights(redThreeSwing = 0.0, bridgeTakeFactor = 0.0))
-        else -> createBot(Difficulty.fromId(kind), random, hardConfig)
+        else -> createBot(
+            Difficulty.fromId(kind.substringBefore(':')),
+            random,
+            hardConfig,
+            kind.substringAfter(':', "").takeIf { it.isNotEmpty() }?.let(PlayStyle::fromId) ?: PlayStyle.NEUTRO,
+        )
     }

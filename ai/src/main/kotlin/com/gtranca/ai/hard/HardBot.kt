@@ -3,6 +3,7 @@ package com.gtranca.ai.hard
 import com.gtranca.ai.BotPlayer
 import com.gtranca.ai.HardBotConfig
 import com.gtranca.ai.MediumBot
+import com.gtranca.ai.MediumWeights
 import com.gtranca.ai.PublicEvent
 import com.gtranca.ai.PublicHistory
 import com.gtranca.engine.Action
@@ -38,13 +39,15 @@ class HardBot(
     private val random: Random,
     private val config: HardBotConfig = HardBotConfig.DEFAULT,
     private val clock: () -> Long = System::nanoTime,
+    /** Pesos do estilo do personagem (§14.5): ordenam as candidatas e jogam o próprio assento nas simulações. */
+    weights: MediumWeights = MediumWeights(),
 ) : BotPlayer {
 
     private val history = PublicHistory()
     private val events = ArrayList<PublicEvent>()
 
     /** Médio com o histórico real: só ordena e poda as candidatas (não usa o RNG nessa função). */
-    private val scorer = MediumBot(Random(0))
+    private val scorer = MediumBot(Random(0), weights)
 
     /** Iterações da última busca (0 se a decisão foi direta). Para medições e testes. */
     var lastIterations: Int = 0

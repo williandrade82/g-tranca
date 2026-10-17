@@ -48,6 +48,10 @@ data class MediumWeights(
     val canastaProgress: Double = 3.0,
     /** Pontuação mínima para baixar; abaixo disso, passa ao descarte. */
     val meldThreshold: Double = 5.0,
+    /** Por carta do lixo que o adversário deixa de ter ao eu pegá-lo (estilo agressivo, §14.5); 0 desliga. */
+    val denyPile: Double = 0.0,
+    /** Descartes com custo até esta margem do melhor são sorteados entre si (estilo ousado, §14.5). */
+    val discardTieMargin: Double = 1e-9,
 
     // ---------- pegar o lixo (§5) ----------
     /** Valor esperado de comprar uma carta do monte, comparado ao de pegar o lixo. */
