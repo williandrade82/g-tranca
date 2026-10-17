@@ -1,14 +1,18 @@
 package com.gtranca.game
 
 import com.gtranca.ai.Difficulty
+import com.gtranca.ai.PlayStyle
 import com.gtranca.engine.model.GameMode
 
-/** §14.5 os 4 perfis de robô dos jogadores virtuais; [firstNames] é o conjunto de nomes sorteados para o perfil. */
-enum class BotProfile(val code: String, val firstNames: List<String>) {
-    JOVEM("jovem", listOf("Davi", "Enzo", "Théo", "Lucas", "Gabriel", "Miguel", "Caio", "Vitor", "Heitor", "Nicolas")),
-    SOBRIO("sobrio", listOf("Henrique", "Eduardo", "Augusto", "Fernando", "Roberto", "Ricardo", "Antônio", "Marcos", "Alberto", "Sérgio")),
-    ALTERNATIVO("alternativo", listOf("Ariel", "Caetano", "Dandara", "Jaci", "Íris", "Raul", "Naiara", "Gil", "Lia", "Ravi")),
-    ATLETA("atleta", listOf("Marcelo", "Rodrigo", "Thiago", "Leandro", "Maurício", "Alexandre", "Diego", "Fábio", "Rogério", "Wagner")),
+/**
+ * §14.5 os 4 perfis de robô dos jogadores virtuais; [firstNames] é o conjunto de nomes sorteados para o perfil e
+ * [style] o estilo de jogo do perfil (preferências sobre o nível).
+ */
+enum class BotProfile(val code: String, val style: PlayStyle, val firstNames: List<String>) {
+    JOVEM("jovem", PlayStyle.SAGAZ, listOf("Davi", "Enzo", "Théo", "Lucas", "Gabriel", "Miguel", "Caio", "Vitor", "Heitor", "Nicolas")),
+    SOBRIO("sobrio", PlayStyle.SOBRIO, listOf("Henrique", "Eduardo", "Augusto", "Fernando", "Roberto", "Ricardo", "Antônio", "Marcos", "Alberto", "Sérgio")),
+    ALTERNATIVO("alternativo", PlayStyle.OUSADO, listOf("Ariel", "Caetano", "Dandara", "Jaci", "Íris", "Raul", "Naiara", "Gil", "Lia", "Ravi")),
+    ATLETA("atleta", PlayStyle.AGRESSIVO, listOf("Marcelo", "Rodrigo", "Thiago", "Leandro", "Maurício", "Alexandre", "Diego", "Fábio", "Rogério", "Wagner")),
 }
 
 /** §14.5 nível do personagem, ligado à dificuldade escolhida; [stars] é a insígnia (1 a 3 estrelas). */

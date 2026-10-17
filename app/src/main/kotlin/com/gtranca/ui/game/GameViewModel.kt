@@ -3,6 +3,7 @@ package com.gtranca.ui.game
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gtranca.ai.BotPlayer
+import com.gtranca.ai.PlayStyle
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.Card
@@ -153,7 +154,8 @@ class GameViewModel(
     gameSeed: Long = Random.nextLong(),
     computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     botDelayMillis: Long = GameController.DEFAULT_BOT_DELAY_MILLIS,
-    botFactory: (Seat, Random) -> BotPlayer = { _, random -> createBot(config.difficulty, random) },
+    /** Troca os bots nos testes; `null` = o bot do nível e do estilo do personagem de cada assento (§14.5). */
+    botFactory: ((Seat, Random) -> BotPlayer)? = null,
     private val redThreeSource: RedThreeSwapSource = LogRedThreeSource,
     /** Duração da animação automática de troca de 3 vermelho de outro assento (0 nos testes). */
     private val swapAnimationMillis: Long = DEFAULT_SWAP_ANIMATION_MILLIS,
@@ -234,10 +236,23 @@ class GameViewModel(
 
     private val human = HumanPlayer()
     private val humanSeat = Seat(0)
+
+    /** §14.1, §14.5 perfis por assento: o do jogador no seu e, nos demais, os personagens sorteados com a semente deste jogo. */
+    val personas: List<Persona> = run {
+        val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, config.difficulty, playerProfile.name).iterator()
+        List(config.mode.seatCount) { index ->
+            if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto) else opponents.next()
+        }
+    }
+
+    /** §14.5 cada bot joga no nível da dificuldade e no estilo do perfil do seu personagem. */
+    private val styledBots: (Seat, Random) -> BotPlayer = { seat, random ->
+        createBot(config.difficulty, random, style = personas[seat.index].character?.profile?.style ?: PlayStyle.NEUTRO)
+    }
     private val controller = GameController(
         config = config,
         gameSeed = gameSeed,
-        players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory, restored?.botRandomCalls.orEmpty()),
+        players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory ?: styledBots, restored?.botRandomCalls.orEmpty()),
         viewerSeat = humanSeat,
         computeDispatcher = computeDispatcher,
         botDelayMillis = botDelayMillis,
@@ -252,13 +267,6 @@ class GameViewModel(
         controller.dealDelayScale = speedFor(slowAnimations).toDouble()
     }
 
-    /** §14.1 perfis por assento: o do jogador no seu e, nos demais, os sorteados com a semente deste jogo. */
-    val personas: List<Persona> = run {
-        val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, config.difficulty, playerProfile.name).iterator()
-        List(config.mode.seatCount) { index ->
-            if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto) else opponents.next()
-        }
-    }
     private val local = MutableStateFlow(
         controller.state.value.let { initial ->
             // Retomada: o registro de 3 vermelhos já aconteceu (nada se reencena) e, se o jogo parou no fim de uma

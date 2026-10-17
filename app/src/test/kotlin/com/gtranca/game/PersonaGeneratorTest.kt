@@ -1,6 +1,7 @@
 package com.gtranca.game
 
 import com.gtranca.ai.Difficulty
+import com.gtranca.ai.PlayStyle
 import com.gtranca.engine.model.GameMode
 import io.kotest.matchers.collections.shouldBeUnique
 import io.kotest.matchers.collections.shouldContain
@@ -71,6 +72,15 @@ class PersonaGeneratorTest {
         PersonaGenerator.opponents(1, 4, Difficulty.MEDIO).map { it.character!!.profile }.toSet() shouldBe BotProfile.entries.toSet()
         assertThrows<IllegalArgumentException> { PersonaGenerator.opponents(1, BotProfile.entries.size + 1, Difficulty.MEDIO) }
         PersonaGenerator.opponents(1, 0, Difficulty.MEDIO) shouldBe emptyList()
+    }
+
+    @Test
+    fun `§14_5 cada perfil joga com o seu estilo`() {
+        BotProfile.JOVEM.style shouldBe PlayStyle.SAGAZ
+        BotProfile.SOBRIO.style shouldBe PlayStyle.SOBRIO
+        BotProfile.ALTERNATIVO.style shouldBe PlayStyle.OUSADO
+        BotProfile.ATLETA.style shouldBe PlayStyle.AGRESSIVO
+        BotProfile.entries.map { it.style }.shouldBeUnique()
     }
 
     @Test
