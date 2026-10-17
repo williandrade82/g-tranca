@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.Persona
 import com.gtranca.ui.persona.AvatarRow
+import com.gtranca.ui.persona.BotPortraits
 import com.gtranca.ui.persona.callNamesOfSide
 import com.gtranca.ui.persona.personasOfSide
 import com.gtranca.ui.persona.sideLabel
@@ -72,7 +73,13 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
             snapshot.winner?.let { winner ->
                 val winners = personasOfSide(view.mode, winner, personas)
                 if (winners.isNotEmpty()) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AvatarRow(winners, 88.dp, Modifier.testTag("winner-avatars").outcomeMotion(outcome, animate)) }
+                    // §14.5 personagens em retrato: vencedores em festa, os do outro lado de cabeça baixa.
+                    val losers = personasOfSide(view.mode, view.mode.sides.first { it != winner }, personas)
+                    BotPortraits(winners, losers, animate, Modifier.testTag("game-over-portraits"))
+                    val humans = winners.filter { it.character == null }
+                    if (humans.isNotEmpty()) {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AvatarRow(humans, 88.dp, Modifier.testTag("winner-avatars").outcomeMotion(outcome, animate)) }
+                    }
                     // §14.5 quem venceu pelo nome completo, com a posição em duplas.
                     Text(
                         callNamesOfSide(view.mode, winner, snapshot.viewerSeat, personas).joinToString(" · "),

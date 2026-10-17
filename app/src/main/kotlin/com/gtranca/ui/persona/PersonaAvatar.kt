@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import com.gtranca.game.Persona
@@ -34,12 +33,14 @@ internal val MedalColors = listOf(0xFF6C5BD4, 0xFFD23A4F, 0xFF1F9E6B, 0xFFD99A1E
  * (o nome) à tela.
  */
 @Composable
-fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier) {
+fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, animate: Boolean = false) {
     persona.character?.let { character ->
-        Image(
-            painterResource(characterRes(character, Pose.PENSADOR)),
-            null,
+        CharacterPortrait(
+            character,
+            Pose.PENSADOR,
             modifier.size(size).clip(CircleShape).background(GColors.Indigo),
+            animate = animate,
+            effects = false,
             contentScale = ContentScale.Crop,
         )
         return

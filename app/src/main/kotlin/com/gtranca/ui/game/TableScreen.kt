@@ -530,7 +530,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             // leva legenda (sem personagem, o papel de sempre).
             val persona = state.personas.getOrNull(seat.index)
             if (persona != null) {
-                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp) }
+                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp, animate = state.animationMillis > 0) }
             }
             Column(Modifier.weight(1f)) {
                 if (persona != null) {

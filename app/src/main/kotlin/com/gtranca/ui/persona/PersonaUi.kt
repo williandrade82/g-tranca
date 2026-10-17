@@ -3,6 +3,19 @@ package com.gtranca.ui.persona
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Text
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
+import com.gtranca.R
+import com.gtranca.game.BotLevel
+import com.gtranca.ui.theme.GColors
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -33,6 +46,37 @@ fun callNamesOfSide(mode: GameMode, side: Side, viewerSeat: Seat, personas: List
         val role = SeatRole.of(mode, seat, viewerSeat)
         if (role == SeatRole.YOU) PlayerProfile.DEFAULT_NAME else persona.callName(mode, role)
     }
+
+/** §14.5 insígnia do nível: 1 a 3 estrelas douradas. */
+@Composable
+fun LevelStars(level: BotLevel, modifier: Modifier = Modifier, size: TextUnit = 16.sp) {
+    val description = stringResource(R.string.level_stars_desc, stringResource(level.labelRes()))
+    Row(modifier.semantics { contentDescription = description }.testTag("level-stars"), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        repeat(level.stars) { Text("★", color = GColors.Gold, fontSize = size, modifier = Modifier.clearAndSetSemantics {}) }
+    }
+}
+
+/**
+ * §14.5 retratos dos personagens no fim da partida ou do jogo: os de [winners] na pose de vencedor e os de [losers] na
+ * de perdedor, lado a lado. Quem não é personagem (o jogador) não aparece aqui.
+ */
+@Composable
+fun BotPortraits(winners: List<Persona>, losers: List<Persona>, animate: Boolean, modifier: Modifier = Modifier) {
+    val items = winners.mapNotNull { p -> p.character?.let { Triple(p, it, Pose.VENCEDOR) } } +
+        losers.mapNotNull { p -> p.character?.let { Triple(p, it, Pose.PERDEDOR) } }
+    if (items.isEmpty()) return
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.Bottom) {
+        items.forEach { (persona, character, pose) ->
+            CharacterPortrait(
+                character,
+                pose,
+                Modifier.weight(1f, fill = false).widthIn(max = if (items.size == 1) 260.dp else 130.dp).testTag("portrait-${pose.code}"),
+                animate = animate,
+                description = persona.fullName,
+            )
+        }
+    }
+}
 
 /** Avatares lado a lado, levemente sobrepostos e com aro branco (um lado de duplas tem dois jogadores). */
 @Composable

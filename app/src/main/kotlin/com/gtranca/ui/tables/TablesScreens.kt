@@ -36,7 +36,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
 import com.gtranca.ai.Difficulty
@@ -48,7 +50,13 @@ import com.gtranca.game.TableOffer
 import com.gtranca.ui.game.plainPoints
 import com.gtranca.ui.home.ModeCard
 import com.gtranca.ui.home.labelRes
+import com.gtranca.ui.persona.CharacterPortrait
+import com.gtranca.ui.persona.LevelStars
 import com.gtranca.ui.persona.PersonaAvatar
+import com.gtranca.ui.persona.Pose
+import com.gtranca.ui.persona.labelRes
+import com.gtranca.ui.persona.pitchRes
+import com.gtranca.ui.persona.tagRes
 import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GButton
@@ -136,7 +144,13 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        PersonaAvatar(table.host, 52.dp)
+        // §14.5 apresentação do personagem: retrato animado, nível e característica.
+        val character = table.host.character
+        if (character != null) {
+            CharacterPortrait(character, Pose.APRESENTACAO, Modifier.width(104.dp).testTag("table-portrait-${table.id}"), description = table.host.fullName)
+        } else {
+            PersonaAvatar(table.host, 52.dp)
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 stringResource(R.string.tables_host, table.host.fullName),
@@ -144,6 +158,12 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 color = GColors.Champagne,
             )
+            if (character != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                    LevelStars(character.level)
+                    Text(stringResource(character.profile.tagRes()), style = MaterialTheme.typography.labelMedium, color = GColors.Lavender)
+                }
+            }
             Text(rulesName(table.rules), style = MaterialTheme.typography.bodyMedium, color = GColors.Gold)
             Text(
                 stringResource(
@@ -174,15 +194,28 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
         },
     ) {
         GPanel(Modifier.fillMaxWidth()) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                PersonaAvatar(table.host, 52.dp)
-                Column {
-                    Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
+            val character = table.host.character
+            if (character != null) {
+                // §14.5 painel de apresentação: o retrato em destaque e o texto que apresenta o perfil.
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    CharacterPortrait(character, Pose.APRESENTACAO, Modifier.fillMaxWidth(0.8f).testTag("table-rules-portrait"), description = table.host.fullName)
+                    Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne, textAlign = TextAlign.Center)
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                        LevelStars(character.level, size = 20.sp)
+                        Text(stringResource(character.level.labelRes()), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
+                    }
+                    Text(stringResource(character.profile.tagRes()), style = MaterialTheme.typography.titleSmall, color = GColors.Lavender, textAlign = TextAlign.Center)
+                    Text(stringResource(character.profile.pitchRes()), style = MaterialTheme.typography.bodyMedium, color = GColors.Ivory, textAlign = TextAlign.Center)
                     Text(
                         "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = GColors.Lavender,
                     )
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    PersonaAvatar(table.host, 52.dp)
+                    Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
                 }
             }
         }

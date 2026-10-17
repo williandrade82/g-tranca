@@ -18,6 +18,7 @@ Regras: `definition.md` §14.5. Claude não gera imagens: você gera/encomenda e
 - **A insígnia de estrelas já vem desenhada na roupa** (1, 2 ou 3 estrelas; a Sênior também tem coroa no Jovem): o app não precisa desenhá-la.
 - Perfil = `jovem | sobrio | alternativo | atleta`; nivel = `iniciante | maduro | senior`; pose = `apresentacao | vencedor | perdedor | pensador`.
 - Para trocar uma imagem: substitua o original com o mesmo nome e rode o script.
+- Conferência automática (tamanho, fundo transparente, recorte e cor da pele por perfil): `py -3 tools/conferir_personagens.py`. Os testes JVM (`CharacterAssetsTest`) conferem existência, tamanho e peso dos 48 arquivos.
 
 ## Formato desejado para novas imagens
 - Fundo transparente, busto centrado; mesma proporção, enquadramento e iluminação em todas as imagens do mesmo personagem.
