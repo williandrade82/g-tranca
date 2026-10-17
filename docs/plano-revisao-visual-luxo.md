@@ -1,6 +1,6 @@
 # Plano: revisão visual "luxo noturno de cassino" (app inteiro)
 
-Status: **executado** (commits c724e5b, 7930e56, e02bb30, 90a7655) — falta só validar no celular. Mão em leque não aplicada (ver nota no fim). Os avatares têm plano próprio em [plano-revisao-avatares.md](plano-revisao-avatares.md).
+Status: **executado** (commits c724e5b, 7930e56, e02bb30, 90a7655) — falta só validar no celular. Mão em leque não aplicada (ver nota no fim). Os avatares têm plano próprio em [plano-revisao-avatares.md](arquivo-avatares/plano-revisao-avatares.md).
 
 ## Escopo e restrições
 

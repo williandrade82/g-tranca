@@ -87,7 +87,7 @@ fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier) {
 }
 
 /**
- * Retrato 3D da profissão × gênero (docs/avatares-prompts.md), quando já existe; senão `null` e vale o desenho.
+ * Retrato 3D da profissão × gênero (docs/arquivo-avatares/avatares-prompts.md), quando já existe; senão `null` e vale o desenho.
  * Mapa explícito (e não `getIdentifier`) para o encolhimento de recursos do release não descartar as imagens.
  */
 private fun portraitRes(profession: Profession, gender: Gender): Int? = when (profession to gender) {
