@@ -191,13 +191,19 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
     }
 }
 
-/** §14.4 os três personagens de uma mesa de duplas, em retratos pequenos: adversário à esquerda, parceiro e adversário à direita. */
+/** §14.4 os três personagens de uma mesa de duplas, em retratos de apresentação pequenos: adversário à esquerda, parceiro e adversário à direita. */
 @Composable
 private fun RosterStrip(table: TableOffer) {
     Row(Modifier.fillMaxWidth().testTag("table-${table.id}-roster"), horizontalArrangement = Arrangement.SpaceEvenly) {
         seatsInDisplayOrder(table).forEach { (persona, label) ->
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                PersonaAvatar(persona, 44.dp)
+                // mesmo retrato de apresentação das mesas individuais, só menor
+                val c = persona.character
+                if (c != null) {
+                    CharacterPortrait(c, Pose.APRESENTACAO, Modifier.fillMaxWidth(0.9f), description = persona.fullName)
+                } else {
+                    PersonaAvatar(persona, 44.dp)
+                }
                 Text(persona.shortName, style = MaterialTheme.typography.labelSmall, color = GColors.Ivory, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender, maxLines = 1)
             }
