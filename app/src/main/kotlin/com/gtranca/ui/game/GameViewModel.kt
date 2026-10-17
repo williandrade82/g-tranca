@@ -254,7 +254,7 @@ class GameViewModel(
 
     /** §14.1 perfis por assento: o do jogador no seu e, nos demais, os sorteados com a semente deste jogo. */
     val personas: List<Persona> = run {
-        val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, playerProfile.name).iterator()
+        val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, config.difficulty, playerProfile.name).iterator()
         List(config.mode.seatCount) { index ->
             if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto) else opponents.next()
         }

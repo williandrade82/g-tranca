@@ -13,7 +13,6 @@ import com.gtranca.engine.model.RoundResult
 import com.gtranca.game.Persona
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.persona.AvatarRow
-import com.gtranca.ui.persona.labelRes
 import com.gtranca.ui.persona.personasOfSide
 
 import androidx.compose.foundation.layout.Arrangement
@@ -139,7 +138,7 @@ fun RoundAnnouncement(
         avatars = listOfNotNull(who),
         illustration = if (result is RoundResult.NoWinner) MessageIllustration.Cards else null,
         caption = who?.let { persona ->
-            if (role == SeatRole.YOU) stringResource(R.string.side_you) else stringResource(R.string.persona_role_caption, persona.fullName, stringResource(role!!.labelRes(persona.gender)))
+            if (role == SeatRole.YOU) stringResource(R.string.side_you) else persona.callName(mode, role!!)
         },
         subtitle = roundTeamAnnouncementRes(mode, record.result, snapshot.viewerSide)?.let { stringResource(it) },
         button = stringResource(R.string.announce_see_points),

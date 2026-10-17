@@ -1,37 +1,27 @@
 package com.gtranca.game
 
 /**
- * Perfil do jogador (§14.1): nome (até [MAX_NAME] caracteres; vazio = "Você") e avatar: persona (gênero e profissão) ou
- * foto pessoal ([hasPhoto]; o arquivo fica no aparelho).
+ * Perfil do jogador (§14.1): nome (até [MAX_NAME] caracteres; vazio = "Você") e avatar: foto pessoal ([hasPhoto]; o
+ * arquivo fica no aparelho) ou, sem foto, medalhão com a inicial na [color] escolhida (índice da paleta).
  * Gravado como texto nas preferências ([encode]/[decode]).
  */
 data class PlayerProfile(
     val name: String = "",
-    val gender: Gender = Gender.MALE,
-    val profession: Profession = Profession.TEACHER,
-    val look: Look = Look(skin = 2, hair = HairStyle.SHORT, hairColor = 1),
+    val color: Int = 0,
     /** §14.1 o avatar é a foto pessoal guardada no aparelho. */
     val hasPhoto: Boolean = false,
 ) {
     /** O perfil como persona (sem sobrenome), para o avatar; com [hasPhoto], a foto em [photoPath]. */
     fun persona(defaultName: String, photoPath: String? = null): Persona =
-        Persona(name.trim().ifEmpty { defaultName }, "", gender, profession, look, photo = photoPath?.takeIf { hasPhoto })
+        Persona(name.trim().ifEmpty { defaultName }, "", color = color, photo = photoPath?.takeIf { hasPhoto })
 
-    /** Troca o gênero levando junto um penteado compatível (e sem barba, que é só do masculino). */
-    fun withGender(newGender: Gender): PlayerProfile = when {
-        newGender == gender -> this
-        else -> copy(
-            gender = newGender,
-            look = look.copy(hair = HairStyle.entries.first { it.gender == newGender }, beard = false),
-        )
-    }
-
-    fun encode(): String =
-        listOf(sanitizeName(name), gender.name, profession.name, look.skin, look.hair.name, look.hairColor, look.beard, look.face.name, hasPhoto)
-            .joinToString(SEPARATOR)
+    fun encode(): String = listOf(sanitizeName(name), color, hasPhoto).joinToString(SEPARATOR)
 
     companion object {
         const val MAX_NAME = 16
+
+        /** Cores do medalhão (§14.1). */
+        const val COLORS = Persona.COLORS
 
         /** Nome do jogador quando o perfil não tem nome. */
         const val DEFAULT_NAME = "Você"
@@ -40,27 +30,23 @@ data class PlayerProfile(
         /** Sem caracteres de controle (o tab separa os campos), no máximo [MAX_NAME] caracteres. */
         fun sanitizeName(raw: String): String = raw.filter { !it.isISOControl() }.take(MAX_NAME)
 
-        /** Lê o texto gravado; ausente ou ilegível (formato antigo, campo inválido) volta ao perfil padrão. */
+        /**
+         * Lê o texto gravado; ausente ou ilegível volta ao perfil padrão. Aceita o formato antigo (7 a 9 campos, com
+         * persona por gênero e profissão): dele só valem o nome e a foto.
+         */
         fun decode(text: String?): PlayerProfile {
             if (text == null) return PlayerProfile()
             val parts = text.split(SEPARATOR)
-            // 7 campos: formato anterior, sem o formato do rosto; 8: sem a foto.
-            if (parts.size !in 7..9) return PlayerProfile()
             return try {
-                val gender = Gender.valueOf(parts[1])
-                PlayerProfile(
-                    name = sanitizeName(parts[0]),
-                    gender = gender,
-                    profession = Profession.valueOf(parts[2]),
-                    look = Look(
-                        skin = parts[3].toInt(),
-                        hair = HairStyle.valueOf(parts[4]).also { require(it.gender == gender) },
-                        hairColor = parts[5].toInt(),
-                        beard = parts[6].toBooleanStrict(),
-                        face = parts.getOrNull(7)?.let { FaceShape.valueOf(it) } ?: FaceShape.OVAL,
-                    ),
-                    hasPhoto = parts.getOrNull(8)?.toBooleanStrict() ?: false,
-                )
+                when (parts.size) {
+                    3 -> PlayerProfile(
+                        sanitizeName(parts[0]),
+                        parts[1].toInt().also { require(it in 0 until COLORS) },
+                        parts[2].toBooleanStrict(),
+                    )
+                    in 7..9 -> PlayerProfile(sanitizeName(parts[0]), 0, parts.getOrNull(8)?.toBooleanStrict() ?: false)
+                    else -> PlayerProfile()
+                }
             } catch (_: IllegalArgumentException) {
                 PlayerProfile()
             }

@@ -36,14 +36,17 @@ object Tables {
      */
     fun botTables(seed: Long, avoidName: String = ""): List<TableOffer> {
         val random = Random(seed)
-        val hosts = PersonaGenerator.opponents(seed, BOT_TABLE_COUNT, avoidName)
+        val hosts = PersonaGenerator.opponents(seed, BOT_TABLE_COUNT, Difficulty.MEDIO, avoidName)
         val firstRules = random.nextInt(RuleSet.HOUSE.size)
         return List(BOT_TABLE_COUNT) { i ->
+            val mode = GameMode.entries[random.nextInt(GameMode.entries.size)]
+            val difficulty = Difficulty.entries[random.nextInt(Difficulty.entries.size)]
             TableOffer(
                 id = i,
-                host = hosts[i],
-                mode = GameMode.entries[random.nextInt(GameMode.entries.size)],
-                difficulty = Difficulty.entries[random.nextInt(Difficulty.entries.size)],
+                // §14.5 o anfitrião tem o nível da dificuldade da mesa.
+                host = hosts[i].withLevel(BotLevel.of(difficulty)),
+                mode = mode,
+                difficulty = difficulty,
                 targetScore = BOT_TARGETS[random.nextInt(BOT_TARGETS.size)],
                 rules = RuleSet.HOUSE[(firstRules + i) % RuleSet.HOUSE.size],
             )

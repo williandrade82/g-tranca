@@ -17,7 +17,6 @@ import com.gtranca.ui.theme.MessageTone
 import com.gtranca.ui.theme.GSnack
 
 import com.gtranca.ui.persona.PersonaAvatar
-import com.gtranca.ui.persona.labelRes
 
 import androidx.compose.ui.draw.clip
 
@@ -377,7 +376,7 @@ fun TableScreen(
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
             val detailPersona = state.personas.getOrNull(index)
-            SeatDetailDialog(detailPersona, stringResource(detailPersona?.let { role.labelRes(it.gender) } ?: role.nameRes()), events) { detailSeat = null }
+            SeatDetailDialog(detailPersona, stringResource(role.nameRes()), events) { detailSeat = null }
         }
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }

@@ -1,6 +1,6 @@
 # Plano: 4 robôs com personalidade (substituem os avatares por profissão)
 
-Status: **aprovado em 2026-10-17** (decisões D1–D9 na seção 8, já respondidas); etapa 1 feita. Branch de trabalho: `feature/bots-personas`. Nada deste plano foi implementado.
+Status: **aprovado em 2026-10-17** (decisões D1–D9 na seção 8, já respondidas); etapas 1 (especificação), 1b (imagens) e 2 (modelo e sorteio) feitas. Branch de trabalho: `feature/bots-personas`. Nada deste plano foi implementado.
 O desenho anterior (16 profissões × 2 gêneros) foi arquivado em [arquivo-avatares/](arquivo-avatares/LEIA-ME.md).
 
 ## 1. O que muda, em uma frase

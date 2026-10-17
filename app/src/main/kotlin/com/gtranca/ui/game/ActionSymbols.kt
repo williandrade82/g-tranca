@@ -8,7 +8,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.gtranca.game.Persona
 import com.gtranca.ui.persona.PersonaAvatar
-import com.gtranca.ui.persona.labelRes
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -201,10 +200,7 @@ fun SeatDetailDialog(persona: Persona?, roleLabel: String, events: List<PublicEv
                     PersonaAvatar(persona, 56.dp)
                     Column {
                         Text(persona.fullName)
-                        Text(
-                            stringResource(R.string.persona_caption, stringResource(persona.profession.labelRes(persona.gender)), roleLabel),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Text(roleLabel, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

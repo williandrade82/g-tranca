@@ -8,10 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.gtranca.R
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
@@ -41,8 +39,3 @@ fun sideLabel(mode: GameMode, side: Side, viewerSide: Side, personas: List<Perso
     }
     return sideName(mode, side, viewerSide)
 }
-
-/** "Ana Souza · Médica". */
-@Composable
-fun personaCaption(persona: Persona): String =
-    stringResource(R.string.persona_caption, persona.fullName, stringResource(persona.profession.labelRes(persona.gender)))
