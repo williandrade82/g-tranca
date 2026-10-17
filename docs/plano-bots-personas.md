@@ -1,6 +1,6 @@
 # Plano: 4 robôs com personalidade (substituem os avatares por profissão)
 
-Status: **plano para aprovação** (2026-10-17). Branch de trabalho: `feature/bots-personas`. Nada deste plano foi implementado.
+Status: **aprovado em 2026-10-17** (decisões D1–D9 na seção 8, já respondidas); etapa 1 feita. Branch de trabalho: `feature/bots-personas`. Nada deste plano foi implementado.
 O desenho anterior (16 profissões × 2 gêneros) foi arquivado em [arquivo-avatares/](arquivo-avatares/LEIA-ME.md).
 
 ## 1. O que muda, em uma frase
@@ -87,16 +87,16 @@ pose (mais fiel, pesa ~15 MB+); **C)** quadros em sequência (4–8 por pose). S
 - **Comunicação:** texto de cada aviso/modal usa o nome do robô e o sufixo (dir/esq) nas duplas; nenhum texto antigo de profissão.
 - **Geração:** nomes e perfis sem repetição, determinísticos pela semente, nunca igual ao nome do jogador.
 
-## 8. Decisões que preciso de você
+## 8. Decisões (respondidas em 2026-10-17)
 
-| # | Pergunta | Recomendação |
-|---|---|---|
-| D1 | O nível vem da **dificuldade escolhida** (Fácil/Médio/Difícil = Iniciante/Maduro/Sênior, igual para todos os robôs da mesa) ou cada robô tem **nível próprio** misturado? | Dificuldade escolhida (mantém o fluxo atual). Nas mesas de robôs, o anfitrião já traz o nível sorteado. |
-| D2 | Animação: A (procedural), B (WebP animado) ou C (quadros)? | A agora; B só na pose de apresentação, se quiser depois. |
-| D3 | Estilo do `ATLETA` (você não definiu). | Agressivo/pressão: pega o lixo para tirar material do adversário e bate cedo. |
-| D4 | Parceiro nas duplas: "Nome (parceiro)" ou só "Nome"? | "Nome (parceiro)". |
-| D5 | Como o nível aparece no visual? | Mesmo desenho + insígnia de 1/2/3 estrelas, com pequenos sinais de experiência (ex.: mais detalhes/desgaste a cada nível), como na ficha. |
-| D6 | Avatar do **jogador**: some a grade de profissões. Fica foto + medalhão com a inicial/cor? | Sim: foto (já existe) ou medalhão com inicial e cor à escolha. |
-| D7 | Jogos já salvos passam a mostrar os robôs novos no "Continuar"? | Sim, sem migração. |
-| D8 | O "nome definido" do robô pode ter **variações sorteadas** no início (ex.: sobrenome/cor de um detalhe)? Entendi variação como nome/sobrenome. | Só nome e sobrenome variam; o visual de cada personagem é fixo. |
-| D9 | O nome do nível "Maduro" repete o perfil `SOBRIO` ("mais maduro"). Manter os rótulos Iniciante/Maduro/Sênior? | Manter; o perfil 2 aparece só pelo nome e pela ficha ("Sóbrio"). |
+| # | Decisão |
+|---|---|
+| D1 | O nível vem da **dificuldade escolhida** (igual para todos os robôs da mesa); nas mesas de robôs, o do anfitrião. |
+| D2 | Animação **procedural** em Compose (imagem estática + movimento e efeitos por pose). |
+| D3 | `ATLETA` é **agressivo**: pega o lixo para tirar material do adversário, baixa e bate cedo. |
+| D4 | Parceiro aparece **só com o nome** (adversários em duplas levam (dir)/(esq)). |
+| D5 | Nível = mesma arte + **insígnia de 1/2/3 estrelas** e sinais de experiência. |
+| D6 | Avatar do jogador: **foto** ou **medalhão com inicial e cor**; some a grade de profissões. |
+| D7 | Jogos salvos mostram os robôs novos ao continuar (**sem migração**). |
+| D8 | Só **nome e sobrenome** variam no sorteio; o visual do personagem é fixo. |
+| D9 | Rótulos Iniciante/Maduro/Sênior mantidos. "Maduro" no perfil 2 = **adulto formado, nem jovem nem idoso**. |
