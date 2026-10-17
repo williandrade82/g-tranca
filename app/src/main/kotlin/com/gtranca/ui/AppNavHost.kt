@@ -65,6 +65,7 @@ import kotlinx.serialization.json.Json
 import com.gtranca.engine.RuleSet
 import com.gtranca.ui.tables.CreateTableScreen
 import com.gtranca.ui.tables.CreateTableViewModel
+import com.gtranca.ui.tables.CreatedTableViewModel
 import com.gtranca.ui.tables.RulesEditorScreen
 import com.gtranca.ui.tables.RulesEditorViewModel
 import com.gtranca.ui.tables.TableRulesScreen
@@ -90,6 +91,25 @@ data class TableRulesRoute(val tableId: Int)
 
 @Serializable
 object CreateTableRoute
+
+/**
+ * §14.4 tela da mesa recém-criada, com os personagens sorteados com [seed] (o jogador pode sortear outros ou
+ * começar); leva a configuração escolhida em "Criar mesa".
+ */
+@Serializable
+data class NewTableRoute(
+    val mode: String,
+    val difficulty: String,
+    val targetScore: Int,
+    val rulesJson: String,
+    val seed: Long,
+) {
+    fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson).toConfig()
+
+    companion object {
+        fun of(config: GameConfig, seed: Long) = GameRoute.of(config).let { NewTableRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, seed) }
+    }
+}
 
 /** §14.4 editor das regras personalizadas; [fromCreate]: ao salvar, "Criar mesa" escolhe "Personalizada". */
 @Serializable
@@ -229,9 +249,23 @@ fun AppNavHost() {
             }
             CreateTableScreen(
                 vm,
-                onCreate = { config -> navController.startGame(config) },
+                onCreate = { config ->
+                    // §14.4 antes de começar, mostra a mesa com os personagens sorteados
+                    navController.navigate(NewTableRoute.of(config, System.nanoTime())) { launchSingleTop = true }
+                },
                 onCustomize = { navController.navigate(RulesEditorRoute(fromCreate = true)) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
+            )
+        }
+        composable<NewTableRoute> { entry ->
+            val route = entry.toRoute<NewTableRoute>()
+            val vm = viewModel { CreatedTableViewModel(route.toConfig(), route.seed, data.settings) }
+            val table by vm.table.collectAsStateWithLifecycle()
+            TableRulesScreen(
+                table,
+                onStart = { config -> navController.startGame(config, table.seed) },
+                onBack = { navController.popBackStack() },
+                onReroll = vm::reroll,
             )
         }
         composable<RulesEditorRoute> { entry ->

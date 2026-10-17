@@ -222,7 +222,7 @@ private fun seatsInDisplayOrder(table: TableOffer): List<Pair<Persona, Int>> = l
 
 /** §14.4 regras de uma mesa aberta: o jogador inicia o jogo ou volta. */
 @Composable
-fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: () -> Unit) {
+fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: () -> Unit, onReroll: (() -> Unit)? = null) {
     TableFrame(
         stringResource(R.string.table_rules_title),
         "table-rules-screen",
@@ -278,6 +278,12 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
                     PersonaAvatar(table.host, 52.dp)
                     Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
                 }
+            }
+        }
+        // §14.4 mesa criada pelo jogador: pode sortear outros personagens antes de começar
+        if (onReroll != null) {
+            GButton(onReroll, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("table-rules-reroll"), kind = GButtonKind.Secondary) {
+                Text(stringResource(R.string.table_rules_reroll), style = MaterialTheme.typography.titleMedium)
             }
         }
         RulesSummary(table.rules, table.targetScore)

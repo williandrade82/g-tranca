@@ -80,6 +80,7 @@
     <string name="char_alternativo_pitch">Vê um sentido oculto em cada descarte e arrisca onde ninguém espera.</string>
     <string name="char_atleta_tag">Agressivo e competitivo</string>
     <string name="char_atleta_pitch">Joga no ataque: pega o lixo para tirar o seu material e quer bater cedo.</string>
+    <string name="table_rules_reroll">Sortear outros jogadores</string>
     <string name="turn_named">Vez de %1$s…</string>
     <string name="turn_partner">Vez do parceiro…</string>
     <string name="turn_left_opponent">Vez do adversário à esquerda…</string>

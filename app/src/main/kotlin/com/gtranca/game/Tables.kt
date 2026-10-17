@@ -33,6 +33,9 @@ object Tables {
 
     const val BOT_TABLE_COUNT = 4
 
+    /** Identificador da mesa criada pelo jogador (não está na lista das mesas dos jogadores virtuais). */
+    const val CREATED_TABLE_ID = -1
+
     private const val MAX_HOST_RETRIES = 20
 
     /** Identificador das regras personalizadas do jogador (§14.4). */
