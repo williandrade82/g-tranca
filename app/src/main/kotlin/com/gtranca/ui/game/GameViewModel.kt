@@ -192,7 +192,7 @@ class GameViewModel(
     private fun enqueueSave(snapshot: SaveSnapshot) {
         val store = persistence ?: return
         if (finishSent.get()) return
-        writes.enqueue { store.save(savedGameOf(gameId, config, gameSeed, snapshot)) }
+        writes.enqueue { store.save(savedGameOf(gameId, config, gameSeed, snapshot, drawnForName)) }
     }
 
     private data class Local(
@@ -238,8 +238,10 @@ class GameViewModel(
     private val humanSeat = Seat(0)
 
     /** §14.1, §14.5 perfis por assento: o do jogador no seu e, nos demais, os personagens sorteados com a semente deste jogo. */
+    private val drawnForName: String = restored?.playerName ?: playerProfile.name
+
     val personas: List<Persona> = run {
-        val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, config.difficulty, playerProfile.name).iterator()
+        val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, config.difficulty, drawnForName).iterator()
         List(config.mode.seatCount) { index ->
             if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto) else opponents.next()
         }

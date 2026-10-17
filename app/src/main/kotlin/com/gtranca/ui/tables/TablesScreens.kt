@@ -167,10 +167,15 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 color = GColors.Champagne,
             )
-            if (character != null && table.mode != GameMode.DUPLAS) {
+            if (character != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
                     LevelStars(character.level)
-                    Text(stringResource(character.profile.tagRes()), style = MaterialTheme.typography.labelMedium, color = GColors.Lavender)
+                    // em duplas, o nível é o da mesa; a característica de cada um está nos retratos da tela da mesa
+                    Text(
+                        stringResource(if (table.mode == GameMode.DUPLAS) character.level.labelRes() else character.profile.tagRes()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GColors.Lavender,
+                    )
                 }
             }
             Text(rulesName(table.rules), style = MaterialTheme.typography.bodyMedium, color = GColors.Gold)

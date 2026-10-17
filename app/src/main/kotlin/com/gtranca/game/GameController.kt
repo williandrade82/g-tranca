@@ -530,7 +530,13 @@ class GameController(
 }
 
 /** Jogo salvo a retomar: o `Match` e os eventos públicos da partida atual, em ordem. */
-data class RestoredGame(val match: Match, val events: List<PublicEvent>, val botRandomCalls: List<Long> = emptyList())
+data class RestoredGame(
+    val match: Match,
+    val events: List<PublicEvent>,
+    val botRandomCalls: List<Long> = emptyList(),
+    /** Nome do jogador usado no sorteio dos personagens (§14.5); `null` = jogo salvo antigo (vale o do perfil). */
+    val playerName: String? = null,
+)
 
 /** O que salvar: o jogo completo e os eventos públicos da partida atual (para reconstruir a memória dos bots). */
 data class SaveSnapshot(val match: Match, val events: List<PublicEvent>, val botRandomCalls: List<Long> = emptyList())
