@@ -13,6 +13,7 @@ import com.gtranca.engine.model.RoundResult
 import com.gtranca.game.Persona
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.persona.AvatarRow
+import com.gtranca.ui.persona.callNamesOfSide
 import com.gtranca.ui.persona.personasOfSide
 
 import androidx.compose.foundation.layout.Arrangement
@@ -134,12 +135,11 @@ fun RoundAnnouncement(
     val role = (result as? RoundResult.GoOut)?.let { SeatRole.of(mode, it.seat, snapshot.viewerSeat) }
     val named = who != null && role != SeatRole.YOU
     AnnouncementScreen(
-        title = if (named) stringResource(R.string.round_result_named_went_out, who!!.firstName) else stringResource(roundAnnouncementRes(mode, record.result, snapshot.viewerSeat)),
+        // §14.5 na comunicação: nome completo, com a posição em duplas.
+        title = if (named) stringResource(R.string.round_result_named_went_out, who!!.callName(mode, role!!)) else stringResource(roundAnnouncementRes(mode, record.result, snapshot.viewerSeat)),
         avatars = listOfNotNull(who),
         illustration = if (result is RoundResult.NoWinner) MessageIllustration.Cards else null,
-        caption = who?.let { persona ->
-            if (role == SeatRole.YOU) stringResource(R.string.side_you) else persona.callName(mode, role!!)
-        },
+        caption = if (who != null && role == SeatRole.YOU) stringResource(R.string.side_you) else null,
         subtitle = roundTeamAnnouncementRes(mode, record.result, snapshot.viewerSide)?.let { stringResource(it) },
         button = stringResource(R.string.announce_see_points),
         onContinue = onContinue,
@@ -162,7 +162,8 @@ fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: L
     val winners = snapshot.winner?.let { personasOfSide(snapshot.view.mode, it, personas) }.orEmpty()
     AnnouncementScreen(
         avatars = winners,
-        caption = winners.joinToString(" · ") { it.shortName }.ifEmpty { null },
+        caption = snapshot.winner?.let { callNamesOfSide(snapshot.view.mode, it, snapshot.viewerSeat, personas) }
+            ?.joinToString(" · ")?.ifEmpty { null },
         title = stringResource(R.string.game_over_title),
         subtitle = stringResource(gameResultRes(snapshot.view.mode, won = snapshot.winner == snapshot.viewerSide)),
         button = stringResource(R.string.announce_see_result),

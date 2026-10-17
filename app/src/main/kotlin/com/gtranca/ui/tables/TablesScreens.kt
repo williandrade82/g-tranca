@@ -139,7 +139,7 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
         PersonaAvatar(table.host, 52.dp)
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.tables_host, table.host.firstName),
+                stringResource(R.string.tables_host, table.host.fullName),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = GColors.Champagne,
@@ -177,7 +177,7 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 PersonaAvatar(table.host, 52.dp)
                 Column {
-                    Text(stringResource(R.string.tables_host, table.host.firstName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
+                    Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
                     Text(
                         "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
                         style = MaterialTheme.typography.bodyMedium,

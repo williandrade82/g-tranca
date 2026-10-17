@@ -68,6 +68,7 @@
     <string name="turn_draw">Sua vez: compre do monte ou pegue o descarte</string>
     <string name="turn_play">Sua vez: baixe, acrescente ou descarte</string>
     <string name="turn_opponent">Vez do adversário…</string>
+    <string name="turn_named">Vez de %1$s…</string>
     <string name="turn_partner">Vez do parceiro…</string>
     <string name="turn_left_opponent">Vez do adversário à esquerda…</string>
     <string name="turn_right_opponent">Vez do adversário à direita…</string>

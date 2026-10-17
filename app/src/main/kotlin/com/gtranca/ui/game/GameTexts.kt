@@ -18,6 +18,7 @@ import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RuleError
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
+import com.gtranca.game.Persona
 import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.cards.shortLabel
@@ -222,7 +223,9 @@ fun revealTitle(notice: RedThreeNotice): String {
 /** §3.5/§6.5 aviso da troca de 3 vermelho de outro assento: quem, qual carta e se foi no início da vez. */
 @Composable
 @ReadOnlyComposable
-fun bannerText(mode: GameMode, notice: RedThreeNotice, viewerSeat: Seat): String {
-    val name = stringResource(SeatRole.of(mode, notice.seat, viewerSeat).nameRes())
+fun bannerText(mode: GameMode, notice: RedThreeNotice, viewerSeat: Seat, persona: Persona? = null): String {
+    val role = SeatRole.of(mode, notice.seat, viewerSeat)
+    // §14.5 na comunicação: nome completo com a posição (duplas); sem personagem, o papel de sempre.
+    val name = persona?.callName(mode, role) ?: stringResource(role.nameRes())
     return stringResource(if (notice.atTurnStart) R.string.red_three_banner_turn else R.string.red_three_banner, name)
 }
