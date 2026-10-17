@@ -36,6 +36,16 @@ data class MediumWeights(
     val oneCardLeft: Double = 300.0,
     /** Fator sobre [wildUse] quando o lado já pode bater (morto e canastra, §11.1): esvaziar a mão é o que importa. */
     val wildUseGoingOutFactor: Double = 0.2,
+    /**
+     * Conjunto novo (sem coringa) que caberia num conjunto que o lado já tem (ex.: um 2º grupo de 4 ao lado do 1º, ou
+     * uma sequência que emendaria na da mesa): fica separado, longe da canastra, e ainda dá mais um alvo ao adversário.
+     * Só vale sem coringa: abrir outro grupo para gastar um coringa continua sendo uma boa jogada (§6.4).
+     */
+    val duplicateMeldPenalty: Double = 40.0,
+    /** Acrescentar a um conjunto que o lado já tem (o jogo cresce em vez de se espalhar). */
+    val addToMeldBonus: Double = 12.0,
+    /** Por carta do conjunto resultante abaixo da canastra: quanto mais perto dos 7, melhor. */
+    val canastaProgress: Double = 3.0,
     /** Pontuação mínima para baixar; abaixo disso, passa ao descarte. */
     val meldThreshold: Double = 5.0,
 

@@ -4,6 +4,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.ui.sound.LocalSoundSettings
 import com.gtranca.ui.sound.SoundSettings
+import com.gtranca.ui.speed.LocalSpeedSettings
+import com.gtranca.ui.speed.SpeedSettings
 
 import com.gtranca.ui.sound.LocalSound
 
@@ -140,6 +142,11 @@ fun AppNavHost() {
     val soundSettings = remember(soundOn, data) {
         SoundSettings(soundOn) { WriteQueue.app.enqueue { data.settings.setSoundOn(!soundOn) } }
     }
+    // Velocidade das animações (Perfil e botão da mesa): vale para o app todo.
+    val slowAnimations by remember(data) { data.settings.settings.map { it.slowAnimations }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
+    val speedSettings = remember(slowAnimations, data) {
+        SpeedSettings(slowAnimations) { WriteQueue.app.enqueue { data.settings.setSlowAnimations(!slowAnimations) } }
+    }
     // Troca de tela: fade com um véu dourado que se apaga (não bloqueia toques; parado sem animações do sistema).
     val motion = com.gtranca.ui.theme.rememberMotionEnabled()
     val entry by navController.currentBackStackEntryAsState()
@@ -149,7 +156,7 @@ fun AppNavHost() {
         veil.snapTo(0.16f)
         veil.animateTo(0f, androidx.compose.animation.core.tween(450))
     }
-    CompositionLocalProvider(LocalSoundSettings provides soundSettings) {
+    CompositionLocalProvider(LocalSoundSettings provides soundSettings, LocalSpeedSettings provides speedSettings) {
     androidx.compose.foundation.layout.Box(
         androidx.compose.ui.Modifier
             .fillMaxSize()
@@ -262,7 +269,7 @@ private sealed interface GameLoad {
     data object Loading : GameLoad
 
     /** [resumed]: o carregamento foi de um jogo a retomar (então [saved] `null` = o jogo já terminou). */
-    data class Ready(val saved: SavedGame?, val hand: HandPrefs, val profile: PlayerProfile, val resumed: Boolean) : GameLoad
+    data class Ready(val saved: SavedGame?, val hand: HandPrefs, val profile: PlayerProfile, val resumed: Boolean, val slow: Boolean = true) : GameLoad
 }
 
 /** Vive enquanto a tela do jogo estiver na pilha (sobrevive a rotação/tema, não à morte do processo). */
@@ -301,6 +308,7 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
             HandPrefs.parse(prefs.handSortId),
             PlayerProfile.decode(prefs.profileId),
             resumed,
+            prefs.slowAnimations,
         )
     }
     when (val ready = load) {
@@ -322,9 +330,10 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             initialHand = ready.hand,
                             playerProfile = ready.profile,
                             playerPhoto = photoPath,
+                            slowAnimations = ready.slow,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath)
+                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow)
                     }
                 }
                 session.started = true

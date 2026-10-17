@@ -13,6 +13,8 @@ import kotlinx.serialization.Serializable
  * @property atTurnStart `true` se a troca aconteceu no **início da vez** do [seat], antes da compra (§3.5: os 3 vermelhos
  *   da distribuição ou do morto indireto, §9.4, e as reposições em cadeia dessa troca); `false` se durante a jogada
  *   (compra, morto direto ou reposição em cadeia, §6.5 / §9.4 / §10.1). Valor padrão `false` para JSON antigo.
+ * @property chained `true` se este 3 vermelho chegou como reposição em cadeia (saiu do monte durante a própria troca,
+ *   §3.5 / §6.5); `false` se já estava na mão (distribuição, compra, morto). Público; `false` para JSON antigo.
  */
 @Serializable
 data class RedThreeLaid(
@@ -20,4 +22,5 @@ data class RedThreeLaid(
     val card: Card,
     val atDeal: Boolean = false,
     val atTurnStart: Boolean = false,
+    val chained: Boolean = false,
 )

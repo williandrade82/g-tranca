@@ -372,4 +372,29 @@ class MediumBotTest {
             }
         }
     }
+
+    // ---------- baixar: acrescentar em vez de espalhar ----------
+
+    @Test
+    fun `§6_4 com um grupo do mesmo numero na mesa acrescenta a ele em vez de abrir outro grupo`() {
+        // 4♥ 4♠ 4♣ da mão cabem no grupo de 4 que o lado já baixou (4♦ 4♥' 4♠'): juntos ficam a 1 carta da canastra
+        val state = scenario(hand = "4H 4S 4C KD 9S", phase = Phase.PLAYING, ownMelds = listOf("4D 4H' 4S'"))
+        val action = bot().decide(state)
+        action.shouldBeInstanceOf<Action.AddToMeld>()
+        action.cards shouldContainExactlyInAnyOrder cards("4H 4S 4C")
+    }
+
+    @Test
+    fun `§6_2 uma sequencia que emenda na da mesa e acrescentada, nao baixada a parte`() {
+        val state = scenario(hand = "7H 8H 9H KD 9S", phase = Phase.PLAYING, ownMelds = listOf("4H 5H 6H"))
+        val action = bot().decide(state)
+        action.shouldBeInstanceOf<Action.AddToMeld>()
+        action.cards shouldContainExactlyInAnyOrder cards("7H 8H 9H")
+    }
+
+    @Test
+    fun `§6_4 sem conjunto igual na mesa o grupo novo continua sendo baixado`() {
+        val state = scenario(hand = "4H 4S 4C KD 9S", phase = Phase.PLAYING, ownMelds = listOf("8D 8H' 8S'"))
+        bot().decide(state).shouldBeInstanceOf<Action.CreateMeld>()
+    }
 }

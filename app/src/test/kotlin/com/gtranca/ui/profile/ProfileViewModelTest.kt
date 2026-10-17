@@ -42,6 +42,7 @@ class ProfileViewModelTest {
         override suspend fun setHandSort(id: String) = state.update { it.copy(handSortId = id) }
         override suspend fun setProfile(id: String) = state.update { it.copy(profileId = id) }
         override suspend fun setSoundOn(on: Boolean) = state.update { it.copy(soundOn = on) }
+        override suspend fun setSlowAnimations(slow: Boolean) = state.update { it.copy(slowAnimations = slow) }
     }
 
     @Test
@@ -127,6 +128,19 @@ class ProfileViewModelTest {
         settings.state.value.soundOn shouldBe true
         // Padrão: ligado.
         ProfileViewModel(FakeSettings(), WriteQueue(CoroutineScope(dispatcher))).also { advanceUntilIdle() }.uiState.value.soundOn shouldBe true
+    }
+
+    @Test
+    fun `velocidade das animacoes grava na hora e o padrao e 30 por cento mais lenta`() = runTest(dispatcher) {
+        val settings = FakeSettings(Settings(slowAnimations = false))
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.uiState.value.slowAnimations shouldBe false
+        vm.onSpeedChange(true)
+        advanceUntilIdle()
+        vm.uiState.value.slowAnimations shouldBe true
+        settings.state.value.slowAnimations shouldBe true
+        ProfileViewModel(FakeSettings(), WriteQueue(CoroutineScope(dispatcher))).also { advanceUntilIdle() }.uiState.value.slowAnimations shouldBe true
     }
 
     private class FakePhotos(var importOk: Boolean = true) : PhotoStore {

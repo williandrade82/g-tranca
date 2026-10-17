@@ -125,6 +125,8 @@ class PersistenceTest {
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil")
         settings.setSoundOn(false)
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false)
+        settings.setSlowAnimations(false)
+        settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false, slowAnimations = false)
     }
 
     @Test
