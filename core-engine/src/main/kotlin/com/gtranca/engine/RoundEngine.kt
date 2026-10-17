@@ -262,15 +262,17 @@ object RoundEngine {
     private fun settleRedThrees(state: RoundState, seat: Seat, atTurnStart: Boolean, rules: RuleSet): RoundState {
         var current = state
         val side = current.mode.sideOf(seat)
+        val replacements = mutableSetOf<Card>()
         while (true) {
             val redThree = current.handOf(seat).firstOrNull { it.isRedThree } ?: return current
             current = current
                 .withHand(seat, current.handOf(seat) - redThree)
                 .copy(
                     redThrees = current.redThrees.replaceAt(side.index, current.redThreesOf(side) + redThree),
-                    redThreeLog = current.redThreeLog + RedThreeLaid(seat, redThree, atTurnStart = atTurnStart),
+                    redThreeLog = current.redThreeLog + RedThreeLaid(seat, redThree, atTurnStart = atTurnStart, chained = redThree in replacements),
                 )
             val (afterDraw, replacement) = drawOne(current, rules)
+            if (replacement != null) replacements += replacement
             current = if (replacement == null) afterDraw else afterDraw.withHand(seat, afterDraw.handOf(seat) + replacement)
         }
     }

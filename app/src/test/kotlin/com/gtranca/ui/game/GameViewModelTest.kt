@@ -21,6 +21,7 @@ import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldBeSortedWith
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
@@ -362,6 +363,145 @@ class GameViewModelTest {
         after.hand shouldContainAll hiddenSeen
         after.newCards shouldContainAll hiddenSeen
         after.isHumanTurn shouldBe true
+    }
+
+    @Test
+    fun `§3_5 distribuicao do humano inclui os seus 3 vermelhos e cada troca do inicio traz a sua reposicao`() = runTest(dispatcher) {
+        var checked = 0
+        for (seed in 1L..80L) {
+            val vm = GameViewModel(
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+                gameSeed = seed,
+                computeDispatcher = dispatcher,
+                botDelayMillis = 0,
+                swapAnimationMillis = 0,
+                animationMillis = 450,
+            )
+            val own = vm.uiState.value.snapshot.view.redThreeLog.filter { it.seat == Seat(0) && it.atTurnStart }
+            if (own.isEmpty()) continue
+            // Sem avançar o tempo: ainda é a distribuição. Chegam as 11 cartas, com os 3 vermelhos entre elas.
+            val dealt = vm.uiState.value.flights.filter { it.to == AnimAnchor.OwnHand }.mapNotNull { it.card }
+            dealt.size shouldBe 11
+            dealt shouldContainAll own.filter { !it.chained }.map { it.card } // os em cadeia vêm do monte, depois
+            advanceUntilIdle()
+            var confirmed = 0
+            while (true) {
+                val reveal = vm.uiState.value.reveal ?: break
+                confirmed++
+                // Uma reposição por troca (a última leva o que sobrar); o 3 vermelho vai à mesa e a reposição chega do monte.
+                if (confirmed < own.size) (reveal.hiddenHandCards.size <= 1) shouldBe true
+                val hadReplacement = reveal.hiddenHandCards.isNotEmpty()
+                vm.onRevealConfirmed()
+                runCurrent()
+                if (hadReplacement) {
+                    vm.uiState.value.flights.any { it.from == AnimAnchor.Stock && it.to == AnimAnchor.OwnHand } shouldBe true
+                }
+                advanceUntilIdle()
+            }
+            confirmed shouldBe own.size
+            vm.uiState.value.isHumanTurn shouldBe true
+            checked++
+            if (checked >= 3) break
+        }
+        (checked > 0) shouldBe true
+    }
+
+    @Test
+    fun `§3_5 simulacao - o inicio com 3 vermelho (inclusive em cadeia) fecha a mao do humano nas duas velocidades`() = runTest(dispatcher) {
+        var withSwaps = 0
+        var withChain = 0
+        for (slow in listOf(false, true)) {
+            for (mode in GameMode.entries) {
+                for (seed in 1L..120L) {
+                    val vm = GameViewModel(
+                        GameConfig(mode, Difficulty.FACIL, 3000),
+                        gameSeed = seed,
+                        computeDispatcher = dispatcher,
+                        botDelayMillis = 0,
+                        swapAnimationMillis = 1_000,
+                        animationMillis = 450,
+                        slowAnimations = slow,
+                    )
+                    val log = vm.uiState.value.snapshot.view.redThreeLog
+                    val own = log.filter { it.seat == Seat(0) && it.atTurnStart }
+                    val dealtOwn = vm.uiState.value.flights.filter { it.to == AnimAnchor.OwnHand && it.from == AnimAnchor.Stock }
+                    val handSize = vm.uiState.value.snapshot.view.hand.size
+                    if (own.isNotEmpty()) {
+                        // A distribuição dá 11 cartas: as da mão (menos as repostas, que chegam depois) e os 3 vermelhos originais;
+                        // os 3 vermelhos em cadeia vieram do monte e nunca estiveram na mão dada.
+                        val originals = own.count { !it.chained }
+                        dealtOwn.size shouldBe handSize // as 11 cartas dadas
+                        dealtOwn.mapNotNull { it.card }.toSet() shouldContainAll own.filter { !it.chained }.map { it.card }
+                        dealtOwn.mapNotNull { it.card }.any { c -> own.filter { it.chained }.any { it.card == c } } shouldBe false
+                        withSwaps++
+                        if (own.any { it.chained }) withChain++
+                    }
+                    // Escala das animações: voos da distribuição escalonados e duração efetiva conforme a velocidade.
+                    vm.uiState.value.animationMillis shouldBe (if (slow) 585L else 450L)
+                    advanceUntilIdle()
+                    if (own.isEmpty()) continue
+                    var guard = 0
+                    var confirmed = 0
+                    val seen = mutableListOf<Card>()
+                    while (guard++ < 50) {
+                        val state = vm.uiState.value
+                        val reveal = state.reveal ?: break
+                        confirmed++
+                        // Antes de cada confirmação a mão mostrada não repete carta nem esconde o 3 vermelho em questão.
+                        state.hand.size shouldBe state.hand.toSet().size
+                        state.hand shouldContain reveal.notice.cards.single()
+                        seen += reveal.notice.cards
+                        vm.onRevealConfirmed()
+                        advanceUntilIdle()
+                    }
+                    // Todas as trocas do início foram confirmadas, uma a uma; na ordem do registro.
+                    confirmed shouldBe own.size
+                    seen shouldBe own.map { it.card }
+                    val state = vm.uiState.value
+                    if (own.isNotEmpty()) {
+                        // Mão final: igual à do motor, com 11 cartas, e os 3 vermelhos baixados estão na mesa.
+                        state.hand.toSet() shouldBe state.snapshot.view.hand.toSet()
+                        state.hand.size shouldBe handSize
+                        state.redThrees[state.snapshot.viewerSide.index] shouldContainAll own.map { it.card }
+                    }
+                    // O jogo nunca trava: a vez do humano chega.
+                    withClue("modo $mode, semente $seed, lenta=$slow") {
+                        (state.isHumanTurn || state.snapshot.stage != Stage.PLAYING) shouldBe true
+                    }
+                }
+            }
+        }
+        withClue("jogos com 3 vermelho do humano no início: $withSwaps, com cadeia: $withChain") {
+            (withSwaps > 20) shouldBe true
+            (withChain > 0) shouldBe true
+        }
+    }
+
+    @Test
+    fun `velocidade lenta deixa as animacoes 30 por cento mais lentas e muda ao vivo`() = runTest(dispatcher) {
+        val normal = newGame(seed = 5, animationMillis = 450)
+        normal.uiState.value.animationMillis shouldBe 450L
+        normal.onSpeedChanged(true)
+        runCurrent()
+        normal.uiState.value.animationMillis shouldBe 585L
+        normal.onSpeedChanged(false)
+        runCurrent()
+        normal.uiState.value.animationMillis shouldBe 450L
+        // Com as animações do sistema desligadas (escala 0) a velocidade não as religa.
+        normal.onAnimationScaleChanged(0f)
+        normal.onSpeedChanged(true)
+        runCurrent()
+        normal.uiState.value.animationMillis shouldBe 0L
+        // Os atrasos dos voos da distribuição também crescem 30%.
+        fun delays(slow: Boolean): List<Long> = GameViewModel(
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 7, computeDispatcher = dispatcher,
+            botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450, slowAnimations = slow,
+        ).uiState.value.flights.map { it.delayMillis }
+        val fast = delays(false)
+        val slowed = delays(true)
+        fast.size shouldBe slowed.size
+        fast.zip(slowed).all { (a, b) -> b == (a * 1.3f).toLong() } shouldBe true
+        (fast.max() > 0) shouldBe true
     }
 
     @Test

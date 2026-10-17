@@ -221,6 +221,16 @@ class MediumBot(
         val closesHand = remaining <= 1
 
         var score = cards.size * weights.cardToTable
+        // §6.4 os conjuntos são do lado (inclusive os do parceiro): juntar às cartas já baixadas aproxima a canastra (§7);
+        // espalhar em conjuntos iguais, não.
+        if (usesWild) {
+            // coringa: gastá-lo segue o custo próprio abaixo (guardar o coringa continua valendo)
+        } else if (target != null) {
+            score += weights.addToMeldBonus
+        } else if (ctx.ownMelds.any { it.add(cards) is RuleResult.Ok }) {
+            score -= weights.duplicateMeldPenalty
+        }
+        if (!usesWild && after < CANASTA_SIZE) score += after * weights.canastaProgress
         score += canastaBonus(ctx, before, after, dirty)
         if (remaining == 0) score += weights.emptyHand else if (closesHand) score += weights.oneCardLeft
         if (usesWild && !closesHand) {

@@ -123,8 +123,8 @@ fun List<Action>.addPlans(): List<Pair<Int, Set<Card>>> =
     filterIsInstance<Action.AddToMeld>().map { it.meldId.value to it.cards.toSet() }
 
 /** Entrada do registro de 3 vermelhos (§3.5 / §6.5). */
-fun laid(seat: Int, card: String, atDeal: Boolean = false, atTurnStart: Boolean = false) =
-    RedThreeLaid(Seat(seat), c(card), atDeal, atTurnStart)
+fun laid(seat: Int, card: String, atDeal: Boolean = false, atTurnStart: Boolean = false, chained: Boolean = false) =
+    RedThreeLaid(Seat(seat), c(card), atDeal, atTurnStart, chained)
 
 /**
  * §3.5 / §6.5 invariante do registro público de 3 vermelhos: para cada lado, as cartas do registro baixadas

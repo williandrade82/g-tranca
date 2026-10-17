@@ -97,6 +97,12 @@
     <string name="sound_toggle_off">Som desligado. Toque para ligar</string>
     <string name="profile_sound">Sons do jogo</string>
     <string name="profile_sound_hint">Cartas, canastra, vitória e derrota</string>
+    <string name="speed_toggle_normal">Velocidade normal. Toque para deixar as animações 30% mais lentas</string>
+    <string name="speed_toggle_slow">Animações 30% mais lentas. Toque para voltar à velocidade normal</string>
+    <string name="profile_speed">Velocidade das animações</string>
+    <string name="profile_speed_hint">Distribuição, compra, descarte e trocas de 3 vermelho</string>
+    <string name="profile_speed_normal">Normal</string>
+    <string name="profile_speed_slow">30% mais lenta</string>
     <string name="hair_short">Curto</string>
     <string name="hair_side_sweep">Topete</string>
     <string name="hair_curly_short">Cacheado curto</string>

@@ -27,6 +27,8 @@ data class ProfileUiState(
     val loaded: Boolean = false,
     /** Chave de som (grava na hora, sem o botão Salvar). */
     val soundOn: Boolean = true,
+    /** Velocidade das animações (grava na hora): `true` = 30% mais lentas. */
+    val slowAnimations: Boolean = true,
     val photo: PhotoState = PhotoState.NONE,
     /** Lendo a foto escolhida. */
     val importingPhoto: Boolean = false,
@@ -54,10 +56,10 @@ class ProfileViewModel(
                 val saved = PlayerProfile.decode(stored.profileId)
                 _uiState.update {
                     if (touched) {
-                        it.copy(loaded = true, soundOn = stored.soundOn)
+                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations)
                     } else {
                         val photo = if (saved.hasPhoto && photos != null) PhotoState.SAVED else PhotoState.NONE
-                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, photo = photo)
+                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, photo = photo)
                     }
                 }
             }
@@ -73,6 +75,12 @@ class ProfileViewModel(
     fun onSoundToggle(on: Boolean) {
         _uiState.update { it.copy(soundOn = on) }
         settings?.let { repo -> writes?.enqueue { repo.setSoundOn(on) } }
+    }
+
+    /** Velocidade das animações; grava na hora pela fila durável. */
+    fun onSpeedChange(slow: Boolean) {
+        _uiState.update { it.copy(slowAnimations = slow) }
+        settings?.let { repo -> writes?.enqueue { repo.setSlowAnimations(slow) } }
     }
 
     fun onName(raw: String) = edit { it.copy(name = PlayerProfile.sanitizeName(raw)) }
