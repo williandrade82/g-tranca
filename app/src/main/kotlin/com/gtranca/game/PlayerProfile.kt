@@ -1,7 +1,8 @@
 package com.gtranca.game
 
 /**
- * Perfil do jogador (§14.1): nome (até [MAX_NAME] caracteres; vazio = "Você") e avatar (gênero, profissão e aparência).
+ * Perfil do jogador (§14.1): nome (até [MAX_NAME] caracteres; vazio = "Você") e avatar: persona (gênero e profissão) ou
+ * foto pessoal ([hasPhoto]; o arquivo fica no aparelho).
  * Gravado como texto nas preferências ([encode]/[decode]).
  */
 data class PlayerProfile(
@@ -9,9 +10,12 @@ data class PlayerProfile(
     val gender: Gender = Gender.MALE,
     val profession: Profession = Profession.TEACHER,
     val look: Look = Look(skin = 2, hair = HairStyle.SHORT, hairColor = 1),
+    /** §14.1 o avatar é a foto pessoal guardada no aparelho. */
+    val hasPhoto: Boolean = false,
 ) {
-    /** O perfil como persona (sem sobrenome), para o avatar. */
-    fun persona(defaultName: String): Persona = Persona(name.trim().ifEmpty { defaultName }, "", gender, profession, look)
+    /** O perfil como persona (sem sobrenome), para o avatar; com [hasPhoto], a foto em [photoPath]. */
+    fun persona(defaultName: String, photoPath: String? = null): Persona =
+        Persona(name.trim().ifEmpty { defaultName }, "", gender, profession, look, photo = photoPath?.takeIf { hasPhoto })
 
     /** Troca o gênero levando junto um penteado compatível (e sem barba, que é só do masculino). */
     fun withGender(newGender: Gender): PlayerProfile = when {
@@ -23,7 +27,7 @@ data class PlayerProfile(
     }
 
     fun encode(): String =
-        listOf(sanitizeName(name), gender.name, profession.name, look.skin, look.hair.name, look.hairColor, look.beard, look.face.name)
+        listOf(sanitizeName(name), gender.name, profession.name, look.skin, look.hair.name, look.hairColor, look.beard, look.face.name, hasPhoto)
             .joinToString(SEPARATOR)
 
     companion object {
@@ -40,8 +44,8 @@ data class PlayerProfile(
         fun decode(text: String?): PlayerProfile {
             if (text == null) return PlayerProfile()
             val parts = text.split(SEPARATOR)
-            // 7 campos: formato anterior, sem o formato do rosto.
-            if (parts.size != 7 && parts.size != 8) return PlayerProfile()
+            // 7 campos: formato anterior, sem o formato do rosto; 8: sem a foto.
+            if (parts.size !in 7..9) return PlayerProfile()
             return try {
                 val gender = Gender.valueOf(parts[1])
                 PlayerProfile(
@@ -55,6 +59,7 @@ data class PlayerProfile(
                         beard = parts[6].toBooleanStrict(),
                         face = parts.getOrNull(7)?.let { FaceShape.valueOf(it) } ?: FaceShape.OVAL,
                     ),
+                    hasPhoto = parts.getOrNull(8)?.toBooleanStrict() ?: false,
                 )
             } catch (_: IllegalArgumentException) {
                 PlayerProfile()

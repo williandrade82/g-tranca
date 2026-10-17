@@ -20,6 +20,19 @@ class PlayerProfileTest {
     }
 
     @Test
+    fun `§14_1 foto pessoal e gravada no perfil e so vale com o arquivo informado`() {
+        val profile = PlayerProfile("Bia", hasPhoto = true)
+        PlayerProfile.decode(profile.encode()) shouldBe profile
+        profile.persona("Você", "/fotos/eu.jpg").photo shouldBe "/fotos/eu.jpg"
+        profile.persona("Você").photo shouldBe null
+        PlayerProfile("Bia").persona("Você", "/fotos/eu.jpg").photo shouldBe null
+        // Perfil gravado antes da foto (8 campos): sem foto.
+        val withoutPhoto = PlayerProfile("Rui").encode().substringBeforeLast("\t")
+        PlayerProfile.decode(withoutPhoto) shouldBe PlayerProfile("Rui")
+        PlayerProfile.decode(withoutPhoto + "\ttalvez") shouldBe PlayerProfile()
+    }
+
+    @Test
     fun `§14_1 perfil gravado no formato anterior, sem o rosto, ainda e lido`() {
         val old = "Rui\tMALE\tPILOT\t2\tSHORT\t1\ttrue"
         PlayerProfile.decode(old) shouldBe PlayerProfile("Rui", Gender.MALE, Profession.PILOT, Look(2, HairStyle.SHORT, 1, beard = true))

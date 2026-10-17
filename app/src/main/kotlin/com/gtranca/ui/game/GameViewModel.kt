@@ -131,11 +131,6 @@ data class GameUiState(
     /** "Baixar" só quando a seleção forma conjunto novo ou completa um conjunto da mesa (em `legalActions`). */
     val canMeld: Boolean get() = playing && HumanTurnResolver.canMeld(legal, selected)
 
-    /**
-     * "Baixar" tocável com cartas selecionadas, mesmo sem jogada válida: o toque mostra o motivo da recusa (ex.: §6.1
-     * regras da mesa que não deixam esse número formar grupo), em vez de um botão apagado sem explicação.
-     */
-    val canTryMeld: Boolean get() = playing && selected.isNotEmpty()
     val canDiscard: Boolean get() = playing && selected.size == 1
 
     /** A carta selecionada pode ser descartada agora (há um `Discard` dela em `legalActions`). */
@@ -173,6 +168,8 @@ class GameViewModel(
     initialHand: HandPrefs = HandPrefs(),
     /** §14.1 perfil do jogador (nome e avatar); os dos adversários e do parceiro são sorteados pela semente do jogo. */
     playerProfile: PlayerProfile = PlayerProfile(),
+    /** §14.1 caminho da foto do jogador no aparelho (vale se o perfil usa foto). */
+    playerPhoto: String? = null,
     /** Fila das gravações (fora da thread principal e do laço do jogo; sobrevive ao fim desta tela). */
     private val writes: WriteQueue = WriteQueue.app,
 ) : ViewModel(), TableEvents {
@@ -238,7 +235,7 @@ class GameViewModel(
     val personas: List<Persona> = run {
         val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, playerProfile.name).iterator()
         List(config.mode.seatCount) { index ->
-            if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME) else opponents.next()
+            if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto) else opponents.next()
         }
     }
     private val local = MutableStateFlow(

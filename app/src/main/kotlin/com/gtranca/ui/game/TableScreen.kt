@@ -315,7 +315,6 @@ fun TableScreen(
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
                     Header(state, events) { showLegend = true }
-                    state.banner?.let { SwapBanner(it, view.mode, snapshot.viewerSeat) }
                     // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
                     Column(
@@ -356,6 +355,8 @@ fun TableScreen(
                     // O som acompanha a chegada da carta ao destino.
                     state.flights.firstOrNull { it.id == id }?.let(SoundMap::forFlight)?.let(sound::play)
                 }
+                // §3.5/§6.5 troca de 3 vermelho de outro assento: anúncio no meio da tela, que some sozinho.
+                state.banner?.let { SwapAnnouncement(it, view.mode, snapshot.viewerSeat, state.personas.getOrNull(it.seat.index)) }
             }
         }
     }
@@ -891,7 +892,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard", ActionKind.TAKE)
                 if (state.canDecline) ActionButton(stringResource(R.string.action_decline), true, events::onDeclineDraw, "action-decline", ActionKind.DECLINE)
             } else {
-                ActionButton(stringResource(R.string.action_meld), state.canTryMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
+                ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
                 ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard", ActionKind.DISCARD)
             }
             GButton(
@@ -1209,7 +1210,6 @@ private fun MeldChoiceDialog(options: List<Action>, view: PlayerView, events: Ta
                             }
                             Text(destination, textAlign = TextAlign.Center)
                             DestinationMeld(option, view)
-                            DestinationMeld(option, view)
                             Text(points, style = MaterialTheme.typography.labelMedium)
                         }
                     }
@@ -1286,6 +1286,7 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                                 used.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
                             }
                             Text(destination, textAlign = TextAlign.Center)
+                            DestinationMeld(option, view)
                         }
                     }
                 }
@@ -1302,28 +1303,37 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
  * reposição dele nunca é revelada). Ao terminar, o 3 vermelho entra na mesa do lado.
  */
 @Composable
-private fun SwapBanner(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat) {
+private fun SwapAnnouncement(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat, persona: com.gtranca.game.Persona?) {
     val text = bannerText(mode, notice, viewerSeat)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .shadow(Elevation.button, RoundedCornerShape(Corner.md))
-            .background(GColors.Indigo, RoundedCornerShape(Corner.md))
-            .goldFrame(Corner.md, 2.dp, lights = false)
-            .padding(Spacing.sm)
-            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
-            .testTag("red-three-banner"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        notice.cards.forEach { card ->
-            val visible = remember(notice.id, card) { MutableTransitionState(false).apply { targetState = true } }
-            AnimatedVisibility(visible, enter = fadeIn() + scaleIn(initialScale = 0.4f)) {
-                PlayingCard(card, size = CardSize.SMALL)
+    val shown = remember(notice.id) { MutableTransitionState(false).apply { targetState = true } }
+    // Véu leve sobre a mesa (não bloqueia toques) e o anúncio centralizado; some quando a troca termina.
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+        AnimatedVisibility(shown, enter = fadeIn() + scaleIn(initialScale = 0.7f)) {
+            Column(
+                Modifier
+                    .padding(Spacing.xl)
+                    .shadow(Elevation.dialog, RoundedCornerShape(Corner.lg))
+                    .background(GColors.Indigo, RoundedCornerShape(Corner.lg))
+                    .goldFrame(Corner.lg, 3.dp, lights = false)
+                    .padding(Spacing.lg)
+                    .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+                    .testTag("red-three-banner"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            ) {
+                persona?.let { com.gtranca.ui.persona.PersonaAvatar(it, 56.dp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    notice.cards.forEach { PlayingCard(it, size = CardSize.LARGE) }
+                }
+                Text(
+                    text,
+                    color = GColors.Champagne,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
-        Text(text, color = OnTable, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
 }
 

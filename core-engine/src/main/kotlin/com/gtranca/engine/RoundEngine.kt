@@ -230,7 +230,9 @@ object RoundEngine {
     /** §4.2 passa a vez; o início da vez do próximo jogador troca os 3 vermelhos da mão dele (§3.5, [beginTurn]). */
     private fun passTurn(state: RoundState, seat: Seat, rules: RuleSet): RoundState {
         val nextSeat = state.mode.nextSeat(seat)
-        return beginTurn(state.copy(currentSeat = nextSeat, phase = Phase.AWAITING_DRAW), nextSeat, rules)
+        // §10 o monte acabou nesta jogada: o morto vira monte com o fim dela, antes da vez do próximo.
+        val stocked = mortoToStockIfEmpty(state, rules)
+        return beginTurn(stocked.copy(currentSeat = nextSeat, phase = Phase.AWAITING_DRAW), nextSeat, rules)
     }
 
     /**
@@ -245,7 +247,8 @@ object RoundEngine {
             turnsBegun = state.turnsBegun + 1,
             unsettledMortoSeats = state.unsettledMortoSeats - seat,
         )
-        val next = settleRedThrees(begun, seat, atTurnStart = true, rules)
+        // §10 monte esvaziado pelas reposições do início da vez: o morto vira monte antes da compra.
+        val next = mortoToStockIfEmpty(settleRedThrees(begun, seat, atTurnStart = true, rules), rules)
         if (cannotDraw(next, rules) && !LegalActions.canTakeDiscardPile(next, seat, rules)) {
             return next.finish(RoundResult.NoWinner)
         }
@@ -288,6 +291,17 @@ object RoundEngine {
         }
         if (current.stock.isEmpty()) return current to null
         return current.copy(stock = current.stock.drop(1)) to current.stock.first()
+    }
+
+    /** §10 com o monte vazio e `mortoBecomesStock`, o primeiro morto disponível vira o novo monte (senão, nada muda). */
+    private fun mortoToStockIfEmpty(state: RoundState, rules: RuleSet): RoundState {
+        if (state.stock.isNotEmpty() || !rules.mortoBecomesStock) return state
+        val index = state.firstAvailableMorto() ?: return state
+        return state.copy(
+            stock = state.mortos[index],
+            mortos = state.mortos.replaceAt(index, emptyList()),
+            mortoStatus = state.mortoStatus.replaceAt(index, MortoStatus.BecameStock),
+        )
     }
 
     /** §10.2 não há como comprar: monte vazio e nenhum morto que possa virar monte (`mortoBecomesStock`, §14.2). */

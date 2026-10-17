@@ -239,6 +239,11 @@ Um conjunto pode ser:
 
 # **10. Monte Esgotado**
 
+**Morto vira monte assim que o monte acaba** *(com `mortoBecomesStock` = sim)*: o morto não espera a próxima compra.
+- Se o monte ficar vazio durante uma jogada (compra da última carta ou reposição de 3 vermelho), o morto disponível vira o novo monte **assim que essa jogada termina**, com o descarte, antes da vez do próximo jogador.
+- Se o monte ficar vazio no início da vez (reposição dos 3 vermelhos, §3.5), o morto vira monte **antes da compra** desse jogador.
+- Se a partida terminar nessa jogada (batida), nada muda.
+
 Quando for necessário comprar do monte (compra da jogada ou reposição de 3 vermelho) e ele estiver vazio:
 
 1. Se houver **morto disponível**, ele se torna o **novo monte** (se houver dois, apenas um deles; o outro continua disponível como morto) *(parâmetro `mortoBecomesStock`; base: sim)*. Com o parâmetro em **não**, nenhum morto vira monte: segue-se direto o item 2, como se não houvesse morto disponível para isso (os mortos continuam disponíveis para serem pegos, §9).
@@ -325,7 +330,8 @@ Definidos **antes do início do jogo**, na criação da mesa (§14.4); não muda
 
 ### **14.1. Perfis (apresentação; não alteram nenhuma regra)**
 
-- O **jogador** define o próprio **perfil**: nome (até 16 caracteres; vazio = "Você") e avatar. O perfil vale para todos os jogos e é lembrado entre eles.
+- O **jogador** define o próprio **perfil**, de forma simples: **nome** (até 16 caracteres; vazio = "Você") e **avatar**. O perfil vale para todos os jogos e é lembrado entre eles.
+- O avatar do jogador é uma **persona pronta** (gênero e profissão) ou uma **foto pessoal** escolhida da galeria do aparelho. A foto é recortada em círculo a partir do centro, reduzida e guardada **só no aparelho**; ela aparece em todos os lugares onde aparece o avatar do jogador. O jogador pode trocar ou remover a foto (volta a valer a persona).
 - Os **adversários e o parceiro** (jogadores virtuais) **não são configurados pelo jogador**: no **início de cada jogo** o sistema sorteia o perfil de cada um (a partir da semente do jogo, de modo que "Continuar" mostra as mesmas pessoas).
 - O perfil de cada jogador virtual tem **nome e sobrenome**, **gênero** (masculino ou feminino), **profissão** e um **avatar compatível com o gênero** (nome, cabelo e profissão no feminino ou masculino). Nomes e profissões **não se repetem** entre os jogadores da mesma mesa, e nenhum jogador virtual usa o nome do jogador.
 - O **avatar** é uma persona de uma profissão: **cabeça, ombros, parte do peito e dos braços** (sem o resto do corpo), com aparência variável (pele, cabelo e uniforme).

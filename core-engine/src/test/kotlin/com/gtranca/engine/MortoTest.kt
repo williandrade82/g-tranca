@@ -95,7 +95,7 @@ class MortoTest {
     @Test
     fun `morto indireto com 3 vermelho e monte vazio usa o outro morto como monte`() {
         // §9.3 + §9.4 o 3 vermelho do morto indireto fica na mão e só é reposto no início da próxima vez do dono; §10.1 monte
-        // vazio: nesse momento o outro morto disponível vira monte
+        // vazio: o outro morto disponível vira monte assim que a jogada termina (§10)
         val s = round {
             hand(0, "KS")
             hand(1, "9C 9D")
@@ -104,11 +104,11 @@ class MortoTest {
             phase = Phase.PLAYING
         }.act(0, discardCard("KS"))
         (s.mortoStatus[0] as MortoStatus.Taken).side shouldBe Side(0)
-        s.mortoStatus[1] shouldBe MortoStatus.Available
+        s.mortoStatus[1] shouldBe MortoStatus.BecameStock
         s.redThrees.flatten().shouldBeEmpty()
         s.hand(0) shouldContainExactlyInAnyOrder cards("3H 4C' 5C' 6C' 7C' 8C' 9C' TC' JC' QC' KC'")
         s.currentSeat shouldBe Seat(1)
-        // o assento 1 compra (o monte está vazio: o morto 1 vira monte) e descarta; a vez volta ao assento 0
+        // o assento 1 compra do morto que já virou monte e descarta; a vez volta ao assento 0
         val bought = s.act(1, Action.DrawFromStock)
         bought.mortoStatus[1] shouldBe MortoStatus.BecameStock
         val back = bought.act(1, discardCard("4D'"))
