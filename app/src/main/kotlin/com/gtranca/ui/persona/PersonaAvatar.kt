@@ -33,8 +33,18 @@ internal val MedalColors = listOf(0xFF6C5BD4, 0xFFD23A4F, 0xFF1F9E6B, 0xFFD99A1E
  * (o nome) à tela.
  */
 @Composable
-fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, animate: Boolean = false) {
+fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, animate: Boolean = false, pose: Pose = Pose.PENSADOR) {
     persona.character?.let { character ->
+        if (pose == Pose.VENCEDOR || pose == Pose.PERDEDOR) {
+            // rosto quadrado da pose (tabelas de pontos): parado
+            Image(
+                androidx.compose.ui.res.painterResource(avatarRes(character, pose)),
+                null,
+                modifier.size(size).clip(CircleShape).background(GColors.Indigo),
+                contentScale = ContentScale.Crop,
+            )
+            return
+        }
         CharacterPortrait(
             character,
             Pose.PENSADOR,

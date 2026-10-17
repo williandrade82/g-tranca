@@ -57,32 +57,26 @@ fun LevelStars(level: BotLevel, modifier: Modifier = Modifier, size: TextUnit = 
 }
 
 /**
- * §14.5 retratos dos personagens no fim da partida ou do jogo: os de [winners] na pose de vencedor e os de [losers] na
- * de perdedor, lado a lado. Quem não é personagem (o jogador) não aparece aqui.
+ * §14.5 pose de cada lado nas tabelas de pontos: quem lidera o placar acumulado ([totals], por `Side.index`) na de
+ * vencedor, o outro na de perdedor; empate = pensador.
  */
-@Composable
-fun BotPortraits(winners: List<Persona>, losers: List<Persona>, animate: Boolean, modifier: Modifier = Modifier) {
-    val items = winners.mapNotNull { p -> p.character?.let { Triple(p, it, Pose.VENCEDOR) } } +
-        losers.mapNotNull { p -> p.character?.let { Triple(p, it, Pose.PERDEDOR) } }
-    if (items.isEmpty()) return
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.Bottom) {
-        items.forEach { (persona, character, pose) ->
-            CharacterPortrait(
-                character,
-                pose,
-                Modifier.weight(1f, fill = false).widthIn(max = if (items.size == 1) 260.dp else 130.dp).testTag("portrait-${pose.code}"),
-                animate = animate,
-                description = persona.fullName,
-            )
+fun leaderPoses(totals: List<Int>, sides: List<Side>): Map<Side, Pose> {
+    val best = sides.maxOf { totals[it.index] }
+    val leaders = sides.filter { totals[it.index] == best }
+    return sides.associateWith { side ->
+        when {
+            leaders.size == sides.size -> Pose.PENSADOR
+            side in leaders -> Pose.VENCEDOR
+            else -> Pose.PERDEDOR
         }
     }
 }
 
 /** Avatares lado a lado, levemente sobrepostos e com aro branco (um lado de duplas tem dois jogadores). */
 @Composable
-fun AvatarRow(personas: List<Persona>, size: Dp, modifier: Modifier = Modifier) {
+fun AvatarRow(personas: List<Persona>, size: Dp, modifier: Modifier = Modifier, pose: Pose = Pose.PENSADOR) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(-(size * 0.22f)), verticalAlignment = Alignment.CenterVertically) {
-        personas.forEach { PersonaAvatar(it, size, Modifier.border(2.dp, Color.White, CircleShape)) }
+        personas.forEach { PersonaAvatar(it, size, Modifier.border(2.dp, Color.White, CircleShape), pose = pose) }
     }
 }
 

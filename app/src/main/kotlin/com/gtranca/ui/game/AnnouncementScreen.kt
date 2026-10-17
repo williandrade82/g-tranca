@@ -13,7 +13,7 @@ import com.gtranca.engine.model.RoundResult
 import com.gtranca.game.Persona
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.persona.AvatarRow
-import com.gtranca.ui.persona.BotPortraits
+import com.gtranca.ui.persona.ResultCast
 import com.gtranca.ui.persona.callNamesOfSide
 import com.gtranca.ui.persona.personasOfSide
 
@@ -100,10 +100,8 @@ fun AnnouncementScreen(
             if (outcome == EndOutcome.WIN && !brief) Trophy(96.dp, animate, Modifier.testTag("announcement-trophy"))
             if (avatars.isEmpty() && illustration != null) MessageBadge(illustration, MessageTone.Warning, 96.dp)
             if (avatars.isNotEmpty()) {
-                // §14.5 personagens em retrato (vencedor ou perdedor); o jogador, no medalhão de sempre.
-                BotPortraits(avatars, losers, animate, Modifier.testTag("announcement-portraits"))
-                val humans = avatars.filter { it.character == null }
-                if (humans.isNotEmpty()) AvatarRow(humans, 96.dp, Modifier.testTag("announcement-avatars").outcomeMotion(outcome, animate))
+                // §14.5 os dois vencedores com confete e os dois perdedores sobre o fundo vermelho que pulsa
+                ResultCast(avatars, losers, animate, Modifier.testTag("announcement-cast"))
                 caption?.let { Text(it, color = OnTable, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
             }
             GTitle(title, Modifier.semantics { heading() }.testTag("announcement-title"))
@@ -144,8 +142,8 @@ fun RoundAnnouncement(
     AnnouncementScreen(
         // §14.5 na comunicação: nome completo, com a posição em duplas.
         title = if (named) stringResource(R.string.round_result_named_went_out, who!!.callName(mode, role!!)) else stringResource(roundAnnouncementRes(mode, record.result, snapshot.viewerSeat)),
-        avatars = listOfNotNull(who),
-        // §14.5 os personagens do lado que não bateu aparecem na pose de perdedor
+        // §14.5 a dupla (ou o jogador) que bateu aparece inteira na pose de vencedor; o outro lado, na de perdedor
+        avatars = (result as? RoundResult.GoOut)?.let { out -> personas.filterIndexed { i, _ -> mode.sideOf(Seat(i)) == out.side } }.orEmpty(),
         losers = (result as? RoundResult.GoOut)?.let { out -> personas.filterIndexed { i, _ -> mode.sideOf(Seat(i)) != out.side } }.orEmpty(),
         illustration = if (result is RoundResult.NoWinner) MessageIllustration.Cards else null,
         caption = if (who != null && role == SeatRole.YOU) stringResource(R.string.side_you) else null,

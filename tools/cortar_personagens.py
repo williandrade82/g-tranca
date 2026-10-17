@@ -9,7 +9,9 @@ contorno (componente conexo de pixels opacos), e não pelo quadrante.
 Saída em app/src/main/res/drawable-nodpi/char_<perfil>_<nivel>_<pose>.webp:
 - apresentacao, vencedor, perdedor: 576x384 (3:2), mesma escala em todas as poses (2/3 do original), figura centrada
   na horizontal e encostada no fundo (o busto termina no quadro);
-- pensador: recorte quadrado do busto, 256x256, para os medalhões pequenos da mesa.
+- pensador: recorte quadrado do busto, 256x256, para os medalhões pequenos da mesa;
+- vencedor e perdedor também em recorte quadrado do rosto 256x256 (`..._vencedor_av.webp`, `..._perdedor_av.webp`), para os
+  avatares das tabelas de pontos.
 Os originais nunca são alterados.
 """
 import glob
@@ -30,6 +32,8 @@ HALF_W, HALF_H = 768, 512
 CANVAS_W, CANVAS_H = 864, 576  # em pixels do original; 576x384 depois de reduzir a 2/3
 LARGE = (576, 384)
 SMALL = 256
+FACE_FRACTION = 0.62
+FACE_CENTER = 0.40
 MIN_ALPHA = 24
 
 
@@ -82,13 +86,30 @@ def main():
             figure = rgba.copy()
             figure[~mask] = 0
             img = Image.fromarray(figure)
-            if pose == "pensador":
+            def square():
                 side = max(x1 - x0, y1 - y0)
                 left, top = (x0 + x1) // 2 - side // 2, y1 - side
                 out = Image.new("RGBA", (side, side))
                 out.paste(img.crop((max(left, 0), max(top, 0), min(left + side, img.width), min(top + side, img.height))),
                           (max(-left, 0), max(-top, 0)))
-                out = out.resize((SMALL, SMALL), Image.LANCZOS)
+                return out.resize((SMALL, SMALL), Image.LANCZOS)
+
+            def face_square():
+                # cabeça e ombros (braços para cima ou caídos ficam de fora): lado de 62% da figura, centro a 40% da altura
+                side = int(max(x1 - x0, y1 - y0) * FACE_FRACTION)
+                cx, cy = (x0 + x1) // 2, y0 + int((y1 - y0) * FACE_CENTER)
+                left, top = cx - side // 2, cy - side // 2
+                out = Image.new("RGBA", (side, side))
+                out.paste(img.crop((max(left, 0), max(top, 0), min(left + side, img.width), min(top + side, img.height))),
+                          (max(-left, 0), max(-top, 0)))
+                return out.resize((SMALL, SMALL), Image.LANCZOS)
+
+            if pose in ("vencedor", "perdedor"):
+                # recorte quadrado do rosto para os avatares pequenos (tabelas de pontos), além da imagem 3:2
+                face_square().save(os.path.join(OUT, f"char_{profile}_{level}_{pose}_av.webp"), "WEBP", quality=88, method=4)
+                total += 1
+            if pose == "pensador":
+                out = square()
             else:
                 if x1 - x0 > CANVAS_W or y1 - y0 > CANVAS_H:
                     print("AVISO: figura maior que o quadro:", path, pose, x1 - x0, y1 - y0)

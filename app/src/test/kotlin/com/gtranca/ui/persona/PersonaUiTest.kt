@@ -44,6 +44,16 @@ class PersonaUiTest {
     }
 
     @Test
+    fun `§14_5 nas tabelas quem lidera o placar fica feliz e o outro frustrado`() {
+        val sides = listOf(Side(0), Side(1))
+        leaderPoses(listOf(120, 80), sides) shouldBe mapOf(Side(0) to Pose.VENCEDOR, Side(1) to Pose.PERDEDOR)
+        leaderPoses(listOf(-50, 40), sides) shouldBe mapOf(Side(0) to Pose.PERDEDOR, Side(1) to Pose.VENCEDOR)
+        leaderPoses(listOf(300, 300), sides) shouldBe mapOf(Side(0) to Pose.PENSADOR, Side(1) to Pose.PENSADOR)
+        // a ordem de sides não importa
+        leaderPoses(listOf(120, 80), sides.reversed()) shouldBe leaderPoses(listOf(120, 80), sides)
+    }
+
+    @Test
     fun `§14_5 nao sobra texto de profissao nem de genero nos recursos`() {
         val strings = File("src/main/res/values/strings.xml").readText()
         listOf("profession_", "gender_", "Profissão", "role_partner_", "hair_", "face_").forEach {

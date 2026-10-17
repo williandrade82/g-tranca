@@ -81,6 +81,14 @@ fun CharacterPortrait(
     }
 }
 
+/** Só o efeito de uma pose (ex.: o confete sobre a foto do jogador), no seu próprio ciclo de [cycleMillis]. */
+@Composable
+fun PoseEffectOverlay(effect: PoseEffect, cycleMillis: Int, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "effect")
+    val phase = transition.animateFloat(0f, 1f, infiniteRepeatable(tween(cycleMillis, easing = LinearEasing), RepeatMode.Restart), label = "effect-phase")
+    Canvas(modifier) { drawEffect(effect, phase.value) }
+}
+
 private val ConfettiColors = listOf(Color(0xFFF5C542), Color(0xFFD23A4F), Color(0xFF2FBF84), Color(0xFF4FA8E8), Color(0xFFFFE9A8))
 
 /** Efeito da pose no instante [p] (0 a 1) do ciclo; tudo determinístico (sem sorteio por quadro). */

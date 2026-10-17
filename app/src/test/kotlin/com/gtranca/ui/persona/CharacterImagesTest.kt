@@ -15,9 +15,15 @@ class CharacterImagesTest {
         IMAGES.size shouldBe BotProfile.entries.size * BotLevel.entries.size * Pose.entries.size
         IMAGES.size shouldBe 48
         IMAGES.values.toList().shouldBeUnique()
+        FACES.size shouldBe BotProfile.entries.size * BotLevel.entries.size * 2
+        (IMAGES.values + FACES.values).shouldBeUnique()
         BotProfile.entries.forEach { profile ->
             BotLevel.entries.forEach { level ->
-                Pose.entries.forEach { pose -> characterRes(BotCharacter(profile, level), pose) }
+                Pose.entries.forEach { pose ->
+                    characterRes(BotCharacter(profile, level), pose)
+                    // rosto quadrado: pensador (a própria imagem), vencedor e perdedor
+                    if (pose != Pose.APRESENTACAO) avatarRes(BotCharacter(profile, level), pose)
+                }
             }
         }
     }

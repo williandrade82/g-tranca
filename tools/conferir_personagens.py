@@ -98,6 +98,18 @@ def main():
                     for outro, valor in f.items():
                         if outro != perfil and not confundivel(perfil, outro) and valor >= f[perfil]:
                             erros.append(f"{nome}: {valor:.0%} na faixa de {outro}, mais que {f[perfil]:.0%} na de {perfil}")
+    for perfil in PERFIS:
+        for nivel in NIVEIS:
+            for pose in ("vencedor", "perdedor"):
+                path = os.path.join(RES, f"char_{perfil}_{nivel}_{pose}_av.webp")
+                nome = os.path.basename(path)
+                if not os.path.exists(path):
+                    erros.append(f"{nome}: não existe")
+                    continue
+                total += 1
+                im = Image.open(path)
+                if im.size != (256, 256):
+                    erros.append(f"{nome}: tamanho {im.size}, esperado (256, 256)")
     print(f"{total} imagens conferidas")
     for e in erros:
         print("ERRO:", e)

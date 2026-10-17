@@ -52,8 +52,23 @@ class CharacterAssetsTest {
     }
 
     @Test
+    fun `§14_5 cada personagem tem o rosto quadrado do vencedor e do perdedor para as tabelas`() {
+        val problems = mutableListOf<String>()
+        for (profile in BotProfile.entries) for (level in BotLevel.entries) for (pose in listOf(Pose.VENCEDOR, Pose.PERDEDOR)) {
+            val f = File(dir, "char_${profile.code}_${level.code}_${pose.code}_av.webp")
+            if (!f.exists()) {
+                problems += "${f.name}: não existe"
+                continue
+            }
+            val actual = dimensions(f.readBytes())
+            if (actual != 256 to 256) problems += "${f.name}: ${actual.first}x${actual.second}, esperado 256x256"
+        }
+        problems.shouldBeEmpty()
+    }
+
+    @Test
     fun `§14_5 peso das imagens dentro do orcamento`() {
-        val sizes = BotProfile.entries.flatMap { p -> BotLevel.entries.flatMap { l -> Pose.entries.map { file(p, l, it).length() } } }
+        val sizes = dir.listFiles { f -> f.name.startsWith("char_") }.orEmpty().map { it.length() }
         (sizes.max() / 1024).toInt() shouldBeLessThan 150
         (sizes.sum() / 1024).toInt() shouldBeLessThan 4_096
     }
