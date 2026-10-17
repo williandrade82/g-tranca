@@ -1316,28 +1316,35 @@ private fun SwapAnnouncement(notice: RedThreeNotice, mode: GameMode, viewerSeat:
     val text = bannerText(mode, notice, viewerSeat)
     val shown = remember(notice.id) { MutableTransitionState(false).apply { targetState = true } }
     // Véu leve sobre a mesa (não bloqueia toques) e o anúncio centralizado; some quando a troca termina.
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
         AnimatedVisibility(shown, enter = fadeIn() + scaleIn(initialScale = 0.7f)) {
-            Column(
+            // Parceiro em verde, adversário em vermelho (mesmas cores nas bordas e no fundo).
+            val partner = SeatRole.of(mode, notice.seat, viewerSeat) == SeatRole.PARTNER
+            val accent = if (partner) GColors.Emerald else GColors.Ruby
+            val shape = RoundedCornerShape(Corner.lg)
+            val fill = if (partner) listOf(Color(0xFF0B4A36), Color(0xFF136B4D)) else listOf(GColors.Bordeaux, Color(0xFF9C2440))
+            Row(
                 Modifier
-                    .padding(Spacing.xl)
-                    .shadow(Elevation.dialog, RoundedCornerShape(Corner.lg))
-                    .background(GColors.Indigo, RoundedCornerShape(Corner.lg))
-                    .goldFrame(Corner.lg, 3.dp, lights = false)
-                    .padding(Spacing.lg)
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.md)
+                    .shadow(Elevation.dialog, shape)
+                    .background(Brush.horizontalGradient(fill), shape)
+                    .border(2.dp, accent, shape)
+                    .padding(horizontal = Spacing.md, vertical = Spacing.sm)
                     .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
                     .testTag("red-three-banner"),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm, Alignment.CenterHorizontally),
             ) {
-                persona?.let { com.gtranca.ui.persona.PersonaAvatar(it, 56.dp) }
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    notice.cards.forEach { PlayingCard(it, size = CardSize.LARGE) }
+                persona?.let { com.gtranca.ui.persona.PersonaAvatar(it, 36.dp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    notice.cards.forEach { PlayingCard(it, size = CardSize.SMALL) }
                 }
                 Text(
                     text,
-                    color = GColors.Champagne,
-                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f, fill = false),
+                    color = GColors.Ivory,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 )
