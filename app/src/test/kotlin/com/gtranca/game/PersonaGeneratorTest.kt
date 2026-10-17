@@ -37,6 +37,22 @@ class PersonaGeneratorTest {
     }
 
     @Test
+    fun `§14_5 evita o primeiro nome do jogador, mesmo com nome composto, sem mudar o resto do sorteio`() {
+        repeat(300) { seed ->
+            val free = PersonaGenerator.opponents(seed.toLong(), 3, Difficulty.MEDIO)
+            free.forEach { other ->
+                val avoided = PersonaGenerator.opponents(seed.toLong(), 3, Difficulty.MEDIO, "  ${other.firstName.uppercase()} da Silva ")
+                avoided.none { it.firstName.equals(other.firstName, ignoreCase = true) } shouldBe true
+                avoided.map { it.character } shouldBe free.map { it.character }
+                avoided.map { it.lastName } shouldBe free.map { it.lastName }
+                avoided.map { it.firstName }.shouldBeUnique()
+                // só o nome que colidia muda
+                avoided.zip(free).count { (a, b) -> a.firstName != b.firstName } shouldBe 1
+            }
+        }
+    }
+
+    @Test
     fun `§14_5 nome e sobrenome vem do conjunto do perfil`() {
         repeat(100) { seed ->
             PersonaGenerator.opponents(seed.toLong(), 4, Difficulty.FACIL).forEach { persona ->

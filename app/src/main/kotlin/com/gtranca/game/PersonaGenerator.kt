@@ -21,16 +21,19 @@ object PersonaGenerator {
 
     /**
      * [count] personagens para a semente do jogo, no nível da [difficulty]: perfis todos diferentes entre si, nomes
-     * todos diferentes e nenhum com o primeiro nome de [avoidName] (o do jogador), sem diferenciar maiúsculas.
+     * todos diferentes (os conjuntos de nomes dos perfis não se repetem) e nenhum com o primeiro nome de [avoidName]
+     * (o do jogador), sem diferenciar maiúsculas. O sorteio não depende do nome do jogador: se um nome sorteado
+     * coincidir com o dele, só esse nome troca pelo seguinte do conjunto do perfil (o resto do sorteio não muda).
      */
     fun opponents(gameSeed: Long, count: Int, difficulty: Difficulty, avoidName: String = ""): List<Persona> {
         require(count in 0..BotProfile.entries.size) { "Quantidade inválida: $count" }
         val random = Random(gameSeed xor SEED_SALT)
         val level = BotLevel.of(difficulty)
-        val taken = mutableSetOf(avoidName.trim().lowercase())
+        val avoid = avoidName.trim().substringBefore(' ').lowercase()
         return BotProfile.entries.shuffled(random).take(count).map { profile ->
-            val firstName = profile.firstNames.filter { it.lowercase() !in taken }.random(random)
-            taken += firstName.lowercase()
+            val names = profile.firstNames
+            val drawn = names.random(random)
+            val firstName = if (drawn.lowercase() == avoid) names[(names.indexOf(drawn) + 1) % names.size] else drawn
             Persona(firstName, SURNAMES.random(random), BotCharacter(profile, level))
         }
     }
