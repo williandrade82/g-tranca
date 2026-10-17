@@ -91,13 +91,14 @@ private fun CastRow(personas: List<Persona>, pose: Pose, animate: Boolean, modif
     }
 }
 
-/** O jogador no quadro 3:2 dos retratos: a foto ou o medalhão e, se ganhou, o confete por cima. */
+/** O jogador no quadro 3:2 dos retratos: a foto ou o medalhão e, por cima, o confete (ganhou) ou a nuvem com chuva (perdeu). */
 @Composable
 private fun HumanCast(persona: Persona, pose: Pose, animate: Boolean, modifier: Modifier) {
     Box(modifier.aspectRatio(Pose.APRESENTACAO.aspectRatio), contentAlignment = Alignment.BottomCenter) {
         PersonaAvatar(persona, 84.dp, Modifier.padding(bottom = 4.dp))
-        if (animate && pose == Pose.VENCEDOR) {
-            PoseEffectOverlay(PoseEffect.CONFETTI, Pose.VENCEDOR.animation.cycleMillis, Modifier.fillMaxSize())
+        // confete se ganhou; a nuvem com chuva dos robôs frustrados se perdeu
+        if (animate && (pose == Pose.VENCEDOR || pose == Pose.PERDEDOR)) {
+            PoseEffectOverlay(pose.animation.effect, pose.animation.cycleMillis, Modifier.fillMaxSize())
         }
     }
 }
