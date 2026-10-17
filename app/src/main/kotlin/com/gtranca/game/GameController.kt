@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -145,6 +146,7 @@ class GameController(
     var dealDelayScale: Double = 1.0
     private val requestCounter = AtomicLong(0)
     private val presentationSignal = Channel<Unit>(Channel.CONFLATED)
+    private val dealAnimationSignal = Channel<Int>(Channel.CONFLATED)
 
     /**
      * Encenação de trocas de 3 vermelho que o controlador espera (§3.5, §6.5): a partida e o tamanho do registro
@@ -268,7 +270,7 @@ class GameController(
             resuming = false
             // A pausa da distribuição vem antes da espera das trocas do início da vez: elas só são encenadas depois da
             // distribuição, então o tempo total é o maior dos dois, e não a soma (sem pausa morta depois do "Baixar").
-            if (freshDeal && human != null && dealDelayMillis > 0) delay((dealDelayMillis * dealDelayScale).toLong())
+            if (freshDeal && human != null && dealDelayMillis > 0) awaitDealAnimation(match.roundNumber)
             if (waitDeal) presentationSignal.receive()
             while (true) {
                 val round = synchronized(lock) {
@@ -335,6 +337,21 @@ class GameController(
             }
             // A espera da próxima partida fica no começo do laço (mesmo caminho do jogo retomado em ROUND_OVER).
         }
+    }
+
+    /**
+     * §3.5 espera a interface avisar que a distribuição da partida [roundNumber] terminou ([dealAnimationDone]); sem aviso,
+     * segue depois do tempo da animação mais uma folga (rede de segurança para quem não avisa).
+     */
+    private suspend fun awaitDealAnimation(roundNumber: Int) {
+        withTimeoutOrNull((dealDelayMillis * dealDelayScale).toLong() + DEAL_SIGNAL_GRACE_MILLIS) {
+            while (dealAnimationSignal.receive() != roundNumber) Unit
+        }
+    }
+
+    /** A interface terminou de animar a distribuição da partida [roundNumber]: libera a 1ª jogada (e as trocas do início). */
+    fun dealAnimationDone(roundNumber: Int) {
+        dealAnimationSignal.trySend(roundNumber)
     }
 
     /** Ponto de salvamento: repassa a foto do jogo (sob a trava; a gravação fica fora do laço). */
@@ -484,6 +501,9 @@ class GameController(
     companion object {
         /** Pausa padrão antes de cada jogada de bot. */
         const val DEFAULT_BOT_DELAY_MILLIS: Long = 700
+
+        /** Folga da espera pelo aviso da interface de que a distribuição terminou (rede de segurança). */
+        private const val DEAL_SIGNAL_GRACE_MILLIS: Long = 4_000
 
         /**
          * Jogadores de um jogo do app: o [human] no [humanSeat] e bots da dificuldade da [config] nos demais

@@ -118,6 +118,10 @@ data class GameUiState(
     val animationMillis: Long = 0,
     /** §14.1 perfil de cada assento (vazio se a tela não tem perfis). */
     val personas: List<Persona> = emptyList(),
+    /** §3.5 a distribuição ainda está sendo animada: a tela avisa quando termina ([TableEvents.onDealAnimationFinished]). */
+    val dealPending: Boolean = false,
+    /** Voos da distribuição (a tela espera todos pousarem para avisar que ela terminou). */
+    val dealFlightIds: Set<Long> = emptySet(),
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
     private val legal: List<Action> get() = if (ownSwapPending) emptyList() else snapshot.humanLegal
@@ -204,6 +208,10 @@ class GameViewModel(
         val flights: List<CardFlight> = emptyList(),
         /** Voos da distribuição ainda no ar: as trocas do início da vez só são encenadas depois deles. */
         val dealIds: Set<Long> = emptySet(),
+        /** §3.5 a tela avisou que a distribuição terminou (ou nada foi animado): aviso e voos das trocas já podem começar. */
+        val dealDone: Boolean = true,
+        /** A 1ª troca depois da distribuição vem logo depois dela (pausa curta, sem o aviso longo parado). */
+        val afterDeal: Boolean = false,
         /** §3.5 troca própria do início da vez → troca em cadeia que chega à mão quando ela é confirmada. */
         val delivers: Map<Long, Long> = emptyMap(),
         val flashes: List<CanastaFlash> = emptyList(),
@@ -288,15 +296,32 @@ class GameViewModel(
         }
         // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
         if (restored == null) enqueueSave(controller.saveSnapshot())
+        // §3.5 rede de segurança: se a tela nunca avisar que a distribuição terminou (ex.: app em segundo plano), segue
+        // depois do tempo da animação mais uma folga, para o jogo não travar.
+        viewModelScope.launch {
+            local.map { state -> state.snapshot.roundNumber to state.dealDone }
+                .distinctUntilChanged()
+                .collectLatest { (_, done) ->
+                    if (!done) {
+                        val state = local.value
+                        val lastDelay = state.flights.filter { it.id in state.dealIds }.maxOfOrNull { it.delayMillis } ?: 0L
+                        delay(lastDelay + effectiveMillis(state) * 2 + EXPIRY_MARGIN_MILLIS + DEAL_SIGNAL_GRACE_MILLIS)
+                        onDealAnimationFinished()
+                    }
+                }
+        }
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
             local.map { state ->
-                state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) && state.flights.none { f -> f.id in state.dealIds } }
+                state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) && state.dealDone }
             }
                 .distinctUntilChanged()
                 .collectLatest { head ->
                     if (head != null) {
-                        delay((swapAnimationMillis * local.value.speed).toLong())
+                        // Logo depois da distribuição: pausa curta; nas demais trocas, o aviso tem o tempo de leitura todo.
+                        local.value.let { now ->
+                            delay(if (now.afterDeal) minOf(swapAnimationMillis, DEAL_SWAP_PAUSE_MILLIS) else (swapAnimationMillis * now.speed).toLong())
+                        }
                         var landing = 0L
                         local.update { state ->
                             if (state.swaps.firstOrNull()?.id == head.id) {
@@ -306,6 +331,7 @@ class GameViewModel(
                                     swaps = state.swaps.drop(1),
                                     flights = state.flights + flights,
                                     settling = state.settling + if (landing > 0) 1 else 0,
+                                    afterDeal = false,
                                 )
                             } else {
                                 landing = 0
@@ -444,6 +470,8 @@ class GameViewModel(
             mortoSwaps = if (playing) mortoSwaps.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             flights = if (playing && sameRound) state.flights + newFlights + dealFlights else dealFlights,
             dealIds = (if (playing && sameRound) state.dealIds else emptySet()) + dealFlights.map { it.id },
+            dealDone = if (previous == null || !sameRound) !dealing else state.dealDone,
+            afterDeal = if (dealing) fresh.isNotEmpty() else state.afterDeal,
             flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             delivers = if (playing) delivers.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
@@ -459,7 +487,7 @@ class GameViewModel(
         val snapshot = state.snapshot
         val head = state.swaps.firstOrNull()
         // O diálogo do próprio 3 vermelho espera os voos em andamento (distribuição, compra) terminarem.
-        val reveal = head?.takeIf { isOwn(it, snapshot) && state.flights.isEmpty() }?.let { RedThreeReveal(it, state.hidden[it.id].orEmpty()) }
+        val reveal = head?.takeIf { isOwn(it, snapshot) && state.dealDone && state.flights.isEmpty() }?.let { RedThreeReveal(it, state.hidden[it.id].orEmpty()) }
         val hidden = state.hidden.values.flatten().toSet()
         // Os 3 vermelhos ainda não encenados não aparecem na mesa (o atual entra quando a encenação termina).
         val staged = state.swaps.flatMap { it.cards }.toSet()
@@ -489,7 +517,7 @@ class GameViewModel(
             redThrees = snapshot.view.redThrees.map { side -> side.filter { it !in staged } },
             reveal = reveal,
             ownSwapPending = ownSwapPending,
-            banner = head?.takeIf { reveal == null && !isOwn(it, snapshot) },
+            banner = head?.takeIf { state.dealDone && reveal == null && !isOwn(it, snapshot) },
             planChoice = state.planChoice,
             meldChoice = state.meldChoice,
             confirmDecline = state.confirmDecline,
@@ -501,6 +529,8 @@ class GameViewModel(
             canastaFlashes = state.flashes,
             animationMillis = effectiveMillis(state),
             personas = personas,
+            dealPending = !state.dealDone,
+            dealFlightIds = state.dealIds,
         )
     }
 
@@ -598,6 +628,7 @@ class GameViewModel(
                 hidden = state.hidden - head.id,
                 flights = state.flights + flights,
                 settling = state.settling + if (landing > 0) 1 else 0,
+                afterDeal = false,
             )
         }
         settleAfter(landing)
@@ -657,6 +688,18 @@ class GameViewModel(
             is Resolution.ChooseMeld ->
                 local.update { it.copy(meldChoice = PlanRanking.rankMelds(resolution.options, snapshot.view), planRequestId = requestId, message = null) }
         }
+    }
+
+    /** A tela avisa que a distribuição terminou de ser animada (o último voo pousou). */
+    override fun onDealAnimationFinished() {
+        var round = 0
+        var changed = false
+        local.update { state ->
+            round = state.snapshot.roundNumber
+            changed = !state.dealDone
+            if (changed) state.copy(dealDone = true) else state
+        }
+        if (changed) controller.dealAnimationDone(round)
     }
 
     /** Escala de animação do sistema mudou (a tela observa `ANIMATOR_DURATION_SCALE`); 0 desliga os voos. */
@@ -722,6 +765,12 @@ class GameViewModel(
     companion object {
         /** Folga para a limpeza de uma animação depois do fim do desenho. */
         private const val EXPIRY_MARGIN_MILLIS: Long = 150
+
+        /** Folga da rede de segurança da distribuição: a tela tem este tempo a mais para avisar que terminou. */
+        private const val DEAL_SIGNAL_GRACE_MILLIS: Long = 1_500
+
+        /** Pausa entre o fim da distribuição e a 1ª troca de 3 vermelho de um bot. */
+        const val DEAL_SWAP_PAUSE_MILLIS: Long = 400
 
         /** Duração padrão de cada animação da mesa (300–600 ms). */
         const val DEFAULT_ANIMATION_MILLIS: Long = 450

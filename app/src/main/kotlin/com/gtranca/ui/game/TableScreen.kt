@@ -180,6 +180,8 @@ import com.gtranca.ui.theme.TableGreenDark
 
 /** Gestos da mesa, emitidos para o [GameViewModel]. */
 interface TableEvents {
+    /** §3.5 o último voo da distribuição pousou: o aviso e a troca de 3 vermelho podem começar. */
+    fun onDealAnimationFinished() = Unit
     fun onCardClick(card: Card)
     fun onClearSelection()
     fun onSortChange(sort: HandSort)
@@ -289,6 +291,11 @@ fun TableScreen(
     val arrived = remember { mutableStateMapOf<Long, Boolean>() }
     val landing = if (state.animationMillis <= 0) emptySet() else
         state.flights.filter { it.card != null && arrived[it.id] != true }.mapNotNull { it.card }.toSet()
+    // §3.5 a distribuição só termina quando todos os seus voos pousaram na tela (não por cronômetro): então avisa.
+    if (state.dealPending && state.dealFlightIds.isNotEmpty()) {
+        val dealLanded = state.dealFlightIds.all { id -> arrived[id] == true || state.flights.none { it.id == id } }
+        LaunchedEffect(dealLanded) { if (dealLanded) events.onDealAnimationFinished() }
+    }
     // Só no início da vez do humano (etapa de comprar): rola até o fim, com lixo e os jogos do lado à vista.
     LaunchedEffect(state.awaitingDraw) {
         if (state.awaitingDraw) tableScroll.animateScrollTo(tableScroll.maxValue)
