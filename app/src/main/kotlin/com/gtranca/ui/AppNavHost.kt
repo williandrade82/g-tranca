@@ -37,6 +37,7 @@ import androidx.navigation.toRoute
 import com.gtranca.ai.Difficulty
 import com.gtranca.data.GameData
 import com.gtranca.game.WriteQueue
+import kotlin.random.Random
 import com.gtranca.game.appData
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -109,6 +110,8 @@ data class GameRoute(
     val resume: Boolean = false,
     /** §14.4 regras da mesa em JSON (vazio = Clássica). */
     val rulesJson: String = "",
+    /** §14.4, §14.5 semente da mesa escolhida (o jogo joga com os personagens que ela mostrou); `null` = sorteia. */
+    val seed: Long? = null,
 ) {
     fun toConfig() = GameConfig(
         GameMode.valueOf(mode),
@@ -118,11 +121,12 @@ data class GameRoute(
     )
 
     companion object {
-        fun of(config: GameConfig) = GameRoute(
+        fun of(config: GameConfig, seed: Long? = null) = GameRoute(
             config.mode.name,
             config.difficulty.id,
             config.targetScore,
             rulesJson = Json.encodeToString(RuleSet.serializer(), config.rules),
+            seed = seed,
         )
 
         /** Continuar o jogo salvo (os campos de configuração não são usados). */
@@ -208,7 +212,7 @@ fun AppNavHost() {
             } else {
                 TableRulesScreen(
                     table,
-                    onStart = { config -> navController.startGame(config) },
+                    onStart = { config -> navController.startGame(config, table.seed) },
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -251,9 +255,9 @@ fun AppNavHost() {
 }
 
 /** Abre o jogo da mesa escolhida; voltar do jogo leva ao início (as telas de mesa saem da pilha). */
-private fun NavHostController.startGame(config: GameConfig) {
+private fun NavHostController.startGame(config: GameConfig, seed: Long? = null) {
     if (currentBackStackEntry?.destination?.hasRoute<GameRoute>() == true) return
-    navigate(GameRoute.of(config)) {
+    navigate(GameRoute.of(config, seed)) {
         popUpTo(HomeRoute) { inclusive = false }
         launchSingleTop = true
     }
@@ -333,7 +337,7 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             slowAnimations = ready.slow,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow)
+                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow)
                     }
                 }
                 session.started = true

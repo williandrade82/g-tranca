@@ -120,6 +120,18 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `§14_4 o jogo da mesa escolhida joga com exatamente os personagens que a mesa mostrou`() = runTest(dispatcher) {
+        for (seed in listOf(3L, 42L, 77L)) {
+            for (table in com.gtranca.game.Tables.botTables(seed)) {
+                val vm = GameViewModel(table.toConfig(), gameSeed = table.seed, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0)
+                advanceUntilIdle()
+                // os assentos 1.. são os personagens da mesa, na ordem (o 0 é o jogador)
+                vm.personas.drop(1) shouldBe table.players
+            }
+        }
+    }
+
+    @Test
     fun `§6_5 nenhuma troca de 3 vermelho de outro assento aparece durante a vez do humano`() = runTest(dispatcher) {
         // Tempos reais (troca encenada em 1,8 s, voo de 450 ms), com o bot pensando 700 ms e sem pausa nenhuma (o caso do
         // morto indireto: a troca vem na mesma ação que passa a vez). A vez do humano só abre depois de todas as trocas dos
