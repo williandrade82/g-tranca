@@ -1,6 +1,6 @@
 # Plano: moedas locais contra os robôs
 
-Status: **aprovado em 2026-10-18** (recomendações M1–M6 aceitas); etapas 1 a 6 feitas, falta a revisão e o PR. Parte do plano de evolução (decidido em 15/10): perfis de regra, perfil com foto e,
+Status: **aprovado em 2026-10-18** (recomendações M1–M6 aceitas); todas as etapas feitas (PR aberto). Parte do plano de evolução (decidido em 15/10): perfis de regra, perfil com foto e,
 agora, moedas locais; o online vem depois. Fluxo de sempre: `definition.md` primeiro, depois testes, código e `rules-auditor`.
 
 ## O que já está decidido (conversa de 15/10)
@@ -39,4 +39,4 @@ cartão e na tela da mesa, resultado em moedas na tela final e nas estatísticas
 4. **Mesas:** aposta nas mesas dos robôs (sorteio das quatro) e em "Criar mesa"; mesa bloqueada por saldo; débito ao iniciar. — **FEITA**
 5. **Fim de jogo:** prêmio no registro, resultado em moedas na tela final, desistência e "Novo jogo sobre o salvo" perdem a aposta. — **FEITA**
 6. **Início e estatísticas:** saldo, resgate do ganho diário, saldo e resultado total nas estatísticas. — **FEITA**
-7. **Revisão** (`rules-auditor`), APK e PR. — em andamento
+7. **Revisão** (`rules-auditor`), APK e PR. — **FEITA** (achados tratados: débito que falha começa o jogo sem aposta; relógio atrasado, perda da aposta se o app fecha antes do primeiro salvamento e carteira x estatísticas documentados no `definition.md`)

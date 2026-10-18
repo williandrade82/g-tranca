@@ -53,10 +53,11 @@ class StakeFlowTest {
             log += "finish"
         }
         override suspend fun saveHandSort(id: String) = Unit
+        var debitOk = true
         override suspend fun debitStake(stake: Int): Boolean {
             debits += stake
             log += "debit"
-            return true
+            return debitOk
         }
     }
 
@@ -81,6 +82,19 @@ class StakeFlowTest {
         persistence.log.first() shouldBe "debit"
         persistence.log[1] shouldBe "save"
         persistence.saves.first().config.stake shouldBe 100
+    }
+
+    @Test
+    fun `§14_6 se o debito nao passa o jogo comeca sem aposta - nada salvo nem pago`() = runTest(dispatcher) {
+        val persistence = FakePersistence().apply { debitOk = false }
+        val game = vm(GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, stake = 100), persistence)
+        advanceUntilIdle()
+        persistence.debits shouldBe listOf(100)
+        persistence.saves.last().config.stake shouldBe 0
+        game.onResign()
+        game.onConfirmResign()
+        advanceUntilIdle()
+        persistence.finishes.single().first.stake shouldBe 0
     }
 
     @Test
