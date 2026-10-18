@@ -36,6 +36,7 @@ import kotlin.math.sin
  * repete; com [animate] falso (testes, animações desligadas) fica parado.
  *
  * @param effects desenha o efeito da pose; desligue nos tamanhos pequenos (medalhão da mesa).
+ * @param imageRes imagem no lugar da padrão da pose (o robô com as cartas na mão usa a movimentação do pensador).
  * @param description texto para o leitor de tela (nome do personagem); sem ele a imagem é decorativa.
  */
 @Composable
@@ -47,6 +48,7 @@ fun CharacterPortrait(
     effects: Boolean = true,
     contentScale: ContentScale = ContentScale.Fit,
     description: String? = null,
+    @androidx.annotation.DrawableRes imageRes: Int? = null,
 ) {
     val spec = pose.animation
     val phase: () -> Float = if (animate) {
@@ -59,7 +61,7 @@ fun CharacterPortrait(
     val semanticsModifier = if (description != null) Modifier.semantics { contentDescription = description } else Modifier.clearAndSetSemantics {}
     Box(modifier.then(semanticsModifier).aspectRatio(pose.aspectRatio)) {
         Image(
-            painterResource(characterRes(character, pose)),
+            painterResource(imageRes ?: characterRes(character, pose)),
             contentDescription = null,
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 val p = phase()

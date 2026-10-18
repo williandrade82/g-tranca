@@ -30,10 +30,10 @@ internal val MedalColors = listOf(0xFF6C5BD4, 0xFFD23A4F, 0xFF1F9E6B, 0xFFD99A1E
 /**
  * Avatar de um jogador num círculo (§14.1, §14.5): o personagem do jogador virtual (pose do pensador, a pequena), a foto
  * pessoal do jogador ou, sem foto, o medalhão com a inicial na cor escolhida. Sem texto: quem usa dá a descrição
- * (o nome) à tela.
+ * (o nome) à tela. [holdingCards]: o robô com as cartas na mão, em vez do pensador (que é o da vez dele).
  */
 @Composable
-fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, animate: Boolean = false, pose: Pose = Pose.PENSADOR) {
+fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, animate: Boolean = false, pose: Pose = Pose.PENSADOR, holdingCards: Boolean = false) {
     persona.character?.let { character ->
         if (pose == Pose.VENCEDOR || pose == Pose.PERDEDOR) {
             // rosto quadrado da pose (tabelas de pontos): parado
@@ -52,6 +52,7 @@ fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, ani
             animate = animate,
             effects = false,
             contentScale = ContentScale.Crop,
+            imageRes = if (holdingCards) cardsRes(character.profile) else null,
         )
         return
     }
