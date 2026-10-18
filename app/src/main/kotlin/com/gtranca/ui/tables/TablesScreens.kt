@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
 import com.gtranca.ai.Difficulty
+import com.gtranca.engine.Coins
 import com.gtranca.engine.GroupRanks
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
@@ -118,6 +119,7 @@ fun rulesName(rules: RuleSet): String = when (rules.id) {
 @Composable
 fun TablesScreen(viewModel: TablesViewModel, onOpen: (TableOffer) -> Unit, onCreate: () -> Unit, onBack: () -> Unit) {
     val tables by viewModel.tables.collectAsStateWithLifecycle()
+    val balance by viewModel.balance.collectAsStateWithLifecycle()
     TableFrame(
         stringResource(R.string.tables_title),
         "tables-screen",
@@ -127,12 +129,13 @@ fun TablesScreen(viewModel: TablesViewModel, onOpen: (TableOffer) -> Unit, onCre
         },
     ) {
         Text(stringResource(R.string.tables_subtitle), style = MaterialTheme.typography.bodyMedium, color = GColors.Lavender)
-        tables.forEach { table -> TableCard(table) { onOpen(table) } }
+        Text(stringResource(R.string.coins_balance, balance), Modifier.testTag("coins-balance"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
+        tables.forEach { table -> TableCard(table, balance) { onOpen(table) } }
     }
 }
 
 @Composable
-private fun TableCard(table: TableOffer, onClick: () -> Unit) {
+private fun TableCard(table: TableOffer, balance: Int, onClick: () -> Unit) {
     val shape = RoundedCornerShape(Corner.md)
     Column(
         Modifier
@@ -179,6 +182,14 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
                 }
             }
             Text(rulesName(table.rules), style = MaterialTheme.typography.bodyMedium, color = GColors.Gold)
+            // §14.6 aposta da mesa; sem saldo, a mesa fica bloqueada (dá para ver as regras, não para entrar)
+            val affordable = Coins.canJoin(balance, table.stake)
+            Text(
+                stringResource(R.string.stake_line, table.stake) + if (affordable) "" else " · " + stringResource(R.string.stake_insufficient),
+                Modifier.testTag("table-${table.id}-stake"),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (affordable) GColors.Gold else GColors.Ruby,
+            )
             Text(
                 stringResource(
                     R.string.tables_line,
@@ -227,13 +238,13 @@ private fun seatsInDisplayOrder(table: TableOffer): List<Pair<Persona, Int>> = l
 
 /** §14.4 regras de uma mesa aberta: o jogador inicia o jogo ou volta. */
 @Composable
-fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: () -> Unit, onReroll: (() -> Unit)? = null) {
+fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: () -> Unit, onReroll: (() -> Unit)? = null, balance: Int = Int.MAX_VALUE) {
     TableFrame(
         stringResource(R.string.table_rules_title),
         "table-rules-screen",
         bottom = {
             BottomButton(stringResource(R.string.back), "table-rules-back", GButtonKind.Secondary, onClick = onBack)
-            BottomButton(stringResource(R.string.table_rules_start), "table-rules-start", GButtonKind.Primary) { onStart(table.toConfig()) }
+            BottomButton(stringResource(R.string.table_rules_start), "table-rules-start", GButtonKind.Primary, enabled = Coins.canJoin(balance, table.stake)) { onStart(table.toConfig()) }
         },
     ) {
         GPanel(Modifier.fillMaxWidth()) {
@@ -283,6 +294,16 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
                     PersonaAvatar(table.host, 52.dp)
                     Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
                 }
+            }
+        }
+        // §14.6 aposta da mesa e saldo; sem saldo para a aposta, não dá para começar
+        GPanel(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.stake_line, table.stake), Modifier.testTag("table-rules-stake"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
+            if (balance != Int.MAX_VALUE) {
+                Text(stringResource(R.string.coins_balance, balance), style = MaterialTheme.typography.bodyMedium, color = GColors.Lavender)
+            }
+            if (!Coins.canJoin(balance, table.stake)) {
+                Text(stringResource(R.string.stake_insufficient), Modifier.testTag("table-rules-insufficient"), style = MaterialTheme.typography.bodyMedium, color = GColors.Ruby)
             }
         }
         // §14.4 mesa criada pelo jogador: pode sortear outros personagens antes de começar
@@ -404,6 +425,17 @@ fun CreateTableScreen(
                     }
                 }
             }
+            Section(stringResource(R.string.create_stake)) {
+                Coins.STAKES.forEach { stake ->
+                    Chip(stake.toString(), state.stake == stake, "stake-$stake") { viewModel.onStakeChange(stake) }
+                }
+            }
+            Text(
+                stringResource(R.string.coins_balance, state.balance) + if (state.canAfford) "" else " · " + stringResource(R.string.stake_insufficient),
+                Modifier.testTag("create-balance"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (state.canAfford) GColors.Lavender else GColors.Ruby,
+            )
             Section(stringResource(R.string.create_rules)) {
                 Chip(RuleSet.CLASSICA.name, state.rulesChoice == RulesChoice.CLASSICA, "rules-classica") { viewModel.onRulesChange(RulesChoice.CLASSICA) }
                 Chip(RuleSet.PAULISTA.name, state.rulesChoice == RulesChoice.PAULISTA, "rules-paulista") { viewModel.onRulesChange(RulesChoice.PAULISTA) }

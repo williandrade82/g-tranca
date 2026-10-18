@@ -1,6 +1,7 @@
 package com.gtranca.game
 
 import com.gtranca.ai.Difficulty
+import com.gtranca.engine.Coins
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import kotlin.random.Random
@@ -20,11 +21,13 @@ data class TableOffer(
     val difficulty: Difficulty,
     val targetScore: Int,
     val rules: RuleSet,
+    /** §14.6 aposta da mesa, em moedas. */
+    val stake: Int = Coins.DEFAULT_STAKE,
 ) {
     /** Quem abriu a mesa (só apresentação): o primeiro personagem. */
     val host: Persona get() = players.first()
 
-    fun toConfig(): GameConfig = GameConfig(mode, difficulty, targetScore, rules)
+    fun toConfig(): GameConfig = GameConfig(mode, difficulty, targetScore, rules, stake)
 }
 
 object Tables {
@@ -70,6 +73,7 @@ object Tables {
                 difficulty = difficulty,
                 targetScore = BOT_TARGETS[random.nextInt(BOT_TARGETS.size)],
                 rules = RuleSet.HOUSE[(firstRules + i) % RuleSet.HOUSE.size],
+                stake = Coins.STAKES[random.nextInt(Coins.STAKES.size)],
             )
         }
     }

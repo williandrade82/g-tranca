@@ -146,17 +146,17 @@ class PersistenceTest {
     fun `§14_6 o premio entra na carteira uma unica vez junto com a contagem do jogo`() = runBlocking<Unit> {
         val repo = DataStoreStatsRepository(MemoryDataStore())
         repo.debit(100) shouldBe true // aposta debitada ao começar
-        repo.record("g1", GameMode.DUPLAS, "medio", GameResult.WIN, stake = 100, payout = 200) shouldBe true
+        repo.recordBet("g1", GameMode.DUPLAS, "medio", GameResult.WIN, stake = 100, payout = 200) shouldBe true
         repo.wallet.first().balance shouldBe 1_100 // 1000 - 100 + 200
         repo.lifetimeNet.first() shouldBe 100
         // o mesmo jogo terminado de novo (retomada) não credita outra vez
-        repo.record("g1", GameMode.DUPLAS, "medio", GameResult.WIN, stake = 100, payout = 200) shouldBe false
+        repo.recordBet("g1", GameMode.DUPLAS, "medio", GameResult.WIN, stake = 100, payout = 200) shouldBe false
         repo.wallet.first().balance shouldBe 1_100
         // derrota e desistência: nada recebido, resultado negativo
         repo.debit(250)
-        repo.record("g2", GameMode.INDIVIDUAL, "facil", GameResult.LOSS, stake = 250, payout = 0)
+        repo.recordBet("g2", GameMode.INDIVIDUAL, "facil", GameResult.LOSS, stake = 250, payout = 0)
         repo.debit(50)
-        repo.record("g3", GameMode.INDIVIDUAL, "facil", GameResult.RESIGNATION, stake = 50, payout = 0)
+        repo.recordBet("g3", GameMode.INDIVIDUAL, "facil", GameResult.RESIGNATION, stake = 50, payout = 0)
         repo.wallet.first().balance shouldBe 800
         repo.lifetimeNet.first() shouldBe -200
         // jogo sem aposta não mexe na carteira

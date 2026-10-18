@@ -103,11 +103,12 @@ data class NewTableRoute(
     val targetScore: Int,
     val rulesJson: String,
     val seed: Long,
+    val stake: Int = 0,
 ) {
-    fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson).toConfig()
+    fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson, stake = stake).toConfig()
 
     companion object {
-        fun of(config: GameConfig, seed: Long) = GameRoute.of(config).let { NewTableRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, seed) }
+        fun of(config: GameConfig, seed: Long) = GameRoute.of(config).let { NewTableRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, seed, it.stake) }
     }
 }
 
@@ -132,12 +133,15 @@ data class GameRoute(
     val rulesJson: String = "",
     /** §14.4, §14.5 semente da mesa escolhida (o jogo joga com os personagens que ela mostrou); `null` = sorteia. */
     val seed: Long? = null,
+    /** §14.6 aposta da mesa em moedas (0 = sem aposta). */
+    val stake: Int = 0,
 ) {
     fun toConfig() = GameConfig(
         GameMode.valueOf(mode),
         Difficulty.fromId(difficulty),
         targetScore,
         if (rulesJson.isEmpty()) RuleSet.DEFAULT else Json.decodeFromString(RuleSet.serializer(), rulesJson),
+        stake,
     )
 
     companion object {
@@ -147,6 +151,7 @@ data class GameRoute(
             config.targetScore,
             rulesJson = Json.encodeToString(RuleSet.serializer(), config.rules),
             seed = seed,
+            stake = config.stake,
         )
 
         /** Continuar o jogo salvo (os campos de configuração não são usados). */
@@ -200,7 +205,7 @@ fun AppNavHost() {
     ) {
         composable<HomeRoute> {
             HomeScreen(
-                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats) },
+                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet) },
                 onNewGame = { navController.navigateFromHome(TablesRoute) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
@@ -216,7 +221,7 @@ fun AppNavHost() {
         }
         composable<TablesRoute> {
             TablesScreen(
-                viewModel { TablesViewModel(settings = data.settings) },
+                viewModel { TablesViewModel(settings = data.settings, wallet = data.wallet) },
                 onOpen = { table -> navController.navigate(TableRulesRoute(table.id)) { launchSingleTop = true } },
                 onCreate = { navController.navigate(CreateTableRoute) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
@@ -226,7 +231,9 @@ fun AppNavHost() {
             val route = entry.toRoute<TableRulesRoute>()
             // A lista sorteada vive na entrada das mesas: a mesa aberta é a mesma que o jogador tocou.
             val tablesEntry = remember(entry) { navController.getBackStackEntry(TablesRoute) }
-            val table = viewModel<TablesViewModel>(tablesEntry) { TablesViewModel(settings = data.settings) }.table(route.tableId)
+            val tablesVm = viewModel<TablesViewModel>(tablesEntry) { TablesViewModel(settings = data.settings, wallet = data.wallet) }
+            val table = tablesVm.table(route.tableId)
+            val balance by tablesVm.balance.collectAsStateWithLifecycle()
             if (table == null) {
                 LaunchedEffect(Unit) { navController.popBackStack() }
             } else {
@@ -234,11 +241,12 @@ fun AppNavHost() {
                     table,
                     onStart = { config -> navController.startGame(config, table.seed) },
                     onBack = { navController.popBackStack() },
+                    balance = balance,
                 )
             }
         }
         composable<CreateTableRoute> { entry ->
-            val vm = viewModel { CreateTableViewModel(data.settings, WriteQueue.app) }
+            val vm = viewModel { CreateTableViewModel(data.settings, WriteQueue.app, data.wallet) }
             // Voltando do editor de regras: relê as regras personalizadas (e escolhe "Personalizada" se salvou).
             val saved by entry.savedStateHandle.getStateFlow(CUSTOM_RULES_SAVED, false).collectAsStateWithLifecycle()
             LaunchedEffect(saved) {
@@ -259,13 +267,15 @@ fun AppNavHost() {
         }
         composable<NewTableRoute> { entry ->
             val route = entry.toRoute<NewTableRoute>()
-            val vm = viewModel { CreatedTableViewModel(route.toConfig(), route.seed, data.settings) }
+            val vm = viewModel { CreatedTableViewModel(route.toConfig(), route.seed, data.settings, data.wallet) }
             val table by vm.table.collectAsStateWithLifecycle()
+            val balance by vm.balance.collectAsStateWithLifecycle()
             TableRulesScreen(
                 table,
                 onStart = { config -> navController.startGame(config, table.seed) },
                 onBack = { navController.popBackStack() },
                 onReroll = vm::reroll,
+                balance = balance,
             )
         }
         composable<RulesEditorRoute> { entry ->
@@ -281,7 +291,7 @@ fun AppNavHost() {
             )
         }
         composable<StatsRoute> {
-            StatsScreen(viewModel { StatsViewModel(data.stats) }) { navController.popBackStack() }
+            StatsScreen(viewModel { StatsViewModel(data.stats, data.wallet) }) { navController.popBackStack() }
         }
     }
     }

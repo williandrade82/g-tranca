@@ -308,6 +308,8 @@ class GameViewModel(
             }
         }
         // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
+        // §14.6 a aposta é debitada ao começar o jogo (antes de salvar o jogo; retomar não debita de novo).
+        if (restored == null && config.stake > 0) persistence?.let { store -> writes.enqueue { store.debitStake(config.stake) } }
         if (restored == null) enqueueSave(controller.saveSnapshot())
         // §3.5 rede de segurança: se a tela nunca avisar que a distribuição terminou (ex.: app em segundo plano), segue
         // depois do tempo da animação mais uma folga, para o jogo não travar.

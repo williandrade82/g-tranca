@@ -69,6 +69,10 @@ import com.gtranca.R
 import com.gtranca.ai.Difficulty
 import com.gtranca.data.GameStats
 import com.gtranca.data.StatsRepository
+import com.gtranca.data.WalletRepository
+import com.gtranca.engine.Coins
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import com.gtranca.engine.model.GameMode
 import com.gtranca.ui.home.labelRes
 import kotlinx.coroutines.CancellationException
@@ -78,12 +82,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** §14.6 saldo da carteira e resultado total em moedas. */
+data class CoinsSummary(val balance: Int = Coins.INITIAL_BALANCE, val net: Int = 0)
+
 /** Estatísticas por modo e dificuldade (jogos, vitórias, %); zerar com confirmação. */
-class StatsViewModel(private val repository: StatsRepository) : ViewModel() {
+class StatsViewModel(private val repository: StatsRepository, wallet: WalletRepository? = null) : ViewModel() {
     /** Estatísticas ilegíveis aparecem zeradas (nunca derrubam o app). */
     val stats: StateFlow<GameStats> = repository.stats
         .catch { emit(GameStats()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, GameStats())
+
+    /** §14.6 saldo atual e resultado total em moedas (recebido menos apostado) de todos os jogos apostados. */
+    val coins: StateFlow<CoinsSummary> = (wallet?.let { w ->
+        combine(w.wallet, w.lifetimeNet) { wallet, net -> CoinsSummary(wallet.balance, net) }
+    } ?: flowOf(CoinsSummary()))
+        .catch { emit(CoinsSummary()) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, CoinsSummary())
 
     fun onReset() {
         viewModelScope.launch {
@@ -101,6 +115,7 @@ class StatsViewModel(private val repository: StatsRepository) : ViewModel() {
 @Composable
 fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
     val stats by viewModel.stats.collectAsStateWithLifecycle()
+    val coins by viewModel.coins.collectAsStateWithLifecycle()
     var confirmReset by rememberSaveable { mutableStateOf(false) }
     GBackground(Modifier.fillMaxSize().testTag("stats-screen")) {
         Column(
@@ -108,6 +123,15 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             GTitle(stringResource(R.string.stats_title), Modifier.semantics { heading() })
+            // §14.6 moedas: saldo e resultado de todos os jogos apostados (zerar as estatísticas não mexe na carteira)
+            GPanel(Modifier.fillMaxWidth().testTag("stats-coins")) {
+                Text(stringResource(R.string.stats_coins_balance, coins.balance), style = MaterialTheme.typography.titleMedium, color = GColors.Gold, fontWeight = FontWeight.Bold)
+                Text(
+                    stringResource(if (coins.net >= 0) R.string.stats_coins_net_gain else R.string.stats_coins_net_loss, kotlin.math.abs(coins.net)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (coins.net >= 0) GColors.Emerald else GColors.Ruby,
+                )
+            }
             GameMode.entries.forEach { mode ->
                 GPanel(Modifier.fillMaxWidth().testTag("stats-${mode.name.lowercase()}")) {
                     Text(

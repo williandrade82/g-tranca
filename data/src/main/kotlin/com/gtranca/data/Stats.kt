@@ -40,15 +40,20 @@ interface StatsRepository {
      * Registra o fim do jogo [gameId]. Cada jogo conta uma única vez: devolve `false` (e não muda nada) se esse id
      * já foi registrado — inclusive depois de restaurar um jogo salvo.
      */
-    suspend fun record(
+    suspend fun record(gameId: String, mode: GameMode, difficultyId: String, result: GameResult): Boolean
+
+    /**
+     * Como [record], para um jogo com aposta (§14.6): [stake] e o prêmio recebido ([payout]) entram na carteira na mesma
+     * gravação da contagem (um jogo só credita uma vez). Sem carteira, só conta o jogo.
+     */
+    suspend fun recordBet(
         gameId: String,
         mode: GameMode,
         difficultyId: String,
         result: GameResult,
-        /** §14.6 aposta do jogo (0 = sem aposta) e o prêmio recebido; creditados à carteira na mesma gravação. */
-        stake: Int = 0,
-        payout: Int = 0,
-    ): Boolean
+        stake: Int,
+        payout: Int,
+    ): Boolean = record(gameId, mode, difficultyId, result)
 
     /** Zera as estatísticas (os ids já registrados continuam lembrados, para não contar de novo). */
     suspend fun reset()
@@ -79,7 +84,10 @@ class DataStoreStatsRepository(private val store: DataStore<Preferences>) : Stat
         GameStats(lines)
     }
 
-    override suspend fun record(
+    override suspend fun record(gameId: String, mode: GameMode, difficultyId: String, result: GameResult): Boolean =
+        recordBet(gameId, mode, difficultyId, result, stake = 0, payout = 0)
+
+    override suspend fun recordBet(
         gameId: String,
         mode: GameMode,
         difficultyId: String,
