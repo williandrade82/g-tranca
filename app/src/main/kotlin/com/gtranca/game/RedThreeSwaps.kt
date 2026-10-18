@@ -32,14 +32,25 @@ object LogRedThreeSource : RedThreeSwapSource {
         val log = current.view.redThreeLog
         val seen = if (previous != null && previous.roundNumber == current.roundNumber) previous.view.redThreeLog.size else 0
         val mode = current.view.mode
-        return log.withIndex().drop(seen).map { (index, entry) ->
+        // §3.5 3 vermelhos do mesmo jogador baixados juntos (os da mão no início da vez, ou os do morto) viram um aviso só;
+        // os que chegam como reposição em cadeia (§6.5) ficam como trocas seguintes.
+        val groups = mutableListOf<MutableList<IndexedValue<com.gtranca.engine.model.RedThreeLaid>>>()
+        for (item in log.withIndex().drop(seen)) {
+            val last = groups.lastOrNull()
+            val head = last?.first()?.value
+            val joins = head != null && !head.chained && !item.value.chained &&
+                head.seat == item.value.seat && head.atTurnStart == item.value.atTurnStart
+            if (joins) last!!.add(item) else groups.add(mutableListOf(item))
+        }
+        return groups.map { group ->
+            val first = group.first()
             RedThreeNotice(
-                id = current.roundNumber * IDS_PER_ROUND + index,
-                side = mode.sideOf(entry.seat),
-                seat = entry.seat,
-                cards = listOf(entry.card),
-                atTurnStart = entry.atTurnStart,
-                chained = entry.chained,
+                id = current.roundNumber * IDS_PER_ROUND + first.index,
+                side = mode.sideOf(first.value.seat),
+                seat = first.value.seat,
+                cards = group.map { it.value.card },
+                atTurnStart = first.value.atTurnStart,
+                chained = first.value.chained,
             )
         }
     }

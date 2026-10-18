@@ -225,6 +225,8 @@ fun revealTitle(notice: RedThreeNotice): String {
 @ReadOnlyComposable
 fun bannerText(mode: GameMode, notice: RedThreeNotice, viewerSeat: Seat, persona: Persona? = null): String {
     val role = SeatRole.of(mode, notice.seat, viewerSeat)
+    // A troca do próprio jogador é só um aviso, como a dos demais (sem botões): "Na sua vez, você baixou...".
+    if (role == SeatRole.YOU) return revealTitle(notice)
     // §14.5 na comunicação: nome completo com a posição (duplas); sem personagem, o papel de sempre.
     val name = persona?.callName(mode, role) ?: stringResource(role.nameRes())
     return stringResource(if (notice.atTurnStart) R.string.red_three_banner_turn else R.string.red_three_banner, name)

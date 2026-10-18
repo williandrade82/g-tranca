@@ -16,10 +16,20 @@ jogador. Início do jogo encenado na ordem certa (distribuição, depois trocas;
 3. Cenários restantes a conferir e testar: humano abre o jogo, cadeia, compra durante a jogada (robô e humano), morto direto e
    indireto, monte vazio.
 
+## Pedidos que chegaram durante o trabalho (2026-10-17)
+- O aviso de 3 vermelho do jogador seguinte aparecia antes de o descarte anterior terminar a animação: o aviso e o voo da troca
+  agora esperam todos os voos em andamento (menos os da distribuição) e o fim do assentamento da jogada anterior.
+- Ao pegar o morto, as cartas apareciam na mão antes da animação: agora as cartas do morto do humano voam abertas (as que
+  passam do limite de voos aparecem junto com o último) e ficam fora da mão até pousar.
+
 ## Etapas
-1. **Planos e regra** (este arquivo, `definition.md` §3.5 com a encenação em lote). — FEITA
+1. **Planos e regra** (este arquivo, `definition.md` §3.5 com a encenação em lote). — **FEITA**
 2. **Agrupar as trocas** do mesmo jogador (mesmo momento, sem cadeia) em um aviso só; reposições do humano e do morto por troca
-   em lote; voos com a segunda carta atrasada; reposição também no morto. Testes.
-3. **Aviso do próprio jogador** sem botões (fecha sozinho). Testes.
-4. **Cenários restantes** com testes de sequência por semente (humano abre, cadeia, compra, morto, monte vazio).
-5. **Revisão** (`rules-auditor`), APK e PR.
+   em lote; voos com a segunda carta atrasada; reposição também no morto (humano e robôs). — **FEITA**
+3. **Aviso do próprio jogador** sem botões (fecha sozinho depois do tempo de leitura; "Na sua vez, você baixou..."). — **FEITA**
+4. **Cenários restantes** com testes: humano abre o jogo, cadeia, compra durante a jogada (robô e humano), morto direto,
+   monte vazio. Cobertos por testes do motor (`RoundEngine`, registro público) e do app (`GameViewModelTest`,
+   `DealRedThreeOrderTest`, `TableAnimationsTest`, `RestoreTest`); novos desta etapa: troca em lote (animação e agrupamento),
+   aviso depois do descarte, morto só na mão depois do voo. — **FEITA** (morto indireto do humano e monte vazio com 3 vermelho
+   seguem cobertos só pelo motor; uma revisão visual no celular fecha o resto)
+5. **Revisão** (`rules-auditor`), APK e PR. — em andamento

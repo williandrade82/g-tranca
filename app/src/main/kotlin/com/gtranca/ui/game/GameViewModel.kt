@@ -123,6 +123,8 @@ data class GameUiState(
     val dealPending: Boolean = false,
     /** Voos da distribuição (a tela espera todos pousarem para avisar que ela terminou). */
     val dealFlightIds: Set<Long> = emptySet(),
+    /** Quanto tempo o aviso de troca de 3 vermelho fica na tela antes de fechar sozinho (0 = sem animações). */
+    val swapNoticeMillis: Long = 0,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
     private val legal: List<Action> get() = if (ownSwapPending) emptyList() else snapshot.humanLegal
@@ -215,7 +217,7 @@ class GameViewModel(
         /** A 1ª troca depois da distribuição vem logo depois dela (pausa curta, sem o aviso longo parado). */
         val afterDeal: Boolean = false,
         /** §3.5 troca própria do início da vez → troca em cadeia que chega à mão quando ela é confirmada. */
-        val delivers: Map<Long, Long> = emptyMap(),
+        val delivers: Map<Long, List<Long>> = emptyMap(),
         val flashes: List<CanastaFlash> = emptyList(),
         /** Escala de duração das animações do sistema (`ANIMATOR_DURATION_SCALE`; 0 = desligadas). */
         val animationScale: Float = 1f,
@@ -323,7 +325,8 @@ class GameViewModel(
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
             local.map { state ->
-                state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) && state.dealDone }
+                // §3.5 a troca do jogador seguinte só começa depois que o descarte (e qualquer voo) anterior pousou
+                state.swaps.firstOrNull()?.takeIf { !isOwn(it, state.snapshot) && state.dealDone && state.flights.none { f -> f.id !in state.dealIds } && state.settling <= 0 }
             }
                 .distinctUntilChanged()
                 .collectLatest { head ->
@@ -423,32 +426,35 @@ class GameViewModel(
         // intermediária era outro 3 vermelho, que não está mais na mão. Na 1ª vez da partida (sem snapshot anterior da
         // mesma partida) as reposições são as últimas cartas da mão: o motor as acrescenta ao fim.
         val ownSwaps = fresh.filter { it.seat == snapshot.viewerSeat && it !in fromMorto }
+        val ownMorto = fresh.filter { it.seat == snapshot.viewerSeat && it in fromMorto }
         val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING && (previous == null || !sameRound)
         var delivers = if (sameRound) state.delivers else emptyMap()
         if (ownSwaps.isNotEmpty()) {
             val fromDeal = !(sameRound && previous != null)
             val startOnly = ownSwaps.all { it.atTurnStart }
-            // §3.5 as trocas "em cadeia" (chained) chegaram como reposição de outra troca: só as demais têm reposição que
-            // fica na mão.
-            val chained = if (startOnly) ownSwaps.filter { it.chained } else emptyList()
-            val kept = ownSwaps.size - chained.size
-            val replacements = if (fromDeal) snapshot.view.hand.takeLast(kept).toSet() else gained
             if (startOnly) {
-                // Início da vez: nas primeiras confirmações chegam os 3 vermelhos em cadeia, nas demais, as reposições
-                // que ficam (uma por troca, na ordem da mão; a última leva o que sobrar).
-                val ordered = snapshot.view.hand.filter { it in replacements }
-                ownSwaps.forEachIndexed { p, swap ->
-                    if (p < chained.size) {
-                        delivers = delivers + (swap.id to chained[p].id)
-                    } else {
-                        val mine = if (p == ownSwaps.lastIndex) ordered.drop(p - chained.size) else ordered.drop(p - chained.size).take(1)
-                        hidden = hidden + (swap.id to mine.toSet())
-                    }
-                }
+                // §3.5 uma reposição por 3 vermelho baixado; as "em cadeia" (chained) chegaram como reposição de outra troca,
+                // então só as demais reposições ficam na mão.
+                val kept = ownSwaps.sumOf { it.cards.size } - ownSwaps.filter { it.chained }.sumOf { it.cards.size }
+                val replacements = if (fromDeal) snapshot.view.hand.takeLast(kept).toSet() else gained
+                val (givenAway, hiddenNow) = allocateReplacements(ownSwaps, snapshot.view.hand.filter { it in replacements })
+                delivers = delivers + givenAway
+                hidden = hidden + hiddenNow
+                if (fromDeal) newCards = newCards + replacements
             } else {
+                val replacements = if (fromDeal) snapshot.view.hand.takeLast(ownSwaps.sumOf { it.cards.size }).toSet() else gained
                 hidden = hidden + (ownSwaps.last().id to replacements)
+                if (fromDeal) newCards = newCards + replacements
             }
-            if (fromDeal) newCards = newCards + replacements
+        }
+        // §9.4 o morto do próprio humano: os 3 vermelhos vêm no morto (aparecem como novos); as reposições do monte são as
+        // últimas cartas da mão (o motor as acrescenta ao fim) e chegam, na troca, depois dos 3 vermelhos.
+        if (ownMorto.isNotEmpty()) {
+            val kept = ownMorto.sumOf { it.cards.size } - ownMorto.filter { it.chained }.sumOf { it.cards.size }
+            val moved = snapshot.view.hand.filter { it in gained }
+            val (givenAway, hiddenNow) = allocateReplacements(ownMorto, moved.takeLast(kept))
+            delivers = delivers + givenAway
+            hidden = hidden + hiddenNow
         }
         // Animações da mesa a partir das diferenças com o último snapshot incorporado.
         val (newFlights, newFlashes) = if (effectiveMillis(state) > 0 && previous != null && snapshot.stage == Stage.PLAYING) {
@@ -527,7 +533,8 @@ class GameViewModel(
             redThrees = snapshot.view.redThrees.map { side -> side.filter { it !in staged } },
             reveal = reveal,
             ownSwapPending = ownSwapPending,
-            banner = head?.takeIf { state.dealDone && reveal == null && !isOwn(it, snapshot) },
+            banner = head?.takeIf { state.dealDone && reveal == null && !isOwn(it, snapshot) && state.flights.none { f -> f.id !in state.dealIds } && state.settling <= 0 },
+            swapNoticeMillis = if (state.afterDeal) minOf(swapAnimationMillis, DEAL_SWAP_PAUSE_MILLIS) else (swapAnimationMillis * state.speed).toLong(),
             planChoice = state.planChoice,
             meldChoice = state.meldChoice,
             confirmDecline = state.confirmDecline,
@@ -546,7 +553,7 @@ class GameViewModel(
 
     /** §3.5 o 3 vermelho em cadeia de [notice] já chegou à mão: a troca que o traz foi confirmada. */
     private fun delivered(notice: RedThreeNotice, state: Local): Boolean =
-        state.delivers.any { (from, to) -> to == notice.id && state.swaps.none { it.id == from } }
+        state.delivers.any { (from, to) -> notice.id in to && state.swaps.none { it.id == from } }
 
     private fun endScreen(snapshot: GameSnapshot, step: Int): EndScreen? = when {
         snapshot.stage == Stage.PLAYING -> null
@@ -740,6 +747,29 @@ class GameViewModel(
     private fun CardFlight.scaled(scale: Float): CardFlight = copy(delayMillis = (delayMillis * scale).toLong())
 
     /**
+     * Reparte entre as trocas [swaps] do humano (na ordem) as reposições: cada 3 vermelho baixado tem uma. As primeiras
+     * reposições são as cartas das trocas em cadeia (3 vermelhos que chegaram como reposição); as demais, as cartas
+     * [ordered] que ficam na mão (a última troca leva o que sobrar). Devolve (trocas em cadeia entregues, cartas de mão) por troca.
+     */
+    private fun allocateReplacements(swaps: List<RedThreeNotice>, ordered: List<Card>): Pair<Map<Long, List<Long>>, Map<Long, Set<Card>>> {
+        val chained = swaps.filter { it.chained }
+        var chainedAt = 0
+        var orderedAt = 0
+        val delivers = mutableMapOf<Long, List<Long>>()
+        val kept = mutableMapOf<Long, Set<Card>>()
+        swaps.forEachIndexed { p, swap ->
+            val ids = mutableListOf<Long>()
+            repeat(swap.cards.size) { if (chainedAt < chained.size) ids += chained[chainedAt++].id }
+            val need = swap.cards.size - ids.size
+            val mine = if (p == swaps.lastIndex) ordered.drop(orderedAt) else ordered.drop(orderedAt).take(need)
+            orderedAt += need
+            if (ids.isNotEmpty()) delivers[swap.id] = ids
+            if (mine.isNotEmpty()) kept[swap.id] = mine.toSet()
+        }
+        return delivers to kept
+    }
+
+    /**
      * §6.5 voos da troca encenada [notice] (que está saindo da fila de [state]): o 3 vermelho vai à área do lado e a
      * reposição chega do monte. Do humano: numa cadeia (mesma compra), a reposição de uma troca é o 3 vermelho da troca
      * seguinte, e a da última é a carta revelada agora; vindo do morto (§9.4), sem reposição do monte. De outro assento,
@@ -749,12 +779,14 @@ class GameViewModel(
         if (effectiveMillis(state) <= 0) return emptyList()
         val viewer = state.snapshot.viewerSeat
         val fromMorto = state.mortoSwaps[notice.id]
+        // Do humano: primeiro as cartas das trocas em cadeia que esta troca entrega (são 3 vermelhos que vão à mesa na
+        // troca seguinte), depois as reposições que ficam na mão.
+        val given = state.delivers[notice.id].orEmpty().flatMap { id -> state.swaps.first { it.id == id }.cards }
+        val kept = state.hidden[notice.id]?.toList().orEmpty()
         val replacement = when {
+            notice.seat != viewer -> TableAnimations.Replacement.FaceDown(notice.cards.size)
+            given.isNotEmpty() || kept.isNotEmpty() -> TableAnimations.Replacement.Revealed(given + kept)
             fromMorto != null -> TableAnimations.Replacement.None
-            state.delivers[notice.id] != null ->
-                TableAnimations.Replacement.Revealed(state.swaps.first { it.id == state.delivers.getValue(notice.id) }.cards)
-            notice.seat != viewer -> TableAnimations.Replacement.FaceDown
-            notice.id in state.hidden -> TableAnimations.Replacement.Revealed(state.hidden.getValue(notice.id).toList())
             else -> {
                 val next = state.swaps.getOrNull(1)
                 if (!notice.atTurnStart && next != null && next.seat == viewer && !next.atTurnStart && next.id !in state.mortoSwaps) {

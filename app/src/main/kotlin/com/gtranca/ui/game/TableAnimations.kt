@@ -49,7 +49,15 @@ sealed interface AnimAnchor {
  * Uma carta voando de [from] a [to]. [card] `null` = carta virada (informação oculta: compra e reposição de outro
  * assento). [delayMillis] escalona várias cartas do mesmo movimento.
  */
-data class CardFlight(val id: Long, val from: AnimAnchor, val to: AnimAnchor, val card: Card?, val delayMillis: Long = 0)
+data class CardFlight(
+    val id: Long,
+    val from: AnimAnchor,
+    val to: AnimAnchor,
+    val card: Card?,
+    val delayMillis: Long = 0,
+    /** Outras cartas da mão do humano que só aparecem quando este voo pousa (as do morto que não ganharam voo, §9). */
+    val also: List<Card> = emptyList(),
+)
 
 /** §7 um conjunto virou canastra (limpa ou suja) neste instante: destaque curto. */
 data class CanastaFlash(val id: Long, val side: Int, val meldId: Int, val clean: Boolean)
@@ -189,8 +197,15 @@ object TableAnimations {
             if (old.view.mortoStatus.getOrNull(i) != MortoStatus.Available) return@forEachIndexed
             val seat = events.lastOrNull { mode.sideOf(it.seat) == taken.side }?.seat ?: return@forEachIndexed
             val count = old.view.mortoSizes.getOrElse(i) { 0 }.coerceAtMost(MAX_CARDS_PER_MOVE)
+            // Para o humano as cartas voam abertas e ficam fora da mão até pousar (as que passam do limite de voos
+            // aparecem junto com o último); dos outros assentos, viradas.
+            val flown = flights.mapNotNull { it.card }.toSet()
+            val own = if (seat == viewer) new.view.hand.filter { it in gained && it !in flown } else emptyList()
             repeat(count) { k ->
-                flights += CardFlight(nextId(), AnimAnchor.Morto(i), holder(seat, viewer), null, MORTO_DELAY_MILLIS + STAGGER_MILLIS * k)
+                flights += CardFlight(
+                    nextId(), AnimAnchor.Morto(i), holder(seat, viewer), own.getOrNull(k), MORTO_DELAY_MILLIS + STAGGER_MILLIS * k,
+                    also = if (k == count - 1) own.drop(count) else emptyList(),
+                )
             }
         }
         return flights to canastaFlashes(old, new, nextId)
@@ -239,8 +254,8 @@ object TableAnimations {
         /** Sem voo de reposição (ex.: 3 vermelho que veio no morto, §9.4: as cartas do morto aparecem como novas). */
         data object None : Replacement
 
-        /** Carta virada do monte até o assento (reposição de outro assento: oculta). */
-        data object FaceDown : Replacement
+        /** [count] cartas viradas do monte até o assento (reposição de outro assento: oculta). */
+        data class FaceDown(val count: Int = 1) : Replacement
 
         /** Cartas reveladas do monte até a mão do humano (a reposição dele, ou o próximo 3 vermelho da cadeia). */
         data class Revealed(val cards: List<Card>) : Replacement
@@ -259,12 +274,18 @@ object TableAnimations {
     ): List<CardFlight> {
         val holder = holder(notice.seat, viewer)
         val origin = fromMorto?.let { AnimAnchor.Morto(it) } ?: holder
-        val flights = notice.cards.map { CardFlight(nextId(), origin, AnimAnchor.RedThrees(notice.side.index), it) }.toMutableList()
+        // Em lote (§3.5): cada carta sai um pouco depois da anterior, e as reposições começam depois da última que saiu.
+        val flights = notice.cards.mapIndexed { i, card ->
+            CardFlight(nextId(), origin, AnimAnchor.RedThrees(notice.side.index), card, STAGGER_MILLIS * i)
+        }.toMutableList()
+        val base = notice.cards.size + 1
         when (replacement) {
             Replacement.None -> Unit
-            Replacement.FaceDown -> flights += CardFlight(nextId(), AnimAnchor.Stock, holder, null, STAGGER_MILLIS * 2)
+            is Replacement.FaceDown -> repeat(replacement.count.coerceAtMost(MAX_CARDS_PER_MOVE)) { i ->
+                flights += CardFlight(nextId(), AnimAnchor.Stock, holder, null, STAGGER_MILLIS * (base + i))
+            }
             is Replacement.Revealed -> replacement.cards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
-                flights += CardFlight(nextId(), AnimAnchor.Stock, holder, card, STAGGER_MILLIS * (i + 2))
+                flights += CardFlight(nextId(), AnimAnchor.Stock, holder, card, STAGGER_MILLIS * (base + i))
             }
         }
         return flights
