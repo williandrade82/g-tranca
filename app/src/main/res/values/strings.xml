@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="pt">
-    <string name="app_name">Mestre da Canastra</string>
+    <string name="app_name">Tranca-Bot</string>
 
     <!-- Início -->
-    <string name="home_title">Mestre da Canastra</string>
-    <string name="home_title_tagline">Buraco &amp; Biriba</string>
+    <string name="home_title">TRANCA-BOT</string>
+    <string name="home_bots_description">Os quatro robôs do Tranca-Bot, abraçados e sorrindo</string>
+    <string name="brand_name">TRANCA-BOT</string>
+    <string name="home_title_tagline">Um jogo de tranca robotizado pra jogar entre família</string>
     <string name="home_subtitle">Você contra a máquina, sozinho ou em dupla</string>
     <string name="home_mode">Modo</string>
     <string name="mode_individual">Individual</string>

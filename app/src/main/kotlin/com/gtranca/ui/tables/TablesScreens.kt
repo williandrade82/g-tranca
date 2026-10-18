@@ -128,7 +128,7 @@ fun TablesScreen(viewModel: TablesViewModel, onOpen: (TableOffer) -> Unit, onCre
             BottomButton(stringResource(R.string.tables_create), "tables-create", GButtonKind.Primary, onClick = onCreate)
         },
     ) {
-        Text(stringResource(R.string.tables_subtitle), style = MaterialTheme.typography.bodyMedium, color = GColors.Lavender)
+        Text(stringResource(R.string.tables_subtitle), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
         Text(stringResource(R.string.coins_balance, balance), Modifier.testTag("coins-balance"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
         tables.forEach { table -> TableCard(table, balance) { onOpen(table) } }
     }
@@ -177,7 +177,7 @@ private fun TableCard(table: TableOffer, balance: Int, onClick: () -> Unit) {
                     Text(
                         stringResource(if (table.mode == GameMode.DUPLAS) character.level.labelRes() else character.profile.tagRes()),
                         style = MaterialTheme.typography.labelMedium,
-                        color = GColors.Lavender,
+                        color = GColors.Steel,
                     )
                 }
             }
@@ -198,7 +198,7 @@ private fun TableCard(table: TableOffer, balance: Int, onClick: () -> Unit) {
                     plainPoints(table.targetScore),
                 ),
                 style = MaterialTheme.typography.bodySmall,
-                color = GColors.Lavender,
+                color = GColors.Steel,
             )
         }
         Text(stringResource(R.string.tables_view_rules), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
@@ -221,7 +221,7 @@ private fun RosterStrip(table: TableOffer) {
                     PersonaAvatar(persona, 44.dp)
                 }
                 Text(persona.shortName, style = MaterialTheme.typography.labelSmall, color = GColors.Ivory, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender, maxLines = 1)
+                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, maxLines = 1)
             }
         }
     }
@@ -258,7 +258,7 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
                             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 CharacterPortrait(c, Pose.APRESENTACAO, Modifier.fillMaxWidth(), description = persona.fullName)
                                 Text(persona.fullName, style = MaterialTheme.typography.labelMedium, color = GColors.Champagne, textAlign = TextAlign.Center, maxLines = 2)
-                                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender, textAlign = TextAlign.Center)
+                                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.Center)
                                 LevelStars(c.level, size = 14.sp)
                                 Text(stringResource(c.profile.tagRes()), style = MaterialTheme.typography.labelSmall, color = GColors.Ivory, textAlign = TextAlign.Center)
                             }
@@ -268,7 +268,7 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
                         "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
                         Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = GColors.Lavender,
+                        color = GColors.Steel,
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -281,12 +281,12 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
                         LevelStars(character.level, size = 20.sp)
                         Text(stringResource(character.level.labelRes()), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
                     }
-                    Text(stringResource(character.profile.tagRes()), style = MaterialTheme.typography.titleSmall, color = GColors.Lavender, textAlign = TextAlign.Center)
+                    Text(stringResource(character.profile.tagRes()), style = MaterialTheme.typography.titleSmall, color = GColors.Steel, textAlign = TextAlign.Center)
                     Text(stringResource(character.profile.pitchRes()), style = MaterialTheme.typography.bodyMedium, color = GColors.Ivory, textAlign = TextAlign.Center)
                     Text(
                         "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = GColors.Lavender,
+                        color = GColors.Steel,
                     )
                 }
             } else {
@@ -300,7 +300,7 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
         GPanel(Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.stake_line, table.stake), Modifier.testTag("table-rules-stake"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
             if (balance != Int.MAX_VALUE) {
-                Text(stringResource(R.string.coins_balance, balance), style = MaterialTheme.typography.bodyMedium, color = GColors.Lavender)
+                Text(stringResource(R.string.coins_balance, balance), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
             }
             if (!Coins.canJoin(balance, table.stake)) {
                 Text(stringResource(R.string.stake_insufficient), Modifier.testTag("table-rules-insufficient"), style = MaterialTheme.typography.bodyMedium, color = GColors.Ruby)
@@ -323,7 +323,7 @@ fun RulesSummary(rules: RuleSet, targetScore: Int, modifier: Modifier = Modifier
     GPanel(modifier.fillMaxWidth().testTag("rules-summary")) {
         Text(rulesName(rules), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = GColors.Gold)
         if (rules.id != base.id) {
-            Text(stringResource(R.string.table_rules_differs), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender)
+            Text(stringResource(R.string.table_rules_differs), style = MaterialTheme.typography.labelSmall, color = GColors.Steel)
         }
         RuleLine(stringResource(R.string.rule_groups), groupsText(rules.groupRanks), rules.groupRanks != base.groupRanks)
         RuleLine(
@@ -434,7 +434,7 @@ fun CreateTableScreen(
                 stringResource(R.string.coins_balance, state.balance) + if (state.canAfford) "" else " · " + stringResource(R.string.stake_insufficient),
                 Modifier.testTag("create-balance"),
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (state.canAfford) GColors.Lavender else GColors.Ruby,
+                color = if (state.canAfford) GColors.Steel else GColors.Ruby,
             )
             Section(stringResource(R.string.create_rules)) {
                 Chip(RuleSet.CLASSICA.name, state.rulesChoice == RulesChoice.CLASSICA, "rules-classica") { viewModel.onRulesChange(RulesChoice.CLASSICA) }
@@ -495,7 +495,7 @@ fun RulesEditorScreen(viewModel: RulesEditorViewModel, onSaved: () -> Unit, onBa
             BottomButton(stringResource(R.string.rules_save), "rules-save", GButtonKind.Primary, enabled = state.canSave, onClick = viewModel::onSave)
         },
     ) {
-        Text(stringResource(R.string.rules_editor_hint), style = MaterialTheme.typography.bodyMedium, color = GColors.Lavender)
+        Text(stringResource(R.string.rules_editor_hint), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
         GPanel(Modifier.fillMaxWidth()) {
             Section(stringResource(R.string.rules_start_from)) {
                 RuleSet.HOUSE.forEach { house ->

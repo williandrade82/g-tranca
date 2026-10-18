@@ -71,7 +71,7 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 OutcomeRibbon(stringResource(if (won) R.string.outcome_victory else R.string.outcome_defeat), won, animate, Modifier.testTag("outcome-ribbon"))
             }
-            if (won) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Trophy(96.dp, animate, Modifier.testTag("game-over-trophy")) }
+            if (won) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { VictoryCrown(96.dp, animate, Modifier.testTag("game-over-crown")) }
             // §14.1 quem venceu, com o avatar em destaque.
             snapshot.winner?.let { winner ->
                 val winners = personasOfSide(view.mode, winner, personas)
@@ -145,7 +145,7 @@ private fun ResultsTable(
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         // Cabeçalho.
         Row(Modifier.fillMaxWidth().padding(bottom = Spacing.xs), verticalAlignment = Alignment.Bottom) {
-            Text(stringResource(R.string.game_over_col_round), Modifier.weight(0.9f), style = MaterialTheme.typography.labelLarge, color = GColors.Lavender)
+            Text(stringResource(R.string.game_over_col_round), Modifier.weight(0.9f), style = MaterialTheme.typography.labelLarge, color = GColors.Steel)
             sides.forEach { side ->
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     AvatarRow(personasOfSide(mode, side, personas), 26.dp, pose = poses.getValue(side))
@@ -172,7 +172,7 @@ private fun ResultsTable(
                     .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(record.number.toString(), Modifier.weight(0.9f), style = numbers, color = GColors.Lavender)
+                Text(record.number.toString(), Modifier.weight(0.9f), style = numbers, color = GColors.Steel)
                 values.forEach { v ->
                     val top = v == best && values.count { it == best } == 1
                     Text(
@@ -201,7 +201,7 @@ private fun ResultsTable(
                         plainPoints(snapshot.totals[side.index]),
                         Modifier
                             .background(if (winner) GoldBrush else androidx.compose.ui.graphics.SolidColor(GColors.IndigoLight), CircleShape)
-                            .border(1.dp, if (winner) GColors.Champagne else GColors.Lavender.copy(alpha = 0.5f), CircleShape)
+                            .border(1.dp, if (winner) GColors.Champagne else GColors.Steel.copy(alpha = 0.5f), CircleShape)
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                         style = numbers,
                         fontWeight = FontWeight.Bold,

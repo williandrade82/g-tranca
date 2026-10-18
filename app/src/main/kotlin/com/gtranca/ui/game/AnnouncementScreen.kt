@@ -97,7 +97,7 @@ fun AnnouncementScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (outcome == EndOutcome.WIN && !brief) Trophy(96.dp, animate, Modifier.testTag("announcement-trophy"))
+            if (outcome == EndOutcome.WIN && !brief) VictoryCrown(96.dp, animate, Modifier.testTag("announcement-crown"))
             if (avatars.isEmpty() && illustration != null) MessageBadge(illustration, MessageTone.Warning, 96.dp)
             if (avatars.isNotEmpty()) {
                 // §14.5 os dois vencedores com confete e os dois perdedores sobre o fundo vermelho que pulsa

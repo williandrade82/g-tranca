@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.gtranca.ui.theme.CrownMark
 import com.gtranca.ui.theme.GColors
 import kotlin.math.PI
 import kotlin.math.abs
@@ -160,56 +161,24 @@ fun Modifier.outcomeMotion(outcome: EndOutcome?, enabled: Boolean): Modifier = c
     }
 }
 
-/** Troféu desenhado no código; brilha e pulsa quando [animate]. */
+/** Coroa dourada da vitória (no lugar do troféu): pulsa suavemente quando [animate]. */
 @Composable
-fun Trophy(size: Dp, animate: Boolean, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "trophy")
+fun VictoryCrown(size: Dp, animate: Boolean, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "crown")
     val pulse = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Reverse),
-        label = "trophy-pulse",
+        label = "crown-pulse",
     )
-    Canvas(modifier.size(size).graphicsLayer {
-        val s = if (animate) 1f + 0.06f * pulse.value else 1f
-        scaleX = s
-        scaleY = s
-    }) {
-        val w = this.size.width
-        val gold = Brush.linearGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep), Offset(0f, 0f), Offset(w, w))
-        // Alças.
-        val handle = Stroke(width = w * 0.07f, cap = StrokeCap.Round)
-        drawArc(GColors.GoldDeep, 90f, 180f, false, Offset(w * 0.04f, w * 0.14f), Size(w * 0.3f, w * 0.34f), style = handle)
-        drawArc(GColors.GoldDeep, -90f, 180f, false, Offset(w * 0.66f, w * 0.14f), Size(w * 0.3f, w * 0.34f), style = handle)
-        // Taça.
-        val cup = Path().apply {
-            moveTo(w * 0.22f, w * 0.1f); lineTo(w * 0.78f, w * 0.1f)
-            cubicTo(w * 0.78f, w * 0.5f, w * 0.64f, w * 0.64f, w * 0.5f, w * 0.64f)
-            cubicTo(w * 0.36f, w * 0.64f, w * 0.22f, w * 0.5f, w * 0.22f, w * 0.1f)
-            close()
-        }
-        drawPath(cup, gold)
-        // Haste e base.
-        drawRoundRect(gold, Offset(w * 0.45f, w * 0.62f), Size(w * 0.1f, w * 0.16f), CornerRadius(w * 0.02f))
-        drawRoundRect(gold, Offset(w * 0.3f, w * 0.76f), Size(w * 0.4f, w * 0.12f), CornerRadius(w * 0.03f))
-        // Estrela na taça e brilho.
-        val star = Path().apply {
-            val cx = w * 0.5f
-            val cy = w * 0.34f
-            val outer = w * 0.1f
-            val inner = w * 0.04f
-            for (i in 0 until 10) {
-                val r = if (i % 2 == 0) outer else inner
-                val a = (-PI / 2 + i * PI / 5).toFloat()
-                val px = cx + r * kotlin.math.cos(a)
-                val py = cy + r * sin(a)
-                if (i == 0) moveTo(px, py) else lineTo(px, py)
-            }
-            close()
-        }
-        drawPath(star, GColors.Ivory)
-        drawArc(Color(0x66FFFFFF), 110f, 70f, false, Offset(w * 0.28f, w * 0.14f), Size(w * 0.26f, w * 0.4f), style = Stroke(width = w * 0.035f, cap = StrokeCap.Round))
-    }
+    CrownMark(
+        size,
+        modifier.graphicsLayer {
+            val s = if (animate) 1f + 0.06f * pulse.value else 1f
+            scaleX = s
+            scaleY = s
+        },
+    )
 }
 
 /**

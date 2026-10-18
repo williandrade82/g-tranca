@@ -142,7 +142,7 @@ class EndScreensTest {
     fun fimDeJogoComVitoriaMostraTrofeuEConfete() {
         rule.mainClock.autoAdvance = false
         rule.setContent { GTrancaTheme { GameOverScreen(finished(Side(0)), {}) } }
-        rule.onNodeWithTag("game-over-trophy").assertExists()
+        rule.onNodeWithTag("game-over-crown").assertExists()
         rule.onNodeWithTag("end-celebration").assertExists()
     }
 
@@ -150,7 +150,7 @@ class EndScreensTest {
     fun fimDeJogoComDerrotaTemSoAsCartasCaindoESemTrofeu() {
         rule.mainClock.autoAdvance = false
         rule.setContent { GTrancaTheme { GameOverScreen(finished(Side(1)), {}) } }
-        rule.onNodeWithTag("game-over-trophy").assertDoesNotExist()
+        rule.onNodeWithTag("game-over-crown").assertDoesNotExist()
         rule.onNodeWithTag("end-celebration").assertExists()
     }
 
@@ -166,7 +166,7 @@ class EndScreensTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { GTrancaTheme { RoundAnnouncement(snapshot(), {}, onResign = {}) } }
         rule.onNodeWithTag("end-celebration").assertExists()
-        rule.onNodeWithTag("announcement-trophy").assertDoesNotExist()
+        rule.onNodeWithTag("announcement-crown").assertDoesNotExist()
     }
 
     @Test

@@ -154,6 +154,7 @@ fun GMessage(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
+                BrandHeader()
                 MessageBadge(illustration, tone)
                 Text(
                     title,

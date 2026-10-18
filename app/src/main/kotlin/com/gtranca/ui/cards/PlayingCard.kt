@@ -1,6 +1,7 @@
 package com.gtranca.ui.cards
 
 import com.gtranca.ui.theme.Cinzel
+import com.gtranca.ui.theme.CrownMark
 import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.CardFont
 import androidx.compose.ui.draw.shadow
@@ -72,7 +73,7 @@ enum class CardSize(val width: Dp, val height: Dp, val cornerFont: Dp, val cente
  * - [NONE]: sem realce.
  * - [SUBTLE]: participa de alguma jogada (sem seleção): só um ponto verde no canto, para a mão cheia não
  *   ficar toda contornada.
- * - [STRONG]: completa uma jogada junto com a seleção atual: borda ametista grossa e o ponto.
+ * - [STRONG]: completa uma jogada junto com a seleção atual: borda azul grossa e o ponto.
  * - [SELECTED]: selecionada: borda ouro profundo, fundo creme, marca de seleção e leve aumento.
  * - [DIMMED]: há seleção e a carta não combina com ela: esmaecida (continua tocável).
  */
@@ -224,7 +225,7 @@ private fun CornerIndex(card: Card, style: TextStyle, modifier: Modifier) {
 
 
 /**
- * Verso da carta: moldura marfim e, dentro dela, losangos dourados sobre bordô, com o monograma "MC" (Mestre da Canastra).
+ * Verso da carta: moldura marfim e, dentro dela, losangos dourados sobre bordô, com a coroa do Tranca-Bot.
  * Isolado para poder ser trocado por imagem no futuro.
  */
 @Composable
@@ -276,17 +277,7 @@ fun CardBack(
             drawPath(diamond, GColors.Gold, style = Stroke(width = 1.5f))
         }
         if (size != CardSize.SMALL) {
-            Text(
-                "MC",
-                Modifier.align(Alignment.Center),
-                style = TextStyle(
-                    color = GColors.Champagne,
-                    fontFamily = Cinzel,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = (size.width * 0.18f).asFont(),
-                    lineHeight = (size.width * 0.18f).asFont(),
-                ),
-            )
+            CrownMark(size.width * 0.34f, Modifier.align(Alignment.Center))
         }
     }
 }

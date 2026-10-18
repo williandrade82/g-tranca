@@ -816,7 +816,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                                     PersonGlyph(if (status.side == view.side) GColors.Emerald else GColors.Ruby)
                                     Text(mortoTakerName(state, status)!!, color = OnTable, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                            } else Text(statusText, color = GColors.Lavender, style = MaterialTheme.typography.labelMedium, maxLines = 2)
+                            } else Text(statusText, color = GColors.Steel, style = MaterialTheme.typography.labelMedium, maxLines = 2)
                         }
                     }
                 }
@@ -960,7 +960,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
         if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
             Text(
                 stringResource(if (snapshot.view.mode == GameMode.DUPLAS) R.string.add_to_meld_hint_team else R.string.add_to_meld_hint),
-                color = GColors.Lavender,
+                color = GColors.Steel,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -1130,7 +1130,7 @@ private fun SortButton(selected: Boolean, modifier: Modifier, content: @Composab
             Modifier
                 .size(36.dp)
                 .then(if (selected) Modifier.background(GoldBrush, CircleShape) else Modifier)
-                .border(1.dp, if (selected) GColors.Champagne else GColors.Lavender.copy(alpha = 0.6f), CircleShape),
+                .border(1.dp, if (selected) GColors.Champagne else GColors.Steel.copy(alpha = 0.6f), CircleShape),
             contentAlignment = Alignment.Center,
         ) { content(if (selected) GColors.OnGold else OnTable) }
     }

@@ -1,6 +1,6 @@
 # G-Tranca
 
-Nome público do app: **Mestre da Canastra** (`app_name`), subtítulo **Buraco & Biriba** (`home_title_tagline`). `applicationId` = `br.com.funnyandplay.mestredacanastra` (definitivo); o código continua no pacote `com.gtranca` e "G-Tranca" é o nome interno.
+Nome público do app: **Tranca-Bot** (`app_name`; no logotipo e nos modais, "TRANCA-BOT" em caixa alta), descrição **Um jogo de tranca robotizado pra jogar entre família** (`home_title_tagline`). `applicationId` = `br.com.funnyandplay.trancabot`; o código continua no pacote `com.gtranca` e "G-Tranca" é o nome interno. Identidade visual: paleta do robô (azul royal, azul-pele, ouro, creme) e a coroa dourada como símbolo; feltro verde só na mesa.
 
 Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a máquina (individual) ou humano + parceiro virtual contra dupla virtual (duplas).
 

@@ -89,7 +89,7 @@ val GoldBrush: Brush = Brush.verticalGradient(listOf(GColors.Champagne, GColors.
 
 /**
  * Botão do app em cápsula. Primary = ouro biselado com brilho periódico; Secondary = índigo com borda
- * ametista; Danger = rubi. Ao tocar, afunda 3%.
+ * azul royal; Danger = rubi. Ao tocar, afunda 3%.
  */
 @Composable
 fun GButton(
@@ -120,7 +120,7 @@ fun GButton(
         GButtonKind.Secondary -> Modifier
             .shadow(Elevation.button, shape)
             .background(GColors.Indigo, shape)
-            .border(1.5.dp, GColors.Amethyst, shape)
+            .border(1.5.dp, GColors.RoyalBlue, shape)
         GButtonKind.Danger -> Modifier
             .shadow(Elevation.button, shape)
             .background(Brush.verticalGradient(listOf(GColors.Ruby, GColors.Bordeaux)), shape)
@@ -257,7 +257,7 @@ fun Modifier.goldFrame(corner: Dp = 20.dp, width: Dp = 3.dp, lights: Boolean = t
     }
 }
 
-/** Ficha selecionável (substitui o botão de opção): cápsula índigo; selecionada = ametista com borda ouro. */
+/** Ficha selecionável (substitui o botão de opção): cápsula índigo; selecionada = azul royal com borda ouro. */
 @Composable
 fun GChoiceChip(
     text: String,
@@ -267,8 +267,8 @@ fun GChoiceChip(
     enabled: Boolean = true,
 ) {
     val shape = CircleShape
-    val fill = if (selected) GColors.Amethyst else GColors.Indigo
-    val border = if (selected) GColors.Gold else GColors.Lavender.copy(alpha = 0.5f)
+    val fill = if (selected) GColors.RoyalBlue else GColors.Indigo
+    val border = if (selected) GColors.Gold else GColors.Steel.copy(alpha = 0.5f)
     Box(
         modifier
             .heightIn(min = 48.dp)
@@ -283,14 +283,14 @@ fun GChoiceChip(
     ) {
         Text(
             text,
-            color = if (selected) GColors.Ivory else GColors.Lavender,
+            color = if (selected) GColors.Ivory else GColors.Steel,
             style = MaterialTheme.typography.labelLarge,
             textAlign = TextAlign.Center,
         )
     }
 }
 
-/** Diálogo padrão do app (painel índigo arredondado). */
+/** Diálogo padrão do app (painel azul arredondado), sempre com o cabeçalho de marca [BrandHeader] acima do título. */
 @Composable
 fun GDialog(
     onDismissRequest: () -> Unit,
@@ -306,7 +306,7 @@ fun GDialog(
         confirmButton = confirmButton,
         modifier = modifier.border(1.dp, GColors.Gold.copy(alpha = 0.5f), MaterialTheme.shapes.extraLarge),
         dismissButton = dismissButton,
-        title = title,
+        title = { Column { BrandHeader(); title?.invoke() } },
         text = text,
         properties = properties,
         shape = MaterialTheme.shapes.extraLarge,
