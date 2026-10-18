@@ -15,9 +15,9 @@ import com.gtranca.data.StatsRepository
 import com.gtranca.engine.model.Seat
 
 /** Conversões entre os tipos do jogo e os DTOs do `:data` (que não depende do `:ai`). */
-fun PublicEvent.toSaved(): SavedEvent = SavedEvent(seat.index, action, takenFromDiscard)
+fun PublicEvent.toSaved(): SavedEvent = SavedEvent(seat.index, action, takenFromDiscard, takenTop)
 
-fun SavedEvent.toPublic(): PublicEvent = PublicEvent(Seat(seat), action, takenFromDiscard)
+fun SavedEvent.toPublic(): PublicEvent = PublicEvent(Seat(seat), action, takenFromDiscard, takenTop)
 
 fun GameConfig.toSaved(): SavedConfig = SavedConfig(mode, difficulty.id, targetScore, stake)
 

@@ -399,6 +399,30 @@ class TableAnimationsTest {
     }
 
     @Test
+    fun `§5_1 pegar o lixo so para acrescentar o topo a um jogo da mesa - o topo voa do lixo ao jogo e depois o resto do lixo voa para a mao`() {
+        val hand = listOf(c("9S"), c("7H"))
+        val meld = (SideTable().createMeld(listOf(c("4H"), c("4D"), c("4S"))) as RuleResult.Ok).value
+        val meldId = meld.melds.single().id
+        val withTop = (meld.addToMeld(meldId, listOf(c("4C"))) as RuleResult.Ok).value
+        val event = PublicEvent(
+            Seat(0), Action.TakeDiscardPile(DiscardPlan.AddToMeld(meldId, emptyList())),
+            takenFromDiscard = listOf(c("5S"), c("QS")), takenTop = c("4C"),
+        )
+        val oldWithMeld = snapshot(view(hand).copy(tables = listOf(meld, SideTable())), List(4) { emptyList() })
+        val newView = view(listOf(c("9S"), c("7H"), c("5S"), c("QS"))).copy(tables = listOf(withTop, SideTable()), discardPile = emptyList())
+        val new = snapshot(newView, listOf(listOf(event)) + List(3) { emptyList() })
+        var id = 0L
+        val (flights, _) = TableAnimations.derive(oldWithMeld, new, emptySet()) { ++id }
+        val target = AnimAnchor.Meld(0, meldId.value)
+        val top = flights.single { it.from == AnimAnchor.DiscardPile && it.to == target }
+        top.card shouldBe c("4C")
+        val toHand = flights.filter { it.from == AnimAnchor.DiscardPile && it.to == AnimAnchor.OwnHand }
+        toHand.map { it.card } shouldBe listOf(c("5S"), c("QS"))
+        // O resto do lixo só voa para a mão depois do voo do topo ao jogo.
+        (toHand.minOf { it.delayMillis } > top.delayMillis) shouldBe true
+    }
+
+    @Test
     fun `§4_3 §6_5 troca de 3 vermelho do bot anima antes do descarte dele`() = runTest(dispatcher) {
         val bot = AnimAnchor.SeatHand(1)
         var checked = false

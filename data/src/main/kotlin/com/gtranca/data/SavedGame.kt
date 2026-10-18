@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
  * restaurar.
  */
 @Serializable
-data class SavedEvent(val seat: Int, val action: Action, val takenFromDiscard: List<Card> = emptyList())
+data class SavedEvent(val seat: Int, val action: Action, val takenFromDiscard: List<Card> = emptyList(), val takenTop: Card? = null)
 
 /** Configuração escolhida no início (§14), sem depender do `:ai`: a dificuldade vai pelo identificador. */
 @Serializable
