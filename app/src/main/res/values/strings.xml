@@ -110,6 +110,10 @@
     <string name="home_profile">Perfil</string>
     <string name="profile_title">Seu perfil</string>
     <string name="profile_color">Cor do medalhão</string>
+    <string name="profile_deck">Cor do baralho</string>
+    <string name="deck_blue">Azul</string>
+    <string name="deck_green">Verde</string>
+    <string name="deck_red">Vermelho</string>
     <string name="profile_name">Nome</string>
     <string name="profile_name_hint">Até %1$d caracteres; em branco, \"Você\"</string>
     <string name="profile_save">Salvar</string>

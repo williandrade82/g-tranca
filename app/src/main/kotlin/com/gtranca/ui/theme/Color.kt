@@ -61,6 +61,11 @@ object GColors {
     val CardDim = Color(0x66000000)
     val CardNewBadge = Color(0xFF1F8A5E)
     val CardBackFrame = Color(0xFF173C9A)
+
+    // Cor do baralho à escolha do jogador (§14.1): azul (padrão), verde (mais vivo que o feltro da mesa) e vermelho.
+    val DeckBlue = CardBackFrame
+    val DeckGreen = Color(0xFF1B8A4E)
+    val DeckRed = Color(0xFFB3192F)
     val CardBackPattern = Gold
 
     // Canastras

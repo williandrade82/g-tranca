@@ -5,17 +5,22 @@ package com.gtranca.game
  * arquivo fica no aparelho) ou, sem foto, medalhão com a inicial na [color] escolhida (índice da paleta).
  * Gravado como texto nas preferências ([encode]/[decode]).
  */
+/** §14.1 cor do verso das cartas (do baralho), à escolha do jogador; o padrão é o azul. */
+enum class DeckColor { AZUL, VERDE, VERMELHO }
+
 data class PlayerProfile(
     val name: String = "",
     val color: Int = 0,
     /** §14.1 o avatar é a foto pessoal guardada no aparelho. */
     val hasPhoto: Boolean = false,
+    /** §14.1 cor do baralho (verso das cartas). */
+    val deck: DeckColor = DeckColor.AZUL,
 ) {
     /** O perfil como persona (sem sobrenome), para o avatar; com [hasPhoto], a foto em [photoPath]. */
     fun persona(defaultName: String, photoPath: String? = null): Persona =
         Persona(name.trim().ifEmpty { defaultName }, "", color = color, photo = photoPath?.takeIf { hasPhoto })
 
-    fun encode(): String = listOf(sanitizeName(name), color, hasPhoto).joinToString(SEPARATOR)
+    fun encode(): String = listOf(sanitizeName(name), color, hasPhoto, deck.ordinal).joinToString(SEPARATOR) 
 
     companion object {
         const val MAX_NAME = 16
@@ -39,10 +44,12 @@ data class PlayerProfile(
             val parts = text.split(SEPARATOR)
             return try {
                 when (parts.size) {
-                    3 -> PlayerProfile(
+                    // 3 campos: perfil gravado antes da cor do baralho (vale o azul).
+                    3, 4 -> PlayerProfile(
                         sanitizeName(parts[0]),
                         parts[1].toInt().also { require(it in 0 until COLORS) },
                         parts[2].toBooleanStrict(),
+                        parts.getOrNull(3)?.toInt()?.let { DeckColor.entries.getOrNull(it) ?: throw IllegalArgumentException("baralho") } ?: DeckColor.AZUL,
                     )
                     in 7..9 -> PlayerProfile(sanitizeName(parts[0]), 0, parts.getOrNull(8)?.toBooleanStrict() ?: false)
                     else -> PlayerProfile()

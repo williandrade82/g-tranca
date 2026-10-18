@@ -15,6 +15,18 @@ class PlayerProfileTest {
     }
 
     @Test
+    fun `§14_1 a cor do baralho e gravada, e o perfil antigo sem ela usa o azul`() {
+        PlayerProfile().deck shouldBe DeckColor.AZUL
+        DeckColor.entries.forEach { deck ->
+            val profile = PlayerProfile("Bia", color = 1, deck = deck)
+            PlayerProfile.decode(profile.encode()) shouldBe profile
+        }
+        PlayerProfile.decode("Bia\t2\tfalse") shouldBe PlayerProfile("Bia", color = 2)
+        PlayerProfile.decode("Bia\t2\tfalse\t9") shouldBe PlayerProfile()
+        PlayerProfile.decode("Bia\t2\tfalse\tx") shouldBe PlayerProfile()
+    }
+
+    @Test
     fun `§14_1 foto pessoal so vale com o arquivo informado`() {
         val profile = PlayerProfile("Bia", hasPhoto = true)
         profile.persona("Você", "/fotos/eu.jpg").photo shouldBe "/fotos/eu.jpg"

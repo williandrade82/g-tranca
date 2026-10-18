@@ -47,6 +47,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.gtranca.game.DeckColor
+import com.gtranca.ui.cards.CardBack
+import com.gtranca.ui.cards.CardSize
 import com.gtranca.game.PlayerProfile
 import com.gtranca.ui.persona.MedalColors
 import com.gtranca.ui.persona.PersonaAvatar
@@ -91,6 +95,10 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
                 // §14.1 sem foto, o avatar é o medalhão com a inicial: cor à escolha.
                 Section(stringResource(R.string.profile_color)) {
                     Swatches(MedalColors, profile.color, "medal-color", viewModel::onColor)
+                }
+                // §14.1 cor do verso das cartas: azul, verde ou vermelho.
+                Section(stringResource(R.string.profile_deck)) {
+                    DeckChoices(profile.deck, viewModel::onDeck)
                 }
             }
             GPanel(Modifier.fillMaxWidth()) {
@@ -239,3 +247,37 @@ private fun Swatches(colors: List<Color>, selected: Int, tag: String, onSelect: 
     }
 }
 
+
+/** §14.1 as três cores do baralho, cada uma com o verso de uma carta; a escolhida leva o aro dourado. */
+@Composable
+private fun DeckChoices(selected: DeckColor, onSelect: (DeckColor) -> Unit) {
+    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        DeckColor.entries.forEach { deck ->
+            val label = stringResource(deck.labelRes())
+            val isSelected = deck == selected
+            Column(
+                Modifier
+                    .heightIn(min = 48.dp)
+                    .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(deck) })
+                    .semantics { contentDescription = label }
+                    .testTag("deck-color-${deck.name.lowercase()}"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                Box(
+                    Modifier
+                        .border(if (isSelected) 3.dp else 1.dp, if (isSelected) GColors.Gold else GColors.Steel.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                        .padding(4.dp),
+                ) { CardBack(size = CardSize.MEDIUM, describe = false, deck = deck) }
+                Text(label, style = MaterialTheme.typography.labelLarge, color = if (isSelected) GColors.Gold else GColors.Steel)
+            }
+        }
+    }
+}
+
+@androidx.annotation.StringRes
+private fun DeckColor.labelRes(): Int = when (this) {
+    DeckColor.AZUL -> R.string.deck_blue
+    DeckColor.VERDE -> R.string.deck_green
+    DeckColor.VERMELHO -> R.string.deck_red
+}

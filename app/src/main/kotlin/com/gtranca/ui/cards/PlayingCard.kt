@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
+import com.gtranca.game.DeckColor
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.Suit
@@ -224,8 +225,18 @@ private fun CornerIndex(card: Card, style: TextStyle, modifier: Modifier) {
 }
 
 
+/** Cor do baralho do jogador (verso das cartas), definida no app inteiro a partir do perfil. */
+val LocalDeckColor = androidx.compose.runtime.staticCompositionLocalOf { DeckColor.AZUL }
+
+/** Cor da moldura do verso da carta para o baralho. */
+fun DeckColor.frameColor(): androidx.compose.ui.graphics.Color = when (this) {
+    DeckColor.AZUL -> GColors.DeckBlue
+    DeckColor.VERDE -> GColors.DeckGreen
+    DeckColor.VERMELHO -> GColors.DeckRed
+}
+
 /**
- * Verso da carta: moldura marfim e, dentro dela, losangos dourados sobre bordô, com a coroa do Tranca-Bot.
+ * Verso da carta: moldura marfim e, dentro dela, losangos dourados sobre a cor do baralho ([deck]), com a coroa do Tranca-Bot.
  * Isolado para poder ser trocado por imagem no futuro.
  */
 @Composable
@@ -233,8 +244,10 @@ fun CardBack(
     modifier: Modifier = Modifier,
     size: CardSize = CardSize.SMALL,
     describe: Boolean = true,
+    deck: DeckColor = LocalDeckColor.current,
 ) {
     val description = stringResource(R.string.card_back)
+    val frame = deck.frameColor()
     val shape = RoundedCornerShape(size.width * 0.12f)
     Box(
         modifier
@@ -246,7 +259,7 @@ fun CardBack(
     ) {
         Canvas(Modifier.matchParentSize().padding(3.dp)) {
             val radius = CornerRadius(this.size.width * 0.08f)
-            drawRoundRect(GColors.CardBackFrame, cornerRadius = radius)
+            drawRoundRect(frame, cornerRadius = radius)
             val step = this.size.width / 4f
             clipRect {
                 // Losangos: duas famílias de diagonais.
@@ -273,7 +286,7 @@ fun CardBack(
             val diamond = Path().apply {
                 moveTo(cx, cy - r * 1.4f); lineTo(cx + r, cy); lineTo(cx, cy + r * 1.4f); lineTo(cx - r, cy); close()
             }
-            drawPath(diamond, GColors.CardBackFrame)
+            drawPath(diamond, frame)
             drawPath(diamond, GColors.Gold, style = Stroke(width = 1.5f))
         }
         if (size != CardSize.SMALL) {

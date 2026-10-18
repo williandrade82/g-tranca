@@ -84,6 +84,9 @@ class ProfileViewModel(
     /** §14.1 cor do medalhão (índice da paleta); índice fora dela é ignorado. */
     fun onColor(index: Int) = edit { if (index in 0 until PlayerProfile.COLORS) it.copy(color = index) else it }
 
+    /** §14.1 cor do baralho (verso das cartas); grava ao salvar, como o resto do perfil. */
+    fun onDeck(deck: com.gtranca.game.DeckColor) = edit { it.copy(deck = deck) }
+
     /** Caminho da foto a mostrar na prévia (rascunho ou gravada), ou `null`. */
     val previewPhoto: String?
         get() = when (_uiState.value.photo) {

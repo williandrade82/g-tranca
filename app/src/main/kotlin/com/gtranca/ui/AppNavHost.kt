@@ -176,6 +176,10 @@ fun AppNavHost() {
     val speedSettings = remember(slowAnimations, data) {
         SpeedSettings(slowAnimations) { WriteQueue.app.enqueue { data.settings.setSlowAnimations(!slowAnimations) } }
     }
+    // Cor do baralho (Perfil): vale para o app todo.
+    val deck by remember(data) {
+        data.settings.settings.map { com.gtranca.game.PlayerProfile.decode(it.profileId).deck }.catch { emit(com.gtranca.game.DeckColor.AZUL) }
+    }.collectAsStateWithLifecycle(com.gtranca.game.DeckColor.AZUL)
     // Troca de tela: fade com um véu dourado que se apaga (não bloqueia toques; parado sem animações do sistema).
     val motion = com.gtranca.ui.theme.rememberMotionEnabled()
     val entry by navController.currentBackStackEntryAsState()
@@ -185,7 +189,11 @@ fun AppNavHost() {
         veil.snapTo(0.16f)
         veil.animateTo(0f, androidx.compose.animation.core.tween(450))
     }
-    CompositionLocalProvider(LocalSoundSettings provides soundSettings, LocalSpeedSettings provides speedSettings) {
+    CompositionLocalProvider(
+        LocalSoundSettings provides soundSettings,
+        LocalSpeedSettings provides speedSettings,
+        com.gtranca.ui.cards.LocalDeckColor provides deck,
+    ) {
     androidx.compose.foundation.layout.Box(
         androidx.compose.ui.Modifier
             .fillMaxSize()
