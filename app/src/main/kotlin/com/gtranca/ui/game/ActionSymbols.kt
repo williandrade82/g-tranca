@@ -38,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import com.gtranca.ui.persona.BotMotto
@@ -225,7 +224,7 @@ fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>,
             } else {
                 // §14.5 o robô inteiro (sem recorte em círculo), com o bordão logo abaixo e, depois, o nome.
                 Column(Modifier.fillMaxWidth().testTag("seat-detail-character"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    CharacterPortrait(character, Pose.PENSADOR, Modifier.size(96.dp), effects = false, contentScale = ContentScale.Fit)
+                    CharacterPortrait(character, Pose.APRESENTACAO, Modifier.fillMaxWidth(0.8f))
                     BotMotto(character.profile, Modifier.fillMaxWidth(), fontSize = 13.sp)
                     Text(name, Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 }
