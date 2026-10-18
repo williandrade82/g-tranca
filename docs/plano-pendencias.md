@@ -1,6 +1,6 @@
 # Plano: pendências do Mestre da Canastra
 
-Status: **em execução** — D1 = não (mão em grade), D2 = não (pilha continua "Lixo"). Ordem: do mais simples ao mais trabalhoso. Cada etapa termina com testes,
+Status: **quase concluído** (2026-10-17: só resta a publicação) — — D1 = não (mão em grade), D2 = não (pilha continua "Lixo"). Ordem: do mais simples ao mais trabalhoso. Cada etapa termina com testes,
 um commit e, se mexer no app, um APK `MestreDaCanastra-<hash>-debug.apk` para teste no celular.
 
 Fora deste plano: redesenho dos avatares e da tela de Perfil (instruções mantidas em
@@ -36,7 +36,7 @@ listada no fim só como lembrete).
 9. **Salvar o sorteio interno dos bots** no jogo salvo, para que um jogo retomado continue igual ao que
    seria sem a interrupção. Teste em `RestoreTest`.
 
-## Etapa 3 — Bots (requer liberar o `:sim`, hoje suspenso)
+## Etapa 3 — Bots — FEITA
 
 10. **Conferir a memória dos bots no app:** `onNewRound()` a cada partida e `observe(PublicEvent)` a cada
     jogada (inclusive as do próprio bot), com `takenFromDiscard` calculado antes do `apply`. Corrigir se faltar.
@@ -45,12 +45,12 @@ listada no fim só como lembrete).
 13. **Medições** com as regras de 07/10 (canastra de 7, 3 vermelho na vez): Fácil × Médio × Difícil nos dois
     modos, lados trocados, e taxa de partidas sem vencedor. Usar o resultado para recalibrar o `HardBotConfig`.
 
-## Etapa 4 — Desempenho
+## Etapa 4 — Desempenho — FEITA
 
 14. **Otimizar `RoundEngine.legalActions`** (≈ 80% do tempo do Difícil): evitar recriar estados, reaproveitar
     a validação de conjuntos, cortar combinações repetidas. Garantir resultado idêntico com teste de
     propriedade comparando a versão antiga e a nova em milhares de estados aleatórios.
-15. **Calibrar o Difícil no celular real**: medir `HardBot.timeLimitHits` com o teto de 800 ms, em duplas;
+15. **(aprovado pelo usuário em 2026-10-17, jogando no celular)** **Calibrar o Difícil no celular real**: medir `HardBot.timeLimitHits` com o teto de 800 ms, em duplas;
     ajustar iterações se o teto for atingido com frequência.
 
 ## Lembrete — Publicação (Fase 4, quando o usuário pedir)

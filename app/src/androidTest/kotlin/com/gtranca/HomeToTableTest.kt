@@ -37,13 +37,8 @@ class HomeToTableTest {
 
     private fun exists(tag: String): Boolean = rule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
-    /** §6.5 confirma a encenação de 3 vermelho do humano, se estiver na tela (a semente do jogo é aleatória). */
-    private fun confirmRedThrees(): Boolean {
-        if (!exists("red-three-confirm")) return false
-        rule.onNodeWithTag("red-three-confirm").performClick()
-        rule.waitForIdle()
-        return true
-    }
+    /** §6.5 a troca de 3 vermelho do humano é só um aviso que fecha sozinho: não há o que confirmar. */
+    private fun confirmRedThrees(): Boolean = false
 
     /** Espera até a condição, confirmando no caminho as encenações de 3 vermelho. */
     private fun waitFor(timeoutMillis: Long, condition: () -> Boolean) {
@@ -89,6 +84,8 @@ class HomeToTableTest {
         openCreateTable()
         rule.onNodeWithTag("difficulty-facil").performClick()
         rule.onNodeWithTag("create-table").performClick()
+        rule.waitUntil(10_000) { exists("table-rules-start") }
+        rule.onNodeWithTag("table-rules-start").performClick()
         rule.onNodeWithTag("table-screen").assertExists()
 
         // A vez chega ao humano (o bot pode começar; trocas de 3 vermelho são encenadas antes).
@@ -96,7 +93,7 @@ class HomeToTableTest {
         val before = handSize()
         before shouldBeAtLeast 1
         rule.onNodeWithTag("action-draw").performClick()
-        waitFor(5_000) { exists("action-discard") && !exists("red-three-dialog") }
+        waitFor(5_000) { exists("action-discard") && !exists("red-three-banner") }
         handSize() shouldBeAtLeast before + 1
     }
 
@@ -106,6 +103,8 @@ class HomeToTableTest {
         rule.onNodeWithTag("mode-duplas").performClick()
         rule.onNodeWithTag("difficulty-facil").performClick()
         rule.onNodeWithTag("create-table").performClick()
+        rule.waitUntil(10_000) { exists("table-rules-start") }
+        rule.onNodeWithTag("table-rules-start").performClick()
         rule.onNodeWithTag("table-screen").assertExists()
         rule.onNodeWithText("Parceiro").assertExists()
         rule.onNodeWithText("Adv. esq.").assertExists()
@@ -117,7 +116,7 @@ class HomeToTableTest {
         handSize() shouldBeAtMost 20
         val before = handSize()
         rule.onNodeWithTag("action-draw").performClick()
-        waitFor(5_000) { exists("action-discard") && !exists("red-three-dialog") }
+        waitFor(5_000) { exists("action-discard") && !exists("red-three-banner") }
         handSize() shouldBeAtLeast before + 1
         // Descarta a primeira carta: a vez passa ao adversário à direita (§4.2), depois ao parceiro.
         rule.onAllNodes(isHandCard, useUnmergedTree = true)[0].performClick()
@@ -132,6 +131,8 @@ class HomeToTableTest {
     fun desistirPedeConfirmacaoECancelarVoltaAoJogo() {
         openCreateTable()
         rule.onNodeWithTag("create-table").performClick()
+        rule.waitUntil(10_000) { exists("table-rules-start") }
+        rule.onNodeWithTag("table-rules-start").performClick()
         rule.onNodeWithTag("table-screen").assertExists()
         waitFor(30_000) { canDraw() }
 

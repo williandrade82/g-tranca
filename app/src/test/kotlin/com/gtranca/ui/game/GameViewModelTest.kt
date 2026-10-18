@@ -499,13 +499,14 @@ class GameViewModelTest {
                         confirmed++
                         // Antes de cada confirmação a mão mostrada não repete carta nem esconde o 3 vermelho em questão.
                         state.hand.size shouldBe state.hand.toSet().size
-                        state.hand shouldContain reveal.notice.cards.single()
+                        state.hand shouldContainAll reveal.notice.cards
                         seen += reveal.notice.cards
                         vm.onRevealConfirmed()
                         advanceUntilIdle()
                     }
-                    // Todas as trocas do início foram confirmadas, uma a uma; na ordem do registro.
-                    confirmed shouldBe own.size
+                    // Todas as trocas do início foram confirmadas; os 3 vermelhos da mão saem juntos (§3.5, uma troca só) e cada
+                    // um em cadeia é uma troca seguinte; na ordem do registro.
+                    confirmed shouldBe ((if (own.any { !it.chained }) 1 else 0) + own.count { it.chained })
                     seen shouldBe own.map { it.card }
                     val state = vm.uiState.value
                     if (own.isNotEmpty()) {
@@ -949,8 +950,116 @@ class GameViewModelTest {
         checked shouldBe true
     }
 
+    /** Uma ação do humano sem avançar o tempo virtual além do necessário: confirma, compra, baixa o que der ou descarta. */
+    private fun TestScope.humanStep(vm: GameViewModel) {
+        val state = vm.uiState.value
+        when {
+            state.reveal != null -> vm.onRevealConfirmed()
+            state.awaitingDraw -> vm.onDraw()
+            state.playing -> {
+                val legal = state.snapshot.humanLegal
+                val meld = legal.filterIsInstance<Action.CreateMeld>().firstOrNull() ?: legal.filterIsInstance<Action.AddToMeld>().firstOrNull()
+                val cards = (meld as? Action.CreateMeld)?.cards ?: (meld as? Action.AddToMeld)?.cards
+                if (cards != null) {
+                    vm.select(state.physical(cards))
+                    if (meld is Action.AddToMeld) vm.onAddToMeld(meld.meldId) else vm.onCreateMeld()
+                } else {
+                    val discard = legal.filterIsInstance<Action.Discard>().first()
+                    vm.select(state.physical(listOf(discard.card)))
+                    vm.onDiscard()
+                }
+            }
+        }
+        runCurrent()
+    }
+
     @Test
-    fun `§9_4 3 vermelho que veio no morto pego pelo humano - nada oculto e as cartas do morto aparecem como novas`() = runTest(dispatcher) {
+    fun `§3_5 o aviso da troca de 3 vermelho do proximo jogador so aparece depois que o descarte anterior pousou`() = runTest(dispatcher) {
+        var announced = 0
+        for (mode in GameMode.entries) for (botDelay in listOf(0L, 300L, 700L)) {
+            for (seed in 1L..40L) {
+                val vm = newGame(seed, mode = mode, botDelayMillis = botDelay, swapMillis = 1_800, animationMillis = 450, settleReveals = false)
+                var t = 0L
+                withClue("modo $mode, bot pensa $botDelay ms, semente $seed") {
+                    while (t < 60_000 && vm.uiState.value.snapshot.stage == Stage.PLAYING) {
+                        humanStep(vm)
+                        val state = vm.uiState.value
+                        if (state.banner != null) {
+                            announced++
+                            // nenhum voo em andamento (descarte, compra, baixa) enquanto o aviso está na tela
+                            state.flights.filter { it.id !in state.dealFlightIds }.shouldBeEmpty()
+                        }
+                        advanceTimeBy(50)
+                        runCurrent()
+                        t += 50
+                    }
+                }
+            }
+        }
+        withClue("avisos de troca vistos: $announced") { (announced > 0) shouldBe true }
+    }
+
+    @Test
+    fun `§9 ao pegar o morto as cartas dele so aparecem na mao do humano quando o voo pousa`() = runTest(dispatcher) {
+        var checked = false
+        seeds@ for (seed in 1L..200L) {
+            val vm = newGame(seed, target = 1_000_000, animationMillis = 450, settleReveals = false)
+            var t = 0L
+            while (t < 120_000 && vm.uiState.value.snapshot.stage == Stage.PLAYING) {
+                val mortoBefore = vm.uiState.value.snapshot.view.mortoStatus
+                humanStep(vm)
+                val after = vm.uiState.value
+                val tookMorto = after.snapshot.view.mortoStatus.indices.any { i ->
+                    (after.snapshot.view.mortoStatus[i] as? com.gtranca.engine.model.MortoStatus.Taken)?.side == Side(0) &&
+                        (mortoBefore[i] as? com.gtranca.engine.model.MortoStatus.Taken)?.side != Side(0)
+                }
+                if (tookMorto) {
+                    val flights = after.flights.filter { it.from is AnimAnchor.Morto && it.to == AnimAnchor.OwnHand }
+                    flights.shouldNotBeEmpty()
+                    // as cartas novas (inclusive as do morto sem voo) ficam fora da mão até o voo, ou o último voo, pousar
+                    val hiddenUntilLanding = after.flights.flatMap { listOfNotNull(it.card) + it.also }.toSet()
+                    after.newCards.all { it in hiddenUntilLanding } shouldBe true
+                    checked = true
+                    break@seeds
+                }
+                advanceTimeBy(50)
+                runCurrent()
+                t += 50
+            }
+        }
+        checked shouldBe true
+    }
+
+    @Test
+    fun `§6_5 o detalhe da ultima jogada traz os 3 vermelhos baixados na vez de cada assento`() = runTest(dispatcher) {
+        var seenWithReds = 0
+        for (mode in GameMode.entries) {
+            for (seed in 1L..40L) {
+                val vm = newGame(seed, mode = mode, botDelayMillis = 0)
+                var t = 0L
+                withClue("modo $mode, semente $seed") {
+                    while (t < 30_000 && vm.uiState.value.snapshot.stage == Stage.PLAYING) {
+                        humanStep(vm)
+                        val snap = vm.uiState.value.snapshot
+                        snap.turnRedThrees.size shouldBe mode.seatCount
+                        snap.turnRedThrees.forEachIndexed { seat, cards ->
+                            // só 3 vermelhos que o motor registrou para esse assento
+                            val logged = snap.view.redThreeLog.filter { it.seat.index == seat }.map { it.card }
+                            cards.all { it in logged } shouldBe true
+                            if (cards.isNotEmpty()) seenWithReds++
+                        }
+                        advanceTimeBy(50)
+                        runCurrent()
+                        t += 50
+                    }
+                }
+            }
+        }
+        withClue("vezes com 3 vermelho no detalhe: $seenWithReds") { (seenWithReds > 0) shouldBe true }
+    }
+
+    @Test
+    fun `§9_4 3 vermelho que veio no morto pego pelo humano - as cartas do morto aparecem como novas e so as reposicoes ficam ocultas`() = runTest(dispatcher) {
         var checked = false
         seeds@ for (seed in 1L..200L) {
             val vm = newGame(seed, target = 1_000_000)
@@ -970,8 +1079,10 @@ class GameViewModelTest {
                 }
                 val reveal = after.reveal
                 if (tookMorto && reveal != null && !reveal.notice.atTurnStart) {
-                    // As cartas do morto não ficam ocultas como "reposição" (§9.4).
-                    reveal.hiddenHandCards.shouldBeEmpty()
+                    // §9.4 as cartas do morto aparecem como novas; só as reposições do monte (uma por 3 vermelho baixado, menos as
+                    // que são 3 vermelhos em cadeia) ficam ocultas até a troca.
+                    (reveal.hiddenHandCards.size <= reveal.notice.cards.size) shouldBe true
+                    after.hand.none { it in reveal.hiddenHandCards } shouldBe true
                     (after.newCards.size >= 2) shouldBe true
                     after.hand.containsAll(after.newCards) shouldBe true
                     checked = true

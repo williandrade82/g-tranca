@@ -1,6 +1,10 @@
 # Plano: 4 robôs com personalidade (substituem os avatares por profissão)
 
-Status: **aprovado em 2026-10-17** (decisões D1–D9 na seção 8, já respondidas); etapas 1 (especificação), 1b (imagens) 2 (modelo e sorteio) 3 (estilos dos bots) 4 (comunicação com nomes) e 5 (retratos animados) feitas; ajustes: a mesa escolhida joga com os personagens que mostrou (semente da mesa); mesa criada passa pela tela da mesa com "sortear outros jogadores". Branch de trabalho: `feature/bots-personas`. Nada deste plano foi implementado.
+Status: **concluído em 2026-10-17** — todas as etapas feitas e decisões D1–D9 respondidas. Entregue no PR #4
+(`feature/bots-personas`); depois dele, ajustes pedidos na avaliação (mesa escolhida joga com os personagens que mostrou,
+duplas listam os três, mesa criada com "sortear outros jogadores", vencedores e perdedores nas telas finais).
+Pendências que ficaram de fora de propósito: animação por partes do corpo, nomes na tabela de pontos das duplas e
+contraste maior entre os estilos Sagaz e Ousado. Calibragem do Difícil: aprovada pelo usuário jogando no celular.
 O desenho anterior (16 profissões × 2 gêneros) foi arquivado em [arquivo-avatares/](arquivo-avatares/LEIA-ME.md).
 
 ## 1. O que muda, em uma frase
@@ -65,13 +69,13 @@ pose (mais fiel, pesa ~15 MB+); **C)** quadros em sequência (4–8 por pose). S
 
 ## 6. Etapas (um commit por etapa; testes antes de seguir)
 
-1. **Especificação:** `definition.md` + fichas de arte `docs/personagens/<perfil>.md` + estilos de jogo propostos. Commit.
-2. **Modelo e sorteio:** `BotCharacter`, nomes por perfil, sorteio sem repetição, sufixo (dir/esq). Testes JVM.
-3. **Estilos no `:ai`:** 4 estilos × 3 níveis. Medição no `:sim`; atualizar valores de referência do `GameControllerTest`.
-4. **Comunicação:** nomes e imagens em todos os modais, avisos, resumo, fim de jogo, mesas; remover profissões. Testes de texto.
-5. **Retratos e animações:** `CharacterPortrait`, 4 poses, marcadores provisórios, painel de seleção, mesa, fim de jogo.
-6. **Imagens reais** (quando o usuário entregar): conversão (WebP), mapeamento e conferência. Se atrasarem, o APK sai com os marcadores.
-7. **Testes de qualidade e correções** (seção 7) e **APK** `MestreDaCanastra-<hash>-debug.apk` para avaliação.
+1. **Especificação:** `definition.md` + fichas de arte `docs/personagens/<perfil>.md` + estilos de jogo propostos. Commit. — **FEITA**
+2. **Modelo e sorteio:** `BotCharacter`, nomes por perfil, sorteio sem repetição, sufixo (dir/esq). Testes JVM. — **FEITA**
+3. **Estilos no `:ai`:** 4 estilos × 3 níveis. Medição no `:sim`; atualizar valores de referência do `GameControllerTest`. — **FEITA**
+4. **Comunicação:** nomes e imagens em todos os modais, avisos, resumo, fim de jogo, mesas; remover profissões. Testes de texto. — **FEITA**
+5. **Retratos e animações:** `CharacterPortrait`, 4 poses, marcadores provisórios, painel de seleção, mesa, fim de jogo. — **FEITA**
+6. **Imagens reais** (quando o usuário entregar): conversão (WebP), mapeamento e conferência. Se atrasarem, o APK sai com os marcadores. — **FEITA**
+7. **Testes de qualidade e correções** (seção 7) e **APK** `MestreDaCanastra-<hash>-debug.apk` para avaliação. — **FEITA**
 
 ## 7. Testes
 

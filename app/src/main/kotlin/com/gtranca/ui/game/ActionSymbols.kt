@@ -30,12 +30,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
+import com.gtranca.engine.model.Card
 import com.gtranca.ai.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.ui.cards.CardSize
@@ -66,13 +68,28 @@ private val RedOnDark = Color(0xFFFF8A80)
 /** Última jogada resumida em símbolos; o leitor de tela recebe a frase completa. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier) {
-    val description = stringResource(R.string.opponent_last_turn, turnText(events))
+fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier, redThrees: List<Card> = emptyList()) {
+    // §3.5, §6.5 os 3 vermelhos baixados na vez vêm primeiro (a troca acontece no início da vez ou antes das baixas).
+    val redText = if (redThrees.isEmpty()) "" else pluralStringResource(R.plurals.seat_detail_red_threes, redThrees.size) + ". "
+    val description = redText + stringResource(R.string.opponent_last_turn, turnText(events))
     FlowRow(
         modifier.semantics(mergeDescendants = true) { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        if (redThrees.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("last-turn-red-threes")) {
+                Text("♥", color = RedOnDark, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    redThrees.joinToString(" ") { it.shortLabel },
+                    Modifier.padding(start = 2.dp),
+                    color = RedOnDark,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
+        }
         events.forEach { SymbolWithDetail(it.symbol()) }
     }
 }
@@ -188,7 +205,7 @@ fun LegendDialog(rules: com.gtranca.engine.RuleSet, targetScore: Int, onDismiss:
 /** Detalhe da última jogada de um assento: cada ação com o símbolo, a frase completa e as cartas desenhadas. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>, onDismiss: () -> Unit) {
+fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>, redThrees: List<Card> = emptyList(), onDismiss: () -> Unit) {
     GDialog(
         modifier = Modifier.testTag("seat-detail-dialog"),
         onDismissRequest = onDismiss,
@@ -204,6 +221,18 @@ fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>,
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                // §3.5, §6.5 os 3 vermelhos baixados nesta vez (no início dela ou durante a jogada)
+                if (redThrees.isNotEmpty()) {
+                    Row(Modifier.testTag("seat-detail-red-threes"), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                        Text("♥", Modifier.padding(top = 2.dp).size(22.dp), color = GColors.Ruby, fontWeight = FontWeight.Bold)
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            Text(pluralStringResource(R.plurals.seat_detail_red_threes, redThrees.size))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                redThrees.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                            }
+                        }
+                    }
+                }
                 events.forEach { event ->
                     val cards = when (val action = event.action) {
                         is Action.Discard -> listOf(action.card)

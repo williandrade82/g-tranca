@@ -61,6 +61,7 @@ enum class Stage {
  * @property thinkingSeat bot que está decidindo (inclui a pausa entre jogadas), ou `null`.
  * @property turnEvents por assento ([Seat.index]), as ações públicas da vez mais recente (ou atual) dele
  *   nesta partida.
+ * @property turnRedThrees por assento ([Seat.index]), os 3 vermelhos baixados na vez mais recente (ou atual) dele.
  * @property resigned §13.1 o humano desistiu: [winner] é o outro lado e a partida em andamento não foi pontuada.
  */
 data class GameSnapshot(
@@ -77,6 +78,8 @@ data class GameSnapshot(
     val turnEvents: List<List<PublicEvent>>,
     val humanRequestId: Long = 0,
     val resigned: Boolean = false,
+    /** §3.5, §6.5 por assento, os 3 vermelhos que ele baixou na vez mais recente (ou atual) dele. */
+    val turnRedThrees: List<List<Card>> = emptyList(),
 ) {
     val viewerSide: Side get() = view.side
 
@@ -170,6 +173,9 @@ class GameController(
     @Volatile
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }
 
+    /** §3.5 os 3 vermelhos baixados na vez mais recente de cada assento (detalhe da última jogada). */
+    private val turnReds = TurnRedThrees(config.mode.seatCount)
+
     /** Eventos públicos da partida atual, em ordem (vão para o jogo salvo). */
     @Volatile
     private var roundEvents: List<PublicEvent> = emptyList()
@@ -256,6 +262,7 @@ class GameController(
                     return@synchronized false
                 }
                 turnEvents = List(config.mode.seatCount) { emptyList() }
+                turnReds.reset(match.currentRound.redThreeLog)
                 roundEvents = emptyList()
                 // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho do início da
                 // vez do 1º jogador (§3.5). Sem humano (bots, :sim), não há espera.
@@ -308,6 +315,7 @@ class GameController(
                     val event = PublicEvent.of(round.discardPile, seat, action)
                     match = match.play(seat, action)
                     recordEvent(event)
+                    turnReds.record(seat, startsTurn(event), match.currentRound.redThreeLog.drop(round.redThreeLog.size))
                     roundEvents = roundEvents + event
                     bots.forEach { it.observe(event) }
                     save()
@@ -447,11 +455,13 @@ class GameController(
         return accepted
     }
 
+    /** A ação abre a vez do jogador (compra, recusa do lixo ou lixo). */
+    private fun startsTurn(event: PublicEvent): Boolean =
+        event.action == Action.DrawFromStock || event.action == Action.DeclineDraw || event.action is Action.TakeDiscardPile
+
     private fun recordEvent(event: PublicEvent) {
         val index = event.seat.index
-        val startsTurn = event.action == Action.DrawFromStock ||
-            event.action == Action.DeclineDraw ||
-            event.action is Action.TakeDiscardPile
+        val startsTurn = startsTurn(event)
         turnEvents = turnEvents.mapIndexed { i, events ->
             when {
                 i != index -> events
@@ -493,6 +503,7 @@ class GameController(
             humanLegal = humanLegal,
             thinkingSeat = thinkingSeat,
             turnEvents = turnEvents,
+            turnRedThrees = turnReds.current,
             humanRequestId = requestId,
             resigned = resignedWinner != null,
         )
