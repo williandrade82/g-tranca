@@ -301,6 +301,11 @@
         <item quantity="other">%1$d cartas</item>
         <item quantity="many">%1$d cartas</item>
     </plurals>
+    <plurals name="seat_detail_red_threes">
+        <item quantity="one">Baixou o 3 vermelho</item>
+        <item quantity="other">Baixou os 3 vermelhos</item>
+        <item quantity="many">Baixou os 3 vermelhos</item>
+    </plurals>
     <plurals name="discard_pile_dialog_title">
         <item quantity="one">Lixo (%1$d carta, topo à direita)</item>
         <item quantity="other">Lixo (%1$d cartas, topo à direita)</item>

@@ -384,7 +384,12 @@ fun TableScreen(
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
             val detailPersona = state.personas.getOrNull(index)
-            SeatDetailDialog(detailPersona, detailPersona?.callName(view.mode, role) ?: stringResource(role.nameRes()), events) { detailSeat = null }
+            SeatDetailDialog(
+                detailPersona,
+                detailPersona?.callName(view.mode, role) ?: stringResource(role.nameRes()),
+                events,
+                snapshot.turnRedThrees.getOrNull(index).orEmpty(),
+            ) { detailSeat = null }
         }
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }

@@ -30,12 +30,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
+import com.gtranca.engine.model.Card
 import com.gtranca.ai.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.ui.cards.CardSize
@@ -188,7 +190,7 @@ fun LegendDialog(rules: com.gtranca.engine.RuleSet, targetScore: Int, onDismiss:
 /** Detalhe da última jogada de um assento: cada ação com o símbolo, a frase completa e as cartas desenhadas. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>, onDismiss: () -> Unit) {
+fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>, redThrees: List<Card> = emptyList(), onDismiss: () -> Unit) {
     GDialog(
         modifier = Modifier.testTag("seat-detail-dialog"),
         onDismissRequest = onDismiss,
@@ -204,6 +206,18 @@ fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>,
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                // §3.5, §6.5 os 3 vermelhos baixados nesta vez (no início dela ou durante a jogada)
+                if (redThrees.isNotEmpty()) {
+                    Row(Modifier.testTag("seat-detail-red-threes"), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                        Text("♥", Modifier.padding(top = 2.dp).size(22.dp), color = GColors.Ruby, fontWeight = FontWeight.Bold)
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            Text(pluralStringResource(R.plurals.seat_detail_red_threes, redThrees.size))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                redThrees.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                            }
+                        }
+                    }
+                }
                 events.forEach { event ->
                     val cards = when (val action = event.action) {
                         is Action.Discard -> listOf(action.card)

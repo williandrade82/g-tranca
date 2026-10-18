@@ -1031,6 +1031,34 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `§6_5 o detalhe da ultima jogada traz os 3 vermelhos baixados na vez de cada assento`() = runTest(dispatcher) {
+        var seenWithReds = 0
+        for (mode in GameMode.entries) {
+            for (seed in 1L..40L) {
+                val vm = newGame(seed, mode = mode, botDelayMillis = 0)
+                var t = 0L
+                withClue("modo $mode, semente $seed") {
+                    while (t < 30_000 && vm.uiState.value.snapshot.stage == Stage.PLAYING) {
+                        humanStep(vm)
+                        val snap = vm.uiState.value.snapshot
+                        snap.turnRedThrees.size shouldBe mode.seatCount
+                        snap.turnRedThrees.forEachIndexed { seat, cards ->
+                            // só 3 vermelhos que o motor registrou para esse assento
+                            val logged = snap.view.redThreeLog.filter { it.seat.index == seat }.map { it.card }
+                            cards.all { it in logged } shouldBe true
+                            if (cards.isNotEmpty()) seenWithReds++
+                        }
+                        advanceTimeBy(50)
+                        runCurrent()
+                        t += 50
+                    }
+                }
+            }
+        }
+        withClue("vezes com 3 vermelho no detalhe: $seenWithReds") { (seenWithReds > 0) shouldBe true }
+    }
+
+    @Test
     fun `§9_4 3 vermelho que veio no morto pego pelo humano - as cartas do morto aparecem como novas e so as reposicoes ficam ocultas`() = runTest(dispatcher) {
         var checked = false
         seeds@ for (seed in 1L..200L) {
