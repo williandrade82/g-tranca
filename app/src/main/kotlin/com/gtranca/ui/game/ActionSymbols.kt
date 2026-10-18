@@ -68,13 +68,28 @@ private val RedOnDark = Color(0xFFFF8A80)
 /** Última jogada resumida em símbolos; o leitor de tela recebe a frase completa. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier) {
-    val description = stringResource(R.string.opponent_last_turn, turnText(events))
+fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier, redThrees: List<Card> = emptyList()) {
+    // §3.5, §6.5 os 3 vermelhos baixados na vez vêm primeiro (a troca acontece no início da vez ou antes das baixas).
+    val redText = if (redThrees.isEmpty()) "" else pluralStringResource(R.plurals.seat_detail_red_threes, redThrees.size) + ". "
+    val description = redText + stringResource(R.string.opponent_last_turn, turnText(events))
     FlowRow(
         modifier.semantics(mergeDescendants = true) { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        if (redThrees.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("last-turn-red-threes")) {
+                Text("♥", color = RedOnDark, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    redThrees.joinToString(" ") { it.shortLabel },
+                    Modifier.padding(start = 2.dp),
+                    color = RedOnDark,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
+        }
         events.forEach { SymbolWithDetail(it.symbol()) }
     }
 }

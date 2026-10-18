@@ -588,7 +588,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             )
         }
         if (events.isNotEmpty()) {
-            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"))
+            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), snapshot.turnRedThrees.getOrNull(seat.index).orEmpty())
         }
     }
 }
