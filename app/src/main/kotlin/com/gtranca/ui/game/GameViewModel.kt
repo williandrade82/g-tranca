@@ -29,6 +29,7 @@ import com.gtranca.game.PlayIntent
 import com.gtranca.game.LogRedThreeSource
 import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.RedThreeSwapSource
+import com.gtranca.game.allocateReplacements
 import com.gtranca.game.Resolution
 import com.gtranca.game.Stage
 import com.gtranca.game.cardClass
@@ -450,7 +451,11 @@ class GameViewModel(
         // §9.4 o morto do próprio humano: os 3 vermelhos vêm no morto (aparecem como novos); as reposições do monte são as
         // últimas cartas da mão (o motor as acrescenta ao fim) e chegam, na troca, depois dos 3 vermelhos.
         if (ownMorto.isNotEmpty()) {
-            val kept = ownMorto.sumOf { it.cards.size } - ownMorto.filter { it.chained }.sumOf { it.cards.size }
+            // §10 com o monte vazio não há reposição: nunca mais reposições do que cartas que havia no monte.
+            val kept = minOf(
+                ownMorto.sumOf { it.cards.size } - ownMorto.filter { it.chained }.sumOf { it.cards.size },
+                old.view.stockSize,
+            )
             val moved = snapshot.view.hand.filter { it in gained }
             val (givenAway, hiddenNow) = allocateReplacements(ownMorto, moved.takeLast(kept))
             delivers = delivers + givenAway
@@ -514,7 +519,7 @@ class GameViewModel(
         val ownQueue = state.swaps.filter { isOwn(it, snapshot) }
         val chainHead = ownQueue.firstOrNull { !it.atTurnStart && it.id !in state.mortoSwaps }
         val ownPending = ownQueue
-            .filter { (it.atTurnStart && (!it.chained || delivered(it, state))) || it.id in state.mortoSwaps || it == chainHead }
+            .filter { ((it.atTurnStart || it.id in state.mortoSwaps) && (!it.chained || delivered(it, state))) || it == chainHead }
             .flatMap { it.cards }
             .filter { it !in snapshot.view.hand }
         val visibleHand = snapshot.view.hand.filter { it !in hidden } + ownPending
@@ -745,29 +750,6 @@ class GameViewModel(
     private fun effectiveMillis(state: Local): Long = (animationMillis * state.animationScale).toLong().coerceAtLeast(0)
 
     private fun CardFlight.scaled(scale: Float): CardFlight = copy(delayMillis = (delayMillis * scale).toLong())
-
-    /**
-     * Reparte entre as trocas [swaps] do humano (na ordem) as reposições: cada 3 vermelho baixado tem uma. As primeiras
-     * reposições são as cartas das trocas em cadeia (3 vermelhos que chegaram como reposição); as demais, as cartas
-     * [ordered] que ficam na mão (a última troca leva o que sobrar). Devolve (trocas em cadeia entregues, cartas de mão) por troca.
-     */
-    private fun allocateReplacements(swaps: List<RedThreeNotice>, ordered: List<Card>): Pair<Map<Long, List<Long>>, Map<Long, Set<Card>>> {
-        val chained = swaps.filter { it.chained }
-        var chainedAt = 0
-        var orderedAt = 0
-        val delivers = mutableMapOf<Long, List<Long>>()
-        val kept = mutableMapOf<Long, Set<Card>>()
-        swaps.forEachIndexed { p, swap ->
-            val ids = mutableListOf<Long>()
-            repeat(swap.cards.size) { if (chainedAt < chained.size) ids += chained[chainedAt++].id }
-            val need = swap.cards.size - ids.size
-            val mine = if (p == swaps.lastIndex) ordered.drop(orderedAt) else ordered.drop(orderedAt).take(need)
-            orderedAt += need
-            if (ids.isNotEmpty()) delivers[swap.id] = ids
-            if (mine.isNotEmpty()) kept[swap.id] = mine.toSet()
-        }
-        return delivers to kept
-    }
 
     /**
      * §6.5 voos da troca encenada [notice] (que está saindo da fila de [state]): o 3 vermelho vai à área do lado e a

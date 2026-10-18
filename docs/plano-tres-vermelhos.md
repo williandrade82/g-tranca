@@ -1,6 +1,6 @@
 # Plano: fechar o 3 vermelho (início da vez, morto, cadeia, compra)
 
-Status: **em execução** (2026-10-17). Parte do plano de pendências; regras em `definition.md` §3.5, §6.5, §9.4 e §10.
+Status: **concluído em 2026-10-17** (PR aberto). Parte do plano de pendências; regras em `definition.md` §3.5, §6.5, §9.4 e §10.
 
 ## O que já existia
 Troca pública de 3 vermelho no registro do motor (`redThreeLog`, com `atTurnStart` e `chained`), encenação na mesa
@@ -32,4 +32,4 @@ jogador. Início do jogo encenado na ordem certa (distribuição, depois trocas;
    `DealRedThreeOrderTest`, `TableAnimationsTest`, `RestoreTest`); novos desta etapa: troca em lote (animação e agrupamento),
    aviso depois do descarte, morto só na mão depois do voo. — **FEITA** (morto indireto do humano e monte vazio com 3 vermelho
    seguem cobertos só pelo motor; uma revisão visual no celular fecha o resto)
-5. **Revisão** (`rules-auditor`), APK e PR. — em andamento
+5. **Revisão** (`rules-auditor`), APK e PR. — **FEITA** (achados tratados: cadeia do morto só aparece depois de entregue, reposição do morto limitada ao monte, testes do agrupamento e da repartição, testes de instrumentação atualizados)
