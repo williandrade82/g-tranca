@@ -7,6 +7,7 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.RoundEngine
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.Wallet
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.play
 import com.gtranca.engine.startMatch
@@ -127,6 +128,70 @@ class PersistenceTest {
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false)
         settings.setSlowAnimations(false)
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false, slowAnimations = false)
+    }
+
+    @Test
+    fun `§14_6 carteira comeca com o saldo inicial e o debito so passa com saldo`() = runBlocking<Unit> {
+        val repo = DataStoreStatsRepository(MemoryDataStore())
+        repo.wallet.first() shouldBe Wallet()
+        repo.debit(500) shouldBe true
+        repo.wallet.first().balance shouldBe 500
+        repo.debit(501) shouldBe false
+        repo.wallet.first().balance shouldBe 500
+        repo.debit(500) shouldBe true
+        repo.wallet.first().balance shouldBe 0
+    }
+
+    @Test
+    fun `§14_6 o premio entra na carteira uma unica vez junto com a contagem do jogo`() = runBlocking<Unit> {
+        val repo = DataStoreStatsRepository(MemoryDataStore())
+        repo.debit(100) shouldBe true // aposta debitada ao começar
+        repo.recordBet("g1", GameMode.DUPLAS, "medio", GameResult.WIN, stake = 100, payout = 200) shouldBe true
+        repo.wallet.first().balance shouldBe 1_100 // 1000 - 100 + 200
+        repo.lifetimeNet.first() shouldBe 100
+        // o mesmo jogo terminado de novo (retomada) não credita outra vez
+        repo.recordBet("g1", GameMode.DUPLAS, "medio", GameResult.WIN, stake = 100, payout = 200) shouldBe false
+        repo.wallet.first().balance shouldBe 1_100
+        // derrota e desistência: nada recebido, resultado negativo
+        repo.debit(250)
+        repo.recordBet("g2", GameMode.INDIVIDUAL, "facil", GameResult.LOSS, stake = 250, payout = 0)
+        repo.debit(50)
+        repo.recordBet("g3", GameMode.INDIVIDUAL, "facil", GameResult.RESIGNATION, stake = 50, payout = 0)
+        repo.wallet.first().balance shouldBe 800
+        repo.lifetimeNet.first() shouldBe -200
+        // jogo sem aposta não mexe na carteira
+        repo.record("g4", GameMode.INDIVIDUAL, "facil", GameResult.WIN)
+        repo.wallet.first().balance shouldBe 800
+        // zerar as estatísticas não zera a carteira
+        repo.reset()
+        repo.wallet.first().balance shouldBe 800
+        repo.lifetimeNet.first() shouldBe -200
+    }
+
+    @Test
+    fun `§14_6 ganho diario - um por dia e grava o dia`() = runBlocking<Unit> {
+        val repo = DataStoreStatsRepository(MemoryDataStore())
+        repo.claimDaily(20_000) shouldBe true
+        repo.wallet.first() shouldBe Wallet(1_200, 20_000)
+        repo.claimDaily(20_000) shouldBe false
+        repo.claimDaily(19_000) shouldBe false
+        repo.claimDaily(20_001) shouldBe true
+        repo.wallet.first() shouldBe Wallet(1_400, 20_001)
+    }
+
+    @Test
+    fun `§14_6 jogo salvo antigo, sem aposta, le a aposta como zero`() {
+        val old = FileSavedGameStore.encode(
+            SavedGame(
+                gameId = "g",
+                config = SavedConfig(GameMode.INDIVIDUAL, "medio", 1500),
+                gameSeed = 1,
+                match = startMatch(GameMode.INDIVIDUAL, 1500, kotlin.random.Random(1)),
+                events = emptyList(),
+            ),
+        ).replace(Regex(""",?\s*"stake"\s*:\s*\d+"""), "")
+        FileSavedGameStore.decode(old)!!.config.stake shouldBe 0
+        FileSavedGameStore.decode(FileSavedGameStore.encode(SavedGame(gameId = "g", config = SavedConfig(GameMode.DUPLAS, "medio", 1500, stake = 250), gameSeed = 1, match = startMatch(GameMode.DUPLAS, 1500, kotlin.random.Random(1)), events = emptyList())))!!.config.stake shouldBe 250
     }
 
     @Test

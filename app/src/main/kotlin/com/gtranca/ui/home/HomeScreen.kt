@@ -43,6 +43,7 @@ import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GButton
 import com.gtranca.ui.theme.GButtonKind
 import com.gtranca.ui.theme.GChoiceChip
+import com.gtranca.engine.Coins
 import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.Spacing
@@ -131,6 +132,21 @@ fun HomeScreen(
                     stringResource(R.string.home_title_tagline),
                     style = goldTitleStyle(MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp)),
                 )
+            }
+
+            // §14.6 saldo da carteira e ganho diário (um resgate por dia).
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.coins_balance, state.balance),
+                    Modifier.testTag("home-balance"),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GColors.Gold,
+                )
+                if (state.canClaimDaily) {
+                    GButton(viewModel::onClaimDaily, Modifier.heightIn(min = 40.dp).testTag("claim-daily"), kind = GButtonKind.Secondary) {
+                        Text(stringResource(R.string.home_daily_claim, Coins.DAILY_GAIN), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
             }
 
             // Jogo salvo: "Continuar" em destaque, com modo, dificuldade e placar.

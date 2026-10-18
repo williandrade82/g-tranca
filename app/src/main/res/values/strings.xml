@@ -81,6 +81,16 @@
     <string name="char_atleta_tag">Agressivo e competitivo</string>
     <string name="char_atleta_pitch">Joga no ataque: pega o lixo para tirar o seu material e quer bater cedo.</string>
     <string name="table_rules_reroll">Sortear outros jogadores</string>
+    <string name="coins_balance">Seu saldo: %1$d moedas</string>
+    <string name="stake_line">Aposta: %1$d moedas</string>
+    <string name="stake_insufficient">Saldo insuficiente para esta aposta</string>
+    <string name="create_stake">Aposta (moedas)</string>
+    <string name="home_daily_claim">Resgatar +%1$d moedas</string>
+    <string name="coins_result_gain">Você ganhou %1$d moedas</string>
+    <string name="coins_result_loss">Você perdeu %1$d moedas</string>
+    <string name="stats_coins_balance">Saldo: %1$d moedas</string>
+    <string name="stats_coins_net_gain">Resultado dos jogos apostados: +%1$d moedas</string>
+    <string name="stats_coins_net_loss">Resultado dos jogos apostados: −%1$d moedas</string>
     <string name="turn_named">Vez de %1$s…</string>
     <string name="turn_partner">Vez do parceiro…</string>
     <string name="turn_left_opponent">Vez do adversário à esquerda…</string>

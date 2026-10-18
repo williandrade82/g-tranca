@@ -9,7 +9,6 @@ import androidx.compose.ui.res.stringResource
 import com.gtranca.R
 import com.gtranca.ai.PublicEvent
 import com.gtranca.engine.Action
-import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.model.ActionError
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
@@ -146,13 +145,15 @@ fun eventText(event: PublicEvent): String = when (val action = event.action) {
     Action.DrawFromStock -> stringResource(R.string.event_draw)
     Action.DeclineDraw -> stringResource(R.string.event_decline)
     is Action.TakeDiscardPile -> {
-        val plan = action.plan
-        val handCards = when (plan) {
-            is DiscardPlan.NewMeld -> plan.handCards
-            is DiscardPlan.AddToMeld -> plan.handCards
+        // §5.1 pegar o lixo: o que foi para a mão e o que foi à mesa (cartas da mão do plano e o topo do lixo).
+        val take = countText(R.plurals.event_take_discard, R.string.event_take_discard_zero, event.takenFromDiscard.size)
+        val onTable = event.record().firstOrNull { it.kind == ActionKind.MELD || it.kind == ActionKind.ADD }
+        val laid = when (onTable?.kind) {
+            ActionKind.MELD -> stringResource(R.string.event_create_meld, onTable.cards.labels())
+            ActionKind.ADD -> stringResource(R.string.event_add_to_meld, onTable.cards.labels())
+            else -> null
         }
-        countText(R.plurals.event_take_discard, R.string.event_take_discard_zero, event.takenFromDiscard.size) +
-            if (handCards.isNotEmpty()) " (" + handCards.labels() + ")" else ""
+        if (laid == null) take else take + stringResource(R.string.event_separator) + laid
     }
     is Action.CreateMeld -> stringResource(R.string.event_create_meld, action.cards.labels())
     is Action.AddToMeld -> stringResource(R.string.event_add_to_meld, action.cards.labels())
@@ -170,6 +171,18 @@ fun eventShortText(event: PublicEvent): String = when (val action = event.action
     is Action.CreateMeld -> stringResource(R.string.event_create_meld_short)
     is Action.AddToMeld -> stringResource(R.string.event_add_to_meld_short)
     is Action.Discard -> stringResource(R.string.event_discard_short)
+}
+
+/** Frase curta de uma linha do registro (as cartas aparecem desenhadas ao lado). */
+@Composable
+@ReadOnlyComposable
+fun entryText(entry: RecordEntry): String = when (entry.kind) {
+    ActionKind.DRAW -> stringResource(R.string.event_draw)
+    ActionKind.DECLINE -> stringResource(R.string.event_decline)
+    ActionKind.TAKE -> countText(R.plurals.event_take_discard, R.string.event_take_discard_zero, entry.cards.size)
+    ActionKind.MELD -> stringResource(R.string.event_create_meld_short)
+    ActionKind.ADD -> stringResource(R.string.event_add_to_meld_short)
+    ActionKind.DISCARD -> stringResource(R.string.event_discard_short)
 }
 
 @Composable

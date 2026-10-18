@@ -2,6 +2,10 @@ package com.gtranca.ui.home
 
 import com.gtranca.data.GameResult
 import com.gtranca.data.StatsRepository
+import com.gtranca.data.WalletRepository
+import com.gtranca.engine.Coins
+import com.gtranca.engine.Wallet
+import kotlinx.coroutines.flow.catch
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -28,6 +32,9 @@ data class HomeUiState(
     val starting: Boolean = false,
     /** Novo jogo liberado (o salvo antigo já foi apagado): a tela abre as mesas e avisa [HomeViewModel.onStartHandled]. */
     val pendingNewGame: Boolean = false,
+    /** §14.6 saldo da carteira e se o ganho diário de hoje está disponível. */
+    val balance: Int = Coins.INITIAL_BALANCE,
+    val canClaimDaily: Boolean = false,
 ) {
     /** Pode agir nos botões de jogo (tudo carregado, nada em andamento). */
     val ready: Boolean get() = loadedSaved && !starting && !pendingNewGame
@@ -45,12 +52,14 @@ data class SavedSummary(
     val otherTotal: Int,
     /** Identificador do jogo salvo (as estatísticas contam cada jogo uma vez). */
     val gameId: String = "",
+    /** §14.6 aposta do jogo salvo (perdida se ele for abandonado por um novo). */
+    val stake: Int = 0,
 ) {
     companion object {
         fun of(game: SavedGame): SavedSummary? {
             val difficulty = Difficulty.entries.firstOrNull { it.id == game.config.difficultyId } ?: return null
             // O humano senta no assento 0, do lado 0.
-            return SavedSummary(game.config.mode, difficulty, game.match.roundNumber, game.match.totals[0], game.match.totals[1], game.gameId)
+            return SavedSummary(game.config.mode, difficulty, game.match.roundNumber, game.match.totals[0], game.match.totals[1], game.gameId, game.config.stake)
         }
     }
 }
@@ -62,16 +71,42 @@ class HomeViewModel(
     private val writes: WriteQueue? = null,
     /** Estatísticas: abandonar o jogo salvo por um novo conta como derrota por desistência. */
     private val stats: StatsRepository? = null,
+    /** §14.6 carteira local (saldo e ganho diário). */
+    private val wallet: WalletRepository? = null,
+    /** Dia de hoje (dias desde 1970, data do aparelho); injetável nos testes. */
+    private val today: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(loadedSaved = savedGames == null))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private var lastWallet = Wallet()
+
     init {
         refresh()
+        wallet?.let { repo ->
+            viewModelScope.launch {
+                repo.wallet.catch { emit(Wallet()) }.collect { w ->
+                    lastWallet = w
+                    publishWallet()
+                }
+            }
+        }
+    }
+
+    private fun publishWallet() = _uiState.update { it.copy(balance = lastWallet.balance, canClaimDaily = lastWallet.canClaimDaily(today())) }
+
+    /** §14.6 resgata o ganho diário (um por dia); o saldo e o botão se atualizam pela carteira. */
+    fun onClaimDaily() {
+        val repo = wallet ?: return
+        viewModelScope.launch {
+            val claim = suspend { repo.claimDaily(today()) }
+            if (writes != null) writes.run { claim() } else safely { claim() }
+        }
     }
 
     /** Relê o jogo salvo (ao voltar para a tela, ele pode ter mudado ou terminado). */
     fun refresh() {
+        publishWallet() // o dia pode ter virado desde a última vez
         val store = savedGames ?: return
         _uiState.update { it.copy(loadedSaved = false) }
         viewModelScope.launch {
@@ -107,7 +142,7 @@ class HomeViewModel(
         viewModelScope.launch {
             // O jogo salvo abandonado conta como desistência (derrota) antes de ser apagado.
             if (abandoned != null && stats != null) {
-                val record = suspend { stats.record(abandoned.gameId, abandoned.mode, abandoned.difficulty.id, GameResult.RESIGNATION) }
+                val record = suspend { stats.recordBet(abandoned.gameId, abandoned.mode, abandoned.difficulty.id, GameResult.RESIGNATION, stake = abandoned.stake, payout = 0) }
                 if (writes != null) writes.run { record() } else safely { record() }
             }
             savedGames?.let { store -> if (writes != null) writes.run { store.clear() } else safely { store.clear() } }

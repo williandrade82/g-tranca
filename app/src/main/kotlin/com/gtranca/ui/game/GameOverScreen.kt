@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.Persona
+import com.gtranca.engine.Coins
 import com.gtranca.ui.persona.AvatarRow
 import com.gtranca.ui.persona.Pose
 import com.gtranca.ui.persona.ResultCast
@@ -100,6 +101,20 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
                 if (won) GColors.RoyalEnd else GColors.Bordeaux,
                 GColors.Ivory,
             )
+            // §14.6 quanto o jogador ganhou ou perdeu em moedas (recebido menos a aposta)
+            if (snapshot.config.stake > 0) {
+                val stake = snapshot.config.stake
+                val won = !snapshot.resigned && snapshot.winner == view.side
+                val net = Coins.humanPayout(view.mode.seatCount, stake, won) - stake
+                Text(
+                    stringResource(if (net >= 0) R.string.coins_result_gain else R.string.coins_result_loss, kotlin.math.abs(net)),
+                    Modifier.fillMaxWidth().testTag("coins-result"),
+                    color = if (net >= 0) GColors.Gold else GColors.Ruby,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+            }
             GPanel(Modifier.fillMaxWidth().testTag("game-over-table")) {
                 ResultsTable(snapshot, sides, view.mode, view.side, personas)
             }

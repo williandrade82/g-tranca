@@ -7,6 +7,9 @@ import androidx.datastore.preferences.core.emptyPreferences
 import kotlinx.coroutines.flow.catch
 import java.io.IOException
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import com.gtranca.engine.Coins
+import com.gtranca.engine.Wallet
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.gtranca.engine.model.GameMode
 import kotlinx.coroutines.flow.Flow
@@ -39,12 +42,25 @@ interface StatsRepository {
      */
     suspend fun record(gameId: String, mode: GameMode, difficultyId: String, result: GameResult): Boolean
 
+    /**
+     * Como [record], para um jogo com aposta (§14.6): [stake] e o prêmio recebido ([payout]) entram na carteira na mesma
+     * gravação da contagem (um jogo só credita uma vez). Sem carteira, só conta o jogo.
+     */
+    suspend fun recordBet(
+        gameId: String,
+        mode: GameMode,
+        difficultyId: String,
+        result: GameResult,
+        stake: Int,
+        payout: Int,
+    ): Boolean = record(gameId, mode, difficultyId, result)
+
     /** Zera as estatísticas (os ids já registrados continuam lembrados, para não contar de novo). */
     suspend fun reset()
 }
 
 /** Estatísticas no DataStore Preferences: um contador por (modo, dificuldade, campo) e os ids recentes já contados. */
-class DataStoreStatsRepository(private val store: DataStore<Preferences>) : StatsRepository {
+class DataStoreStatsRepository(private val store: DataStore<Preferences>) : StatsRepository, WalletRepository {
 
     /** Arquivo ilegível: estatísticas zeradas (nunca derruba o app). */
     override val stats: Flow<GameStats> = store.data.catch { error ->
@@ -68,7 +84,17 @@ class DataStoreStatsRepository(private val store: DataStore<Preferences>) : Stat
         GameStats(lines)
     }
 
-    override suspend fun record(gameId: String, mode: GameMode, difficultyId: String, result: GameResult): Boolean {
+    override suspend fun record(gameId: String, mode: GameMode, difficultyId: String, result: GameResult): Boolean =
+        recordBet(gameId, mode, difficultyId, result, stake = 0, payout = 0)
+
+    override suspend fun recordBet(
+        gameId: String,
+        mode: GameMode,
+        difficultyId: String,
+        result: GameResult,
+        stake: Int,
+        payout: Int,
+    ): Boolean {
         var recorded = false
         store.edit { prefs ->
             val ids = prefs[RECORDED_IDS].orEmpty().split(',').filter { it.isNotEmpty() }
@@ -86,10 +112,48 @@ class DataStoreStatsRepository(private val store: DataStore<Preferences>) : Stat
                 },
             )
             prefs[RECORDED_IDS] = (ids + gameId).takeLast(MAX_REMEMBERED_IDS).joinToString(",")
+            // §14.6 o prêmio entra na carteira junto com a contagem do jogo: um jogo só credita uma vez.
+            if (stake > 0 || payout > 0) {
+                prefs[BALANCE] = (prefs[BALANCE] ?: Coins.INITIAL_BALANCE).coerceAtLeast(0) + payout
+                prefs[NET] = (prefs[NET] ?: 0) + payout - stake
+            }
             recorded = true
         }
         return recorded
     }
+
+    /** §14.6 carteira no mesmo arquivo das estatísticas (para o prêmio e a contagem serem gravados juntos). */
+    override val wallet: Flow<Wallet> = store.data.catch { error ->
+        if (error is IOException) emit(emptyPreferences()) else throw error
+    }.map { prefs -> walletOf(prefs) }
+
+    override val lifetimeNet: Flow<Int> = store.data.catch { error ->
+        if (error is IOException) emit(emptyPreferences()) else throw error
+    }.map { prefs -> prefs[NET] ?: 0 }
+
+    override suspend fun debit(stake: Int): Boolean {
+        var done = false
+        store.edit { prefs ->
+            val debited = walletOf(prefs).debit(stake) ?: return@edit
+            prefs[BALANCE] = debited.balance
+            done = true
+        }
+        return done
+    }
+
+    override suspend fun claimDaily(today: Long): Boolean {
+        var done = false
+        store.edit { prefs ->
+            val claimed = walletOf(prefs).claimDaily(today) ?: return@edit
+            prefs[BALANCE] = claimed.balance
+            prefs[LAST_CLAIM_DAY] = today
+            done = true
+        }
+        return done
+    }
+
+    private fun walletOf(prefs: Preferences): Wallet =
+        Wallet((prefs[BALANCE] ?: Coins.INITIAL_BALANCE).coerceAtLeast(0), prefs[LAST_CLAIM_DAY])
 
     override suspend fun reset() {
         store.edit { prefs ->
@@ -107,6 +171,11 @@ class DataStoreStatsRepository(private val store: DataStore<Preferences>) : Stat
         /** Basta lembrar os últimos ids: só há um jogo salvo por vez, então só o atual pode ser recontado. */
         const val MAX_REMEMBERED_IDS = 50
         val RECORDED_IDS = stringPreferencesKey("recorded_game_ids")
+
+        // §14.6 carteira (chaves fora do prefixo "stats": o reset das estatísticas não mexe nelas)
+        val BALANCE = intPreferencesKey("wallet:balance")
+        val LAST_CLAIM_DAY = longPreferencesKey("wallet:lastClaimDay")
+        val NET = intPreferencesKey("wallet:net")
 
         fun counter(mode: GameMode, difficultyId: String, field: String): Preferences.Key<Int> =
             intPreferencesKey("$PREFIX:${mode.name}:$difficultyId:$field")

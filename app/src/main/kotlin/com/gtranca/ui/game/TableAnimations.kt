@@ -81,6 +81,9 @@ object TableAnimations {
     private fun holder(seat: Seat, viewer: Seat): AnimAnchor =
         if (seat == viewer) AnimAnchor.OwnHand else AnimAnchor.SeatHand(seat.index)
 
+    /** Folga entre as cartas que vão ao jogo e as do lixo que voam para a mão (pegar o lixo, §5.1). */
+    const val MELD_LANDING_MILLIS = 250L
+
     /** Atraso do voo do morto: depois das cartas da jogada que o liberou. */
     const val MORTO_DELAY_MILLIS = 300L
 
@@ -170,14 +173,17 @@ object TableAnimations {
                         is DiscardPlan.AddToMeld -> plan.handCards
                         is DiscardPlan.NewMeld -> plan.handCards
                     }
-                    // §5.1 o topo vai do lixo ao conjunto (derivado do conjunto, não do snapshot anterior, que pode
-                    // ter sido pulado), e as cartas da mão do plano vão junto da mão até lá.
-                    takenTop(old, new, target, handCards)?.let { flights += CardFlight(nextId(), AnimAnchor.DiscardPile, target, it) }
-                    handCards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
-                        flights += CardFlight(nextId(), from, target, card, STAGGER_MILLIS * i)
+                    // §5.1 o topo vai do lixo ao conjunto (o do evento; sem ele, derivado do conjunto) e as cartas da mão do
+                    // plano vão junto da mão até lá. Só depois o resto do lixo voa para a mão.
+                    val top = event.takenTop ?: takenTop(old, new, target, handCards)
+                    top?.let { flights += CardFlight(nextId(), AnimAnchor.DiscardPile, target, it) }
+                    val toMeld = handCards.take(MAX_CARDS_PER_MOVE)
+                    toMeld.forEachIndexed { i, card ->
+                        flights += CardFlight(nextId(), from, target, card, STAGGER_MILLIS * (i + 1))
                     }
+                    val afterMeld = STAGGER_MILLIS * (toMeld.size + 1) + MELD_LANDING_MILLIS
                     event.takenFromDiscard.takeLast(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
-                        flights += CardFlight(nextId(), AnimAnchor.DiscardPile, from, card, STAGGER_MILLIS * (i + 1))
+                        flights += CardFlight(nextId(), AnimAnchor.DiscardPile, from, card, afterMeld + STAGGER_MILLIS * i)
                     }
                 }
                 is Action.CreateMeld -> {

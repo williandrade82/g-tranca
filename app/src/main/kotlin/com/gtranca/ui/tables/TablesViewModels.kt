@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.gtranca.ai.Difficulty
 import com.gtranca.data.Settings
 import com.gtranca.data.SettingsRepository
+import com.gtranca.data.WalletRepository
+import com.gtranca.engine.Coins
+import com.gtranca.engine.Wallet
 import com.gtranca.engine.GroupRanks
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
@@ -56,9 +59,12 @@ private suspend fun <T> safely(block: suspend () -> T): T? = try {
 }
 
 /** Lista de mesas abertas pelos jogadores virtuais (§14.4): sorteada a cada vez que a tela é aberta. */
-class TablesViewModel(seed: Long = System.nanoTime(), settings: SettingsRepository? = null) : ViewModel() {
+class TablesViewModel(seed: Long = System.nanoTime(), settings: SettingsRepository? = null, wallet: WalletRepository? = null) : ViewModel() {
     private val _tables = MutableStateFlow(Tables.botTables(seed))
     val tables: StateFlow<List<TableOffer>> = _tables.asStateFlow()
+
+    /** §14.6 saldo da carteira (as mesas acima dele ficam bloqueadas). */
+    val balance: StateFlow<Int> = balanceFlow(wallet, viewModelScope)
 
     init {
         // O anfitrião nunca tem o primeiro nome do jogador (como os adversários, §14.1).
@@ -77,7 +83,15 @@ class TablesViewModel(seed: Long = System.nanoTime(), settings: SettingsReposito
  * Mesa criada pelo jogador (§14.4, §14.5): os personagens são sorteados com a [seed] e mostrados antes de começar;
  * [reroll] sorteia outros, com a mesma configuração. O jogo que começa usa a semente da mesa mostrada.
  */
-class CreatedTableViewModel(private val config: GameConfig, seed: Long = System.nanoTime(), settings: SettingsRepository? = null) : ViewModel() {
+class CreatedTableViewModel(
+    private val config: GameConfig,
+    seed: Long = System.nanoTime(),
+    settings: SettingsRepository? = null,
+    wallet: WalletRepository? = null,
+) : ViewModel() {
+    /** §14.6 saldo da carteira. */
+    val balance: StateFlow<Int> = balanceFlow(wallet, viewModelScope)
+
     private var playerName = ""
     private var seed = seed
     private val _table = MutableStateFlow(build())
@@ -104,6 +118,7 @@ class CreatedTableViewModel(private val config: GameConfig, seed: Long = System.
         difficulty = config.difficulty,
         targetScore = config.targetScore,
         rules = config.rules,
+        stake = config.stake,
     )
 
     /** Sorteia outros personagens para a mesma configuração. */
@@ -126,6 +141,9 @@ data class CreateTableUiState(
     val targetText: String = RuleSet.DEFAULT.targetScore.toString(),
     /** Já leu o último modo e as regras personalizadas. */
     val loaded: Boolean = true,
+    /** §14.6 aposta escolhida e saldo da carteira. */
+    val stake: Int = Coins.DEFAULT_STAKE,
+    val balance: Int = Coins.INITIAL_BALANCE,
 ) {
     val targetScore: Int? get() = parseTargetScore(targetText)
 
@@ -138,9 +156,12 @@ data class CreateTableUiState(
             RulesChoice.CUSTOM -> customRules
         }
 
-    val canCreate: Boolean get() = targetScore != null && loaded
+    /** §14.6 o saldo cobre a aposta. */
+    val canAfford: Boolean get() = Coins.canJoin(balance, stake)
 
-    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(mode, difficulty, it, rules) }
+    val canCreate: Boolean get() = targetScore != null && loaded && canAfford
+
+    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(mode, difficulty, it, rules, stake) }
 
     companion object {
         const val MAX_TARGET: Int = Int.MAX_VALUE
@@ -151,6 +172,7 @@ data class CreateTableUiState(
 class CreateTableViewModel(
     private val settings: SettingsRepository? = null,
     private val writes: WriteQueue? = null,
+    wallet: WalletRepository? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CreateTableUiState(loaded = settings == null))
     val uiState: StateFlow<CreateTableUiState> = _uiState.asStateFlow()
@@ -159,6 +181,11 @@ class CreateTableViewModel(
     private var modeTouched = false
 
     init {
+        wallet?.let { repo ->
+            viewModelScope.launch {
+                repo.wallet.catch { emit(Wallet()) }.collect { w -> _uiState.update { it.copy(balance = w.balance) } }
+            }
+        }
         settings?.let { repo ->
             viewModelScope.launch {
                 val stored = repo.settings.catch { emit(Settings()) }.first()
@@ -197,6 +224,9 @@ class CreateTableViewModel(
     fun onRulesChange(choice: RulesChoice) = _uiState.update { it.copy(rulesChoice = choice) }
 
     fun onTargetChange(text: String) = _uiState.update { it.copy(targetText = text) }
+
+    /** §14.6 aposta da mesa (uma das [Coins.STAKES]; outro valor é ignorado). */
+    fun onStakeChange(stake: Int) = _uiState.update { if (stake in Coins.STAKES) it.copy(stake = stake) else it }
 
     /** "Criar mesa": devolve a configuração do jogo (e lembra o modo, §14), ou `null` se ainda não dá. */
     fun onCreate(): GameConfig? {
@@ -301,4 +331,13 @@ class RulesEditorViewModel(
             _uiState.update { it.copy(rules = rules, saving = false, saved = true) }
         }
     }
+}
+
+/** §14.6 saldo da carteira como fluxo; sem carteira (testes), o saldo inicial. */
+private fun balanceFlow(wallet: WalletRepository?, scope: kotlinx.coroutines.CoroutineScope): StateFlow<Int> {
+    val state = MutableStateFlow(Coins.INITIAL_BALANCE)
+    wallet?.let { repo ->
+        scope.launch { repo.wallet.catch { emit(Wallet()) }.collect { state.value = it.balance } }
+    }
+    return state.asStateFlow()
 }

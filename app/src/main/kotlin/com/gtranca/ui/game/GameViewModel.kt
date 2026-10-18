@@ -192,10 +192,20 @@ class GameViewModel(
     private val finishSent = AtomicBoolean(false)
 
     /** Grava a foto do jogo (na fila, em ordem; falha só é registrada). */
+    /**
+     * §14.6 a aposta foi mesmo debitada ao começar. Se o saldo já não cobria (a tela da mesa estava desatualizada), o jogo
+     * segue sem aposta: nada é salvo com ela nem pago na vitória.
+     */
+    @Volatile
+    private var stakeCharged = true
+
+    /** A configuração do jogo como foi jogada: sem aposta se o débito falhou. */
+    private val playedConfig: GameConfig get() = if (stakeCharged) config else config.copy(stake = 0)
+
     private fun enqueueSave(snapshot: SaveSnapshot) {
         val store = persistence ?: return
         if (finishSent.get()) return
-        writes.enqueue { store.save(savedGameOf(gameId, config, gameSeed, snapshot, drawnForName)) }
+        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName)) }
     }
 
     private data class Local(
@@ -303,11 +313,13 @@ class GameViewModel(
                         else -> GameResult.LOSS
                     }
                     // Na fila durável: sair da tela não interrompe o fim (apagar o salvo e contar o jogo).
-                    writes.enqueue { persistence.finish(gameId, config.toSaved(), result) }
+                    writes.enqueue { persistence.finish(gameId, playedConfig.toSaved(), result) }
                 }
             }
         }
         // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
+        // §14.6 a aposta é debitada ao começar o jogo (antes de salvar o jogo; retomar não debita de novo).
+        if (restored == null && config.stake > 0) persistence?.let { store -> writes.enqueue { if (!store.debitStake(config.stake)) stakeCharged = false } }
         if (restored == null) enqueueSave(controller.saveSnapshot())
         // §3.5 rede de segurança: se a tela nunca avisar que a distribuição terminou (ex.: app em segundo plano), segue
         // depois do tempo da animação mais uma folga, para o jogo não travar.

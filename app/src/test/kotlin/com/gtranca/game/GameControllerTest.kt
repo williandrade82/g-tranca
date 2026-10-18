@@ -268,7 +268,7 @@ class GameControllerTest {
             val legal = state.humanLegal
             // Só pega lixos com pelo menos 2 cartas, para haver cartas levadas à mão.
             val take = legal.firstOrNull { it is Action.TakeDiscardPile }?.takeIf { state.view.discardPile.size >= 2 }
-            if (take != null && humanTake == null) humanTake = PublicEvent(Seat(0), take, state.view.discardPile.dropLast(1))
+            if (take != null && humanTake == null) humanTake = PublicEvent(Seat(0), take, state.view.discardPile.dropLast(1), state.view.discardPile.last())
             human.submit(take ?: legal.firstOrNull { it is Action.Discard } ?: legal.first()) shouldBe true
         }
         advanceUntilIdle()

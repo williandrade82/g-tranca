@@ -4,6 +4,7 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.data.Settings
 import com.gtranca.data.SettingsRepository
 import com.gtranca.engine.GroupRanks
+import com.gtranca.engine.Coins
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
@@ -53,7 +54,7 @@ class TablesViewModelsTest {
         tables.map { it.host.firstName }.distinct().size shouldBe tables.size
         Tables.botTables(seed = 42) shouldBe tables
         val first = tables.first()
-        first.toConfig() shouldBe GameConfig(first.mode, first.difficulty, first.targetScore, first.rules)
+        first.toConfig() shouldBe GameConfig(first.mode, first.difficulty, first.targetScore, first.rules, first.stake)
     }
 
     @Test
@@ -73,13 +74,36 @@ class TablesViewModelsTest {
     }
 
     @Test
+    fun `§14_6 cada mesa traz uma das apostas e o sorteio cobre todas`() {
+        val stakes = (1L..60L).flatMap { Tables.botTables(it) }.map { it.stake }
+        stakes.all { it in Coins.STAKES } shouldBe true
+        stakes.toSet() shouldBe Coins.STAKES.toSet()
+    }
+
+    @Test
+    fun `§14_6 criar mesa - aposta padrao 50, escolhe entre as quatro e so cria com saldo`() {
+        val vm = CreateTableViewModel()
+        vm.uiState.value.stake shouldBe 50
+        Coins.STAKES.forEach { vm.onStakeChange(it); vm.uiState.value.stake shouldBe it }
+        vm.onStakeChange(77) // fora das opções: ignorada
+        vm.uiState.value.stake shouldBe 500
+        var state = vm.uiState.value
+        state.canAfford shouldBe true // saldo inicial 1000
+        state.toConfig()!!.stake shouldBe 500
+        state = state.copy(balance = 499)
+        state.canAfford shouldBe false
+        state.canCreate shouldBe false
+        state.copy(balance = 500).canCreate shouldBe true
+    }
+
+    @Test
     fun `§14 padroes de criar mesa - medio, Classica e alvo 3000`() {
         val state = CreateTableViewModel().uiState.value
         state.difficulty shouldBe Difficulty.MEDIO
         state.rulesChoice shouldBe RulesChoice.CLASSICA
         state.targetScore shouldBe 3000
         state.canCreate shouldBe true
-        state.toConfig() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, RuleSet.CLASSICA)
+        state.toConfig() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, RuleSet.CLASSICA, Coins.DEFAULT_STAKE)
     }
 
     @Test
@@ -99,7 +123,7 @@ class TablesViewModelsTest {
         vm.onDifficultyChange(Difficulty.DIFICIL)
         vm.onModeChange(GameMode.DUPLAS)
         vm.onRulesChange(RulesChoice.PAULISTA)
-        vm.onCreate() shouldBe GameConfig(GameMode.DUPLAS, Difficulty.DIFICIL, 1000, RuleSet.PAULISTA)
+        vm.onCreate() shouldBe GameConfig(GameMode.DUPLAS, Difficulty.DIFICIL, 1000, RuleSet.PAULISTA, Coins.DEFAULT_STAKE)
     }
 
     @Test

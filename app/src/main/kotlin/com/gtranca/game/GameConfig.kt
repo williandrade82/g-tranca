@@ -9,6 +9,7 @@ import com.gtranca.engine.model.GameMode
  *
  * @property difficulty dificuldade de **todos** os jogadores virtuais (parceiro e adversários).
  * @property targetScore pontuação-alvo, inteiro positivo.
+ * @property stake aposta da mesa em moedas (§14.6); 0 = sem aposta (testes, simulações).
  * @property rules perfil de regras da mesa (§14.3, §14.4); ao retomar um jogo salvo valem as regras guardadas nele.
  */
 data class GameConfig(
@@ -16,8 +17,10 @@ data class GameConfig(
     val difficulty: Difficulty = Difficulty.MEDIO,
     val targetScore: Int = RuleSet.DEFAULT.targetScore,
     val rules: RuleSet = RuleSet.DEFAULT,
+    val stake: Int = 0,
 ) {
     init {
+        require(stake >= 0) { "Aposta não pode ser negativa: $stake" }
         require(targetScore > 0) { "Pontuação-alvo deve ser um inteiro positivo: $targetScore" }
     }
 }

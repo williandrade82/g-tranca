@@ -316,7 +316,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
 
 ### **13.1. Desistência**
 - Durante o jogo, o jogador humano pode **desistir**, depois de confirmar a decisão (se cancelar, o jogo continua exatamente como estava). A opção não é oferecida na tela de pontuação da partida (§12).
-- Ao desistir, o jogo termina imediatamente e o **outro lado** (o jogador virtual ou a dupla adversária) é declarado **vencedor**. A partida em andamento não é pontuada.
+- Ao desistir, o jogo termina imediatamente e o **outro lado** (o jogador virtual ou a dupla adversária) é declarado **vencedor**. A partida em andamento não é pontuada. O jogador **perde a aposta** (§14.6).
 
 ---
 
@@ -330,6 +330,7 @@ Definidos **antes do início do jogo**, na criação da mesa (§14.4); não muda
 | Pontuação-alvo | número inteiro positivo | a do perfil (**3.000** nos perfis da casa) |
 | Modo | individual / duplas | o último modo escolhido (individual na primeira vez) |
 | Dificuldade dos jogadores virtuais | fácil / médio / difícil | médio |
+| Aposta da mesa (§14.6) | 50, 100, 250 ou 500 moedas | 50 |
 
 ### **14.1. Perfis (apresentação; não alteram nenhuma regra)**
 
@@ -380,7 +381,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 
 - Uma **mesa** reúne o perfil de regras, a pontuação-alvo e o modo (individual ou duplas).
 - Antes de entrar numa mesa, o jogador pode **ver as regras** (as diferenças em relação à Clássica). Ao entrar, as regras são aceitas e **não mudam mais** até o fim do jogo; o jogo salvo ("Continuar") retoma com as mesmas regras.
-- Uma mesa reúne também a **dificuldade** dos jogadores virtuais.
+- Uma mesa reúne também a **dificuldade** dos jogadores virtuais e a **aposta** (§14.6).
 - **Mesas dos jogadores virtuais:** em "Novo jogo", o app lista algumas mesas já abertas por jogadores virtuais, cada uma com **perfil da casa**, **modo**, **dificuldade**, **pontuação-alvo** (1.500, 2.000 ou 3.000) e os **personagens que a ocupam** (§14.5), tudo sorteado ao montar a lista. A mesa de **duplas** mostra os **três** personagens (adversário à esquerda, parceiro e adversário à direita) com um retrato pequeno de cada um; a de **individual**, o personagem adversário. Tocar numa mesa mostra as **regras da mesa** e os personagens; o jogador **inicia o jogo** ou volta. **O jogo começa com exatamente os personagens da mesa escolhida**: nada é sorteado de novo ao iniciar.
 - **Criar mesa:** o jogador escolhe dificuldade, modo, regras (**Clássica**, **Tranca Paulista** ou **Personalizada**) e pontuação-alvo (padrão 3.000). Ao criar, as vagas de parceiro e adversários são preenchidas por personagens sorteados nesse momento (§14.5) e abre a **tela da mesa**, a mesma das mesas abertas pelos jogadores virtuais, com os personagens sorteados e as regras. Ali o jogador **inicia o jogo**, **sorteia de novo** (novos personagens, mesma configuração, quantas vezes quiser) ou volta à criação. O jogo começa (distribuição das cartas, §3) com exatamente os personagens mostrados.
 - **Regras personalizadas do jogador:** cada jogador tem **um** perfil personalizado (origem: Clássica na primeira vez), que é o seu padrão ao escolher "Personalizada". Ele é editado no **Perfil** do jogador ("Meu padrão para regras personalizadas") ou em "Criar mesa": tocar em "Personalizada" sempre abre a tela "Personalizar regra" (mesmo já escolhida); ao salvar, volta-se à criação da mesa com "Personalizada" escolhida; ao voltar sem salvar, a escolha anterior é mantida. Os parâmetros editáveis são os de §14.2, exceto a pontuação-alvo, escolhida na mesa.
@@ -405,6 +406,19 @@ Os jogadores virtuais são **4 perfis de robô**, cada um com **visual**, **esti
 - **Apresentação e animação:** a **lista de mesas** e a **tela da mesa** mostram o retrato de apresentação (e o nível em estrelas e a característica do perfil, que no individual vêm com o texto que "vende" o perfil); a mesa de **duplas** mostra os **três** personagens, em retratos menores. Cada pose tem um movimento suave e um efeito próprio (brilho, confete, nuvem com chuva, pensamentos), sempre dentro do ciclo de 2 a 4 s.
 - **Fim da partida e do jogo:** o anúncio e a tela final mostram os **dois lados completos**: os vencedores na pose de vencedor, com confete (o jogador, com a sua foto ou medalhão), e os perdedores na de perdedor, com a nuvem de chuva, sobre um fundo vermelho que pulsa devagar entre o escuro e o mais claro. Na **tela de pontos** o jogador aparece com a sua foto ou medalhão; cada personagem aparece no **rosto** de vencedor se o seu lado lidera o placar acumulado, de perdedor se está atrás, e de pensador se há empate (na tela final, o vencedor do jogo, inclusive por desistência).
 - **"Continuar":** o nome do jogador usado no sorteio fica gravado no jogo salvo, para que "Continuar" mostre os mesmos personagens mesmo que o perfil seja renomeado.
+### **14.6. Moedas e apostas**
+
+As moedas são só do jogo contra os jogadores virtuais: **nunca há compra de moedas**; só se ganha jogando e pelo ganho diário. A carteira fica **no aparelho** (não é protegida contra alteração) e é independente de qualquer carteira online futura.
+
+- **Carteira:** saldo inteiro, **nunca negativo**. O saldo inicial é de **1.000 moedas**.
+- **Ganho diário:** uma vez por **dia** (data do aparelho), o jogador pode **resgatar 200 moedas**. Os dias sem resgate **não acumulam**. Com o resgate, o saldo nunca fica abaixo de 200. Com o relógio do aparelho atrasado (data anterior ou igual à do último resgate), o resgate não é liberado de novo.
+- **Aposta da mesa:** cada mesa tem uma aposta de **50, 100, 250 ou 500 moedas**. **Todos** os jogadores da mesa (o jogador, o parceiro e os adversários) apostam o valor da mesa; as moedas dos jogadores virtuais não se acabam.
+- **Entrar na mesa:** o jogador só entra se o saldo for **maior ou igual** à aposta da mesa; senão a mesa fica **bloqueada** ("saldo insuficiente"). Se o saldo mudou entre a tela da mesa e o início e o débito não passa, o jogo começa **sem aposta** (nada é debitado nem pago). A aposta é **debitada ao começar** o jogo. O jogo salvo ("Continuar") guarda a aposta já debitada, e retomá-lo não debita de novo.
+- **Fim do jogo (§13):** os apostadores do lado **perdedor** perdem a aposta (já debitada); o **prêmio** é a soma das apostas dos perdedores, repartido entre os vencedores **na proporção da aposta de cada um**: cada vencedor recebe a **própria aposta** mais **prêmio × (aposta dele ÷ soma das apostas dos vencedores)**. O arredondamento para moedas inteiras é feito pelo **maior resto** (a moeda que sobra vai a quem tem a maior parte fracionária; empate: o primeiro na ordem dos assentos). A soma do que se recebe é sempre igual à soma das apostas.
+- **Exemplos** (todos apostam a mesma quantia A): no **individual**, o vencedor recebe **2A** (a sua e a do outro); em **duplas**, cada vencedor recebe **2A** (a sua mais metade das duas apostas perdidas). Com apostas diferentes (uso futuro), 2 vencedores com 100 e 300 e 2 perdedores com 200 e 200: prêmio 400; o de 100 recebe 100 + 100 = 200 e o de 300 recebe 300 + 300 = 600.
+- **Desistência (§13.1):** o jogador **perde a aposta**; nada é creditado.
+- **Resultado em moedas:** o jogador vê, no fim do jogo, quanto ganhou ou perdeu (recebido menos a aposta), e as estatísticas mostram a soma desse resultado. O saldo e essa soma pertencem à **carteira**: zerar as estatísticas (contagem de jogos) não os altera. Se o aplicativo for fechado entre o débito da aposta e o primeiro salvamento do jogo, a aposta se perde (nunca se ganha sem apostar).
+
 ---
 
 # **15. Resumo do Fluxo de Jogo**

@@ -23,7 +23,12 @@ class GameData private constructor(context: Context, isKnownDifficulty: (String)
 
     val settings: SettingsRepository = DataStoreSettingsRepository(preferencesStore(context.preferencesDataStoreFile(SETTINGS_FILE)))
 
-    val stats: StatsRepository = DataStoreStatsRepository(preferencesStore(context.preferencesDataStoreFile(STATS_FILE)))
+    private val statsAndWallet = DataStoreStatsRepository(preferencesStore(context.preferencesDataStoreFile(STATS_FILE)))
+
+    val stats: StatsRepository = statsAndWallet
+
+    /** §14.6 carteira local (no mesmo arquivo das estatísticas). */
+    val wallet: WalletRepository = statsAndWallet
 
     companion object {
         const val SAVED_GAME_FILE = "saved_game.json"

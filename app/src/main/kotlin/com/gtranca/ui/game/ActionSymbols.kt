@@ -54,13 +54,10 @@ enum class ActionKind { DRAW, TAKE, MELD, ADD, DISCARD, DECLINE }
 /** Um símbolo com o detalhe curto ao lado (quantidade de cartas ou a carta descartada). */
 data class ActionSymbol(val kind: ActionKind, val detail: String? = null, val redSuit: Boolean = false)
 
-fun PublicEvent.symbol(): ActionSymbol = when (val a = action) {
-    Action.DrawFromStock -> ActionSymbol(ActionKind.DRAW)
-    Action.DeclineDraw -> ActionSymbol(ActionKind.DECLINE)
-    is Action.TakeDiscardPile -> ActionSymbol(ActionKind.TAKE, takenFromDiscard.size.toString())
-    is Action.CreateMeld -> ActionSymbol(ActionKind.MELD, a.cards.size.toString())
-    is Action.AddToMeld -> ActionSymbol(ActionKind.ADD, a.cards.size.toString())
-    is Action.Discard -> ActionSymbol(ActionKind.DISCARD, a.card.shortLabel, a.card.suit.isRed)
+fun RecordEntry.symbol(): ActionSymbol = when (kind) {
+    ActionKind.DRAW, ActionKind.DECLINE -> ActionSymbol(kind)
+    ActionKind.DISCARD -> cards.single().let { ActionSymbol(kind, it.shortLabel, it.suit.isRed) }
+    ActionKind.TAKE, ActionKind.MELD, ActionKind.ADD -> ActionSymbol(kind, cards.size.toString())
 }
 
 private val RedOnDark = Color(0xFFFF8A80)
@@ -90,7 +87,7 @@ fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier, re
                 )
             }
         }
-        events.forEach { SymbolWithDetail(it.symbol()) }
+        events.record().forEach { SymbolWithDetail(it.symbol()) }
     }
 }
 
@@ -234,24 +231,20 @@ fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>,
                     }
                 }
                 events.forEach { event ->
-                    val cards = when (val action = event.action) {
-                        is Action.Discard -> listOf(action.card)
-                        is Action.CreateMeld -> action.cards
-                        is Action.AddToMeld -> action.cards
-                        is Action.TakeDiscardPile -> event.takenFromDiscard
-                        else -> emptyList()
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        ActionIcon(event.symbol().kind, GColors.Gold, Modifier.padding(top = 2.dp).size(22.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            val full = eventText(event)
-                            Text(
-                                eventShortText(event).replaceFirstChar { it.uppercase() },
-                                Modifier.semantics { contentDescription = full },
-                            )
-                            if (cards.isNotEmpty()) {
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                                    cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                    // Cada ação pode render mais de uma linha (pegar o lixo: o que foi à mão e o que foi ao jogo).
+                    val full = eventText(event)
+                    event.record().forEach { entry ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                            ActionIcon(entry.kind, GColors.Gold, Modifier.padding(top = 2.dp).size(22.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                Text(
+                                    entryText(entry).replaceFirstChar { it.uppercase() },
+                                    Modifier.semantics { contentDescription = full },
+                                )
+                                if (entry.cards.isNotEmpty() && entry.kind != ActionKind.DRAW) {
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                        entry.cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                                    }
                                 }
                             }
                         }
