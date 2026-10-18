@@ -56,8 +56,9 @@ class PersistenceFlowTest {
         rule.waitUntil(10_000) { exists("create-table-screen") }
         rule.onNodeWithTag("difficulty-facil").performClick()
         rule.onNodeWithTag("create-table").performClick()
+        rule.waitUntil(10_000) { exists("table-rules-start") }
+        rule.onNodeWithTag("table-rules-start").performClick()
         rule.waitUntil(30_000) {
-            if (exists("red-three-confirm")) rule.onNodeWithTag("red-three-confirm").performClick()
             rule.onAllNodes(hasTestTag("action-draw") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithTag("action-draw").performClick()

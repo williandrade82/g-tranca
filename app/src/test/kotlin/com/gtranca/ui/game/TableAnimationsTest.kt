@@ -246,7 +246,7 @@ class TableAnimationsTest {
     fun `§6_5 §9_4 voos da troca de 3 vermelho - virada de outro assento, revelada do humano, do morto sem reposicao`() {
         var id = 0L
         val other = RedThreeNotice(1, Side(1), Seat(1), listOf(c("3H")), atTurnStart = false)
-        val fromOther = TableAnimations.redThreeSwap(other, Seat(0), TableAnimations.Replacement.FaceDown, { ++id })
+        val fromOther = TableAnimations.redThreeSwap(other, Seat(0), TableAnimations.Replacement.FaceDown(1), { ++id })
         fromOther[0] shouldBe CardFlight(fromOther[0].id, AnimAnchor.SeatHand(1), AnimAnchor.RedThrees(1), c("3H"))
         fromOther[1].from shouldBe AnimAnchor.Stock
         fromOther[1].to shouldBe AnimAnchor.SeatHand(1)
@@ -260,6 +260,31 @@ class TableAnimationsTest {
         val morto = TableAnimations.redThreeSwap(own, Seat(0), TableAnimations.Replacement.None, { ++id }, fromMorto = 1)
         morto.single().from shouldBe AnimAnchor.Morto(1)
         morto.single().to shouldBe AnimAnchor.RedThrees(0)
+    }
+
+    @Test
+    fun `§3_5 troca em lote - 3 vermelhos saem juntos, a segunda um pouco depois, e as reposicoes depois, tambem escalonadas`() {
+        var id = 0L
+        // o humano (assento 0) baixa dois de uma vez, com duas reposições reveladas
+        val own = RedThreeNotice(1, Side(0), Seat(0), listOf(c("3H"), c("3D")), atTurnStart = true)
+        val mine = TableAnimations.redThreeSwap(own, Seat(0), TableAnimations.Replacement.Revealed(listOf(c("QS"), c("7C"))), { ++id })
+        mine.size shouldBe 4
+        mine.take(2).forEach { it.from shouldBe AnimAnchor.OwnHand; it.to shouldBe AnimAnchor.RedThrees(0) }
+        mine.drop(2).forEach { it.from shouldBe AnimAnchor.Stock; it.to shouldBe AnimAnchor.OwnHand }
+        (mine[1].delayMillis > mine[0].delayMillis) shouldBe true // a segunda carta sai um pouco depois da primeira
+        (mine[3].delayMillis > mine[2].delayMillis) shouldBe true // e a segunda reposição também
+        (mine[2].delayMillis > mine[1].delayMillis) shouldBe true // as reposições vêm depois dos 3 vermelhos
+        // um robô (assento 1): reposições viradas, uma por 3 vermelho
+        val bot = RedThreeNotice(2, Side(1), Seat(1), listOf(c("3H"), c("3D")), atTurnStart = true)
+        val theirs = TableAnimations.redThreeSwap(bot, Seat(0), TableAnimations.Replacement.FaceDown(2), { ++id })
+        theirs.size shouldBe 4
+        theirs.drop(2).forEach { it.from shouldBe AnimAnchor.Stock; it.to shouldBe AnimAnchor.SeatHand(1); it.card shouldBe null }
+        (theirs[3].delayMillis > theirs[2].delayMillis) shouldBe true
+        // do morto: os 3 vermelhos saem do morto e as reposições vêm do monte, também escalonados
+        val fromMorto = TableAnimations.redThreeSwap(own, Seat(0), TableAnimations.Replacement.Revealed(listOf(c("QS"), c("7C"))), { ++id }, fromMorto = 0)
+        fromMorto.take(2).forEach { it.from shouldBe AnimAnchor.Morto(0) }
+        fromMorto.drop(2).forEach { it.from shouldBe AnimAnchor.Stock }
+        (fromMorto[1].delayMillis > fromMorto[0].delayMillis) shouldBe true
     }
 
     @Test

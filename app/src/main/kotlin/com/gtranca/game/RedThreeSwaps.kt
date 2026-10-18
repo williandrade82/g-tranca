@@ -32,15 +32,65 @@ object LogRedThreeSource : RedThreeSwapSource {
         val log = current.view.redThreeLog
         val seen = if (previous != null && previous.roundNumber == current.roundNumber) previous.view.redThreeLog.size else 0
         val mode = current.view.mode
-        return log.withIndex().drop(seen).map { (index, entry) ->
-            RedThreeNotice(
-                id = current.roundNumber * IDS_PER_ROUND + index,
-                side = mode.sideOf(entry.seat),
-                seat = entry.seat,
-                cards = listOf(entry.card),
-                atTurnStart = entry.atTurnStart,
-                chained = entry.chained,
-            )
-        }
+        return groupRedThreeLog(current.roundNumber, mode, log.withIndex().drop(seen))
     }
+}
+
+/**
+ * §3.5 agrupa as entradas [entries] do registro (um único trecho novo do log, que vem de uma só ação do motor) em avisos:
+ * 3 vermelhos consecutivos do mesmo assento e do mesmo momento, sem cadeia, viram **um** aviso com várias cartas; os que
+ * chegaram como reposição em cadeia (§6.5) ficam como avisos seguintes. Não agrupa entradas de ações diferentes: use-a só
+ * com o trecho novo entre dois snapshots.
+ */
+internal fun groupRedThreeLog(
+    roundNumber: Int,
+    mode: com.gtranca.engine.model.GameMode,
+    entries: List<IndexedValue<com.gtranca.engine.model.RedThreeLaid>>,
+): List<RedThreeNotice> {
+    val groups = mutableListOf<MutableList<IndexedValue<com.gtranca.engine.model.RedThreeLaid>>>()
+    for (item in entries) {
+        val last = groups.lastOrNull()
+        val head = last?.first()?.value
+        val joins = head != null && !head.chained && !item.value.chained &&
+            head.seat == item.value.seat && head.atTurnStart == item.value.atTurnStart
+        if (joins) last!!.add(item) else groups.add(mutableListOf(item))
+    }
+    return groups.map { group ->
+        val first = group.first()
+        RedThreeNotice(
+            id = roundNumber * 1_000L + first.index,
+            side = mode.sideOf(first.value.seat),
+            seat = first.value.seat,
+            cards = group.map { it.value.card },
+            atTurnStart = first.value.atTurnStart,
+            chained = first.value.chained,
+        )
+    }
+}
+
+/**
+ * Reparte entre as trocas [swaps] do humano (na ordem) as reposições: cada 3 vermelho baixado tem uma. As primeiras
+ * reposições são as cartas das trocas em cadeia (3 vermelhos que chegaram como reposição); as demais, as cartas
+ * [ordered] que ficam na mão (a última troca leva o que sobrar). Devolve (ids das trocas em cadeia entregues, cartas da
+ * mão) por troca.
+ */
+internal fun allocateReplacements(
+    swaps: List<RedThreeNotice>,
+    ordered: List<Card>,
+): Pair<Map<Long, List<Long>>, Map<Long, Set<Card>>> {
+    val chained = swaps.filter { it.chained }
+    var chainedAt = 0
+    var orderedAt = 0
+    val delivers = mutableMapOf<Long, List<Long>>()
+    val kept = mutableMapOf<Long, Set<Card>>()
+    swaps.forEachIndexed { p, swap ->
+        val ids = mutableListOf<Long>()
+        repeat(swap.cards.size) { if (chainedAt < chained.size) ids += chained[chainedAt++].id }
+        val need = swap.cards.size - ids.size
+        val mine = if (p == swaps.lastIndex) ordered.drop(orderedAt) else ordered.drop(orderedAt).take(need)
+        orderedAt += need
+        if (ids.isNotEmpty()) delivers[swap.id] = ids
+        if (mine.isNotEmpty()) kept[swap.id] = mine.toSet()
+    }
+    return delivers to kept
 }

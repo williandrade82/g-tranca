@@ -289,7 +289,7 @@ fun TableScreen(
     // Voos que já chegaram: a carta aparece no destino só então (sai da origem, voa, aparece no destino).
     val arrived = remember { mutableStateMapOf<Long, Boolean>() }
     val landing = if (state.animationMillis <= 0) emptySet() else
-        state.flights.filter { it.card != null && arrived[it.id] != true }.mapNotNull { it.card }.toSet()
+        state.flights.filter { arrived[it.id] != true }.flatMap { listOfNotNull(it.card) + it.also }.toSet()
     // §3.5 a distribuição só termina quando todos os seus voos pousaram na tela (não por cronômetro): então avisa.
     if (state.dealPending && state.dealFlightIds.isNotEmpty()) {
         val dealLanded = state.dealFlightIds.all { id -> arrived[id] == true || state.flights.none { it.id == id } }
@@ -364,6 +364,14 @@ fun TableScreen(
                 }
                 // §3.5/§6.5 troca de 3 vermelho de outro assento: anúncio no meio da tela, que some sozinho.
                 state.banner?.let { SwapAnnouncement(it, view.mode, snapshot.viewerSeat, state.personas.getOrNull(it.seat.index)) }
+                // A troca do próprio jogador também é só um aviso (sem botões): fecha sozinho depois do tempo de leitura.
+                state.reveal?.let { reveal ->
+                    SwapAnnouncement(reveal.notice, view.mode, snapshot.viewerSeat, state.personas.getOrNull(reveal.notice.seat.index))
+                    LaunchedEffect(reveal.notice.id) {
+                        delay(state.swapNoticeMillis)
+                        events.onRevealConfirmed()
+                    }
+                }
             }
         }
     }
@@ -382,7 +390,6 @@ fun TableScreen(
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.meldChoice?.let { options -> MeldChoiceDialog(options, view, events) }
-    state.reveal?.let { reveal -> RedThreeDialog(reveal, events::onRevealConfirmed, events::onResign) }
     if (state.confirmDecline) {
         GMessage(
             title = stringResource(R.string.decline_title),
@@ -1134,39 +1141,6 @@ private fun FlagIcon(modifier: Modifier) {
     }
 }
 
-/**
- * §6.5 encenação do 3 vermelho do lado do humano: a(s) carta(s) e o botão "Baixar 3 vermelho". O motor já os
- * baixou e repôs; ao tocar, eles aparecem na mesa e a reposição aparece na mão, destacada como nova.
- */
-@Composable
-private fun RedThreeDialog(reveal: RedThreeReveal, onConfirm: () -> Unit, onResign: () -> Unit) {
-    GDialog(
-        modifier = Modifier.testTag("red-three-dialog"),
-        onDismissRequest = {},
-        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
-        title = { Text(revealTitle(reveal.notice)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    reveal.notice.cards.forEach { PlayingCard(it, size = CardSize.LARGE) }
-                }
-                Text(stringResource(R.string.red_three_value_note), style = MaterialTheme.typography.bodySmall)
-            }
-        },
-        confirmButton = {
-            GButton(onConfirm, Modifier.heightIn(min = 48.dp).testTag("red-three-confirm")) {
-                Text(stringResource(R.string.red_three_button))
-            }
-        },
-        // §13.1 desistir "a qualquer momento", inclusive durante a encenação.
-        dismissButton = {
-            TextButton(onResign, Modifier.heightIn(min = 48.dp).testTag("red-three-resign")) {
-                Text(stringResource(R.string.action_resign))
-            }
-        },
-    )
-}
-
 @Composable
 private fun DiscardPileDialog(pile: List<Card>, onDismiss: () -> Unit) {
     GDialog(
@@ -1326,7 +1300,8 @@ private fun SwapAnnouncement(notice: RedThreeNotice, mode: GameMode, viewerSeat:
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
         AnimatedVisibility(shown, enter = fadeIn() + scaleIn(initialScale = 0.7f)) {
             // Parceiro em verde, adversário em vermelho (mesmas cores nas bordas e no fundo).
-            val partner = SeatRole.of(mode, notice.seat, viewerSeat) == SeatRole.PARTNER
+            val role = SeatRole.of(mode, notice.seat, viewerSeat)
+            val partner = role == SeatRole.PARTNER || role == SeatRole.YOU
             val accent = if (partner) GColors.Emerald else GColors.Ruby
             val shape = RoundedCornerShape(Corner.lg)
             val fill = if (partner) listOf(Color(0xFF0B4A36), Color(0xFF136B4D)) else listOf(GColors.Bordeaux, Color(0xFF9C2440))

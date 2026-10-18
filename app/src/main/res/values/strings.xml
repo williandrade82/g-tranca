@@ -287,7 +287,6 @@
     <string name="home_version">Versão %1$s</string>
 
     <!-- 3 vermelhos (§6.5) -->
-    <string name="red_three_value_note">Cada 3 vermelho vale +105 se o seu lado tiver canastra ao fim da partida (+100, mais +5 como carta na mesa); sem canastra, −95.</string>
     <string name="game_over_rounds">Partidas jogadas: %1$d</string>
     <string name="game_over_col_round">Partida</string>
     <string name="game_over_col_total">Total</string>
@@ -312,7 +311,6 @@
     <string name="red_three_turn_you_many">Na sua vez, você baixou os seus 3 vermelhos</string>
     <string name="red_three_banner">%1$s baixou um 3 vermelho</string>
     <string name="red_three_banner_turn">%1$s baixou um 3 vermelho no início da vez</string>
-    <string name="red_three_button">Baixar 3 vermelho</string>
     <!-- Zero tratado à parte: em pt, a forma "one" cobre o 0 ("0 carta"). -->
     <string name="card_count_zero">nenhuma carta</string>
     <string name="opponent_hand_zero">nenhuma carta na mão</string>
