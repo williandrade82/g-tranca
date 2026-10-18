@@ -1,8 +1,8 @@
 package com.gtranca.ui.persona
 
-import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -22,14 +22,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.gtranca.game.Persona
 
-/** Vermelho escuro e vermelho mais claro do fundo dos perdedores: o pulso vai de um ao outro (discreto). */
-private val LoserDark = Color(0xFF2A0710).copy(alpha = 0.80f)
-private val LoserLight = Color(0xFF8A1E36).copy(alpha = 0.80f)
+/** Vermelho escuro da base do fundo dos perdedores; o degradê sobe até ficar totalmente transparente. */
+private val LoserRed = Color(0xFF6E0E20)
+
+/** Intensidade do degradê no ponto mais fraco do ciclo (o mais forte é 1). */
+private const val LOSER_FADE_MIN = 0.3f
 
 /** Duração de um ciclo do fundo dos perdedores. */
 private const val LOSER_PULSE_MILLIS = 2_800
@@ -37,7 +40,7 @@ private const val LOSER_PULSE_MILLIS = 2_800
 /**
  * §14.5 quem ganhou e quem perdeu, nos anúncios e na tela final: os de [winners] na pose de vencedor, com confete (o
  * jogador, com a sua foto ou medalhão), e os de [losers] na de perdedor (o robô frustrado e a foto do jogador) sobre um
- * fundo vermelho que pulsa devagar entre o escuro e o mais claro. Sem animação ([animate] falso), tudo fica parado.
+ * degradê vermelho (escuro embaixo, transparente em cima) que esmaece e reaparece devagar. Sem animação ([animate] falso), tudo fica parado.
  */
 @Composable
 fun ResultCast(winners: List<Persona>, losers: List<Persona>, animate: Boolean, modifier: Modifier = Modifier) {
@@ -50,26 +53,27 @@ fun ResultCast(winners: List<Persona>, losers: List<Persona>, animate: Boolean, 
     }
 }
 
-/** Fundo vermelho arredondado que pulsa entre escuro e mais claro (parado, no meio-termo escuro, sem animação). */
+/** Degradê vermelho escuro embaixo e transparente em cima, que esmaece e reaparece em ciclo (parado, forte, sem animação). */
 @Composable
 private fun LoserBackground(animate: Boolean, modifier: Modifier, content: @Composable () -> Unit) {
-    val color: () -> Color = if (animate) {
+    val intensity: () -> Float = if (animate) {
         val transition = rememberInfiniteTransition(label = "losers")
-        val state = transition.animateColor(
-            LoserDark,
-            LoserLight,
+        val state = transition.animateFloat(
+            1f,
+            LOSER_FADE_MIN,
             infiniteRepeatable(tween(LOSER_PULSE_MILLIS, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "loser-red",
+            label = "loser-fade",
         )
         ({ state.value })
     } else {
-        ({ LoserDark })
+        ({ 1f })
     }
+    val gradient = Brush.verticalGradient(listOf(Color.Transparent, LoserRed))
     Box(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .drawBehind { drawRoundRect(color(), cornerRadius = CornerRadius(16.dp.toPx())) }
+            .drawBehind { drawRoundRect(gradient, cornerRadius = CornerRadius(16.dp.toPx()), alpha = intensity()) }
             .padding(8.dp),
         contentAlignment = Alignment.Center,
     ) { content() }

@@ -100,7 +100,7 @@ fun AnnouncementScreen(
             if (outcome == EndOutcome.WIN && !brief) VictoryCrown(96.dp, animate, Modifier.testTag("announcement-crown"))
             if (avatars.isEmpty() && illustration != null) MessageBadge(illustration, MessageTone.Warning, 96.dp)
             if (avatars.isNotEmpty()) {
-                // §14.5 os dois vencedores com confete e os dois perdedores sobre o fundo vermelho que pulsa
+                // §14.5 os dois vencedores com confete e os dois perdedores sobre o degradê vermelho que esmaece e reaparece
                 ResultCast(avatars, losers, animate, Modifier.testTag("announcement-cast"))
                 caption?.let { Text(it, color = OnTable, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
             }
