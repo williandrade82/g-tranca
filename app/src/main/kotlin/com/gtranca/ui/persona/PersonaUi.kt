@@ -26,7 +26,12 @@ import androidx.compose.ui.unit.dp
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
+import com.gtranca.game.BotProfile
 import com.gtranca.game.Persona
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import com.gtranca.ui.theme.Poppins
 import com.gtranca.game.PlayerProfile
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.game.sideName
@@ -90,4 +95,21 @@ fun sideLabel(mode: GameMode, side: Side, viewerSide: Side, personas: List<Perso
         personasOfSide(mode, side, personas).firstOrNull()?.let { return it.fullName }
     }
     return sideName(mode, side, viewerSide)
+}
+
+/** §14.5 bordão do robô: texto decorativo em itálico dourado, centralizado, sob o retrato. */
+@Composable
+fun BotMotto(profile: BotProfile, modifier: Modifier = Modifier, fontSize: TextUnit = 12.sp, maxLines: Int = Int.MAX_VALUE) {
+    Text(
+        stringResource(profile.mottoRes()),
+        modifier.testTag("bot-motto"),
+        color = GColors.Champagne,
+        fontSize = fontSize,
+        lineHeight = fontSize * 1.25f,
+        fontStyle = FontStyle.Italic,
+        fontFamily = Poppins,
+        textAlign = TextAlign.Center,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
 }

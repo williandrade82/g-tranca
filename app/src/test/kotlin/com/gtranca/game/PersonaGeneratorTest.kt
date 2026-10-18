@@ -4,7 +4,6 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.ai.PlayStyle
 import com.gtranca.engine.model.GameMode
 import io.kotest.matchers.collections.shouldBeUnique
-import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -27,40 +26,43 @@ class PersonaGeneratorTest {
     }
 
     @Test
-    fun `§14_5 perfis diferentes entre si e nomes sem repeticao nem o nome do jogador`() {
+    fun `§14_5 perfis diferentes entre si e nomes sem repeticao`() {
         repeat(300) { seed ->
             val table = PersonaGenerator.opponents(seed.toLong(), 3, Difficulty.MEDIO, "ANA")
             table.map { it.character!!.profile }.shouldBeUnique()
-            table.map { it.firstName.lowercase() }.shouldBeUnique()
-            table.none { it.firstName.equals("ana", ignoreCase = true) } shouldBe true
+            table.map { it.firstName }.shouldBeUnique()
         }
     }
 
     @Test
-    fun `§14_5 evita o primeiro nome do jogador, mesmo com nome composto, sem mudar o resto do sorteio`() {
-        repeat(300) { seed ->
+    fun `§14_5 o nome do jogador nao muda o sorteio`() {
+        repeat(100) { seed ->
             val free = PersonaGenerator.opponents(seed.toLong(), 3, Difficulty.MEDIO)
-            free.forEach { other ->
-                val avoided = PersonaGenerator.opponents(seed.toLong(), 3, Difficulty.MEDIO, "  ${other.firstName.uppercase()} da Silva ")
-                avoided.none { it.firstName.equals(other.firstName, ignoreCase = true) } shouldBe true
-                avoided.map { it.character } shouldBe free.map { it.character }
-                avoided.map { it.lastName } shouldBe free.map { it.lastName }
-                avoided.map { it.firstName }.shouldBeUnique()
-                // só o nome que colidia muda
-                avoided.zip(free).count { (a, b) -> a.firstName != b.firstName } shouldBe 1
+            BotProfile.entries.forEach { profile ->
+                PersonaGenerator.opponents(seed.toLong(), 3, Difficulty.MEDIO, " ${profile.botName.uppercase()} da Silva ") shouldBe free
             }
         }
     }
 
     @Test
-    fun `§14_5 nome e sobrenome vem do conjunto do perfil`() {
+    fun `§14_5 cada robo tem o nome fixo do perfil, sem sobrenome`() {
+        BotProfile.JOVEM.botName shouldBe "Bolt"
+        BotProfile.SOBRIO.botName shouldBe "Domino"
+        BotProfile.ATLETA.botName shouldBe "Turbo"
+        BotProfile.ALTERNATIVO.botName shouldBe "Zen"
         repeat(100) { seed ->
             PersonaGenerator.opponents(seed.toLong(), 4, Difficulty.FACIL).forEach { persona ->
-                persona.character!!.profile.firstNames shouldContain persona.firstName
-                PersonaGenerator.surnames shouldContain persona.lastName
-                persona.fullName shouldBe "${persona.firstName} ${persona.lastName}"
+                persona.firstName shouldBe persona.character!!.profile.botName
+                persona.lastName shouldBe ""
+                persona.fullName shouldBe persona.firstName
+                persona.shortName shouldBe persona.firstName
             }
         }
+    }
+
+    @Test
+    fun `§14_5 o nome é o mesmo em qualquer nivel`() {
+        Difficulty.entries.map { d -> PersonaGenerator.opponents(11, 3, d).map { it.fullName } }.toSet().size shouldBe 1
     }
 
     @Test
@@ -100,9 +102,10 @@ class PersonaGeneratorTest {
     }
 
     @Test
-    fun `§14_5 cada perfil tem nomes proprios suficientes`() {
+    fun `§14_5 os conjuntos de nomes antigos ficam guardados para os jogadores online`() {
         BotProfile.entries.forEach { it.firstNames.size shouldBe 10; it.firstNames.shouldBeUnique() }
         BotProfile.entries.flatMap { it.firstNames }.shouldBeUnique()
+        PersonaGenerator.surnames.size shouldBe 40
     }
 
     @Test

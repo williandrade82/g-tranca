@@ -153,6 +153,10 @@ import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import com.gtranca.R
+import androidx.compose.ui.layout.ContentScale
+import com.gtranca.ui.persona.BotMotto
+import com.gtranca.ui.persona.CharacterPortrait
+import com.gtranca.ui.persona.Pose
 import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.PlayerView
@@ -538,14 +542,29 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            // §14.1, §14.5 avatar discreto e nome abreviado; o personagem já está na sua posição, então só o parceiro
-            // leva legenda (sem personagem, o papel de sempre).
-            val persona = state.personas.getOrNull(seat.index)
-            if (persona != null) {
-                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp, animate = state.animationMillis > 0) }
+        // §14.1, §14.5 o personagem inteiro (sem recorte em círculo) com o bordão logo abaixo; o personagem já está na sua
+        // posição, então só o parceiro leva legenda (sem personagem, o papel de sempre).
+        val persona = state.personas.getOrNull(seat.index)
+        if (persona != null) {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                val character = persona.character
+                if (character != null) {
+                    CharacterPortrait(
+                        character,
+                        Pose.PENSADOR,
+                        Modifier.size(56.dp),
+                        animate = state.animationMillis > 0,
+                        effects = false,
+                        contentScale = ContentScale.Fit,
+                    )
+                    BotMotto(character.profile, Modifier.fillMaxWidth(), fontSize = 10.sp, maxLines = 4)
+                } else {
+                    GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp, animate = state.animationMillis > 0) }
+                }
             }
-            Column(Modifier.weight(1f)) {
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Column(Modifier.weight(1f), horizontalAlignment = if (persona != null) Alignment.CenterHorizontally else Alignment.Start) {
                 if (persona != null) {
                     Text(
                         persona.shortName,

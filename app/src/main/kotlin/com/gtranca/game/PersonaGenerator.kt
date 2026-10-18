@@ -20,21 +20,17 @@ object PersonaGenerator {
     val surnames: List<String> get() = SURNAMES
 
     /**
-     * [count] personagens para a semente do jogo, no nível da [difficulty]: perfis todos diferentes entre si, nomes
-     * todos diferentes (os conjuntos de nomes dos perfis não se repetem) e nenhum com o primeiro nome de [avoidName]
-     * (o do jogador), sem diferenciar maiúsculas. O sorteio não depende do nome do jogador: se um nome sorteado
-     * coincidir com o dele, só esse nome troca pelo seguinte do conjunto do perfil (o resto do sorteio não muda).
+     * [count] personagens para a semente do jogo, no nível da [difficulty]: perfis todos diferentes entre si. Cada robô
+     * leva o nome fixo do seu perfil ([BotProfile.botName]), sem sobrenome; por isso os nomes da mesa não se repetem e
+     * [avoidName] (o nome do jogador) não influencia o sorteio. O parâmetro fica para os nomes dos jogadores online.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun opponents(gameSeed: Long, count: Int, difficulty: Difficulty, avoidName: String = ""): List<Persona> {
         require(count in 0..BotProfile.entries.size) { "Quantidade inválida: $count" }
         val random = Random(gameSeed xor SEED_SALT)
         val level = BotLevel.of(difficulty)
-        val avoid = avoidName.trim().substringBefore(' ').lowercase()
         return BotProfile.entries.shuffled(random).take(count).map { profile ->
-            val names = profile.firstNames
-            val drawn = names.random(random)
-            val firstName = if (drawn.lowercase() == avoid) names[(names.indexOf(drawn) + 1) % names.size] else drawn
-            Persona(firstName, SURNAMES.random(random), BotCharacter(profile, level))
+            Persona(profile.botName, "", BotCharacter(profile, level))
         }
     }
 

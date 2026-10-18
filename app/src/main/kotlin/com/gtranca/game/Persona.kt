@@ -5,14 +5,15 @@ import com.gtranca.ai.PlayStyle
 import com.gtranca.engine.model.GameMode
 
 /**
- * §14.5 os 4 perfis de robô dos jogadores virtuais; [firstNames] é o conjunto de nomes sorteados para o perfil e
- * [style] o estilo de jogo do perfil (preferências sobre o nível).
+ * §14.5 os 4 perfis de robô dos jogadores virtuais; [botName] é o nome único e fixo do robô (o mesmo em qualquer nível),
+ * [style] o estilo de jogo do perfil (preferências sobre o nível). [firstNames] é o conjunto de nomes que o sorteio
+ * antigo usava; fica guardado, com os sobrenomes de [PersonaGenerator.surnames], para os jogadores online futuros.
  */
-enum class BotProfile(val code: String, val style: PlayStyle, val firstNames: List<String>) {
-    JOVEM("jovem", PlayStyle.SAGAZ, listOf("Davi", "Enzo", "Théo", "Lucas", "Gabriel", "Miguel", "Caio", "Vitor", "Heitor", "Nicolas")),
-    SOBRIO("sobrio", PlayStyle.SOBRIO, listOf("Henrique", "Eduardo", "Augusto", "Fernando", "Roberto", "Ricardo", "Antônio", "Marcos", "Alberto", "Sérgio")),
-    ALTERNATIVO("alternativo", PlayStyle.OUSADO, listOf("Ariel", "Caetano", "Dandara", "Jaci", "Íris", "Raul", "Naiara", "Gil", "Lia", "Ravi")),
-    ATLETA("atleta", PlayStyle.AGRESSIVO, listOf("Marcelo", "Rodrigo", "Thiago", "Leandro", "Maurício", "Alexandre", "Diego", "Fábio", "Rogério", "Wagner")),
+enum class BotProfile(val code: String, val style: PlayStyle, val botName: String, val firstNames: List<String>) {
+    JOVEM("jovem", PlayStyle.SAGAZ, "Bolt", listOf("Davi", "Enzo", "Théo", "Lucas", "Gabriel", "Miguel", "Caio", "Vitor", "Heitor", "Nicolas")),
+    SOBRIO("sobrio", PlayStyle.SOBRIO, "Domino", listOf("Henrique", "Eduardo", "Augusto", "Fernando", "Roberto", "Ricardo", "Antônio", "Marcos", "Alberto", "Sérgio")),
+    ALTERNATIVO("alternativo", PlayStyle.OUSADO, "Zen", listOf("Ariel", "Caetano", "Dandara", "Jaci", "Íris", "Raul", "Naiara", "Gil", "Lia", "Ravi")),
+    ATLETA("atleta", PlayStyle.AGRESSIVO, "Turbo", listOf("Marcelo", "Rodrigo", "Thiago", "Leandro", "Maurício", "Alexandre", "Diego", "Fábio", "Rogério", "Wagner")),
 }
 
 /** §14.5 nível do personagem, ligado à dificuldade escolhida; [stars] é a insígnia (1 a 3 estrelas). */

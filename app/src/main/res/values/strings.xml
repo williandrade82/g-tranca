@@ -83,6 +83,12 @@
     <string name="char_atleta_tag">Agressivo e competitivo</string>
     <string name="char_atleta_pitch">Joga no ataque: pega o lixo para tirar o seu material e quer bater cedo.</string>
     <string name="table_rules_reroll">Sortear outros jogadores</string>
+    <string name="table_rules_level">Nível dos robôs:</string>
+    <string name="table_rules_opponents">Adversários</string>
+    <string name="char_jovem_motto">“Bora fechar essa mesa!”</string>
+    <string name="char_sobrio_motto">“Cada carta tem seu propósito.”</string>
+    <string name="char_alternativo_motto">“Calma parceiro! A próxima carta pode mudar tudo!”</string>
+    <string name="char_atleta_motto">“Agora é pra valer!”</string>
     <string name="coins_balance">Seu saldo: %1$d moedas</string>
     <string name="stake_line">Aposta: %1$d moedas</string>
     <string name="stake_insufficient">Saldo insuficiente para esta aposta</string>
