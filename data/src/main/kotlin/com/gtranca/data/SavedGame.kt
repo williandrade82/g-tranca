@@ -16,7 +16,7 @@ data class SavedEvent(val seat: Int, val action: Action, val takenFromDiscard: L
 
 /** Configuração escolhida no início (§14), sem depender do `:ai`: a dificuldade vai pelo identificador. */
 @Serializable
-data class SavedConfig(val mode: GameMode, val difficultyId: String, val targetScore: Int)
+data class SavedConfig(val mode: GameMode, val difficultyId: String, val targetScore: Int, val stake: Int = 0)
 
 /**
  * Jogo salvo (um só por vez). Formato JSON versionado ([formatVersion]).
