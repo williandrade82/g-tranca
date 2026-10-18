@@ -52,6 +52,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -826,39 +827,64 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
         val pile = view.discardPile
         val pileLabel = stringResource(R.string.discard_pile) + ": " +
             if (pile.isEmpty()) stringResource(R.string.discard_pile_empty) else pile.map { cardDescription(it) }.joinToString(", ")
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                stringResource(R.string.discard_pile) + " (" + pile.size + ")",
-                color = OnTable,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.weight(1f),
-            )
+        // Aceso só se tocar faz algo agora: pegar o lixo, ou descartar a carta selecionada (Discard em legal).
+        val pileActive = state.canTakeDiscardPile || state.canDiscardSelected
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 52.dp)
+                    .background(GColors.Midnight.copy(alpha = 0.25f), RoundedCornerShape(Corner.sm))
+                    .border(if (pileActive) 2.dp else 1.dp, if (pileActive) TableAccent else OnTable.copy(alpha = 0.35f), RoundedCornerShape(Corner.sm))
+                    .clickable(enabled = state.awaitingDraw || state.playing, onClick = events::onDiscardPileClick)
+                    .semantics(mergeDescendants = true) { contentDescription = pileLabel }
+                    .anchor(AnimAnchor.DiscardPile)
+                    .testTag("discard-pile")
+                    .padding(4.dp),
+            ) {
+                if (pile.isEmpty()) {
+                    Text(stringResource(R.string.discard_pile_empty), color = OnTable, modifier = Modifier.align(Alignment.CenterStart))
+                } else {
+                    SqueezedCards(pile, step = 18.dp, anchorFor = { AnimAnchor.DiscardCard(it) })
+                }
+            }
             if (pile.isNotEmpty()) {
-                TextButton(onShowDiscardPile, modifier = Modifier.heightIn(min = 48.dp).testTag("show-discard-pile")) {
-                    Text(stringResource(R.string.discard_pile_show_all), color = TableAccent)
+                // Ver todo o lixo, com a quantidade de cartas.
+                val showAll = stringResource(R.string.discard_pile_show_all)
+                Column(
+                    Modifier
+                        .heightIn(min = 48.dp)
+                        .widthIn(min = 48.dp)
+                        .clip(RoundedCornerShape(Corner.sm))
+                        .clickable(onClick = onShowDiscardPile)
+                        .semantics(mergeDescendants = true) { contentDescription = showAll + ", " + pile.size }
+                        .testTag("show-discard-pile")
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    CardsGlyph(TableAccent, 22.dp)
+                    Text(pile.size.toString(), color = TableAccent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
             }
         }
-        val scroll = rememberScrollState()
-        LaunchedEffect(pile.size) { scroll.scrollTo(scroll.maxValue) }
-        // Aceso só se tocar faz algo agora: pegar o lixo, ou descartar a carta selecionada (Discard em legal).
-        val pileActive = state.canTakeDiscardPile || state.canDiscardSelected
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 52.dp)
-                .background(GColors.Midnight.copy(alpha = 0.25f), RoundedCornerShape(Corner.sm))
-                .border(if (pileActive) 2.dp else 1.dp, if (pileActive) TableAccent else OnTable.copy(alpha = 0.35f), RoundedCornerShape(Corner.sm))
-                .clickable(enabled = state.awaitingDraw || state.playing, onClick = events::onDiscardPileClick)
-                .semantics(mergeDescendants = true) { contentDescription = pileLabel }
-                .anchor(AnimAnchor.DiscardPile)
-                .testTag("discard-pile")
-                .padding(4.dp),
-        ) {
-            if (pile.isEmpty()) {
-                Text(stringResource(R.string.discard_pile_empty), color = OnTable, modifier = Modifier.align(Alignment.CenterStart))
-            } else {
-                Box(Modifier.horizontalScroll(scroll)) { OverlappedCards(pile, step = 18.dp, anchorFor = { AnimAnchor.DiscardCard(it) }) }
+    }
+}
+
+/**
+ * Cartas do lixo numa única linha, todas à vista (§5.6): com o passo [step] enquanto cabem; cheia a linha, se espremem
+ * (mais as antigas) e a última, por cima, fica sempre inteira ([pileOffsets]).
+ */
+@Composable
+private fun SqueezedCards(cards: List<Card>, step: Dp, anchorFor: (Card) -> AnimAnchor) {
+    val landing = LocalLanding.current
+    val size = CardSize.SMALL
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val offsets = pileOffsets(cards.size, maxWidth.value, size.width.value, step.value)
+        Box(Modifier.height(size.height)) {
+            cards.forEachIndexed { i, card ->
+                val placed = Modifier.offset(x = offsets[i].dp).anchor(anchorFor(card)).alpha(if (card in landing) 0f else 1f)
+                PlayingCard(card, placed, size = size, describe = false)
             }
         }
     }
@@ -1551,8 +1577,8 @@ private fun PersonGlyph(color: Color) {
 
 /** Ícone de "cartas" (duas cartas sobrepostas) para as cápsulas contadoras. */
 @Composable
-private fun CardsGlyph(color: Color) {
-    Canvas(Modifier.size(12.dp)) {
+private fun CardsGlyph(color: Color, glyphSize: Dp = 12.dp) {
+    Canvas(Modifier.size(glyphSize)) {
         val w = size.width
         val card = Size(w * 0.55f, w * 0.78f)
         val r = CornerRadius(w * 0.08f)
