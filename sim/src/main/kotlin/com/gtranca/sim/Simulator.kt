@@ -49,7 +49,18 @@ data class Failure(
 )
 
 /** Resultado de uma partida concluída; [scores] = pontos de cada lado na partida (§12), por `Side.index`. */
-data class RoundStats(val turns: Int, val actions: Int, val winner: Side?, val scores: List<Int> = emptyList())
+data class RoundStats(
+    val turns: Int,
+    val actions: Int,
+    val winner: Side?,
+    val scores: List<Int> = emptyList(),
+    /** Por lado: vezes em que pegou o lixo e em que comprou do monte na partida (para medir o estilo, §14.5). */
+    val pileTakes: List<Int> = emptyList(),
+    val stockDraws: List<Int> = emptyList(),
+    /** Por lado: canastras limpas e sujas ao fim da partida. */
+    val cleanCanastas: List<Int> = emptyList(),
+    val dirtyCanastas: List<Int> = emptyList(),
+)
 
 /**
  * Tempo gasto pelos bots de um lado em `chooseAction`, só nas decisões com mais de uma ação legal (as
@@ -116,6 +127,8 @@ class Simulator internal constructor(
                 actionIndex = 0
                 lastAction = null
                 var turns = 0
+                val pileTakes = MutableList(mode.sideCount) { 0 }
+                val stockDraws = MutableList(mode.sideCount) { 0 }
                 while (match!!.currentRound.phase != Phase.FINISHED) {
                     val round = match.currentRound
                     val seat = round.currentSeat
@@ -132,6 +145,8 @@ class Simulator internal constructor(
                     val event = PublicEvent.of(round.discardPile, seat, action)
                     match = playAction(match, seat, action)
                     if (action == Action.DrawFromStock || action is Action.TakeDiscardPile) turns++
+                    if (action == Action.DrawFromStock) stockDraws[mode.sideOf(seat).index]++
+                    if (action is Action.TakeDiscardPile) pileTakes[mode.sideOf(seat).index]++
                     actionIndex++
                     checkRoundInvariants(match.currentRound)
                     bots.forEach { it.observe(event) }
@@ -140,8 +155,14 @@ class Simulator internal constructor(
                     }
                 }
                 val result = match.currentRound.result
+                val tables = match.currentRound.tables
+                val clean = tables.map { table -> table.melds.count { it.meld.isCleanCanasta(config.rules) } }
+                val dirty = tables.map { table -> table.melds.count { it.meld.isDirtyCanasta(config.rules) } }
                 match = match.finishRound()
-                rounds += RoundStats(turns, actionIndex, (result as? RoundResult.GoOut)?.side, match.history.last().scores.map { it.total })
+                rounds += RoundStats(
+                    turns, actionIndex, (result as? RoundResult.GoOut)?.side, match.history.last().scores.map { it.total },
+                    pileTakes, stockDraws, clean, dirty,
+                )
                 if (!match.isOver) {
                     if (rounds.size >= config.maxRoundsPerGame) {
                         throw SimFailure(FailureKind.ROUND_LIMIT, "jogo passou de ${config.maxRoundsPerGame} partidas")

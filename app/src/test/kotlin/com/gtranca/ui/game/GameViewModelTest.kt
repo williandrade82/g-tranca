@@ -120,6 +120,56 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `§14_4 o jogo da mesa escolhida joga com exatamente os personagens que a mesa mostrou`() = runTest(dispatcher) {
+        for (seed in listOf(3L, 42L, 77L)) {
+            for (table in com.gtranca.game.Tables.botTables(seed)) {
+                val vm = GameViewModel(table.toConfig(), gameSeed = table.seed, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0)
+                advanceUntilIdle()
+                // os assentos 1.. são os personagens da mesa, na ordem (o 0 é o jogador)
+                vm.personas.drop(1) shouldBe table.players
+            }
+        }
+    }
+
+    @Test
+    fun `§14_4 Continuar mostra os mesmos personagens mesmo que o perfil seja renomeado para o nome de um deles`() = runTest(dispatcher) {
+        val original = newGame(seed = 11, mode = GameMode.DUPLAS)
+        val colliding = original.personas[1].firstName
+        // jogo salvo com o nome usado no sorteio ("" = perfil sem nome); o perfil agora tem o nome de um adversário
+        val resumed = GameViewModel(
+            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+            gameSeed = 11,
+            computeDispatcher = dispatcher,
+            botDelayMillis = 0,
+            swapAnimationMillis = 0,
+            animationMillis = 0,
+            restored = com.gtranca.game.RestoredGame(
+                com.gtranca.engine.startMatch(GameMode.DUPLAS, 3000, kotlin.random.Random(11)),
+                emptyList(),
+                emptyList(),
+                playerName = "",
+            ),
+            playerProfile = com.gtranca.game.PlayerProfile(name = colliding),
+        )
+        advanceUntilIdle()
+        resumed.personas.drop(1) shouldBe original.personas.drop(1)
+        // jogo salvo antigo (sem o nome): vale o do perfil e só o nome colidente muda
+        val old = GameViewModel(
+            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+            gameSeed = 11,
+            computeDispatcher = dispatcher,
+            botDelayMillis = 0,
+            swapAnimationMillis = 0,
+            animationMillis = 0,
+            restored = com.gtranca.game.RestoredGame(com.gtranca.engine.startMatch(GameMode.DUPLAS, 3000, kotlin.random.Random(11)), emptyList()),
+            playerProfile = com.gtranca.game.PlayerProfile(name = colliding),
+        )
+        advanceUntilIdle()
+        old.personas.drop(1).map { it.character } shouldBe original.personas.drop(1).map { it.character }
+        old.personas.drop(1).map { it.firstName } shouldNotBe original.personas.drop(1).map { it.firstName }
+    }
+
+    @Test
     fun `§6_5 nenhuma troca de 3 vermelho de outro assento aparece durante a vez do humano`() = runTest(dispatcher) {
         // Tempos reais (troca encenada em 1,8 s, voo de 450 ms), com o bot pensando 700 ms e sem pausa nenhuma (o caso do
         // morto indireto: a troca vem na mesma ação que passa a vez). A vez do humano só abre depois de todas as trocas dos

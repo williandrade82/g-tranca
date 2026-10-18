@@ -47,7 +47,7 @@ import kotlin.random.Random
  */
 class MediumBot(
     private val random: Random,
-    private val weights: MediumWeights = MediumWeights(),
+    internal val weights: MediumWeights = MediumWeights(),
 ) : BotPlayer {
 
     private val history = PublicHistory()
@@ -144,6 +144,8 @@ class MediumBot(
         var score = gained.sumOf { gainValue(ctx, it) }
         // risco de ficar com o lixo na mão se o adversário bater em seguida (§12.2)
         score -= ctx.threat * weights.handPenaltyRisk * gained.size
+        // estilo agressivo: o lixo que eu levo é material que o adversário não terá
+        score += weights.denyPile * gained.size
 
         val handCards: List<Card>
         val target: Meld?
@@ -273,7 +275,7 @@ class MediumBot(
         val ctx = Context(view)
         val scored = discards.map { it to discardCost(ctx, it.card) }
         val best = scored.minOf { it.second }
-        return scored.filter { it.second <= best + TIE_EPSILON }.map { it.first }.random(random)
+        return scored.filter { it.second <= best + weights.discardTieMargin }.map { it.first }.random(random)
     }
 
     /** Custo de descartar [card]: utilidade de mantê-la + risco de alimentar o próximo adversário. */
@@ -457,7 +459,6 @@ class MediumBot(
     companion object {
         private val CANASTA_SIZE = RuleSet.DEFAULT.minCanastaSize
         private const val COPIES = 2 // §1 dois baralhos
-        private const val TIE_EPSILON = 1e-9
 
         private fun binomial(n: Int, k: Int, p: Double): Double {
             var c = 1.0

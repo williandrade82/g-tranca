@@ -12,12 +12,18 @@ import kotlin.random.Random
  */
 data class TableOffer(
     val id: Int,
-    val host: Persona,
+    /** §14.4, §14.5 semente da mesa: o jogo que nasce dela usa a mesma, então joga com exatamente os [players]. */
+    val seed: Long,
+    /** §14.5 personagens que ocupam a mesa, na ordem dos assentos (1 = adversário à direita; em duplas 2 = parceiro, 3 = adversário à esquerda). */
+    val players: List<Persona>,
     val mode: GameMode,
     val difficulty: Difficulty,
     val targetScore: Int,
     val rules: RuleSet,
 ) {
+    /** Quem abriu a mesa (só apresentação): o primeiro personagem. */
+    val host: Persona get() = players.first()
+
     fun toConfig(): GameConfig = GameConfig(mode, difficulty, targetScore, rules)
 }
 
@@ -26,6 +32,11 @@ object Tables {
     val BOT_TARGETS = listOf(1500, 2000, 3000)
 
     const val BOT_TABLE_COUNT = 4
+
+    /** Identificador da mesa criada pelo jogador (não está na lista das mesas dos jogadores virtuais). */
+    const val CREATED_TABLE_ID = -1
+
+    private const val MAX_HOST_RETRIES = 20
 
     /** Identificador das regras personalizadas do jogador (§14.4). */
     const val CUSTOM_RULES_ID = "minhas-regras"
@@ -36,14 +47,27 @@ object Tables {
      */
     fun botTables(seed: Long, avoidName: String = ""): List<TableOffer> {
         val random = Random(seed)
-        val hosts = PersonaGenerator.opponents(seed, BOT_TABLE_COUNT, avoidName)
         val firstRules = random.nextInt(RuleSet.HOUSE.size)
+        val usedHosts = mutableSetOf<String>()
         return List(BOT_TABLE_COUNT) { i ->
+            val mode = GameMode.entries[random.nextInt(GameMode.entries.size)]
+            val difficulty = Difficulty.entries[random.nextInt(Difficulty.entries.size)]
+            // §14.5 os personagens são sorteados já aqui, com a semente da mesa, no nível da dificuldade dela; os
+            // anfitriões de mesas diferentes não repetem o primeiro nome.
+            var tableSeed = random.nextLong()
+            var players = PersonaGenerator.opponents(tableSeed, mode.seatCount - 1, difficulty, avoidName)
+            var attempts = 0
+            while (players.first().firstName in usedHosts && attempts++ < MAX_HOST_RETRIES) {
+                tableSeed = random.nextLong()
+                players = PersonaGenerator.opponents(tableSeed, mode.seatCount - 1, difficulty, avoidName)
+            }
+            usedHosts += players.first().firstName
             TableOffer(
                 id = i,
-                host = hosts[i],
-                mode = GameMode.entries[random.nextInt(GameMode.entries.size)],
-                difficulty = Difficulty.entries[random.nextInt(Difficulty.entries.size)],
+                seed = tableSeed,
+                players = players,
+                mode = mode,
+                difficulty = difficulty,
                 targetScore = BOT_TARGETS[random.nextInt(BOT_TARGETS.size)],
                 rules = RuleSet.HOUSE[(firstRules + i) % RuleSet.HOUSE.size],
             )

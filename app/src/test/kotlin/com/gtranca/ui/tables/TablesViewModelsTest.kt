@@ -57,6 +57,22 @@ class TablesViewModelsTest {
     }
 
     @Test
+    fun `§14_4 cada mesa ja traz os personagens que vao jogar no nivel da sua dificuldade`() {
+        for (seed in 1L..40L) {
+            Tables.botTables(seed, avoidName = "Bia").forEach { table ->
+                table.players.size shouldBe table.mode.seatCount - 1
+                table.players.map { it.character!!.profile }.toSet().size shouldBe table.players.size
+                table.players.forEach { it.character!!.level shouldBe com.gtranca.game.BotLevel.of(table.difficulty) }
+                // os mesmos que o jogo sorteia com a semente da mesa
+                table.players shouldBe com.gtranca.game.PersonaGenerator.opponents(table.seed, table.mode.seatCount - 1, table.difficulty, "Bia")
+                table.host shouldBe table.players.first()
+            }
+        }
+        // alguma mesa de duplas mostra os três
+        (0L..40L).flatMap { Tables.botTables(it) }.any { it.mode == com.gtranca.engine.model.GameMode.DUPLAS && it.players.size == 3 } shouldBe true
+    }
+
+    @Test
     fun `§14 padroes de criar mesa - medio, Classica e alvo 3000`() {
         val state = CreateTableViewModel().uiState.value
         state.difficulty shouldBe Difficulty.MEDIO

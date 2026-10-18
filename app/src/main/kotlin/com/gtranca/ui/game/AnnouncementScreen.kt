@@ -13,7 +13,8 @@ import com.gtranca.engine.model.RoundResult
 import com.gtranca.game.Persona
 import com.gtranca.game.SeatRole
 import com.gtranca.ui.persona.AvatarRow
-import com.gtranca.ui.persona.labelRes
+import com.gtranca.ui.persona.ResultCast
+import com.gtranca.ui.persona.callNamesOfSide
 import com.gtranca.ui.persona.personasOfSide
 
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.gtranca.R
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Box
+import com.gtranca.engine.model.Seat
 import com.gtranca.game.GameSnapshot
 import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GButton
@@ -63,6 +65,8 @@ fun AnnouncementScreen(
     onResign: (() -> Unit)? = null,
     /** §14.1 quem protagoniza o anúncio (quem bateu ou o lado vencedor), com legenda opcional. */
     avatars: List<Persona> = emptyList(),
+    /** §14.5 personagens do lado que perdeu (pose de perdedor ao lado dos [avatars], na de vencedor). */
+    losers: List<Persona> = emptyList(),
     caption: String? = null,
     /** Ilustração quando não há avatar (ex.: partida sem vencedor). */
     illustration: MessageIllustration? = null,
@@ -96,7 +100,8 @@ fun AnnouncementScreen(
             if (outcome == EndOutcome.WIN && !brief) Trophy(96.dp, animate, Modifier.testTag("announcement-trophy"))
             if (avatars.isEmpty() && illustration != null) MessageBadge(illustration, MessageTone.Warning, 96.dp)
             if (avatars.isNotEmpty()) {
-                AvatarRow(avatars, 96.dp, Modifier.testTag("announcement-avatars").outcomeMotion(outcome, animate))
+                // §14.5 os dois vencedores com confete e os dois perdedores sobre o fundo vermelho que pulsa
+                ResultCast(avatars, losers, animate, Modifier.testTag("announcement-cast"))
                 caption?.let { Text(it, color = OnTable, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
             }
             GTitle(title, Modifier.semantics { heading() }.testTag("announcement-title"))
@@ -135,12 +140,13 @@ fun RoundAnnouncement(
     val role = (result as? RoundResult.GoOut)?.let { SeatRole.of(mode, it.seat, snapshot.viewerSeat) }
     val named = who != null && role != SeatRole.YOU
     AnnouncementScreen(
-        title = if (named) stringResource(R.string.round_result_named_went_out, who!!.firstName) else stringResource(roundAnnouncementRes(mode, record.result, snapshot.viewerSeat)),
-        avatars = listOfNotNull(who),
+        // §14.5 na comunicação: nome completo, com a posição em duplas.
+        title = if (named) stringResource(R.string.round_result_named_went_out, who!!.callName(mode, role!!)) else stringResource(roundAnnouncementRes(mode, record.result, snapshot.viewerSeat)),
+        // §14.5 a dupla (ou o jogador) que bateu aparece inteira na pose de vencedor; o outro lado, na de perdedor
+        avatars = (result as? RoundResult.GoOut)?.let { out -> personas.filterIndexed { i, _ -> mode.sideOf(Seat(i)) == out.side } }.orEmpty(),
+        losers = (result as? RoundResult.GoOut)?.let { out -> personas.filterIndexed { i, _ -> mode.sideOf(Seat(i)) != out.side } }.orEmpty(),
         illustration = if (result is RoundResult.NoWinner) MessageIllustration.Cards else null,
-        caption = who?.let { persona ->
-            if (role == SeatRole.YOU) stringResource(R.string.side_you) else stringResource(R.string.persona_role_caption, persona.fullName, stringResource(role!!.labelRes(persona.gender)))
-        },
+        caption = if (who != null && role == SeatRole.YOU) stringResource(R.string.side_you) else null,
         subtitle = roundTeamAnnouncementRes(mode, record.result, snapshot.viewerSide)?.let { stringResource(it) },
         button = stringResource(R.string.announce_see_points),
         onContinue = onContinue,
@@ -163,7 +169,9 @@ fun GameAnnouncement(snapshot: GameSnapshot, onContinue: () -> Unit, personas: L
     val winners = snapshot.winner?.let { personasOfSide(snapshot.view.mode, it, personas) }.orEmpty()
     AnnouncementScreen(
         avatars = winners,
-        caption = winners.joinToString(" · ") { it.shortName }.ifEmpty { null },
+        losers = snapshot.winner?.let { w -> personasOfSide(snapshot.view.mode, snapshot.view.mode.sides.first { it != w }, personas) }.orEmpty(),
+        caption = snapshot.winner?.let { callNamesOfSide(snapshot.view.mode, it, snapshot.viewerSeat, personas) }
+            ?.joinToString(" · ")?.ifEmpty { null },
         title = stringResource(R.string.game_over_title),
         subtitle = stringResource(gameResultRes(snapshot.view.mode, won = snapshot.winner == snapshot.viewerSide)),
         button = stringResource(R.string.announce_see_result),

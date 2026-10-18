@@ -1,67 +1,78 @@
 package com.gtranca.game
 
-/** Gênero do perfil (§14.1): define nomes, cabelos e a forma da profissão. */
-enum class Gender { MALE, FEMALE }
+import com.gtranca.ai.Difficulty
+import com.gtranca.ai.PlayStyle
+import com.gtranca.engine.model.GameMode
 
-/** Profissão de um avatar (§14.1): uniforme e acessório próprios. */
-enum class Profession {
-    DOCTOR, CHEF, ENGINEER, TEACHER, FIREFIGHTER, SCIENTIST, PILOT, ARTIST,
-    NURSE, POLICE, FARMER, MECHANIC, MUSICIAN, LAWYER, PHOTOGRAPHER, SAILOR,
+/**
+ * §14.5 os 4 perfis de robô dos jogadores virtuais; [firstNames] é o conjunto de nomes sorteados para o perfil e
+ * [style] o estilo de jogo do perfil (preferências sobre o nível).
+ */
+enum class BotProfile(val code: String, val style: PlayStyle, val firstNames: List<String>) {
+    JOVEM("jovem", PlayStyle.SAGAZ, listOf("Davi", "Enzo", "Théo", "Lucas", "Gabriel", "Miguel", "Caio", "Vitor", "Heitor", "Nicolas")),
+    SOBRIO("sobrio", PlayStyle.SOBRIO, listOf("Henrique", "Eduardo", "Augusto", "Fernando", "Roberto", "Ricardo", "Antônio", "Marcos", "Alberto", "Sérgio")),
+    ALTERNATIVO("alternativo", PlayStyle.OUSADO, listOf("Ariel", "Caetano", "Dandara", "Jaci", "Íris", "Raul", "Naiara", "Gil", "Lia", "Ravi")),
+    ATLETA("atleta", PlayStyle.AGRESSIVO, listOf("Marcelo", "Rodrigo", "Thiago", "Leandro", "Maurício", "Alexandre", "Diego", "Fábio", "Rogério", "Wagner")),
 }
 
-/** Formato do rosto (contorno da cabeça). */
-enum class FaceShape { OVAL, ROUND, SQUARE, HEART, LONG }
-
-/** Penteados; cada um só serve a um gênero ([gender]). */
-enum class HairStyle(val gender: Gender) {
-    SHORT(Gender.MALE),
-    SIDE_SWEEP(Gender.MALE),
-    CURLY_SHORT(Gender.MALE),
-    BALD(Gender.MALE),
-    LONG(Gender.FEMALE),
-    BOB(Gender.FEMALE),
-    BUN(Gender.FEMALE),
-    PONYTAIL(Gender.FEMALE),
-    CURLY_LONG(Gender.FEMALE),
-}
-
-/** Aparência do avatar: índices nas paletas da tela ([SKIN_TONES] tons de pele, [HAIR_COLORS] cores de cabelo). */
-data class Look(
-    val skin: Int,
-    val hair: HairStyle,
-    val hairColor: Int,
-    val beard: Boolean = false,
-    val face: FaceShape = FaceShape.OVAL,
-) {
-    init {
-        require(skin in 0 until SKIN_TONES) { "Tom de pele inválido: $skin" }
-        require(hairColor in 0 until HAIR_COLORS) { "Cor de cabelo inválida: $hairColor" }
-        require(!beard || hair.gender == Gender.MALE) { "Barba só no gênero masculino" }
-    }
+/** §14.5 nível do personagem, ligado à dificuldade escolhida; [stars] é a insígnia (1 a 3 estrelas). */
+enum class BotLevel(val code: String, val stars: Int, val difficulty: Difficulty) {
+    INICIANTE("iniciante", 1, Difficulty.FACIL),
+    MADURO("maduro", 2, Difficulty.MEDIO),
+    SENIOR("senior", 3, Difficulty.DIFICIL),
+    ;
 
     companion object {
-        const val SKIN_TONES = 5
-        const val HAIR_COLORS = 6
+        fun of(difficulty: Difficulty): BotLevel = entries.first { it.difficulty == difficulty }
     }
 }
 
-/** Perfil de um jogador (§14.1). [lastName] vazio = só o nome (perfil digitado pelo jogador). */
+/** §14.5 personagem de um jogador virtual: perfil de robô e nível (12 combinações, cada uma com as suas imagens). */
+data class BotCharacter(val profile: BotProfile, val level: BotLevel)
+
+/**
+ * Identidade exibida de um jogador (§14.1, §14.5): nome e avatar. Jogador virtual: [character] (imagem do personagem).
+ * Jogador humano ([character] nulo): [photo] pessoal ou medalhão com a inicial e a [color] da paleta.
+ * [lastName] vazio = só o nome (perfil digitado pelo jogador).
+ */
 data class Persona(
     val firstName: String,
-    val lastName: String,
-    val gender: Gender,
-    val profession: Profession,
-    val look: Look,
-    /** §14.1 foto pessoal do jogador (caminho do arquivo no aparelho); `null` = vale o desenho da persona. */
+    val lastName: String = "",
+    val character: BotCharacter? = null,
+    /** Humano sem foto: índice da cor do medalhão (0 until [COLORS]). */
+    val color: Int = 0,
+    /** §14.1 foto pessoal do jogador (caminho do arquivo no aparelho); `null` = vale o medalhão. */
     val photo: String? = null,
 ) {
     init {
-        require(look.hair.gender == gender) { "Penteado incompatível com o gênero" }
+        require(color in 0 until COLORS) { "Cor do medalhão inválida: $color" }
     }
 
-    /** "Ana Souza". */
+    /** "Davi Silva". */
     val fullName: String get() = if (lastName.isEmpty()) firstName else "$firstName $lastName"
 
-    /** "Ana S." (cabe na pílula da mesa). */
+    /** "Davi S." (cabe na pílula da mesa). */
     val shortName: String get() = if (lastName.isEmpty()) firstName else "$firstName ${lastName.first()}."
+
+    /** Letra do medalhão do jogador. */
+    val initial: String get() = firstName.firstOrNull()?.uppercase() ?: "?"
+
+    /** Mesmo personagem em outro nível (mesas dos jogadores virtuais, §14.4). */
+    fun withLevel(level: BotLevel): Persona = copy(character = character?.copy(level = level))
+
+    /**
+     * §14.5 nome na comunicação do jogo: em duplas, os adversários levam a posição em relação ao jogador
+     * ("Nome Sobrenome (dir)" / "(esq)"); o parceiro e o individual, só o nome.
+     */
+    fun callName(mode: GameMode, role: SeatRole): String = when {
+        mode != GameMode.DUPLAS -> fullName
+        role == SeatRole.LEFT_OPPONENT -> "$fullName (esq)"
+        role == SeatRole.RIGHT_OPPONENT -> "$fullName (dir)"
+        else -> fullName
+    }
+
+    companion object {
+        /** Cores disponíveis para o medalhão do jogador. */
+        const val COLORS = 8
+    }
 }

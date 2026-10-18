@@ -14,6 +14,10 @@ import androidx.compose.ui.Alignment
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.Persona
 import com.gtranca.ui.persona.AvatarRow
+import com.gtranca.ui.persona.Pose
+import com.gtranca.ui.persona.ResultCast
+import com.gtranca.ui.persona.callNamesOfSide
+import com.gtranca.ui.persona.leaderPoses
 import com.gtranca.ui.persona.personasOfSide
 import com.gtranca.ui.persona.sideLabel
 
@@ -71,13 +75,23 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
             snapshot.winner?.let { winner ->
                 val winners = personasOfSide(view.mode, winner, personas)
                 if (winners.isNotEmpty()) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AvatarRow(winners, 88.dp, Modifier.testTag("winner-avatars").outcomeMotion(outcome, animate)) }
+                    // §14.5 personagens em retrato: vencedores em festa, os do outro lado de cabeça baixa.
+                    val losers = personasOfSide(view.mode, view.mode.sides.first { it != winner }, personas)
+                    ResultCast(winners, losers, animate, Modifier.testTag("game-over-cast"))
+                    // §14.5 quem venceu pelo nome completo, com a posição em duplas.
+                    Text(
+                        callNamesOfSide(view.mode, winner, snapshot.viewerSeat, personas).joinToString(" · "),
+                        Modifier.fillMaxWidth().testTag("winner-names"),
+                        color = GColors.Champagne,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
             val opponentName = personasOfSide(view.mode, view.mode.sides.first { it != view.side }, personas).firstOrNull()
             GBanner(
                 if (view.mode == GameMode.INDIVIDUAL && !won && !snapshot.resigned && opponentName != null) {
-                    stringResource(R.string.game_over_named_won, opponentName.shortName)
+                    stringResource(R.string.game_over_named_won, opponentName.fullName)
                 } else {
                     stringResource(
                         if (snapshot.resigned) resignedRes(view.mode) else gameResultRes(view.mode, won = snapshot.winner == view.side),
@@ -110,13 +124,16 @@ private fun ResultsTable(
     personas: List<Persona>,
 ) {
     val numbers = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = TabularNums)
+    // §14.5 no fim do jogo, o vencedor aparece feliz e o outro lado frustrado
+    val poses = snapshot.winner?.let { w -> sides.associateWith { if (it == w) Pose.VENCEDOR else Pose.PERDEDOR } }
+        ?: leaderPoses(snapshot.totals, sides)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         // Cabeçalho.
         Row(Modifier.fillMaxWidth().padding(bottom = Spacing.xs), verticalAlignment = Alignment.Bottom) {
             Text(stringResource(R.string.game_over_col_round), Modifier.weight(0.9f), style = MaterialTheme.typography.labelLarge, color = GColors.Lavender)
             sides.forEach { side ->
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    AvatarRow(personasOfSide(mode, side, personas), 26.dp)
+                    AvatarRow(personasOfSide(mode, side, personas), 26.dp, pose = poses.getValue(side))
                     val winner = side == snapshot.winner
                     Text(
                         (if (winner) "★ " else "") + shortSideName(mode, side, viewerSide),

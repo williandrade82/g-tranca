@@ -1,6 +1,6 @@
 # Plano: redesenho dos avatares e da tela de Perfil
 
-Status: **etapa 1 feita** — prompts em [avatares-prompts.md](avatares-prompts.md) (e [CSV](avatares-prompts.csv)); aguardando as 32 imagens para a etapa 2. Depende da paleta/componentes do [plano-revisao-visual-luxo.md](plano-revisao-visual-luxo.md) (se ainda não feito, aplicar ao menos a paleta e o medalhão).
+Status: **etapa 1 feita** — prompts em [avatares-prompts.md](avatares-prompts.md) (e [CSV](avatares-prompts.csv)); aguardando as 32 imagens para a etapa 2. Depende da paleta/componentes do [plano-revisao-visual-luxo.md](../plano-revisao-visual-luxo.md) (se ainda não feito, aplicar ao menos a paleta e o medalhão).
 
 ## Objetivo
 

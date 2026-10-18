@@ -10,6 +10,7 @@ import com.gtranca.ui.theme.TabularNums
 import androidx.compose.ui.Alignment
 import com.gtranca.game.Persona
 import com.gtranca.ui.persona.AvatarRow
+import com.gtranca.ui.persona.leaderPoses
 import com.gtranca.ui.persona.personasOfSide
 import com.gtranca.ui.persona.sideLabel
 
@@ -84,6 +85,8 @@ fun RoundSummaryScreen(
         role == SeatRole.YOU || role == SeatRole.PARTNER -> GColors.RoyalEnd to GColors.Ivory
         else -> GColors.Bordeaux to GColors.Ivory
     }
+    // §14.5 o robô aparece feliz se o lado dele lidera o placar acumulado e frustrado se está perdendo; o jogador, sempre como é
+    val poses = leaderPoses(snapshot.totals, sides)
     GBackground(Modifier.fillMaxSize().testTag("round-summary"), royal = true) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(Spacing.lg),
@@ -99,7 +102,7 @@ fun RoundSummaryScreen(
                 Text(stringResource(R.string.score_item), Modifier.weight(1.4f).align(Alignment.Bottom), fontWeight = FontWeight.Bold)
                 sides.forEach { side ->
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                        AvatarRow(personasOfSide(view.mode, side, personas), 26.dp)
+                        AvatarRow(personasOfSide(view.mode, side, personas), 26.dp, pose = poses.getValue(side))
                         Text(sideLabel(view.mode, side, view.side, personas), fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = GColors.Champagne)
                     }
                 }

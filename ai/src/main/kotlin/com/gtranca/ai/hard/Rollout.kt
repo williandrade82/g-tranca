@@ -1,6 +1,7 @@
 package com.gtranca.ai.hard
 
 import com.gtranca.ai.MediumBot
+import com.gtranca.ai.MediumWeights
 import com.gtranca.ai.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.RoundEngine
@@ -25,9 +26,16 @@ internal object Rollout {
     private const val MAX_ACTIONS = 2_000
 
     /** Uma política (Médio) por assento, com o histórico público real até aqui. */
-    fun policies(world: RoundState, random: Random, events: List<PublicEvent>): List<MediumBot> =
+    fun policies(
+        world: RoundState,
+        random: Random,
+        events: List<PublicEvent>,
+        ownSeat: Seat? = null,
+        ownWeights: MediumWeights = MediumWeights(),
+    ): List<MediumBot> =
         world.mode.seats.map { seat ->
-            MediumBot(Random(random.nextLong() + seat.index)).also { bot -> events.forEach(bot::observe) }
+            val weights = if (seat == ownSeat) ownWeights else MediumWeights()
+            MediumBot(Random(random.nextLong() + seat.index), weights).also { bot -> events.forEach(bot::observe) }
         }
 
     /** Aplica [action] do [seat] e avisa todas as políticas do evento público correspondente. */

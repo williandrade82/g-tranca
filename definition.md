@@ -332,11 +332,10 @@ Definidos **antes do início do jogo**, na criação da mesa (§14.4); não muda
 ### **14.1. Perfis (apresentação; não alteram nenhuma regra)**
 
 - O **jogador** define o próprio **perfil**, de forma simples: **nome** (até 16 caracteres; vazio = "Você") e **avatar**. O perfil vale para todos os jogos e é lembrado entre eles.
-- O avatar do jogador é uma **persona pronta** (gênero e profissão) ou uma **foto pessoal** escolhida da galeria do aparelho. A foto é recortada em círculo a partir do centro, reduzida e guardada **só no aparelho**; ela aparece em todos os lugares onde aparece o avatar do jogador. O jogador pode trocar ou remover a foto (volta a valer a persona).
-- Os **adversários e o parceiro** (jogadores virtuais) **não são configurados pelo jogador**: no **início de cada jogo** o sistema sorteia o perfil de cada um (a partir da semente do jogo, de modo que "Continuar" mostra as mesmas pessoas).
-- O perfil de cada jogador virtual tem **nome e sobrenome**, **gênero** (masculino ou feminino), **profissão** e um **avatar compatível com o gênero** (nome, cabelo e profissão no feminino ou masculino). Nomes e profissões **não se repetem** entre os jogadores da mesma mesa, e nenhum jogador virtual usa o nome do jogador.
-- O **avatar** é uma persona de uma profissão: **cabeça, ombros, parte do peito e dos braços** (sem o resto do corpo), com aparência variável (pele, cabelo e uniforme).
-- O avatar e o nome aparecem de forma discreta na mesa, na tela de pontos e na declaração do vencedor.
+- O avatar do jogador é uma **foto pessoal** escolhida da galeria do aparelho ou, sem foto, um **medalhão com a inicial do nome** e uma **cor** à escolha entre as da paleta do app. A foto é recortada em círculo a partir do centro, reduzida e guardada **só no aparelho**; ela aparece em todos os lugares onde aparece o avatar do jogador. O jogador pode trocar ou remover a foto (volta a valer o medalhão).
+- Os **adversários e o parceiro** (jogadores virtuais) **não são configurados pelo jogador**: são os **personagens** de §14.5, sorteados **ao formar a mesa** (§14.4), antes de o jogador escolhê-la, e são exatamente os que jogam ("Continuar" mostra os mesmos personagens).
+- Não existem gênero nem profissão nos perfis.
+- A imagem e o nome do jogador (ou do personagem) aparecem de forma discreta na mesa e em **toda** comunicação do jogo: avisos, janelas de decisão, tela de pontos e declaração do vencedor.
 
 ### **14.2. Parâmetros de regra**
 
@@ -380,10 +379,30 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 - Uma **mesa** reúne o perfil de regras, a pontuação-alvo e o modo (individual ou duplas).
 - Antes de entrar numa mesa, o jogador pode **ver as regras** (as diferenças em relação à Clássica). Ao entrar, as regras são aceitas e **não mudam mais** até o fim do jogo; o jogo salvo ("Continuar") retoma com as mesmas regras.
 - Uma mesa reúne também a **dificuldade** dos jogadores virtuais.
-- **Mesas dos jogadores virtuais:** em "Novo jogo", o app lista algumas mesas já abertas por jogadores virtuais, cada uma com **perfil da casa**, **modo**, **dificuldade** e **pontuação-alvo** (1.500, 2.000 ou 3.000) sorteados. Tocar numa mesa mostra as **regras da mesa**; o jogador **inicia o jogo** ou volta.
-- **Criar mesa:** o jogador escolhe dificuldade, modo, regras (**Clássica**, **Tranca Paulista** ou **Personalizada**) e pontuação-alvo (padrão 3.000). Ao criar, as vagas de parceiro e adversários são preenchidas por jogadores virtuais e o jogo começa (distribuição, §3).
+- **Mesas dos jogadores virtuais:** em "Novo jogo", o app lista algumas mesas já abertas por jogadores virtuais, cada uma com **perfil da casa**, **modo**, **dificuldade**, **pontuação-alvo** (1.500, 2.000 ou 3.000) e os **personagens que a ocupam** (§14.5), tudo sorteado ao montar a lista. A mesa de **duplas** mostra os **três** personagens (adversário à esquerda, parceiro e adversário à direita) com um retrato pequeno de cada um; a de **individual**, o personagem adversário. Tocar numa mesa mostra as **regras da mesa** e os personagens; o jogador **inicia o jogo** ou volta. **O jogo começa com exatamente os personagens da mesa escolhida**: nada é sorteado de novo ao iniciar.
+- **Criar mesa:** o jogador escolhe dificuldade, modo, regras (**Clássica**, **Tranca Paulista** ou **Personalizada**) e pontuação-alvo (padrão 3.000). Ao criar, as vagas de parceiro e adversários são preenchidas por personagens sorteados nesse momento (§14.5) e abre a **tela da mesa**, a mesma das mesas abertas pelos jogadores virtuais, com os personagens sorteados e as regras. Ali o jogador **inicia o jogo**, **sorteia de novo** (novos personagens, mesma configuração, quantas vezes quiser) ou volta à criação. O jogo começa (distribuição das cartas, §3) com exatamente os personagens mostrados.
 - **Regras personalizadas do jogador:** cada jogador tem **um** perfil personalizado (origem: Clássica na primeira vez), que é o seu padrão ao escolher "Personalizada". Ele é editado no **Perfil** do jogador ("Meu padrão para regras personalizadas") ou em "Criar mesa": tocar em "Personalizada" sempre abre a tela "Personalizar regra" (mesmo já escolhida); ao salvar, volta-se à criação da mesa com "Personalizada" escolhida; ao voltar sem salvar, a escolha anterior é mantida. Os parâmetros editáveis são os de §14.2, exceto a pontuação-alvo, escolhida na mesa.
 
+
+### **14.5. Personagens (jogadores virtuais)**
+
+Os jogadores virtuais são **4 perfis de robô**, cada um com **visual**, **estilo de jogo** e **nomes** próprios, e **3 níveis**.
+
+| Perfil | Código | Visual | Estilo de jogo |
+|---|---|---|---|
+| Jovem | `JOVEM` | adolescente, pele azulada, traços robóticos, fone de ouvido e boné | habilidoso e sagaz |
+| Sóbrio | `SOBRIO` | adulto maduro (nem jovem nem idoso), mais volumoso, pele azul com detalhes esbranquiçados envelhecidos, adornos dourados, olhos cansados | sóbrio e conservador |
+| Alternativo | `ALTERNATIVO` | pele esverdiada, traços arredondados, braços mais longos, colar natural marrom, colete marrom-escuro e chapéu de palha | ousado, procura sentido oculto em cada descarte |
+| Atleta | `ATLETA` | adulto musculoso de feições humanizadas, pele laranja, bandana e regata | agressivo: pressiona o adversário |
+
+- **Níveis:** **Iniciante** (dificuldade Fácil), **Maduro** (Médio) e **Sênior** (Difícil). Todos os personagens de uma mesa têm o nível da **dificuldade escolhida** (§14); nas mesas abertas por jogadores virtuais (§14.4), o nível é o da dificuldade da mesa. O nível aparece como insígnia de 1, 2 ou 3 estrelas junto da imagem.
+- **Estilo × nível:** o nível define a força do jogador virtual; o estilo só muda **preferências entre jogadas legais** (por exemplo, quando pegar o lixo ou bater). **Nenhum estilo altera regra**, e o jogador virtual continua vendo apenas a informação visível a um jogador.
+- **Sorteio ao formar a mesa:** 1 personagem no individual e 3 em duplas, com **perfis diferentes entre si**, sorteados com a semente da mesa **antes** de o jogador escolhê-la (nas mesas abertas pelos jogadores virtuais, §14.4) ou ao criar a mesa. Cada personagem recebe **nome e sobrenome** sorteados do conjunto do seu perfil; nenhum repete o nome de outro da mesa nem usa o primeiro nome do jogador (sem diferenciar maiúsculas). Perfil, nome e sobrenome valem durante todo o jogo, e iniciar o jogo **não sorteia de novo**.
+- **Como são chamados:** na **comunicação** do jogo (avisos, janelas de decisão, "Vez de", detalhe da última jogada, tela de pontos, declaração do vencedor), pelo **nome completo** com a **imagem** do personagem. Em **duplas**, os adversários levam a **posição em relação ao jogador**: `Nome Sobrenome (dir)` e `Nome Sobrenome (esq)`; o parceiro leva **só o nome**. No individual, só o nome. O jogador é "Você". Na **lista de mesas** e na **tela da mesa** de duplas, cada personagem aparece sob o seu retrato com o **nome** e o **rótulo** da posição ("Adv. esq.", "Parceiro", "Adv. dir."), e o título é "Mesa de Nome Sobrenome" (o anfitrião, sem posição). Na **mesa de jogo** (o personagem já está sentado na sua posição), o nome vem **abreviado** (`Nome S.`) e **sem** a posição; só o parceiro leva a legenda "Parceiro".
+- **Imagens:** cada personagem (perfil × nível) tem 4 poses: **apresentação** (painel de seleção de mesas, mostra o perfil), **vencedor**, **perdedor** e **pensador** (pequena, na mesa de jogo). Cada pose tem uma animação curta e cíclica (2 a 4 segundos).
+- **Apresentação e animação:** a **lista de mesas** e a **tela da mesa** mostram o retrato de apresentação (e o nível em estrelas e a característica do perfil, que no individual vêm com o texto que "vende" o perfil); a mesa de **duplas** mostra os **três** personagens, em retratos menores. Cada pose tem um movimento suave e um efeito próprio (brilho, confete, nuvem com chuva, pensamentos), sempre dentro do ciclo de 2 a 4 s.
+- **Fim da partida e do jogo:** o anúncio e a tela final mostram os **dois lados completos**: os vencedores na pose de vencedor, com confete (o jogador, com a sua foto ou medalhão), e os perdedores na de perdedor, com a nuvem de chuva, sobre um fundo vermelho que pulsa devagar entre o escuro e o mais claro. Na **tela de pontos** o jogador aparece com a sua foto ou medalhão; cada personagem aparece no **rosto** de vencedor se o seu lado lidera o placar acumulado, de perdedor se está atrás, e de pensador se há empate (na tela final, o vencedor do jogo, inclusive por desistência).
+- **"Continuar":** o nome do jogador usado no sorteio fica gravado no jogo salvo, para que "Continuar" mostre os mesmos personagens mesmo que o perfil seja renomeado.
 ---
 
 # **15. Resumo do Fluxo de Jogo**

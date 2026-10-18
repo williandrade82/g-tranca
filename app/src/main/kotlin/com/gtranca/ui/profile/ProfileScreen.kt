@@ -47,16 +47,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
-import com.gtranca.game.FaceShape
-import com.gtranca.game.Gender
-import com.gtranca.game.HairStyle
-import com.gtranca.game.Look
 import com.gtranca.game.PlayerProfile
-import com.gtranca.game.Profession
-import com.gtranca.ui.persona.HairColors
+import com.gtranca.ui.persona.MedalColors
 import com.gtranca.ui.persona.PersonaAvatar
-import com.gtranca.ui.persona.SkinTones
-import com.gtranca.ui.persona.labelRes
 import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GButton
 import com.gtranca.ui.theme.GButtonKind
@@ -66,7 +59,7 @@ import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.Spacing
 
-/** Perfil do jogador (§14.1): nome e avatar (gênero, profissão, pele, cabelo e barba), com pré-visualização. */
+/** Perfil do jogador (§14.1): nome e avatar (foto ou medalhão com a inicial e a cor), com pré-visualização. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone: () -> Unit) {
@@ -95,39 +88,10 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
                     modifier = Modifier.fillMaxWidth().testTag("profile-name"),
                 )
 
-                // §14.1 avatar pronto: gênero e profissão (vale quando não há foto).
-                Section(stringResource(R.string.profile_gender)) {
-                    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        Gender.entries.forEach { gender ->
-                            GChoiceChip(
-                                stringResource(if (gender == Gender.MALE) R.string.gender_male else R.string.gender_female),
-                                selected = profile.gender == gender,
-                                onClick = { viewModel.onGender(gender) },
-                                modifier = Modifier.weight(1f).testTag("gender-${gender.name.lowercase()}"),
-                            )
-                        }
-                    }
+                // §14.1 sem foto, o avatar é o medalhão com a inicial: cor à escolha.
+                Section(stringResource(R.string.profile_color)) {
+                    Swatches(MedalColors, profile.color, "medal-color", viewModel::onColor)
                 }
-
-                Section(stringResource(R.string.profile_profession)) {
-                    // Quatro por linha em 360 dp; o nome da profissão fica sob cada desenho.
-                    FlowRow(
-                        Modifier.fillMaxWidth().selectableGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    ) {
-                        Profession.entries.forEach { profession ->
-                            val option = profile.copy(profession = profession).persona(youName)
-                            LabeledChoice(
-                                selected = profile.profession == profession,
-                                onClick = { viewModel.onProfession(profession) },
-                                label = stringResource(profession.labelRes(profile.gender)),
-                                tag = "profession-${profession.name.lowercase()}",
-                            ) { PersonaAvatar(option, 52.dp) }
-                        }
-                    }
-                }
-
             }
             GPanel(Modifier.fillMaxWidth()) {
                 val sound = LocalSound.current
@@ -250,36 +214,11 @@ private fun Choice(selected: Boolean, onClick: () -> Unit, description: String, 
     ) { content() }
 }
 
-/** Opção com desenho e nome embaixo; a coluna toda é a opção (o texto é lido uma vez só) e o aro marca o desenho. */
-@Composable
-private fun LabeledChoice(selected: Boolean, onClick: () -> Unit, label: String, tag: String, content: @Composable () -> Unit) {
-    Column(
-        Modifier
-            .width(70.dp)
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .testTag(tag),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            Modifier
-                .border(if (selected) 3.dp else 0.dp, if (selected) GColors.Yellow else Color.Transparent, CircleShape)
-                .padding(3.dp),
-        ) { content() }
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = GColors.White,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-        )
-    }
-}
-
-/** Fileira de cores selecionáveis (tom de pele ou de cabelo). */
+/** Fileira de cores selecionáveis (cor do medalhão). */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Swatches(colors: List<Color>, selected: Int, tag: String, onSelect: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+    FlowRow(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         colors.forEachIndexed { index, color ->
             Box(
                 Modifier
@@ -300,22 +239,3 @@ private fun Swatches(colors: List<Color>, selected: Int, tag: String, onSelect: 
     }
 }
 
-private fun FaceShape.labelRes(): Int = when (this) {
-    FaceShape.OVAL -> R.string.face_oval
-    FaceShape.ROUND -> R.string.face_round
-    FaceShape.SQUARE -> R.string.face_square
-    FaceShape.HEART -> R.string.face_heart
-    FaceShape.LONG -> R.string.face_long
-}
-
-private fun HairStyle.labelRes(): Int = when (this) {
-    HairStyle.SHORT -> R.string.hair_short
-    HairStyle.SIDE_SWEEP -> R.string.hair_side_sweep
-    HairStyle.CURLY_SHORT -> R.string.hair_curly_short
-    HairStyle.BALD -> R.string.hair_bald
-    HairStyle.LONG -> R.string.hair_long
-    HairStyle.BOB -> R.string.hair_bob
-    HairStyle.BUN -> R.string.hair_bun
-    HairStyle.PONYTAIL -> R.string.hair_ponytail
-    HairStyle.CURLY_LONG -> R.string.hair_curly_long
-}

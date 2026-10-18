@@ -3,11 +3,7 @@ package com.gtranca.ui.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gtranca.data.SettingsRepository
-import com.gtranca.game.FaceShape
-import com.gtranca.game.Gender
-import com.gtranca.game.HairStyle
 import com.gtranca.game.PlayerProfile
-import com.gtranca.game.Profession
 import com.gtranca.game.WriteQueue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,19 +81,8 @@ class ProfileViewModel(
 
     fun onName(raw: String) = edit { it.copy(name = PlayerProfile.sanitizeName(raw)) }
 
-    fun onGender(gender: Gender) = edit { it.withGender(gender) }
-
-    fun onProfession(profession: Profession) = edit { it.copy(profession = profession) }
-
-    fun onSkin(index: Int) = edit { it.copy(look = it.look.copy(skin = index)) }
-
-    fun onHair(style: HairStyle) = edit { if (style.gender == it.gender) it.copy(look = it.look.copy(hair = style)) else it }
-
-    fun onHairColor(index: Int) = edit { it.copy(look = it.look.copy(hairColor = index)) }
-
-    fun onFace(face: FaceShape) = edit { it.copy(look = it.look.copy(face = face)) }
-
-    fun onBeard(beard: Boolean) = edit { if (it.gender == Gender.MALE) it.copy(look = it.look.copy(beard = beard)) else it }
+    /** §14.1 cor do medalhão (índice da paleta); índice fora dela é ignorado. */
+    fun onColor(index: Int) = edit { if (index in 0 until PlayerProfile.COLORS) it.copy(color = index) else it }
 
     /** Caminho da foto a mostrar na prévia (rascunho ou gravada), ou `null`. */
     val previewPhoto: String?
@@ -120,7 +105,7 @@ class ProfileViewModel(
         }
     }
 
-    /** §14.1 tira a foto: o avatar volta a ser a persona (apaga o arquivo ao salvar). */
+    /** §14.1 tira a foto: o avatar volta a ser o medalhão (apaga o arquivo ao salvar). */
     fun onRemovePhoto() {
         touched = true
         _uiState.update { it.copy(photo = PhotoState.NONE, photoError = false) }

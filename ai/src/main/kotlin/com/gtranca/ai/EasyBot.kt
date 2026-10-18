@@ -35,6 +35,7 @@ import kotlin.random.Random
 class EasyBot(
     private val random: Random,
     private val mistakeRate: Double = DEFAULT_MISTAKE_RATE,
+    private val style: PlayStyle = PlayStyle.NEUTRO,
 ) : BotPlayer {
 
     init {
@@ -56,7 +57,7 @@ class EasyBot(
     private fun chooseDraw(view: PlayerView, legal: List<Action>): Action? {
         val takes = legal.filterIsInstance<Action.TakeDiscardPile>()
         val draw = legal.firstOrNull { it == Action.DrawFromStock }
-        if (takes.isNotEmpty() && (draw == null || !mistake())) {
+        if (takes.isNotEmpty() && (draw == null || (!mistake() && !skips(1.0 - style.easyTakeRate)))) {
             return takes.maxBy { takeScore(view, it.plan) }
         }
         return draw ?: legal.firstOrNull { it == Action.DeclineDraw }
@@ -90,7 +91,7 @@ class EasyBot(
                 else -> null
             }
         }
-        if (candidates.isEmpty() || mistake()) return null
+        if (candidates.isEmpty() || mistake() || skips(style.easyMeldSkip)) return null
         return candidates.maxBy { it.second }.first
     }
 
@@ -114,7 +115,7 @@ class EasyBot(
     private fun chooseDiscard(view: PlayerView, legal: List<Action>): Action? {
         val discards = legal.filterIsInstance<Action.Discard>()
         if (discards.isEmpty()) return null
-        if (mistake()) {
+        if (mistake() || skips(style.easyScatter)) {
             val naturals = discards.filterNot { it.card.isWild }
             return naturals.ifEmpty { discards }.random(random)
         }
@@ -147,6 +148,9 @@ class EasyBot(
     // ---------- utilitários ----------
 
     private fun mistake(): Boolean = random.nextDouble() < mistakeRate
+
+    /** Preferência de estilo com chance [rate]; taxa 0 não consome o RNG (o neutro joga como antes dos estilos). */
+    private fun skips(rate: Double): Boolean = rate > 0.0 && random.nextDouble() < rate
 
     private fun PlayerView.ownMeld(id: MeldId): Meld? = tables[side.index].meld(id)
 

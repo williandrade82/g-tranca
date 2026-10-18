@@ -3,40 +3,39 @@ package com.gtranca.game
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
-/** §14.1 perfil do jogador: nome, avatar e gravação como texto. */
+/** §14.1 perfil do jogador: nome, avatar (foto ou medalhão com inicial e cor) e gravação como texto. */
 class PlayerProfileTest {
 
     @Test
     fun `§14_1 grava e le o perfil inteiro`() {
-        val profile = PlayerProfile(
-            name = "Bia Souza",
-            gender = Gender.FEMALE,
-            profession = Profession.SAILOR,
-            look = Look(skin = 4, hair = HairStyle.PONYTAIL, hairColor = 5, face = FaceShape.HEART),
-        )
+        val profile = PlayerProfile(name = "Bia Souza", color = 5)
         PlayerProfile.decode(profile.encode()) shouldBe profile
-        val bearded = PlayerProfile("Zé", Gender.MALE, Profession.MECHANIC, Look(0, HairStyle.BALD, 0, beard = true))
-        PlayerProfile.decode(bearded.encode()) shouldBe bearded
+        val withPhoto = PlayerProfile("Zé", color = 2, hasPhoto = true)
+        PlayerProfile.decode(withPhoto.encode()) shouldBe withPhoto
     }
 
     @Test
-    fun `§14_1 foto pessoal e gravada no perfil e so vale com o arquivo informado`() {
+    fun `§14_1 foto pessoal so vale com o arquivo informado`() {
         val profile = PlayerProfile("Bia", hasPhoto = true)
-        PlayerProfile.decode(profile.encode()) shouldBe profile
         profile.persona("Você", "/fotos/eu.jpg").photo shouldBe "/fotos/eu.jpg"
         profile.persona("Você").photo shouldBe null
         PlayerProfile("Bia").persona("Você", "/fotos/eu.jpg").photo shouldBe null
-        // Perfil gravado antes da foto (8 campos): sem foto.
-        val withoutPhoto = PlayerProfile("Rui").encode().substringBeforeLast("\t")
-        PlayerProfile.decode(withoutPhoto) shouldBe PlayerProfile("Rui")
-        PlayerProfile.decode(withoutPhoto + "\ttalvez") shouldBe PlayerProfile()
     }
 
     @Test
-    fun `§14_1 perfil gravado no formato anterior, sem o rosto, ainda e lido`() {
-        val old = "Rui\tMALE\tPILOT\t2\tSHORT\t1\ttrue"
-        PlayerProfile.decode(old) shouldBe PlayerProfile("Rui", Gender.MALE, Profession.PILOT, Look(2, HairStyle.SHORT, 1, beard = true))
-        PlayerProfile.decode("$old\tQUADRADINHO") shouldBe PlayerProfile()
+    fun `§14_1 medalhao usa o nome e a cor do perfil e nunca e um personagem`() {
+        val persona = PlayerProfile("Bia", color = 3).persona("Você")
+        persona.color shouldBe 3
+        persona.character shouldBe null
+        persona.firstName shouldBe "Bia"
+    }
+
+    @Test
+    fun `§14_1 perfil gravado no formato antigo (persona por profissao) mantem nome e foto`() {
+        PlayerProfile.decode("Rui\tMALE\tPILOT\t2\tSHORT\t1\ttrue") shouldBe PlayerProfile("Rui")
+        PlayerProfile.decode("Rui\tMALE\tPILOT\t2\tSHORT\t1\ttrue\tOVAL") shouldBe PlayerProfile("Rui")
+        PlayerProfile.decode("Rui\tMALE\tPILOT\t2\tSHORT\t1\ttrue\tOVAL\ttrue") shouldBe PlayerProfile("Rui", hasPhoto = true)
+        PlayerProfile.decode("Rui\tMALE\tPILOT\t2\tSHORT\t1\ttrue\tOVAL\ttalvez") shouldBe PlayerProfile()
     }
 
     @Test
@@ -45,10 +44,10 @@ class PlayerProfileTest {
         PlayerProfile.decode(null) shouldBe default
         PlayerProfile.decode("") shouldBe default
         PlayerProfile.decode("lixo") shouldBe default
-        PlayerProfile.decode("a\tMALE\tTEACHER\t9\tSHORT\t0\tfalse") shouldBe default // tom de pele fora da paleta
-        PlayerProfile.decode("a\tMALE\tTEACHER\t1\tLONG\t0\tfalse") shouldBe default // penteado de outro gênero
-        PlayerProfile.decode("a\tMALE\tASTRONAUTA\t1\tSHORT\t0\tfalse") shouldBe default
-        PlayerProfile.decode("a\tMALE\tTEACHER\t1\tSHORT\t0\tTALVEZ") shouldBe default
+        PlayerProfile.decode("a\t${PlayerProfile.COLORS}\tfalse") shouldBe default // cor fora da paleta
+        PlayerProfile.decode("a\t-1\tfalse") shouldBe default
+        PlayerProfile.decode("a\tx\tfalse") shouldBe default
+        PlayerProfile.decode("a\t1\tTALVEZ") shouldBe default
     }
 
     @Test
@@ -69,14 +68,9 @@ class PlayerProfileTest {
     }
 
     @Test
-    fun `§14_1 trocar o genero leva um penteado compativel e tira a barba`() {
-        val male = PlayerProfile(look = Look(1, HairStyle.CURLY_SHORT, 2, beard = true))
-        val female = male.withGender(Gender.FEMALE)
-        female.gender shouldBe Gender.FEMALE
-        female.look.hair.gender shouldBe Gender.FEMALE
-        female.look.beard shouldBe false
-        female.look.skin shouldBe 1
-        female.look.hairColor shouldBe 2
-        male.withGender(Gender.MALE) shouldBe male
+    fun `§14_1 inicial do medalhao e a primeira letra em maiuscula`() {
+        Persona("bia").initial shouldBe "B"
+        Persona("Édson").initial shouldBe "É"
+        Persona("").initial shouldBe "?"
     }
 }

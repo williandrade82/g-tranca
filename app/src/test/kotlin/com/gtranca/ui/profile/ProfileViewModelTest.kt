@@ -3,10 +3,7 @@ package com.gtranca.ui.profile
 import com.gtranca.data.Settings
 import com.gtranca.data.SettingsRepository
 import com.gtranca.engine.model.GameMode
-import com.gtranca.game.Gender
-import com.gtranca.game.HairStyle
 import com.gtranca.game.PlayerProfile
-import com.gtranca.game.Profession
 import com.gtranca.game.WriteQueue
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CoroutineScope
@@ -47,7 +44,7 @@ class ProfileViewModelTest {
 
     @Test
     fun `§14_1 le o perfil gravado ao abrir`() = runTest(dispatcher) {
-        val saved = PlayerProfile("Bia", Gender.FEMALE, Profession.PILOT, PlayerProfile().look.copy(hair = HairStyle.BOB))
+        val saved = PlayerProfile("Bia", color = 4)
         val vm = ProfileViewModel(FakeSettings(Settings(profileId = saved.encode())), WriteQueue(CoroutineScope(dispatcher)))
         vm.uiState.value.loaded shouldBe false
         advanceUntilIdle()
@@ -64,26 +61,13 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `§14_1 edicao do avatar respeita o genero`() = runTest(dispatcher) {
+    fun `§14_1 cor do medalhao troca dentro da paleta e ignora indice invalido`() = runTest(dispatcher) {
         val vm = ProfileViewModel()
-        vm.onBeard(true)
-        vm.uiState.value.profile.look.beard shouldBe true
-        vm.onGender(Gender.FEMALE)
-        vm.uiState.value.profile.look.beard shouldBe false
-        // Barba e penteado do outro gênero são ignorados.
-        vm.onBeard(true)
-        vm.onHair(HairStyle.SHORT)
-        vm.uiState.value.profile.look.beard shouldBe false
-        vm.uiState.value.profile.look.hair.gender shouldBe Gender.FEMALE
-        vm.onHair(HairStyle.BUN)
-        vm.onProfession(Profession.LAWYER)
-        vm.onSkin(4)
-        vm.onHairColor(3)
-        val look = vm.uiState.value.profile.look
-        look.hair shouldBe HairStyle.BUN
-        look.skin shouldBe 4
-        look.hairColor shouldBe 3
-        vm.uiState.value.profile.profession shouldBe Profession.LAWYER
+        vm.onColor(3)
+        vm.uiState.value.profile.color shouldBe 3
+        vm.onColor(PlayerProfile.COLORS)
+        vm.onColor(-1)
+        vm.uiState.value.profile.color shouldBe 3
     }
 
     @Test
@@ -99,7 +83,7 @@ class ProfileViewModelTest {
         val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
         advanceUntilIdle()
         vm.onName("  Rui  ")
-        vm.onProfession(Profession.FARMER)
+        vm.onColor(3)
         val returned = vm.onSave()
         advanceUntilIdle()
         returned.name shouldBe "Rui"

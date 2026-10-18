@@ -154,7 +154,7 @@ internal class Ismcts(
     ) {
         val side = world.mode.sideOf(me)
         val policySeed = random.nextLong()
-        val policies = Rollout.policies(world, Random(policySeed), events)
+        val policies = Rollout.policies(world, Random(policySeed), events, me, scorer.weights)
         val challengers = rootCandidates.drop(1)
         var state = world
         var node = root
@@ -182,7 +182,7 @@ internal class Ismcts(
         val reward = Rollout.play(state, policies, config.rolloutTurns, config.rewardScale, side, rules)
 
         // referência pareada: a preferida do Médio no mesmo mundo, com as mesmas sementes
-        val basePolicies = Rollout.policies(world, Random(policySeed), events)
+        val basePolicies = Rollout.policies(world, Random(policySeed), events, me, scorer.weights)
         val afterBaseline = Rollout.step(world, me, rootCandidates.first(), basePolicies, rules)
         val baselineReward = Rollout.play(afterBaseline, basePolicies, config.rolloutTurns, config.rewardScale, side, rules)
 

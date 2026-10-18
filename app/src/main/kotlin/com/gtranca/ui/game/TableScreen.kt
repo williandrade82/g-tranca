@@ -17,7 +17,6 @@ import com.gtranca.ui.theme.MessageTone
 import com.gtranca.ui.theme.GSnack
 
 import com.gtranca.ui.persona.PersonaAvatar
-import com.gtranca.ui.persona.labelRes
 
 import androidx.compose.ui.draw.clip
 
@@ -377,7 +376,7 @@ fun TableScreen(
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
             val detailPersona = state.personas.getOrNull(index)
-            SeatDetailDialog(detailPersona, stringResource(detailPersona?.let { role.labelRes(it.gender) } ?: role.nameRes()), events) { detailSeat = null }
+            SeatDetailDialog(detailPersona, detailPersona?.callName(view.mode, role) ?: stringResource(role.nameRes()), events) { detailSeat = null }
         }
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
@@ -527,10 +526,11 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            // §14.1 avatar discreto e nome curto; o papel (esquerda, parceiro, direita) vai embaixo, bem pequeno.
+            // §14.1, §14.5 avatar discreto e nome abreviado; o personagem já está na sua posição, então só o parceiro
+            // leva legenda (sem personagem, o papel de sempre).
             val persona = state.personas.getOrNull(seat.index)
             if (persona != null) {
-                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp) }
+                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp, animate = state.animationMillis > 0) }
             }
             Column(Modifier.weight(1f)) {
                 if (persona != null) {
@@ -543,14 +543,16 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(
-                    stringResource(role.pillNameRes()),
-                    color = if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = if (persona != null) 0.8f else 1f),
-                    fontWeight = if (persona != null) FontWeight.Normal else FontWeight.Bold,
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = if (persona != null) 1 else 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (persona == null || role == SeatRole.PARTNER) {
+                    Text(
+                        stringResource(role.pillNameRes()),
+                        color = if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = if (persona != null) 0.8f else 1f),
+                        fontWeight = if (persona != null) FontWeight.Normal else FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = if (persona != null) 1 else 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (thinking) {
                 CircularProgressIndicator(
@@ -881,7 +883,12 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     val status = when {
         state.awaitingDraw -> stringResource(R.string.turn_draw)
         state.playing -> stringResource(R.string.turn_play)
-        thinking != null -> stringResource(SeatRole.of(snapshot.view.mode, thinking, snapshot.viewerSeat).turnRes())
+        thinking != null -> {
+            val role = SeatRole.of(snapshot.view.mode, thinking, snapshot.viewerSeat)
+            // §14.5 na comunicação: nome completo com a posição (duplas).
+            state.personas.getOrNull(thinking.index)?.let { stringResource(R.string.turn_named, it.callName(snapshot.view.mode, role)) }
+                ?: stringResource(role.turnRes())
+        }
         else -> stringResource(R.string.turn_waiting)
     }
     Column(
@@ -1313,7 +1320,7 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
  */
 @Composable
 private fun SwapAnnouncement(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat, persona: com.gtranca.game.Persona?) {
-    val text = bannerText(mode, notice, viewerSeat)
+    val text = bannerText(mode, notice, viewerSeat, persona)
     val shown = remember(notice.id) { MutableTransitionState(false).apply { targetState = true } }
     // Véu leve sobre a mesa (não bloqueia toques) e o anúncio centralizado; some quando a troca termina.
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
@@ -1548,7 +1555,7 @@ private fun Modifier.feltTable(): Modifier {
 private fun mortoTakerName(state: GameUiState, status: MortoStatus.Taken): String? {
     val seat = status.seat ?: return null
     if (seat == state.snapshot.viewerSeat) return stringResource(R.string.side_you)
-    return state.personas.getOrNull(seat.index)?.firstName
+    return state.personas.getOrNull(seat.index)?.shortName // na mesa o nome vai abreviado (§14.5)
 }
 
 /** Ícone de pessoa num círculo: verde = seu lado (você ou parceiro), vermelho = rival. */

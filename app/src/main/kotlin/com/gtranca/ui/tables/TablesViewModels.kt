@@ -11,12 +11,14 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
 import com.gtranca.game.PlayerProfile
 import com.gtranca.game.TableOffer
+import com.gtranca.game.PersonaGenerator
 import com.gtranca.game.Tables
 import com.gtranca.game.WriteQueue
 import com.gtranca.game.isAsciiDigits
 import com.gtranca.game.parseTargetScore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.random.Random
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -69,6 +71,46 @@ class TablesViewModel(seed: Long = System.nanoTime(), settings: SettingsReposito
     }
 
     fun table(id: Int): TableOffer? = _tables.value.firstOrNull { it.id == id }
+}
+
+/**
+ * Mesa criada pelo jogador (§14.4, §14.5): os personagens são sorteados com a [seed] e mostrados antes de começar;
+ * [reroll] sorteia outros, com a mesma configuração. O jogo que começa usa a semente da mesa mostrada.
+ */
+class CreatedTableViewModel(private val config: GameConfig, seed: Long = System.nanoTime(), settings: SettingsRepository? = null) : ViewModel() {
+    private var playerName = ""
+    private var seed = seed
+    private val _table = MutableStateFlow(build())
+    val table: StateFlow<TableOffer> = _table.asStateFlow()
+
+    init {
+        // Nenhum personagem leva o primeiro nome do jogador (§14.5).
+        settings?.let { repo ->
+            viewModelScope.launch {
+                val name = safely { PlayerProfile.decode(repo.settings.first().profileId).name } ?: return@launch
+                if (name.isNotBlank()) {
+                    playerName = name
+                    _table.value = build()
+                }
+            }
+        }
+    }
+
+    private fun build() = TableOffer(
+        id = Tables.CREATED_TABLE_ID,
+        seed = seed,
+        players = PersonaGenerator.opponents(seed, config.mode.seatCount - 1, config.difficulty, playerName),
+        mode = config.mode,
+        difficulty = config.difficulty,
+        targetScore = config.targetScore,
+        rules = config.rules,
+    )
+
+    /** Sorteia outros personagens para a mesma configuração. */
+    fun reroll() {
+        seed = Random.nextLong()
+        _table.value = build()
+    }
 }
 
 /** Regras escolhidas ao criar a mesa (§14.4). */

@@ -36,7 +36,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
 import com.gtranca.ai.Difficulty
@@ -44,11 +47,18 @@ import com.gtranca.engine.GroupRanks
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
+import com.gtranca.game.Persona
 import com.gtranca.game.TableOffer
 import com.gtranca.ui.game.plainPoints
 import com.gtranca.ui.home.ModeCard
 import com.gtranca.ui.home.labelRes
+import com.gtranca.ui.persona.CharacterPortrait
+import com.gtranca.ui.persona.LevelStars
 import com.gtranca.ui.persona.PersonaAvatar
+import com.gtranca.ui.persona.Pose
+import com.gtranca.ui.persona.labelRes
+import com.gtranca.ui.persona.pitchRes
+import com.gtranca.ui.persona.tagRes
 import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GButton
@@ -124,7 +134,7 @@ fun TablesScreen(viewModel: TablesViewModel, onOpen: (TableOffer) -> Unit, onCre
 @Composable
 private fun TableCard(table: TableOffer, onClick: () -> Unit) {
     val shape = RoundedCornerShape(Corner.md)
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .clip(shape)
@@ -133,17 +143,41 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(Spacing.md)
             .testTag("table-${table.id}"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+    Row(
+        Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        PersonaAvatar(table.host, 52.dp)
+        // §14.5 apresentação do personagem: retrato animado, nível e característica (no individual; em duplas, os três
+        // personagens da mesa aparecem em retratos pequenos logo abaixo).
+        val character = table.host.character
+        if (table.mode == GameMode.DUPLAS) {
+            // sem retrato à esquerda: os três vêm abaixo
+        } else if (character != null) {
+            CharacterPortrait(character, Pose.APRESENTACAO, Modifier.width(104.dp).testTag("table-portrait-${table.id}"), description = table.host.fullName)
+        } else {
+            PersonaAvatar(table.host, 52.dp)
+        }
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.tables_host, table.host.firstName),
+                stringResource(R.string.tables_host, table.host.fullName),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = GColors.Champagne,
             )
+            if (character != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                    LevelStars(character.level)
+                    // em duplas, o nível é o da mesa; a característica de cada um está nos retratos da tela da mesa
+                    Text(
+                        stringResource(if (table.mode == GameMode.DUPLAS) character.level.labelRes() else character.profile.tagRes()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GColors.Lavender,
+                    )
+                }
+            }
             Text(rulesName(table.rules), style = MaterialTheme.typography.bodyMedium, color = GColors.Gold)
             Text(
                 stringResource(
@@ -158,13 +192,42 @@ private fun TableCard(table: TableOffer, onClick: () -> Unit) {
         }
         Text(stringResource(R.string.tables_view_rules), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
     }
+    if (table.mode == GameMode.DUPLAS) RosterStrip(table)
+    }
 }
+
+/** §14.4 os três personagens de uma mesa de duplas, em retratos de apresentação pequenos: adversário à esquerda, parceiro e adversário à direita. */
+@Composable
+private fun RosterStrip(table: TableOffer) {
+    Row(Modifier.fillMaxWidth().testTag("table-${table.id}-roster"), horizontalArrangement = Arrangement.SpaceEvenly) {
+        seatsInDisplayOrder(table).forEach { (persona, label) ->
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                // mesmo retrato de apresentação das mesas individuais, só menor
+                val c = persona.character
+                if (c != null) {
+                    CharacterPortrait(c, Pose.APRESENTACAO, Modifier.fillMaxWidth(0.9f), description = persona.fullName)
+                } else {
+                    PersonaAvatar(persona, 44.dp)
+                }
+                Text(persona.shortName, style = MaterialTheme.typography.labelSmall, color = GColors.Ivory, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Personagens da mesa de duplas na ordem em que se sentam à vista do jogador (esquerda, parceiro, direita), com o rótulo de cada um. */
+private fun seatsInDisplayOrder(table: TableOffer): List<Pair<Persona, Int>> = listOf(
+    table.players[2] to R.string.seat_left_short,
+    table.players[1] to R.string.seat_partner,
+    table.players[0] to R.string.seat_right_short,
+)
 
 // ---------- Regras da mesa ----------
 
 /** §14.4 regras de uma mesa aberta: o jogador inicia o jogo ou volta. */
 @Composable
-fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: () -> Unit) {
+fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: () -> Unit, onReroll: (() -> Unit)? = null) {
     TableFrame(
         stringResource(R.string.table_rules_title),
         "table-rules-screen",
@@ -174,16 +237,58 @@ fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: (
         },
     ) {
         GPanel(Modifier.fillMaxWidth()) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                PersonaAvatar(table.host, 52.dp)
-                Column {
-                    Text(stringResource(R.string.tables_host, table.host.firstName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
+            val character = table.host.character
+            if (table.mode == GameMode.DUPLAS) {
+                // §14.4 a mesa de duplas já está formada: os três personagens que vão jogar, lado a lado.
+                Column(Modifier.fillMaxWidth().testTag("table-rules-roster"), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.Bottom) {
+                        seatsInDisplayOrder(table).forEach { (persona, label) ->
+                            val c = persona.character ?: return@forEach
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                CharacterPortrait(c, Pose.APRESENTACAO, Modifier.fillMaxWidth(), description = persona.fullName)
+                                Text(persona.fullName, style = MaterialTheme.typography.labelMedium, color = GColors.Champagne, textAlign = TextAlign.Center, maxLines = 2)
+                                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender, textAlign = TextAlign.Center)
+                                LevelStars(c.level, size = 14.sp)
+                                Text(stringResource(c.profile.tagRes()), style = MaterialTheme.typography.labelSmall, color = GColors.Ivory, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                    Text(
+                        "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
+                        Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GColors.Lavender,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else if (character != null) {
+                // §14.5 painel de apresentação: o retrato em destaque e o texto que apresenta o perfil.
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    CharacterPortrait(character, Pose.APRESENTACAO, Modifier.fillMaxWidth(0.8f).testTag("table-rules-portrait"), description = table.host.fullName)
+                    Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne, textAlign = TextAlign.Center)
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                        LevelStars(character.level, size = 20.sp)
+                        Text(stringResource(character.level.labelRes()), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
+                    }
+                    Text(stringResource(character.profile.tagRes()), style = MaterialTheme.typography.titleSmall, color = GColors.Lavender, textAlign = TextAlign.Center)
+                    Text(stringResource(character.profile.pitchRes()), style = MaterialTheme.typography.bodyMedium, color = GColors.Ivory, textAlign = TextAlign.Center)
                     Text(
                         "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = GColors.Lavender,
                     )
                 }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    PersonaAvatar(table.host, 52.dp)
+                    Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
+                }
+            }
+        }
+        // §14.4 mesa criada pelo jogador: pode sortear outros personagens antes de começar
+        if (onReroll != null) {
+            GButton(onReroll, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("table-rules-reroll"), kind = GButtonKind.Secondary) {
+                Text(stringResource(R.string.table_rules_reroll), style = MaterialTheme.typography.titleMedium)
             }
         }
         RulesSummary(table.rules, table.targetScore)

@@ -36,6 +36,11 @@ data class SavedGame(
     val events: List<SavedEvent>,
     /** Sorteios já feitos pelo bot de cada assento (vazio em jogos salvos antes desta versão). */
     val botRandomCalls: List<Long> = emptyList(),
+    /**
+     * Nome do jogador usado no sorteio dos personagens (§14.5): "Continuar" sorteia com o mesmo, mesmo que o perfil
+     * tenha sido renomeado. `null` em jogos salvos antes desta versão (vale o nome atual do perfil).
+     */
+    val playerName: String? = null,
 ) {
     companion object {
         /** Versão atual do formato; arquivos de outra versão são tratados como "sem jogo salvo". */

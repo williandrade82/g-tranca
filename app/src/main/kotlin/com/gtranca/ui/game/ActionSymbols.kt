@@ -8,7 +8,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.gtranca.game.Persona
 import com.gtranca.ui.persona.PersonaAvatar
-import com.gtranca.ui.persona.labelRes
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -189,23 +188,17 @@ fun LegendDialog(rules: com.gtranca.engine.RuleSet, targetScore: Int, onDismiss:
 /** Detalhe da última jogada de um assento: cada ação com o símbolo, a frase completa e as cartas desenhadas. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SeatDetailDialog(persona: Persona?, roleLabel: String, events: List<PublicEvent>, onDismiss: () -> Unit) {
+fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>, onDismiss: () -> Unit) {
     GDialog(
         modifier = Modifier.testTag("seat-detail-dialog"),
         onDismissRequest = onDismiss,
         title = {
             if (persona == null) {
-                Text(roleLabel)
+                Text(name)
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     PersonaAvatar(persona, 56.dp)
-                    Column {
-                        Text(persona.fullName)
-                        Text(
-                            stringResource(R.string.persona_caption, stringResource(persona.profession.labelRes(persona.gender)), roleLabel),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+                    Text(name)
                 }
             }
         },
