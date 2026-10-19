@@ -9,6 +9,7 @@ Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a m
 - **[definition.md](definition.md)** é a especificação das regras. Nunca invente regra: se algo não estiver lá, pare e pergunte ao usuário.
 - Toda regra implementada tem teste que cita a seção, ex.: `// §5.3 3 preto no topo trava o lixo`.
 - Se uma regra mudar, atualize `definition.md` **antes** do código.
+- **[docs/telas.md](docs/telas.md)** descreve as telas, os modais e o glossário de componentes (pílula do assento, modal de detalhe do jogador...). Use os nomes dele nos pedidos e, se uma tela mudar, atualize-o **antes** do código.
 
 ## Stack
 
