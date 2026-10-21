@@ -1,6 +1,6 @@
 # Plano: multijogador local (até 4 pessoas, cada uma no seu celular, sem internet)
 
-Status: **aprovado em 2026-10-20** (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário). **Etapas 1 e 2 feitas** (N12 e N13 confirmadas). Origem: `docs/plano-teamplay.md`.
+Status: **aprovado em 2026-10-20** (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário). **Etapas 1, 2 e 3 feitas** (N12 e N13 confirmadas). Origem: `docs/plano-teamplay.md`.
 Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, código e `rules-auditor`. O jogo individual e o fluxo atual contra
 robôs **não mudam**; o multijogador é uma opção nova na tela de mesas disponíveis.
 
@@ -161,7 +161,7 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
    rules-engine-dev para o texto das regras)*
 2. **Refatorar o `GameController` — FEITA** (humanos por assento, fluxo de eventos, snapshot por assento, `PacingPolicy`, `replaceWithBot`), mais
    `PublicEvent` para o `:core-engine` se N1 for (a)+(c). Testes de regressão: mesma semente, mesmo resultado; testes atuais verdes.
-3. **`:net`: protocolo + sessão + `MemoryTransport`** e a orquestração do anfitrião; testes JVM: partida completa com humanos simulados e
+3. **`:net`: protocolo + sessão + `MemoryTransport`** e a orquestração do anfitrião (`app/…/multiplayer/MultiplayerHost.kt`) — FEITA (reenvio de perdidas fica na etapa 4); testes JVM: partida completa com humanos simulados e
    robôs igual à local; varredura de vazamento no JSON; jogada ilegal/fora da vez/duplicada/de assento alheio recusada; versões diferentes
    recusadas; mensagens perdidas/reordenadas. *(net-comm-dev)*
 4. **Reconexão e papéis:** token, queda na vez, substituição por robô, recrutamento, entrada no meio do jogo com aprovação, desistência com

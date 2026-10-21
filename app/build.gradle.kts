@@ -72,6 +72,7 @@ dependencies {
     implementation(project(":core-engine"))
     implementation(project(":ai"))
     implementation(project(":data"))
+    implementation(project(":net"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
