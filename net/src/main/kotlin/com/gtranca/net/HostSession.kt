@@ -420,6 +420,16 @@ class HostSession(
         member.info.id
     }
 
+    /** §16.2 o anfitrião muda o próprio nome (em branco: "Jogador 1"); todos veem e o anúncio da mesa acompanha. */
+    suspend fun renameHost(name: String) {
+        mutex.withLock {
+            if (closed) return
+            updateLocked(members.getValue(hostId)) { it.copy(name = name.trim().ifBlank { "Jogador ${hostId + 1}" }) }
+            publishRosterLocked(broadcast = true)
+            advertiseLocked()
+        }
+    }
+
     /** §16.9 o anfitrião marca a própria desistência (o assento dele fica "VAGO" depois que ele passar o cargo). */
     suspend fun markHostResigned() {
         mutex.withLock {

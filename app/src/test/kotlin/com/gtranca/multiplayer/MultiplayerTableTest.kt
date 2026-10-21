@@ -1,0 +1,219 @@
+package com.gtranca.multiplayer
+
+import com.gtranca.ai.Difficulty
+import com.gtranca.data.GameResult
+import com.gtranca.engine.Action
+import com.gtranca.engine.model.ActionError
+import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.Seat
+import com.gtranca.game.GameConfig
+import com.gtranca.game.Persona
+import com.gtranca.game.Stage
+import com.gtranca.net.MemoryNetwork
+import com.gtranca.net.TableRules
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Test
+import java.util.Collections
+
+/** §16 a mesa multijogador que as telas usam (sala, papéis, condutor da mesa e moedas), no transporte em memória. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class MultiplayerTableTest {
+
+    private class FakeCoins : MpCoins {
+        val debits: MutableList<Int> = Collections.synchronizedList(mutableListOf())
+        val settled: MutableList<Pair<GameResult, Int>> = Collections.synchronizedList(mutableListOf())
+        override suspend fun debit(stake: Int): Boolean = debits.add(stake)
+        override suspend fun settle(gameId: String, rules: TableRules, result: GameResult, stake: Int, received: Int) {
+            settled += result to received
+        }
+    }
+
+    private class Setup(val host: MultiplayerTable, val guest: MultiplayerTable, val hostCoins: FakeCoins, val guestCoins: FakeCoins, val scope: CoroutineScope)
+
+    private suspend fun TestScope.setup(seed: Long, targetScore: Int = 500, stake: Int = 50): Setup {
+        val network = MemoryNetwork()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(dispatcher + Job())
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = targetScore, stake = stake)
+        val rules = TableRules("Mesa da família", GameMode.DUPLAS, config.rules, targetScore, stake, Difficulty.FACIL.id, listOf("jovem", "sobrio", "atleta"))
+        val hostCoins = FakeCoins()
+        val guestCoins = FakeCoins()
+        val bots: (GameConfig) -> ((Seat, kotlin.random.Random) -> com.gtranca.ai.BotPlayer) = { { seat, _ -> testBot(seed, seat) } }
+        val host = MultiplayerTable(network.transport(), scope, hostCoins, dispatcher, bots, newSeed = { seed })
+        val guest = MultiplayerTable(network.transport(), scope, guestCoins, dispatcher, bots, newSeed = { seed })
+        host.host(rules, "Ana", "mesa-1")
+        advanceUntilIdle()
+        guest.join("mesa-1", "Beto")
+        advanceUntilIdle()
+        return Setup(host, guest, hostCoins, guestCoins, scope)
+    }
+
+    /** Joga o assento deste aparelho como o robô do assento jogaria, pela vista da tela, e avança as telas de resultado. */
+    private fun drive(scope: CoroutineScope, driver: MultiplayerDriver, seed: Long, until: () -> Boolean = { true }) {
+        // No escopo das sessões (trabalho em primeiro plano): o advanceUntilIdle não roda o backgroundScope sozinho.
+        scope.launch {
+            var continued = 0
+            driver.state.collect { s ->
+                if (!until()) return@collect
+                if (s.stage == Stage.ROUND_OVER && continued < s.roundNumber) {
+                    continued = s.roundNumber
+                    driver.continueToNextRound()
+                }
+                if (s.humanLegal.isNotEmpty()) {
+                    driver.submit(testBot(seed, s.viewerSeat).chooseAction(s.view, s.humanLegal), s.humanRequestId)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `§16_2 sala, inicio, jogo completo pela tela e moedas de cada aparelho`() = runTest {
+        val seed = 41L
+        val t = setup(seed)
+        // §16.2 entra no primeiro assento livre e troca para outro vago antes de confirmar; nome em branco = "Jogador 1".
+        t.guest.mySeat shouldBe Seat(1)
+        t.guest.chooseSeat(Seat(2))
+        t.guest.confirmSeat()
+        t.host.rename(" ")
+        advanceUntilIdle()
+        t.host.roster.value.first { it.isHost }.name shouldBe "Jogador 1"
+        t.guest.roster.value.first { it.id == t.guest.myId }.let { it.seat shouldBe Seat(2); it.confirmed shouldBe true }
+
+        t.host.startGame()
+        advanceUntilIdle()
+        // §16.13 cada aparelho debita a aposta ao começar.
+        t.hostCoins.debits shouldBe listOf(50)
+        t.guestCoins.debits shouldBe listOf(50)
+
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        guestDriver.state.value.viewerSeat shouldBe Seat(2)
+        // §16.6 nomes da sala: o anfitrião, o próprio jogador com o perfil e os robôs escolhidos.
+        val personas = t.guest.personas(Persona("Eu"), "VAGO") { "$it (fora)" }
+        advanceUntilIdle()
+        personas.value shouldHaveSize 4
+        personas.value[0].firstName shouldBe "Jogador 1"
+        personas.value[2].firstName shouldBe "Beto"
+        personas.value[1].character.shouldNotBeNull()
+        drive(t.scope, hostDriver, seed)
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        guestDriver.state.value.stage shouldBe Stage.GAME_OVER
+        guestDriver.state.value.winner shouldBe hostDriver.state.value.winner
+        // §16.13 cada um recebe o resultado uma vez; assentos 0 e 2 são parceiros: o mesmo resultado.
+        t.hostCoins.settled shouldHaveSize 1
+        t.guestCoins.settled shouldHaveSize 1
+        t.hostCoins.settled.single().first shouldBe t.guestCoins.settled.single().first
+        t.hostCoins.settled.single().first shouldNotBe GameResult.RESIGNATION
+        t.guest.received.value.shouldNotBeNull()
+    }
+
+    @Test
+    fun `§16_9 desistencia do convidado, assento VAGO, pausa do anfitrião e robo substituto`() = runTest {
+        val seed = 42L
+        val t = setup(seed)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        guestDriver.resign()
+        advanceUntilIdle()
+        // §16.9 para quem desistiu, o jogo acabou (derrota por desistência); para os outros, "VAGO".
+        guestDriver.state.value.resigned shouldBe true
+        guestDriver.state.value.stage shouldBe Stage.GAME_OVER
+        val personas = t.host.personas(Persona("Eu"), "VAGO") { "$it (fora)" }
+        advanceUntilIdle()
+        personas.value[1].firstName shouldBe "VAGO"
+        drive(t.scope, hostDriver, seed)
+        advanceUntilIdle()
+        // A vez do assento VAGO pausa e o anfitrião decide.
+        val host = (t.host.role.value as MpRole.Hosting).host!!
+        host.decision.value.shouldNotBeNull().seat shouldBe Seat(1)
+        host.replaceWithRobot()
+        advanceUntilIdle()
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        t.guest.exitScreens()
+        t.guestCoins.settled shouldContain (GameResult.RESIGNATION to 0)
+    }
+
+    @Test
+    fun `§16_10 passar o cargo - o convidado vira anfitrião, o antigo volta como convidado e o jogo segue até o fim`() = runTest {
+        val seed = 44L
+        val t = setup(seed)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        t.host.passRole(t.guest.myId) shouldBe true
+        advanceUntilIdle()
+        // Os papéis trocaram sem trocar de tela (o mesmo condutor segue o papel novo).
+        (t.guest.role.value is MpRole.Hosting) shouldBe true
+        t.guest.tookOver.value shouldBe true
+        (t.host.role.value is MpRole.Guesting) shouldBe true
+        t.host.mySeat shouldBe Seat(0)
+        drive(t.scope, hostDriver, seed)
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        guestDriver.state.value.stage shouldBe Stage.GAME_OVER
+        t.hostCoins.settled shouldHaveSize 1
+        t.guestCoins.settled shouldHaveSize 1
+    }
+
+    @Test
+    fun `§16_2 girar a mesa cai sempre num assento vago`() {
+        val vacant = listOf(Seat(1), Seat(3))
+        com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(2), vacant, +1) shouldBe Seat(3)
+        com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(2), vacant, -1) shouldBe Seat(1)
+        com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(3), listOf(Seat(1)), +1) shouldBe Seat(1)
+        com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(3), emptyList(), +1) shouldBe null
+    }
+
+    @Test
+    fun `§16_1 recusa libera o mesmo pedido para jogar de novo quando a vista volta`() = runTest {
+        val seed = 43L
+        val t = setup(seed, targetScore = 3000)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        advanceUntilIdle()
+        val turn = guestDriver.state.value
+        turn.humanLegal.isNotEmpty() shouldBe true
+        val errors = mutableListOf<com.gtranca.engine.model.RuleError?>()
+        t.scope.launch { guestDriver.rejections.collect { errors += it } }
+        // Jogada fora das legais (descartar antes de comprar): o anfitrião recusa com o motivo e o mesmo pedido volta a valer.
+        val illegal = Action.Discard(turn.view.hand.first())
+        turn.view.phase shouldBe Phase.AWAITING_DRAW
+        guestDriver.submit(illegal, turn.humanRequestId) shouldBe true
+        guestDriver.submit(illegal, turn.humanRequestId) shouldBe false // toque duplo: o mesmo pedido não sai de novo
+        advanceUntilIdle()
+        errors shouldHaveSize 1
+        errors.single() shouldBe ActionError.MUST_DRAW_FIRST
+        guestDriver.state.value.humanRequestId shouldBe turn.humanRequestId
+        guestDriver.state.value.humanLegal shouldBe turn.humanLegal
+        guestDriver.awaitingHuman() shouldBe true
+    }
+}

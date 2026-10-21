@@ -96,6 +96,9 @@ class MultiplayerHost(
 ) : HostGamePort {
 
     val hostSeat: Seat = session.hostSeat
+
+    /** A sessão desta mesa (sala, pedidos, vagas), para a interface do anfitrião; inclusive depois de assumir (§16.10). */
+    val hostSession: HostSession get() = session
     private val remote: MutableSet<Seat> = ConcurrentHashMap.newKeySet<Seat>().also { it += remoteSeats - hostSeat }
 
     /** O jogo (autoridade). Só o anfitrião (e, em memória, os sucessores) o tem; nunca vai a um convidado comum. */
