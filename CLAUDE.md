@@ -26,10 +26,11 @@ Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a m
 | `:core-engine` | Kotlin/JVM puro | Modelos, `RuleSet`, máquina de estados, validação, pontuação. **Sem dependência de Android.** |
 | `:ai` | Kotlin/JVM puro | Jogadores virtuais (`BotPlayer`) por dificuldade. Depende só de `:core-engine`. |
 | `:sim` | Kotlin/JVM (CLI) | Simulação headless bot × bot para achar estados ilegais e medir força dos bots. |
+| `:net` | Kotlin/JVM puro | Multijogador local: protocolo versionado, sessão (anfitrião/convidado), interface `LocalTransport` e transporte em memória. Depende só de `:core-engine`. |
 | `:data` | Android library | DataStore (configurações), persistência da partida salva e estatísticas. |
 | `:app` | Android app | Telas Compose, ViewModels, `GameController`. |
 
-Regra de dependência: `app → data, ai, core-engine`; `ai → core-engine`; `sim → ai, core-engine`. O `core-engine` não depende de nada do projeto.
+Regra de dependência: `app → data, ai, net, core-engine`; `ai → core-engine`; `net → core-engine`; `sim → ai, core-engine`. O `core-engine` não depende de nada do projeto.
 
 ## Princípios do motor
 
