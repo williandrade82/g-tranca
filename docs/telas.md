@@ -54,7 +54,7 @@ Início ──► Mesas disponíveis ──► Regras da mesa ──► JOGO
   └──► Estatísticas
 
 Mesas disponíveis ──(Wi-Fi ligado)──► Escolha sua posição ──► Aguardando início do jogo ──► JOGO (multijogador)
-Mesas disponíveis ──► Criar mesa (tipo Multijogador) ──► Regras da mesa (robôs) ──► Escolha sua posição (anfitrião, publica) ──► Iniciar jogo ──► JOGO (multijogador)
+Mesas disponíveis ──► Criar mesa (tipo Multijogador) ──► Regras da mesa (robôs) ──► Sala da mesa (anfitrião, na posição 1; publica) ──► Iniciar jogo ──► JOGO (multijogador)
 Início ──► Continuar (sessão multijogador) ──► reingresso na mesa ──► JOGO (multijogador)
 
 JOGO: mesa ─► anúncio da partida ─► pontos da partida ─► (próxima partida | anúncio do jogo ─► fim de jogo) ─► Início
@@ -102,7 +102,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
    - *Duplas:* **parceiro** sozinho, centralizado e ~40% maior; título **Adversários**; os dois adversários lado a lado **na posição do jogo** (esquerdo à esquerda), sem rótulos "Adv.".
 4. **Painel da aposta** e saldo; aviso vermelho se não houver saldo.
 5. **Resumo das regras** (§14.2), destacando o que difere da Clássica.
-6. Barra fixa: **Voltar** e **Iniciar jogo** (desabilitado sem saldo). Em **mesa multijogador** (criada em 3.4), o botão é **Escolher posição** e leva a *Escolha sua posição* (3.13); os robôs mostrados são os dos assentos que ficarem vagos (até 3, o ícone de sortear de novo vale) e o **nome da mesa** aparece no título.
+6. Barra fixa: **Voltar** e **Iniciar jogo** (desabilitado sem saldo). Em **mesa multijogador** (criada em 3.4), o botão é **Publicar mesa** e leva à *sala da mesa* (3.13, no modo do anfitrião); os robôs mostrados são os dos assentos que ficarem vagos (até 3, o ícone de sortear de novo vale) e o **nome da mesa** aparece no título.
 
 **Regras:** §14.2, §14.4, §14.5, §14.6.
 **Tags:** `table-rules-screen`, `table-rules-level`, `table-rules-reroll`, `table-rules-roster`, `table-rules-partner`, `table-rules-opponents`, `table-rules-left`, `table-rules-right`, `table-rules-portrait`, `table-rules-stake`, `rules-summary`, `table-rules-start`.
@@ -171,10 +171,10 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 **Objetivo:** escolher o assento na mesa (§16.2) e esperar o início. Imagem de referência: `docs/telas/escolha-posicao-multiplayer.png`.
 **De cima para baixo:** botão de **voltar/sair** no canto (sempre disponível), título "Escolha sua posição" e subtítulo ("Você sempre joga na posição de baixo. Escolha onde deseja ficar na mesa."); a **mesa redonda de posições** com os assentos (feltro verde, aro de madeira); à esquerda e à direita os botões **rotacionar à esquerda** e **rotacionar à direita**; embaixo, o botão dourado **Confirmar posição**.
 **Mesa redonda:** cada assento mostra uma pílula com o **nome** do jogador ou **"VAGO"** e um marcador de seleção. O **marcador do jogador** (aro azul brilhante) fica sempre na posição de baixo, com o nome em **campo editável**, iniciado com o nome do perfil (sem foto; medalhão com a inicial). Rotacionar gira as posições na tela e o marcador cai sempre num **assento vago** (o inicial também é vago).
-**Anfitrião, antes do início:** o botão **Excluir duas posições** (mesa de 2) aparece enquanto há 0 ou 1 convidado conectado e fica indisponível com 2 ou mais (§16.3); com a mesa reduzida vira **Restaurar 4 posições**. A mudança é enviada a todos e o convidado, se houver, passa para o assento em frente.
-**Estados:** *Escolher* → ao tocar **Confirmar posição**, o botão vira **Aguardando início do jogo** (desabilitado) e a tela continua recebendo as atualizações (entradas, saídas, nomes, exclusão de posições). Para o **anfitrião**, o botão vira **Iniciar jogo** (quando quiser; assentos vagos ficam com robôs).
+**Anfitrião (a mesma tela, sem escolha de posição):** o anfitrião **não escolhe posição**: fica sempre na **posição 1**, no marcador de baixo, e não há rotação nem **Confirmar posição**; o nome é editável. Antes do início, o botão **Excluir duas posições** (mesa de 2) aparece enquanto há 0 ou 1 convidado conectado e fica indisponível com 2 ou mais (§16.3); com a mesa reduzida vira **Restaurar 4 posições**. A mudança é enviada a todos e o convidado, se houver, passa para o assento em frente.
+**Estados:** *Escolher* → ao tocar **Confirmar posição**, o botão vira **Aguardando início do jogo** (desabilitado) e a tela continua recebendo as atualizações (entradas, saídas, nomes, exclusão de posições). O **anfitrião** vê **Iniciar jogo** (quando quiser; assentos vagos ficam com robôs) no lugar de Confirmar posição.
 **Regras:** §16.2, §16.3.
-**Origem:** vem de *Regras da mesa* (anfitrião, que **publica** a mesa ao confirmar a posição) ou de *Mesas disponíveis* (convidado).
+**Origem:** vem de *Regras da mesa* (anfitrião, que **publica** a mesa ao tocar em **Publicar mesa**) ou de *Mesas disponíveis* (convidado).
 **Tags:** `seat-picker`, `seat-picker-table`, `seat-slot-<n>`, `seat-picker-name`, `seat-picker-rotate-left`, `seat-picker-rotate-right`, `seat-picker-confirm`, `seat-picker-waiting`, `seat-picker-start`, `seat-picker-exclude`, `seat-picker-leave`.
 
 ### 3.14 Mesa multijogador durante o jogo
