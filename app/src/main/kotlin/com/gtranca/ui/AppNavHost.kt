@@ -342,7 +342,7 @@ fun AppNavHost() {
                 },
                 onCustomize = { navController.navigate(RulesEditorRoute(fromCreate = true)) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
-                // §16.2 mesa multijogador: os robôs dos assentos vagos aparecem em "Regras da mesa" antes de publicar.
+                // §16.2 mesa multijogador: "Regras da mesa" sem os robôs (só são apresentados no início do jogo).
                 onCreateMultiplayer = { config, name ->
                     navController.navigate(NewTableRoute.of(config, System.nanoTime(), name)) { launchSingleTop = true }
                 },
@@ -366,7 +366,7 @@ fun AppNavHost() {
                     if (multiName == null) {
                         navController.startGame(config, table.seed)
                     } else {
-                        // §16.2 publica a mesa: as regras vão uma vez a quem entrar; os robôs são os mostrados, na ordem dos
+                        // §16.2 publica a mesa: as regras vão uma vez a quem entrar; os robôs (sorteados sem exibir) vão, na ordem dos
                         // assentos que ficarem vagos.
                         val rules = com.gtranca.net.TableRules(
                             tableName = multiName,

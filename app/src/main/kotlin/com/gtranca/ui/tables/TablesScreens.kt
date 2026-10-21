@@ -405,7 +405,8 @@ fun TableRulesScreen(
                 LevelStars(level, size = 20.sp)
                 Text(stringResource(level.labelRes()), style = MaterialTheme.typography.titleSmall, color = GColors.Gold)
             }
-            if (onReroll != null) {
+            // Mesa multijogador: os robôs não são apresentados antes do início (docs/telas.md 3.3), então não há sorteio.
+            if (onReroll != null && multiplayerName == null) {
                 val rerollText = stringResource(R.string.table_rules_reroll)
                 Box(
                     Modifier
@@ -418,7 +419,7 @@ fun TableRulesScreen(
                 ) { RecycleIcon(GColors.Gold, size = 28.dp) }
             }
         }
-        GPanel(Modifier.fillMaxWidth()) {
+        if (multiplayerName == null) GPanel(Modifier.fillMaxWidth()) {
             val character = table.host.character
             if (table.mode == GameMode.DUPLAS) {
                 // §14.4 a mesa de duplas já está formada: o parceiro em destaque (40% maior, sozinho na linha) e, abaixo,
