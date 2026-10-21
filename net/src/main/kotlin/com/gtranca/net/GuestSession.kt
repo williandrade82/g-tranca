@@ -343,7 +343,12 @@ class GuestSession(
                 }
             }
             JoinWaiting -> _status.value = GuestStatus.WaitingApproval
-            is Rejected -> _status.value = GuestStatus.Refused(payload.message)
+            is Rejected -> {
+                // §16.5 recusado ou substituído por outra conexão (sessão duplicada): não volta nem assume, e o estado
+                // completo (se era sucessor) é descartado.
+                _status.value = GuestStatus.Refused(payload.message)
+                successorState = null
+            }
             is RosterUpdate -> _roster.value = payload.roster
             is GameStarted -> {
                 _roster.value = payload.roster

@@ -29,6 +29,9 @@ const val PROTOCOL_VERSION: Int = 3
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
 
+/** §16.5 sessão duplicada: o mesmo jogador entrou por outra conexão, que assumiu o assento. */
+const val REPLACED_MESSAGE: String = "Você voltou à mesa por outra conexão; esta foi encerrada."
+
 /**
  * Envelope de toda mensagem. [v] é a versão do protocolo (lida **antes** do resto, para recusar outra versão com clareza);
  * [seq] é o número de sequência do remetente naquela conexão (1, 2, ...): o receptor descarta duplicadas e atrasadas e

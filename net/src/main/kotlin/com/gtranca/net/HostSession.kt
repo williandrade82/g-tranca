@@ -414,7 +414,13 @@ class HostSession(
             return refuseLocked(p, "Não foi possível voltar à mesa: o lugar já foi ocupado.")
         }
         pending.remove(p.link.endpoint)
-        member.link?.let { old -> old.close(); transport.disconnect(old.endpoint) }
+        // §16.5 sessão duplicada: a conexão nova assume; a antiga recebe só o aviso de encerramento (para não tentar voltar
+        // nem assumir como sucessor) e é fechada.
+        member.link?.let { old ->
+            old.sendLocked(Rejected(REPLACED_MESSAGE))
+            old.close()
+            transport.disconnect(old.endpoint)
+        }
         member.link = p.link
         // §16.9 quem desistiu e volta (o anfitrião aguardou) joga de novo no assento; a aposta continua perdida (ledger).
         updateLocked(member) { it.copy(connected = true, resigned = false) }

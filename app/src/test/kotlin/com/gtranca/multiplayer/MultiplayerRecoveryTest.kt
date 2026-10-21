@@ -145,6 +145,75 @@ class MultiplayerRecoveryTest {
     }
 
     /**
+     * §16.5 sessão duplicada: o token certo chega por outra conexão enquanto o dono (1º sucessor, na vez dele) ainda aparece
+     * conectado. A conexão nova assume; a antiga é fechada e não recebe mais nada (nem o estado completo); o jogo segue igual
+     * ao local.
+     */
+    @Test
+    fun `§16_5 sessao duplicada - a conexao nova assume e a antiga nao recebe mais nada`() = runTest {
+        val seed = 95L
+        val reference = local(GameMode.DUPLAS, seed).also { it.run() }
+        val network = com.gtranca.net.MemoryNetwork()
+        var oldEndpoint: String? = null
+        var swapped = false
+        val afterSwap = mutableListOf<Any?>()
+        var freshEndpoint: String? = null
+        val freshTypes = mutableSetOf<String?>()
+        val scanner = LeakScanner(seed)
+        network.tap = scanner.tap { d ->
+            if (swapped && d.to.value == oldEndpoint) afterSwap += typeOf(d.bytes)
+            if (d.to.value == freshEndpoint) swapped = true
+            if (d.to.value == freshEndpoint) typeOf(d.bytes)?.let { freshTypes += it::class.simpleName }
+            listOf(d)
+        }
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), network = network)
+        scanner.registerTable(t)
+        scanner.watch(this, t.host)
+        val old = t.guests.getValue(Seat(1))
+        oldEndpoint = t.endpoints.getValue(Seat(1)).id.value
+        t.hostSession.successors.value.first() shouldBe old.playerId
+        // O antigo não joga: o jogo pára na vez do assento 1, com ele ainda conectado.
+        driveGuests(t, seed, guests = t.guests.filterKeys { it != Seat(1) })
+        driveHost(t, seed)
+        val game = launch { t.host.run() }
+        advanceUntilIdle()
+        t.host.controller.state.value.stage shouldNotBe Stage.GAME_OVER
+        t.hostSession.roster.value.single { it.seat == Seat(1) }.connected shouldBe true
+        old.holdsSuccessorState shouldBe true
+        // Com todos conectados a mesa não é anunciada (e ninguém a acharia); a queda do assento 3 a anuncia de novo.
+        val away = t.guests.getValue(Seat(3))
+        val awayEndpoint = t.endpoints.getValue(Seat(3)).id
+        t.network.block(awayEndpoint)
+        t.network.drop(awayEndpoint)
+        advanceUntilIdle()
+        t.network.unblock(awayEndpoint)
+
+        val freshTransport = t.network.transport()
+        val fresh = GuestSession(freshTransport, "Convidado 1")
+        scanner.register(freshTransport.id, Seat(1), fresh)
+        freshEndpoint = freshTransport.id.value
+        driveGuests(t, seed, guests = mapOf(Seat(1) to fresh))
+        fresh.join(t.scope, "mesa-1", token = old.token, seat = Seat(1))
+        val back = GuestSession(t.network.transport(), "Convidado 3")
+        driveGuests(t, seed, guests = mapOf(Seat(3) to back))
+        back.join(t.scope, "mesa-1", token = away.token, seat = Seat(3))
+        game.join()
+        advanceUntilIdle()
+
+        // Só o aviso de encerramento chega à antiga (antes do Welcome da nova); depois, nada.
+        afterSwap.shouldBeEmpty()
+        old.status.value shouldBe GuestStatus.Refused(com.gtranca.net.REPLACED_MESSAGE)
+        old.holdsSuccessorState shouldBe false
+        fresh.playerId shouldBe old.playerId
+        fresh.status.value shouldBe GuestStatus.Playing
+        fresh.view.value!!.stage shouldBe TableStage.GAME_OVER
+        t.host.controller.currentMatch.history shouldBe reference.currentMatch.history
+        // Segue sucessor: o estado completo passa a ir à conexão nova.
+        freshTypes shouldContain "SuccessorState"
+        scanner.failures.shouldBeEmpty()
+    }
+
+    /**
      * §16.8 opção 2 na queda: o robô assume na hora e quem caiu perde a aposta (retida no assento) e o direito de voltar.
      * §16.7 um assento de robô liberado pelo anfitrião: quem entra (aprovado) debita a aposta da mesa.
      */
