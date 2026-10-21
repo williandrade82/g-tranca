@@ -17,6 +17,8 @@ import com.gtranca.game.PlanRanking
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameSnapshot
+import com.gtranca.game.LocalTableDriver
+import com.gtranca.game.TableDriver
 import com.gtranca.game.HandOrder
 import com.gtranca.game.HandPrefs
 import com.gtranca.game.HandSort
@@ -126,9 +128,11 @@ data class GameUiState(
     val dealFlightIds: Set<Long> = emptySet(),
     /** Quanto tempo o aviso de troca de 3 vermelho fica na tela antes de fechar sozinho (0 = sem animações). */
     val swapNoticeMillis: Long = 0,
+    /** §16.6 multijogador: a vez já chegou, mas este aparelho ainda anima as jogadas anteriores. */
+    val turnHeld: Boolean = false,
 ) {
-    val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
-    private val legal: List<Action> get() = if (ownSwapPending) emptyList() else snapshot.humanLegal
+    val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
+    private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
     val awaitingDraw: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW
     val playing: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.PLAYING
     val canDraw: Boolean get() = Action.DrawFromStock in legal
@@ -183,6 +187,12 @@ class GameViewModel(
     playerPhoto: String? = null,
     /** Fila das gravações (fora da thread principal e do laço do jogo; sobrevive ao fim desta tela). */
     private val writes: WriteQueue = WriteQueue.app,
+    /** §16 mesa multijogador: quem conduz a mesa no lugar do controlador local; `null` = jogo contra robôs de sempre. */
+    externalDriver: TableDriver? = null,
+    /** §16 nomes e avatares dos assentos vindos da sala (mudam no jogo: robô substituto, "VAGO"); `null` = sorteio local. */
+    private val externalPersonas: StateFlow<List<Persona>>? = null,
+    /** §16.6 a vez só é entregue ao jogador depois de terminar as animações deste aparelho (o anfitrião não as espera). */
+    private val holdTurnForAnimations: Boolean = false,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -264,17 +274,20 @@ class GameViewModel(
     private val styledBots: (Seat, Random) -> BotPlayer = { seat, random ->
         createBot(config.difficulty, random, style = personas[seat.index].character?.profile?.style ?: PlayStyle.NEUTRO)
     }
-    private val controller = GameController(
-        config = config,
-        gameSeed = gameSeed,
-        players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory ?: styledBots, restored?.botRandomCalls.orEmpty()),
-        viewerSeat = humanSeat,
-        computeDispatcher = computeDispatcher,
-        botDelayMillis = botDelayMillis,
-        dealDelayMillis = if (animationMillis > 0) dealAnimationMillis(config) else 0,
-        restored = restored,
-        // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
-        onSave = if (persistence == null) null else ::enqueueSave,
+    private val controller: TableDriver = externalDriver ?: LocalTableDriver(
+        GameController(
+            config = config,
+            gameSeed = gameSeed,
+            players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory ?: styledBots, restored?.botRandomCalls.orEmpty()),
+            viewerSeat = humanSeat,
+            computeDispatcher = computeDispatcher,
+            botDelayMillis = botDelayMillis,
+            dealDelayMillis = if (animationMillis > 0) dealAnimationMillis(config) else 0,
+            restored = restored,
+            // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
+            onSave = if (persistence == null) null else ::enqueueSave,
+        ),
+        human,
     )
     private val animationIds = AtomicLong(0)
 
@@ -298,8 +311,14 @@ class GameViewModel(
         },
     )
 
-    val uiState: StateFlow<GameUiState> = local.map(::build)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, build(local.value))
+    val uiState: StateFlow<GameUiState> = (
+        if (externalPersonas == null) local.map(::build)
+        else kotlinx.coroutines.flow.combine(local, externalPersonas) { state, _ -> build(state) }
+        ).stateIn(viewModelScope, SharingStarted.Eagerly, build(local.value))
+
+    /** §16.6 a vez fica segura enquanto este aparelho ainda anima (distribuição, voos, trocas de 3 vermelho). */
+    private fun turnHeld(state: Local): Boolean =
+        holdTurnForAnimations && (!state.dealDone || state.flights.isNotEmpty() || state.swaps.isNotEmpty() || state.settling > 0)
 
     init {
         viewModelScope.launch {
@@ -320,7 +339,9 @@ class GameViewModel(
         // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
         // §14.6 a aposta é debitada ao começar o jogo (antes de salvar o jogo; retomar não debita de novo).
         if (restored == null && config.stake > 0) persistence?.let { store -> writes.enqueue { if (!store.debitStake(config.stake)) stakeCharged = false } }
-        if (restored == null) enqueueSave(controller.saveSnapshot())
+        if (restored == null) (controller as? LocalTableDriver)?.let { enqueueSave(it.controller.saveSnapshot()) }
+        // §16.1 recusa do anfitrião depois do envio: mostra o motivo (o convidado não valida nada sozinho).
+        viewModelScope.launch { controller.rejections.collect { error -> local.update { it.copy(message = UiMessage.Rejected(error)) } } }
         // §3.5 rede de segurança: se a tela nunca avisar que a distribuição terminou (ex.: app em segundo plano), segue
         // depois do tempo da animação mais uma folga, para o jogo não travar.
         viewModelScope.launch {
@@ -538,7 +559,8 @@ class GameViewModel(
         val split = if (state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
         val hand = split?.all ?: HandOrder.sort(visibleHand, state.sort)
         val ownSwapPending = state.swaps.any { isOwn(it, snapshot) }
-        val legal = if (ownSwapPending) emptyList() else snapshot.humanLegal
+        val held = turnHeld(state)
+        val legal = if (ownSwapPending || held) emptyList() else snapshot.humanLegal
         return GameUiState(
             snapshot = snapshot,
             hand = hand,
@@ -562,7 +584,8 @@ class GameViewModel(
             flights = state.flights,
             canastaFlashes = state.flashes,
             animationMillis = effectiveMillis(state),
-            personas = personas,
+            personas = externalPersonas?.value ?: personas,
+            turnHeld = held,
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
         )
@@ -708,7 +731,7 @@ class GameViewModel(
         // vermelho a mesa está bloqueada.
         val snapshot = controller.state.value
         val ownSwapPending = local.value.let { l -> l.swaps.any { isOwn(it, l.snapshot) } }
-        if (!snapshot.isHumanTurn || !human.waiting.value || ownSwapPending) return
+        if (!snapshot.isHumanTurn || !controller.awaitingHuman() || ownSwapPending || turnHeld(local.value)) return
         val requestId = snapshot.humanRequestId
         val selected = local.value.selected.filter { it in snapshot.view.hand }
         val resolution = HumanTurnResolver.resolve(intent, selected, snapshot.humanLegal) { controller.explain(it, requestId) }
