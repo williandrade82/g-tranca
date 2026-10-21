@@ -535,7 +535,7 @@ Modo opcional, **sem internet**: até 4 pessoas, cada uma no seu celular, na mes
 - **Todos** conhecem a identificação (id, nome e ordem de entrada) de todos os demais; o token não faz parte dela.
 - **Reingresso:** com o token certo, o jogador volta ao assento enquanto este **não foi substituído nem ocupado**. Token desconhecido ou de outro assento é recusado.
 - **Sessão duplicada:** se o token certo chega por uma conexão nova enquanto o dono ainda aparece conectado, **a conexão nova assume** e a antiga recebe só um aviso de encerramento (para não tentar voltar nem assumir como sucessor), é fechada e não recebe mais nenhuma mensagem (nem o estado completo, se ele for sucessor, que ela descarta). A mesa fica anunciada durante todo o jogo (§16.7), então a conexão nova sempre a encontra. A nova recebe a vista atual e o jogo segue, mesmo que seja a vez dele.
-- **Reconexão do convidado:** quem cai tenta voltar sozinho, **sem limite de tentativas enquanto a mesa existir**: quem decide o que fazer com o assento é o anfitrião, pela pausa (§16.8). As tentativas são espaçadas (§16.15) e, depois do maior intervalo, só se repetem quando a busca de mesas muda, para poupar bateria. A mesa **ausente da busca** pelo tempo de §16.15 é dada como encerrada.
+- **Reconexão do convidado:** quem cai tenta voltar sozinho, **sem limite de tentativas enquanto a mesa existir**: quem decide o que fazer com o assento é o anfitrião, pela pausa (§16.8). As tentativas são espaçadas (§16.15), para poupar bateria. A mesa **ausente da busca** pelo tempo de §16.15 é dada como encerrada.
 - **Quem cai durante a pausa de outro assento** recebe, ao voltar, a pausa atual. Há **uma decisão por vez**: a do assento da vez.
 - **Fim de partida perdido:** se o jogador ainda não recebeu o pacote de fim da última partida (§16.11), ele é reenviado no reingresso, antes da vista atual; o jogador percorre as telas de resultado normalmente.
 - **Eventos simultâneos:** quem chega primeiro fica com o assento, o dono pelo token ou o candidato aprovado (§16.7). Se o dono volta antes, a vaga fecha e os pedidos para ela são recusados com **"A vaga foi preenchida."**; se o candidato é aprovado antes, o token do antigo dono deixa de valer.
@@ -613,7 +613,7 @@ Modo opcional, **sem internet**: até 4 pessoas, cada uma no seu celular, na mes
 | Confirmação do escolhido na passagem do cargo (§16.10) | 3 s por candidato |
 | Mesa sumida da busca para o 1º sucessor assumir (§16.10) | 3 s (o 2º: 6 s) |
 | Anfitrião provisório sem outro humano que possa confirmar (§16.10) | 15 s |
-| Reconexão do convidado (§16.5) | 1 s, dobrando até 15 s; depois, só quando a busca muda |
+| Reconexão do convidado (§16.5) | 1 s, dobrando até 15 s; depois, a cada 15 s |
 | Mesa ausente da busca até ser dada como encerrada (§16.5) | 60 s seguidos |
 | Reenvio de mensagem sem confirmação (§16.5) | 1 s, até 5 vezes |
 | Confirmação de recebimento sem outra mensagem a enviar | 200 ms |
