@@ -124,9 +124,10 @@ local; o resultado em moedas é calculado pelo anfitrião e enviado a cada um.
 
 ### Permissões (Nearby Connections; conferir contra a documentação atual na etapa 5, via `context7`)
 `minSdk` é 26, então há três faixas (lista a confirmar na documentação):
-- **API 26–30:** `ACCESS_FINE_LOCATION` (e as de Wi-Fi/Bluetooth normais, sem pedir).
-- **API 31–32:** `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` (com `neverForLocation` quando couber).
+- **API 26–30:** `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION` (e as de Wi-Fi/Bluetooth normais, sem pedir); localização do sistema ligada.
+- **API 31–32:** `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` mais a localização (a busca por Wi-Fi ainda a exige); localização do sistema ligada.
 - **API 33+:** as de Bluetooth acima mais `NEARBY_WIFI_DEVICES` (com `neverForLocation`); localização deixa de ser necessária.
+- `BLUETOOTH_SCAN` sem `neverForLocation` (a marca pode esconder resultados de busca). Implementado em `NearbyPermissions` (etapa 5).
 Pedidas **só** ao ligar o botão de Wi-Fi ou ao criar mesa, com uma explicação antes ("para achar mesas por perto; nada sai do aparelho e não
 usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
 
@@ -169,7 +170,15 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
    recusadas; mensagens perdidas/reordenadas. *(net-comm-dev)*
 4. **Reconexão e papéis — FEITA** (protocolo v3: `ReliableLink` com confirmação, pedido de reenvio por lacuna e reenvio por tempo; confirmação do sucessor fora da sequência; carência de 5 s para o 1º sucessor assumir e 60 s para os demais reingressarem, revistas em N15 (§16.15); pedidos numerados sem repetir entre anfitriões; assento VAGO de §16.9; pontos a confirmar em N14): token, queda na vez, substituição por robô, recrutamento, entrada no meio do jogo com aprovação, desistência com
    repasse da aposta (`GroupBetLedger`), passagem de anfitrião e sucessão com ack (tudo na JVM, relógio virtual). *(net-comm-dev)*
-5. **Transporte real no Android:** Nearby `P2P_STAR`, permissões nas três faixas de API, descoberta e anúncio; roteiro de teste em 2 a 4 celulares reais. *(net-comm-dev)*
+5. **Transporte real no Android — FEITA:** Nearby `P2P_STAR`, permissões nas três faixas de API, descoberta e anúncio; roteiro de teste em 2 a 4 celulares reais. *(net-comm-dev)*
+   Em `app/…/net/nearby/` (`NearbyTransport` sobre a interface `NearbyApi`, testada na JVM com um Nearby falso; `GmsNearbyApi` é a real;
+   `MultiplayerAccess`/`MultiplayerAccessGate` são o ponto de entrada das telas). Achados conferidos no AAR `play-services-nearby` 19.5.1:
+   payload BYTES até 1 047 552 bytes (a maior mensagem medida numa partida, `SuccessorState`, tem ~12 KB: sem fragmentação); o AAR não
+   declara permissões (todas no nosso manifesto); não há como atualizar o anúncio: trocar os dados = parar e anunciar de novo, sem derrubar
+   as conexões (o transporte só reanuncia se os bytes mudaram, para a mesa não "sumir" à toa da busca dos sucessores); existe `setLowPower`
+   na busca e no anúncio (não usado: validar nos celulares antes). O anúncio vai binário no `endpointInfo` (teto conservador de 100 bytes).
+   **Bateria:** o anfitrião busca o jogo todo (vigia de §16.10) e anuncia o jogo todo; é o custo de uma busca BLE contínua. Medir nos
+   celulares; se pesar, usar `setLowPower(true)` na busca do anfitrião. Laboratório do Nearby só no debug (`NearbyLabActivity`, via `adb`).
 6. **Telas** (conforme `docs/telas.md` atualizado), indicador de vez remoto, ViewModels para convidados nos assentos 1 a 3. *(android-ui-dev)*
 7. **Loja:** `docs/loja/ficha-da-loja.md` e política de privacidade com as novas permissões ("nada sai do aparelho; sem internet").
    Revisão final do `rules-auditor` quanto a vazamento (só os sucessores recebem estado oculto; token não trafega no roster).
