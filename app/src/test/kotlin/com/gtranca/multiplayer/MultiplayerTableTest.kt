@@ -321,6 +321,43 @@ class MultiplayerTableTest {
     }
 
     @Test
+    fun `§16_6 cada aparelho ve uma jogada por vez, em ordem, no seu ritmo`() = runTest {
+        val seed = 49L
+        val t = setup(seed, targetScore = 3000)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val pace = 700L
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { pace }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { pace }
+        val hostSeen = Collections.synchronizedList(mutableListOf<com.gtranca.game.GameSnapshot>())
+        val guestSeen = Collections.synchronizedList(mutableListOf<com.gtranca.game.GameSnapshot>())
+        val guestTimes = Collections.synchronizedList(mutableListOf<Long>())
+        t.scope.launch { hostDriver.state.collect { hostSeen += it } }
+        t.scope.launch { guestDriver.state.collect { guestSeen += it; guestTimes += testScheduler.currentTime } }
+        // Só a 1ª partida: os dois jogam como o robô do assento até ela acabar.
+        val firstRound = { hostDriver.state.value.roundNumber == 1 && guestDriver.state.value.roundNumber == 1 }
+        drive(t.scope, hostDriver, seed, firstRound)
+        drive(t.scope, guestDriver, seed, firstRound)
+        advanceUntilIdle()
+        guestSeen.any { it.stage == Stage.ROUND_OVER } shouldBe true
+        listOf(hostSeen, guestSeen).forEach { seen ->
+            seen.zipWithNext().filter { (a, b) -> a.roundNumber == b.roundNumber && a.stage == Stage.PLAYING }.forEach { (a, b) ->
+                val events = com.gtranca.ui.game.TableAnimations.newEvents(a, b)
+                (events.size <= 1) shouldBe true
+            }
+        }
+        // As jogadas dos outros chegam com o intervalo do ritmo deste aparelho.
+        guestSeen.indices.drop(1).filter { i ->
+            val a = guestSeen[i - 1]
+            val b = guestSeen[i]
+            a.roundNumber == b.roundNumber && a.stage == Stage.PLAYING && b.stage == Stage.PLAYING &&
+                com.gtranca.ui.game.TableAnimations.newEvents(a, b).any { it.seat != b.viewerSeat }
+        }.forEach { i -> (guestTimes[i] - guestTimes[i - 1] >= pace) shouldBe true }
+    }
+
+    @Test
     fun `§16_2 girar a mesa cai sempre num assento vago`() {
         val vacant = listOf(Seat(1), Seat(3))
         com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(2), vacant, +1) shouldBe Seat(3)

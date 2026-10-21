@@ -23,9 +23,11 @@ import com.gtranca.engine.viewFor
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -253,6 +255,28 @@ class GameController(
      */
     fun stateOf(seat: Seat): StateFlow<GameSnapshot> =
         (seatStates[seat.index] ?: error("Sem vista para o assento ${seat.index}")).asStateFlow()
+
+    /** Fluxos sem junção por assento ([updatesOf]), criados sob a trava quando alguém pede. */
+    private val seatUpdates = ConcurrentHashMap<Int, MutableSharedFlow<GameSnapshot>>()
+
+    /**
+     * §16.6 cada vista publicada para o [seat], em ordem e **sem juntar** ([stateOf] guarda só a última): uma por jogada,
+     * para outro aparelho animar uma jogada por vez. Começa pela vista atual. Só o multijogador usa; o jogo local segue
+     * com [state].
+     */
+    fun updatesOf(seat: Seat): Flow<GameSnapshot> = synchronized(lock) {
+        val current = stateOf(seat).value
+        seatUpdates.getOrPut(seat.index) {
+            MutableSharedFlow<GameSnapshot>(replay = 1, extraBufferCapacity = SEAT_UPDATES_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+                .also { it.tryEmit(current) }
+        }.asSharedFlow()
+    }
+
+    /** Publica a vista do assento [index] no [StateFlow] dele e no fluxo sem junção; chamar só com a trava. */
+    private fun setSeatLocked(index: Int, flow: MutableStateFlow<GameSnapshot>, snapshot: GameSnapshot) {
+        flow.value = snapshot
+        seatUpdates[index]?.tryEmit(snapshot)
+    }
 
     /**
      * Jogo atual completo, para persistência e testes. **Não** use para desenhar a mesa (contém as mãos de
@@ -536,7 +560,7 @@ class GameController(
             awaitingPresentation.set(null)
             // Sob a trava, `match` não está no meio de uma ação nem de uma pontuação: os totais e o histórico são
             // os de antes da partida em andamento (ela nunca é pontuada).
-            seatStates.forEach { (index, flow) -> flow.value = snapshot(Seat(index), Stage.GAME_OVER, humanLegal = emptyList(), thinkingSeat = null) }
+            seatStates.forEach { (index, flow) -> setSeatLocked(index, flow, snapshot(Seat(index), Stage.GAME_OVER, humanLegal = emptyList(), thinkingSeat = null)) }
             resignedWinner?.let { _events.tryEmit(GameEvent.GameFinished(it, resigned = true)) }
             true
         }
@@ -622,7 +646,7 @@ class GameController(
         // Só o humano da vez recebe as ações legais e o pedido; as demais vistas são só de quem observa.
         seatStates.forEach { (index, flow) ->
             val owner = index == humanSeat?.index
-            flow.value = snapshot(Seat(index), stage, if (owner) humanLegal else emptyList(), thinkingSeat, if (owner) requestId else 0)
+            setSeatLocked(index, flow, snapshot(Seat(index), stage, if (owner) humanLegal else emptyList(), thinkingSeat, if (owner) requestId else 0))
         }
     }
 
@@ -655,6 +679,9 @@ class GameController(
 
         /** Eventos que cabem em [events] sem o consumidor ler. */
         private const val EVENT_BUFFER: Int = 512
+
+        /** Vistas que cabem em [updatesOf] sem o consumidor ler. */
+        private const val SEAT_UPDATES_BUFFER: Int = 4096
 
         /**
          * Jogadores de um jogo do app: o [human] no [humanSeat] e bots da dificuldade da [config] nos demais

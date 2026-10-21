@@ -276,7 +276,7 @@ class MultiplayerHost(
         val scope = scope ?: return
         viewJobs[seat.index]?.cancel()
         viewJobs[seat.index] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            controller.stateOf(seat).collect {
+            controller.updatesOf(seat).collect {
                 evaluatePause()
                 awaitConfirmed(stateSeq.get())
                 sendView(seat, it)
