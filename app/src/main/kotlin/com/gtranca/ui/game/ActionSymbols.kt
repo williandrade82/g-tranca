@@ -44,7 +44,7 @@ import com.gtranca.ui.persona.BotMotto
 import com.gtranca.ui.persona.CharacterPortrait
 import com.gtranca.ui.persona.Pose
 import com.gtranca.engine.model.Card
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.ui.cards.CardSize
 import com.gtranca.ui.cards.PlayingCard

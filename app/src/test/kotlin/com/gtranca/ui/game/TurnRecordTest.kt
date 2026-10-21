@@ -1,7 +1,7 @@
 package com.gtranca.ui.game
 
 import com.gtranca.ai.Difficulty
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan

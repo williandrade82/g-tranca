@@ -4,7 +4,7 @@ import com.gtranca.ai.BotPlayer
 import com.gtranca.ai.HardBotConfig
 import com.gtranca.ai.MediumBot
 import com.gtranca.ai.MediumWeights
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.ai.PublicHistory
 import com.gtranca.engine.Action
 import com.gtranca.engine.PlayerView

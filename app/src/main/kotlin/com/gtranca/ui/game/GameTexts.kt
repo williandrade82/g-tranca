@@ -7,7 +7,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.gtranca.R
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.ActionError
 import com.gtranca.engine.model.Card

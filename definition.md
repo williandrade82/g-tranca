@@ -544,7 +544,7 @@ Modo opcional, **sem internet**: até 4 pessoas, cada uma no seu celular, na mes
 
 ### **16.7. Entrada no meio do jogo**
 - Uma pessoa pode **ocupar o lugar de um robô** ou de quem saiu, desde que o **anfitrião permita** (ele aprova cada pedido). Quem entra herda o assento **exatamente como está** (mão, jogos e vez) e já entra jogando, como num jogo pausado que acaba de abrir.
-- **Aposta:** quem ocupa o lugar de **quem saiu** herda a aposta já retida, e **nada é debitado de novo**. Quem ocupa o lugar de um **robô** debita a aposta normalmente (§14.6; **a confirmar**) e a aposta virtual do robô deixa de existir; para isso o saldo deve ser maior ou igual à aposta.
+- **Aposta:** quem ocupa o lugar de **quem saiu** herda a aposta já retida, e **nada é debitado de novo**. Quem ocupa o lugar de um **robô** debita a aposta normalmente (§14.6) e a aposta virtual do robô deixa de existir; para isso o saldo deve ser maior ou igual à aposta.
 - A mesa em andamento aparece na lista com a marca **"jogo em andamento"** quando há assento ocupável: o da vez de quem caiu (§16.8, opção 3) ou um assento de robô que o anfitrião liberou.
 
 ### **16.8. Queda de conexão**
@@ -581,7 +581,7 @@ Modo opcional, **sem internet**: até 4 pessoas, cada uma no seu celular, na mes
 ### **16.13. Moedas e apostas na mesa multijogador**
 - A aposta vale **em grupo**, como em §14.6: cada humano aposta o valor da mesa, **debitado no próprio celular** ao começar; os robôs também apostam (virtualmente). O fim do jogo é pago pela fórmula de §14.6, calculada pelo anfitrião e enviada a cada humano.
 - **Assento de robô:** o que caberia a um assento ocupado por robô de origem **não é pago** (moeda virtual, §14.6). **Exceção:** o assento que era de um humano que **desistiu** (ou foi substituído, §16.8): a aposta dele **fica retida no robô**; se o lado vencer, o que caberia ao assento vai ao **outro humano da dupla** ou, na falta, ao **anfitrião** (§16.9).
-- **Herança** (§16.7): quem entra no lugar de quem saiu assume a aposta retida, sem novo débito; no lugar de um robô, debita (a confirmar).
+- **Herança** (§16.7): quem entra no lugar de quem saiu assume a aposta retida, sem novo débito; no lugar de um robô, debita.
 - **Mesa só com o anfitrião:** ver §16.9.
 - O saldo é **local e não verificável**; o código de apostas de grupo é isolado para endurecer depois.
 

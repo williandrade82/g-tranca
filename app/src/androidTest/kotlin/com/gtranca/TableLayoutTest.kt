@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gtranca.ai.Difficulty
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.Card
