@@ -22,8 +22,8 @@ sealed interface Decoded {
  */
 class ProtocolCodec(val version: Int = PROTOCOL_VERSION) {
 
-    fun encode(seq: Long, payload: Payload): ByteArray =
-        json.encodeToString(Envelope.serializer(), Envelope(version, seq, payload)).encodeToByteArray()
+    fun encode(seq: Long, payload: Payload, ack: Long = 0): ByteArray =
+        json.encodeToString(Envelope.serializer(), Envelope(version, seq, payload, ack)).encodeToByteArray()
 
     fun decode(bytes: ByteArray): Decoded {
         val element = runCatching { json.parseToJsonElement(bytes.decodeToString()) }.getOrNull() as? JsonObject
@@ -46,8 +46,8 @@ class ProtocolCodec(val version: Int = PROTOCOL_VERSION) {
 
 /**
  * Números de sequência de uma conexão (§16.5): numera o que sai e, no que chega, descarta duplicadas e atrasadas e
- * entrega em ordem (as que chegam adiantadas esperam as anteriores). A reenvio das perdidas fica para a etapa 4
- * (reconexão). Não é seguro para uso concorrente: quem usa sincroniza.
+ * entrega em ordem (as que chegam adiantadas esperam as anteriores; [missing] diz qual falta, para pedir o reenvio).
+ * Não é seguro para uso concorrente: quem usa sincroniza.
  */
 class SequencedLink {
     private var nextOut = 1L
@@ -55,6 +55,12 @@ class SequencedLink {
     private val early = sortedMapOf<Long, Envelope>()
 
     fun nextSeq(): Long = nextOut++
+
+    /** Última mensagem recebida em ordem (a confirmação que vai no [Envelope.ack]). */
+    val lastInOrder: Long get() = expectedIn - 1
+
+    /** A mensagem que falta (há adiantadas esperando por ela), ou `null`. */
+    val missing: Long? get() = if (early.isEmpty()) null else expectedIn
 
     /** Envelopes prontos para processar, em ordem; vazio se [envelope] é duplicado, atrasado ou chegou adiantado. */
     fun accept(envelope: Envelope): List<Envelope> {

@@ -4,7 +4,9 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.RuleSet
+import com.gtranca.engine.GroupBetLedger
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
@@ -22,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 2
+const val PROTOCOL_VERSION: Int = 3
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
@@ -30,10 +32,12 @@ const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualiz
 /**
  * Envelope de toda mensagem. [v] é a versão do protocolo (lida **antes** do resto, para recusar outra versão com clareza);
  * [seq] é o número de sequência do remetente naquela conexão (1, 2, ...): o receptor descarta duplicadas e atrasadas e
- * entrega em ordem (§16.5).
+ * entrega em ordem (§16.5). `seq = 0` marca uma mensagem de **controle** ([AckOnly], [ResendRequest]), fora da sequência.
+ * [ack] é a última mensagem recebida em ordem pelo remetente: o outro lado descarta o que já foi confirmado e reenvia o
+ * resto (§16.5 a perdida é reenviada).
  */
 @Serializable
-data class Envelope(val v: Int, val seq: Long, val p: Payload)
+data class Envelope(val v: Int, val seq: Long, val p: Payload, val ack: Long = 0)
 
 /** Identificação pública de um participante (§16.5): todos conhecem; **sem** o token. */
 @Serializable
@@ -46,6 +50,12 @@ data class PlayerInfo(
     val isHost: Boolean = false,
     /** §16.2 confirmou a posição ("Aguardando início do jogo"); o anfitrião já entra confirmado. */
     val confirmed: Boolean = false,
+    /** §16.8 conectado agora; `false` = caiu e o assento está reservado a ele (pode reingressar com o token). */
+    val connected: Boolean = true,
+    /** §16.9 desistiu: o assento aparece como "VAGO" até o anfitrião decidir na vez dele. */
+    val resigned: Boolean = false,
+    /** §16.10 posição na sucessão (1 ou 2); 0 = não é sucessor. */
+    val successorRank: Int = 0,
 )
 
 /**
@@ -161,15 +171,25 @@ data class SeatView(
 @Serializable
 sealed interface Payload
 
-/** Convidado pede para entrar com o [name] (§16.2; sem foto, sem cor do baralho). */
+/**
+ * Convidado pede para entrar com o [name] (§16.2; sem foto, sem cor do baralho). Com [token] (e o [seat] que ele
+ * ocupava) é o **reingresso** (§16.5); sem token, com o jogo em andamento, é um pedido de entrada no meio (§16.7).
+ */
 @Serializable
 @SerialName("hello")
-data class Hello(val name: String) : Payload
+data class Hello(val name: String, val token: String? = null, val seat: Seat? = null) : Payload
 
 /** Entrada aceita: o [token] (só deste jogador, §16.5), o id público dele, as regras da mesa (uma vez) e a sala. */
 @Serializable
 @SerialName("welcome")
-data class Welcome(val token: String, val you: Int, val rules: TableRules, val roster: List<PlayerInfo>) : Payload
+data class Welcome(
+    val token: String,
+    val you: Int,
+    val rules: TableRules,
+    val roster: List<PlayerInfo>,
+    /** O jogo já está em andamento (reingresso ou entrada no meio, §16.5, §16.7): o convidado vai direto à mesa. */
+    val started: Boolean = false,
+) : Payload
 
 /** Entrada ou mensagem recusada, com o motivo em pt-BR (ex.: [VERSION_MISMATCH_MESSAGE]). */
 @Serializable
@@ -190,11 +210,6 @@ data object ConfirmSeat : Payload
 @Serializable
 @SerialName("resign")
 data object Resign : Payload
-
-/** §16.9 o jogador do [seat] desistiu e um robô assumiu o assento (aviso público a todos). */
-@Serializable
-@SerialName("seatToRobot")
-data class SeatTakenByRobot(val seat: Seat) : Payload
 
 /** Convidado muda o nome (§16.2). */
 @Serializable
@@ -261,3 +276,129 @@ data class ProposeAction(val requestId: Long, val action: Action) : Payload
 @Serializable
 @SerialName("actionRejected")
 data class ActionRejected(val requestId: Long, val reason: RejectReason, val ruleError: String? = null) : Payload
+
+/** Controle (fora da sequência): só confirma o recebido ([Envelope.ack]). */
+@Serializable
+@SerialName("ack")
+data object AckOnly : Payload
+
+/** Controle (fora da sequência): faltou a mensagem [from]; reenviar dela em diante (§16.5). */
+@Serializable
+@SerialName("resend")
+data class ResendRequest(val from: Long) : Payload
+
+/** §16.7 pedido de entrada recebido; aguardando a aprovação do anfitrião. */
+@Serializable
+@SerialName("joinWaiting")
+data object JoinWaiting : Payload
+
+/** Tipo de aviso público da mesa (§16.8: todos são avisados de cada ação do anfitrião). */
+@Serializable
+enum class NoticeKind {
+    /** §16.8 o jogador caiu (o assento fica reservado a ele). */
+    DISCONNECTED,
+
+    /** §16.5 o jogador reingressou. */
+    RECONNECTED,
+
+    /** §16.9 o jogador desistiu: o assento fica "VAGO". */
+    RESIGNED,
+
+    /** §16.8 opção 2: um robô assumiu o assento. */
+    REPLACED_BY_ROBOT,
+
+    /** §16.8 opção 1: o anfitrião aguarda o jogador. */
+    WAITING,
+
+    /** §16.7, §16.8 opção 3: o assento está aberto a outro convidado ("aguardando recrutamento"). */
+    SEAT_OPENED,
+
+    /** §16.7 alguém entrou no meio do jogo (aprovado pelo anfitrião). */
+    JOINED,
+
+    /** §16.10 o anfitrião mudou ([TableNotice.playerId] é o novo anfitrião). */
+    HOST_CHANGED,
+}
+
+/** Aviso público a todos (§16.8): [playerId] é o jogador a que se refere, [seat] o assento. Nada oculto. */
+@Serializable
+@SerialName("notice")
+data class TableNotice(val kind: NoticeKind, val seat: Seat? = null, val playerId: Int? = null) : Payload
+
+/** Por que o jogo está pausado (§16.8, §16.9). */
+@Serializable
+enum class PauseReason {
+    /** Chegou a vez de quem caiu. */
+    DISCONNECTED,
+
+    /** Chegou a vez de um assento "VAGO" (desistência). */
+    VACANT,
+}
+
+/**
+ * §16.8 o jogo está pausado na vez do [seat] até o anfitrião decidir (ou o jogador voltar). [hostChoice] é a ação já
+ * escolhida pelo anfitrião ([NoticeKind.WAITING] ou [NoticeKind.SEAT_OPENED]); `null` enquanto ele não escolheu.
+ */
+@Serializable
+@SerialName("paused")
+data class Paused(val seat: Seat, val reason: PauseReason, val hostChoice: NoticeKind? = null) : Payload
+
+/** §16.8 o jogo seguiu (o jogador voltou, um robô assumiu ou alguém entrou). */
+@Serializable
+@SerialName("resumed")
+data object Resumed : Payload
+
+/** §16.13 resultado em moedas deste jogador ao fim do jogo, calculado pelo anfitrião: [received] (já sem a aposta). */
+@Serializable
+@SerialName("payout")
+data class Payout(val stake: Int, val received: Int) : Payload
+
+/**
+ * §16.10 **só para os sucessores**: o estado completo do jogo (a única exceção a §16.4), para assumir se o anfitrião cair
+ * ou desistir. Vive só em memória no sucessor; nunca vai para disco, registro ou tela. [stateSeq] cresce a cada jogada.
+ */
+@Serializable
+@SerialName("successorState")
+data class SuccessorState(
+    val stateSeq: Long,
+    val match: Match,
+    val events: List<PublicEvent>,
+    val botRandomCalls: List<Long>,
+    /** Todos os humanos da mesa com os tokens (o sucessor precisa deles para receber os reingressos, §16.4). */
+    val members: List<MemberRecord>,
+    val ledger: GroupBetLedger? = null,
+    val nextPlayerId: Int,
+    /** Personagens dos assentos de robô, por assento (§16.8 o primeiro não usado substitui). */
+    val robotPersonas: Map<Int, String> = emptyMap(),
+) : Payload {
+    override fun toString(): String = "SuccessorState(stateSeq=$stateSeq)" // nunca registrar cartas nem tokens
+}
+
+/** Um humano da mesa e o token dele (só no [SuccessorState]). */
+@Serializable
+data class MemberRecord(val info: PlayerInfo, val token: String) {
+    override fun toString(): String = "MemberRecord(${info.id})"
+}
+
+/** §16.10 o sucessor confirma o recebimento do [SuccessorState] [stateSeq]. */
+@Serializable
+@SerialName("successorAck")
+data class SuccessorAck(val stateSeq: Long) : Payload
+
+/** §16.10 deixou de ser sucessor: descartar o estado completo. */
+@Serializable
+@SerialName("successorDrop")
+data object SuccessorDrop : Payload
+
+/** §16.10 o anfitrião passou o cargo a este jogador (que já tem o [SuccessorState]): assumir agora. */
+@Serializable
+@SerialName("becomeHost")
+data object BecomeHost : Payload
+
+/**
+ * §16.7, §16.13 quanto debitar no celular de quem acaba de entrar no meio do jogo: a aposta da mesa no lugar de um robô;
+ * 0 no lugar de quem saiu (herda a aposta retida).
+ */
+@Serializable
+@SerialName("stakeDebit")
+data class StakeDebit(val amount: Int) : Payload

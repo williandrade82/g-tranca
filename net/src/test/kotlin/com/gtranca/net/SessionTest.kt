@@ -83,7 +83,7 @@ class SessionTest {
         val network = MemoryNetwork()
         val sent = mutableListOf<Delivery>()
         network.tap = { sent += it; listOf(it) }
-        var n = 0
+        var n = -1 // o anfitrião também recebe um token (o 0), para voltar como jogador comum (§16.12)
         val host = HostSession(network.transport(), "m", rules, "Anfitrião", newToken = { "token-${++n}-secreto" })
         host.open(sessionScope)
         val ana = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
@@ -179,5 +179,27 @@ class SessionTest {
         late.status.value shouldBe GuestStatus.Closed
         ok.status.value shouldBe GuestStatus.Playing
         ok.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Ana")
+    }
+
+    @Test
+    fun `§16_2 troca para assento vago depois de confirmar so na sala de espera`() = runTest {
+        val network = MemoryNetwork()
+        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
+        host.open(sessionScope)
+        val ana = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        ana.confirmSeat()
+        advanceUntilIdle()
+        // Confirmada, ainda troca para um assento vago (e segue confirmada).
+        ana.chooseSeat(Seat(3))
+        advanceUntilIdle()
+        host.roster.value.single { it.id == ana.playerId }.let { it.seat to it.confirmed } shouldBe (Seat(3) to true)
+        host.startGame() shouldBe mapOf(Seat(3) to ana.playerId)
+        advanceUntilIdle()
+        // Depois do início ninguém troca de assento.
+        ana.chooseSeat(Seat(1))
+        advanceUntilIdle()
+        host.roster.value.single { it.id == ana.playerId }.seat shouldBe Seat(3)
+        ana.seat shouldBe Seat(3)
     }
 }

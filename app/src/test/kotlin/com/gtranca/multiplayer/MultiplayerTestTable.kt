@@ -34,6 +34,8 @@ internal class TestTable(
     val host: MultiplayerHost,
     val guests: Map<Seat, GuestSession>,
     val endpoints: Map<Seat, MemoryTransport>,
+    val scope: CoroutineScope,
+    val hostTransport: MemoryTransport,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -43,13 +45,15 @@ internal suspend fun TestScope.openTable(
     guestSeats: List<Seat>,
     targetScore: Int = 1000,
     network: MemoryNetwork = MemoryNetwork(),
+    stake: Int = 0,
 ): TestTable {
-    val config = GameConfig(mode, Difficulty.FACIL, targetScore = targetScore)
-    val rules = TableRules("Mesa de teste", mode, config.rules, targetScore, stake = 0, difficulty = Difficulty.FACIL.id)
+    val config = GameConfig(mode, Difficulty.FACIL, targetScore = targetScore, stake = stake)
+    val rules = TableRules("Mesa de teste", mode, config.rules, targetScore, stake = stake, difficulty = Difficulty.FACIL.id)
     val dispatcher = StandardTestDispatcher(testScheduler)
     // Sessões no relógio virtual, fora do `backgroundScope` (que o `advanceUntilIdle` não roda); os coletores só suspendem.
     val scope = CoroutineScope(dispatcher + Job())
-    val hostSession = HostSession(network.transport(), "mesa-1", rules, "Anfitrião")
+    val hostTransport = network.transport()
+    val hostSession = HostSession(hostTransport, "mesa-1", rules, "Anfitrião")
     hostSession.open(scope)
     val endpoints = mutableMapOf<Seat, MemoryTransport>()
     val guests = guestSeats.associateWith { seat ->
@@ -66,7 +70,7 @@ internal suspend fun TestScope.openTable(
         botFactory = { seat, _ -> testBot(seed, seat) },
         computeDispatcher = dispatcher,
     )
-    return TestTable(network, hostSession, host, guests, endpoints)
+    return TestTable(network, hostSession, host, guests, endpoints, scope, hostTransport)
 }
 
 /**

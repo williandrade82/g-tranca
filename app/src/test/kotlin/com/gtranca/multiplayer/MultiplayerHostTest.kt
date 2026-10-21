@@ -17,7 +17,10 @@ import com.gtranca.net.Delivery
 import com.gtranca.net.GameFinished
 import com.gtranca.net.GuestStatus
 import com.gtranca.net.RoundOver
-import com.gtranca.net.SeatTakenByRobot
+import com.gtranca.net.GuestSession
+import com.gtranca.net.NoticeKind
+import com.gtranca.net.PauseReason
+import com.gtranca.net.TableNotice
 import com.gtranca.net.MemoryNetwork
 import com.gtranca.net.ProtocolCodec
 import com.gtranca.net.RejectReason
@@ -116,10 +119,19 @@ class MultiplayerHostTest {
         var checked = 0
         // Cartas tiradas do lixo por partida: são públicas mesmo estando na mão de outro (§5.6).
         val fromDiscard = ConcurrentHashMap<Int, MutableSet<Card>>()
+        val successorMessages = ConcurrentHashMap.newKeySet<Seat>()
         network.tap = { delivery ->
             val seat = endpointSeat[delivery.to.value]
             val current = table
-            if (seat != null && current != null) {
+            val type = runCatching {
+                Json.parseToJsonElement(delivery.bytes.decodeToString()).jsonObject["p"]?.jsonObject?.get("t")?.jsonPrimitive?.content
+            }.getOrNull()
+            if (seat != null && current != null && type == "successorState") {
+                // §16.4 a única exceção: o estado completo vai só ao 1º e ao 2º sucessores.
+                val id = current.hostSession.playerAt(seat)?.id
+                if (id == null || id !in current.hostSession.successors.value) failures += "assento ${seat.index}: estado completo a quem não é sucessor"
+                successorMessages += seat
+            } else if (seat != null && current != null) {
                 val match = current.host.controller.currentMatch
                 val tokens = current.guests.filterKeys { it != seat }.values.mapNotNull { it.token }
                 runCatching { scanGuestMessage(delivery, seat, match, fromDiscard[match.roundNumber].orEmpty(), tokens, seed) }
@@ -145,6 +157,11 @@ class MultiplayerHostTest {
         t.host.controller.state.value.stage shouldBe Stage.GAME_OVER
         checked shouldBeGreaterThan 100
         failures.shouldBeEmpty()
+        // §16.10 o 1º e o 2º a entrar (assentos 1 e 2) são os sucessores; o 3º nunca recebe o estado completo.
+        successorMessages shouldBe setOf(Seat(1), Seat(2))
+        // §16.4, §16.5 o token não faz parte da identificação pública.
+        val tokens = t.guests.values.mapNotNull { it.token }
+        t.guests.values.forEach { g -> val r = g.roster.value.toString(); tokens.forEach { r shouldNotContain it } }
     }
 
     /** Controle negativo do §16.4: a varredura acusa a vista de outro assento e o jogo completo. */
@@ -319,18 +336,20 @@ class MultiplayerHostTest {
     }
 
     /**
-     * §16.9 desistência do convidado: aceita a qualquer momento (na vez dele e fora dela); um robô assume na hora, todos
-     * são avisados, o jogo segue até o fim para os demais e quem desistiu sai (derrota por desistência, §13.1).
+     * §16.9 desistência do convidado na mesa de 4, a qualquer momento: o assento fica "VAGO" (sem robô na hora) e o jogo
+     * segue até a vez dele; aí pausa e o anfitrião decide. Na vez do próprio assento a decisão abre na hora. Aqui: um
+     * vira robô (§16.8 opção 2) e o outro é aberto a um novo convidado, aprovado pelo anfitrião, que herda a aposta retida
+     * (§16.7, §16.13) e joga até o fim.
      */
     @Test
-    fun `§16_9 convidado desiste na vez e fora dela e o robo assume`() = runTest {
+    fun `§16_9 desistencia deixa o assento VAGO ate a vez dele e o anfitriao decide`() = runTest {
         val seed = 71L
-        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)))
+        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), stake = 100)
         val controller = table.host.controller
-        val notices = ConcurrentHashMap<Seat, MutableList<SeatTakenByRobot>>()
+        val notices = ConcurrentHashMap<Seat, MutableList<TableNotice>>()
         table.guests.forEach { (seat, guest) ->
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-                guest.gameEvents.collect { if (it is SeatTakenByRobot) notices.getOrPut(seat) { mutableListOf() } += it }
+                guest.notices.collect { notices.getOrPut(seat) { mutableListOf() } += it }
             }
         }
         val game = launch { table.host.run() }
@@ -344,26 +363,66 @@ class MultiplayerHostTest {
         val onTurn = controller.currentMatch.currentRound.currentSeat
         val offTurn = table.guests.keys.first { it != onTurn }
         val stays = table.guests.keys.single { it != onTurn && it != offTurn }
-        (controller.stateOf(onTurn).value.humanRequestId > 0L) shouldBe true
+        val offTurnId = table.hostSession.playerAt(offTurn)!!.id
 
         table.guests.getValue(offTurn).resign()
         table.guests.getValue(onTurn).resign()
         advanceUntilIdle()
-        table.host.resignedSeats shouldBe setOf(onTurn, offTurn)
         table.guests.getValue(onTurn).status.value shouldBe GuestStatus.Resigned
         table.guests.getValue(offTurn).status.value shouldBe GuestStatus.Resigned
-        notices.getValue(stays).map { it.seat }.toSet() shouldBe setOf(onTurn, offTurn)
-        table.hostSession.roster.value.map { it.seat }.toSet() shouldBe setOf(Seat(0), stays)
-        // A vez de quem desistiu passou ao robô, que jogou sem esperar ninguém.
-        controller.stateOf(onTurn).value.humanRequestId shouldBe 0L
+        // Os dois assentos aparecem "VAGO" para quem ficou, e todos foram avisados.
+        val stayer = table.guests.getValue(stays)
+        stayer.roster.value.filter { it.resigned }.map { it.seat }.toSet() shouldBe setOf(onTurn, offTurn)
+        notices.getValue(stays).filter { it.kind == NoticeKind.RESIGNED }.map { it.seat }.toSet() shouldBe setOf(onTurn, offTurn)
+        // Nenhum robô entrou: a vez de quem desistiu está parada, com a decisão do anfitrião aberta.
+        (controller.stateOf(onTurn).value.humanRequestId > 0L) shouldBe true
+        table.host.decision.value?.seat shouldBe onTurn
+        table.host.decision.value?.reason shouldBe PauseReason.VACANT
+        stayer.paused.value?.seat shouldBe onTurn
+        table.host.ledger.value.seats[onTurn.index].forfeited shouldBe true
 
-        driveGuests(table, seed, guests = mapOf(stays to table.guests.getValue(stays)))
+        // §16.8 opção 2: robô na hora; o jogo segue.
+        table.host.replaceWithRobot() shouldBe true
+        advanceUntilIdle()
+        notices.getValue(stays).any { it.kind == NoticeKind.REPLACED_BY_ROBOT && it.seat == onTurn } shouldBe true
+
+        // O jogo segue até a vez do outro assento VAGO (o anfitrião e quem ficou jogam como o bot deles).
+        driveGuests(table, seed, guests = mapOf(stays to stayer))
         driveHost(table, seed)
+        advanceUntilIdle()
+        table.host.decision.value?.seat shouldBe offTurn
+        stayer.paused.value?.seat shouldBe offTurn
+
+        // §16.8 opção 3: abre a vaga; quem pede para entrar espera a aprovação e ocupa exatamente esse assento.
+        table.host.openSeatForRecruit()
+        advanceUntilIdle()
+        stayer.paused.value?.hostChoice shouldBe NoticeKind.SEAT_OPENED
+        val newcomer = GuestSession(table.network.transport(), "Recruta")
+        newcomer.join(table.scope, "mesa-1")
+        advanceUntilIdle()
+        newcomer.status.value shouldBe GuestStatus.WaitingApproval
+        val request = table.hostSession.joinRequests.value.single()
+        request.seat shouldBe offTurn
+        driveGuests(table, seed, guests = mapOf(offTurn to newcomer))
+        table.host.approveJoin(request.requestId) shouldBe true
+        advanceUntilIdle()
+        newcomer.status.value shouldBe GuestStatus.Playing
+        newcomer.seat shouldBe offTurn
+        // §16.7, §16.13 herda a aposta retida: nada a debitar; o assento passa a ser dele.
+        newcomer.stakeDebit.value shouldBe 0
+        table.host.ledger.value.seats[offTurn.index].holder shouldBe newcomer.playerId
+        (newcomer.playerId != offTurnId) shouldBe true
         game.join()
         advanceUntilIdle()
         controller.state.value.stage shouldBe Stage.GAME_OVER
         controller.state.value.resigned shouldBe false
-        table.guests.getValue(stays).view.value!!.stage shouldBe TableStage.GAME_OVER
+        stayer.view.value!!.stage shouldBe TableStage.GAME_OVER
+        newcomer.view.value!!.stage shouldBe TableStage.GAME_OVER
+        newcomer.view.value!!.history shouldBe controller.currentMatch.history
+        // §16.13 o resultado em moedas chega a cada humano (só o dele).
+        val payouts = table.host.payouts.value!!
+        newcomer.payout.value?.received shouldBe (payouts[newcomer.playerId] ?: 0)
+        stayer.payout.value?.received shouldBe (payouts[stayer.playerId] ?: 0)
     }
 
     /** §16.3, §16.9, §13.1 no 1×1 entre dois humanos não há robô: quem desiste perde e o outro vence. */

@@ -14,7 +14,13 @@ import kotlinx.coroutines.flow.update
 value class EndpointId(val value: String)
 
 /** Mesa anunciada (o necessário para a lista de mesas; as regras vão no [Welcome]). */
-data class TableAdvert(val tableId: String, val tableName: String, val hostName: String)
+data class TableAdvert(
+    val tableId: String,
+    val tableName: String,
+    val hostName: String,
+    /** §16.7 "jogo em andamento" com assento ocupável (aprovação do anfitrião); fora disso, só reingresso pelo token. */
+    val inProgress: Boolean = false,
+)
 
 /** Eventos do transporte: só conexões e bytes. */
 sealed interface TransportEvent {
@@ -61,6 +67,11 @@ class MemoryNetwork {
     private val tables = MutableStateFlow<Map<String, Pair<TableAdvert, EndpointId>>>(emptyMap())
     private var counter = 0
 
+    /** Pares conectados agora: entregas só entre eles (uma queda corta o par). */
+    private val links = mutableSetOf<Pair<EndpointId, EndpointId>>()
+
+    private fun key(a: EndpointId, b: EndpointId) = if (a.value < b.value) a to b else b to a
+
     @Volatile
     var tap: ((Delivery) -> List<Delivery>)? = null
 
@@ -76,25 +87,48 @@ class MemoryNetwork {
 
     internal fun stopAdvertising(host: EndpointId) = tables.update { map -> map.filterValues { it.second != host } }
 
+    @Synchronized
     internal fun connect(guest: EndpointId, tableId: String): EndpointId {
         val host = tables.value[tableId]?.second ?: error("Mesa não encontrada")
+        links += key(guest, host)
         node(host).push(TransportEvent.Connected(guest))
         node(guest).push(TransportEvent.Connected(host))
         return host
     }
 
+    @Synchronized
     internal fun disconnect(a: EndpointId, b: EndpointId) {
+        if (!links.remove(key(a, b))) return
         nodes[a]?.push(TransportEvent.Disconnected(b))
         nodes[b]?.push(TransportEvent.Disconnected(a))
     }
 
+    /**
+     * Queda abrupta da ponta [id] (sem aviso do jogo): todos os pares dela recebem a desconexão e, se era anfitrião, a
+     * mesa deixa de ser anunciada (§16.8, §16.10).
+     */
+    fun drop(id: EndpointId) {
+        val peers = synchronized(this) {
+            val mine = links.filter { it.first == id || it.second == id }
+            links.removeAll(mine.toSet())
+            mine.map { if (it.first == id) it.second else it.first }
+        }
+        stopAdvertising(id)
+        peers.forEach { peer ->
+            nodes[peer]?.push(TransportEvent.Disconnected(id))
+            nodes[id]?.push(TransportEvent.Disconnected(peer))
+        }
+    }
+
     internal fun send(from: EndpointId, to: EndpointId, bytes: ByteArray) {
+        if (synchronized(this) { key(from, to) !in links }) return
         val delivery = Delivery(from, to, bytes)
         (tap?.invoke(delivery) ?: listOf(delivery)).forEach(::deliver)
     }
 
     /** Entrega direta (sem passar pelo [tap]): para reordenar ou reinjetar uma mensagem nos testes. */
     fun deliver(delivery: Delivery) {
+        if (synchronized(this) { key(delivery.from, delivery.to) !in links }) return
         nodes[delivery.to]?.push(TransportEvent.Received(delivery.from, delivery.bytes))
     }
 
