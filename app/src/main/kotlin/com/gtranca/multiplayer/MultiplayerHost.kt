@@ -466,6 +466,11 @@ class MultiplayerHost(
         return null
     }
 
+    /** Para testes e a interface: id do humano no [seat] e os sucessores atuais (§16.10). */
+    internal fun sessionPlayerAt(seat: Seat): Int? = session.playerAt(seat)?.id
+
+    internal fun sessionSuccessors(): List<Int> = session.successors.value
+
     /** §16.11 o anfitrião terminou as telas de resultado: distribui a próxima partida (sem esperar ninguém). */
     fun continueRound(): Boolean = controller.continueToNextRound()
 

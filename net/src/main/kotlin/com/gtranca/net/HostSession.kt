@@ -398,7 +398,8 @@ class HostSession(
         pending.remove(p.link.endpoint)
         member.link?.let { old -> old.close(); transport.disconnect(old.endpoint) }
         member.link = p.link
-        updateLocked(member) { it.copy(connected = true) }
+        // §16.9 quem desistiu e volta (o anfitrião aguardou) joga de novo no assento; a aposta continua perdida (ledger).
+        updateLocked(member) { it.copy(connected = true, resigned = false) }
         refreshSuccessorsLocked()
         publishRosterLocked(broadcast = false)
         p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = started))

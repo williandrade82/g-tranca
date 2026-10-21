@@ -112,53 +112,20 @@ class MultiplayerHostTest {
     fun `§16_4 nenhuma mensagem a um convidado traz carta oculta, semente ou token de outro`() = runTest {
         val seed = 0x5EED_0BAD_CAFEL
         val network = MemoryNetwork()
-        val guestSeats = listOf(Seat(1), Seat(2), Seat(3))
-        val endpointSeat = ConcurrentHashMap<String, Seat>()
-        val failures = mutableListOf<String>()
-        var table: TestTable? = null
-        var checked = 0
-        // Cartas tiradas do lixo por partida: são públicas mesmo estando na mão de outro (§5.6).
-        val fromDiscard = ConcurrentHashMap<Int, MutableSet<Card>>()
-        val successorMessages = ConcurrentHashMap.newKeySet<Seat>()
-        network.tap = { delivery ->
-            val seat = endpointSeat[delivery.to.value]
-            val current = table
-            val type = runCatching {
-                Json.parseToJsonElement(delivery.bytes.decodeToString()).jsonObject["p"]?.jsonObject?.get("t")?.jsonPrimitive?.content
-            }.getOrNull()
-            if (seat != null && current != null && type == "successorState") {
-                // §16.4 a única exceção: o estado completo vai só ao 1º e ao 2º sucessores.
-                val id = current.hostSession.playerAt(seat)?.id
-                if (id == null || id !in current.hostSession.successors.value) failures += "assento ${seat.index}: estado completo a quem não é sucessor"
-                successorMessages += seat
-            } else if (seat != null && current != null) {
-                val match = current.host.controller.currentMatch
-                val tokens = current.guests.filterKeys { it != seat }.values.mapNotNull { it.token }
-                runCatching { scanGuestMessage(delivery, seat, match, fromDiscard[match.roundNumber].orEmpty(), tokens, seed) }
-                    .onSuccess { if (it) checked++ }
-                    .onFailure { failures += "assento ${seat.index}: ${it.message}" }
-            }
-            listOf(delivery)
-        }
-        val t = openTable(GameMode.DUPLAS, seed, guestSeats, targetScore = 1000, network = network)
-        t.endpoints.forEach { (seat, transport) -> endpointSeat[transport.id.value] = seat }
-        table = t
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            t.host.controller.events.collect { event ->
-                if (event is GameEvent.ActionApplied) {
-                    fromDiscard.getOrPut(event.roundNumber) { ConcurrentHashMap.newKeySet() } += event.event.takenFromDiscard
-                }
-            }
-        }
+        val scanner = LeakScanner(seed)
+        network.tap = scanner.tap()
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), targetScore = 1000, network = network)
+        scanner.registerTable(t)
+        scanner.watch(this, t.host)
         driveGuests(t, seed)
         driveHost(t, seed)
         t.host.run()
         advanceUntilIdle()
         t.host.controller.state.value.stage shouldBe Stage.GAME_OVER
-        checked shouldBeGreaterThan 100
-        failures.shouldBeEmpty()
+        scanner.checked shouldBeGreaterThan 100
+        scanner.failures.shouldBeEmpty()
         // §16.10 o 1º e o 2º a entrar (assentos 1 e 2) são os sucessores; o 3º nunca recebe o estado completo.
-        successorMessages shouldBe setOf(Seat(1), Seat(2))
+        scanner.successorMessages shouldBe setOf(Seat(1), Seat(2))
         // §16.4, §16.5 o token não faz parte da identificação pública.
         val tokens = t.guests.values.mapNotNull { it.token }
         t.guests.values.forEach { g -> val r = g.roster.value.toString(); tokens.forEach { r shouldNotContain it } }
@@ -344,7 +311,12 @@ class MultiplayerHostTest {
     @Test
     fun `§16_9 desistencia deixa o assento VAGO ate a vez dele e o anfitriao decide`() = runTest {
         val seed = 71L
-        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), stake = 100)
+        val network = MemoryNetwork()
+        val scanner = LeakScanner(seed)
+        network.tap = scanner.tap()
+        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), stake = 100, network = network)
+        scanner.registerTable(table)
+        scanner.watch(this, table.host)
         val controller = table.host.controller
         val notices = ConcurrentHashMap<Seat, MutableList<TableNotice>>()
         table.guests.forEach { (seat, guest) ->
@@ -397,7 +369,9 @@ class MultiplayerHostTest {
         table.host.openSeatForRecruit()
         advanceUntilIdle()
         stayer.paused.value?.hostChoice shouldBe NoticeKind.SEAT_OPENED
-        val newcomer = GuestSession(table.network.transport(), "Recruta")
+        val newcomerTransport = table.network.transport()
+        val newcomer = GuestSession(newcomerTransport, "Recruta")
+        scanner.register(newcomerTransport.id, offTurn, newcomer)
         newcomer.join(table.scope, "mesa-1")
         advanceUntilIdle()
         newcomer.status.value shouldBe GuestStatus.WaitingApproval
@@ -423,6 +397,10 @@ class MultiplayerHostTest {
         val payouts = table.host.payouts.value!!
         newcomer.payout.value?.received shouldBe (payouts[newcomer.playerId] ?: 0)
         stayer.payout.value?.received shouldBe (payouts[stayer.playerId] ?: 0)
+        // §16.4 as mensagens novas (pausa, avisos, pedido de entrada, débito, resultado, entrada no meio) também passaram
+        // pela varredura.
+        scanner.failures.shouldBeEmpty()
+        scanner.types.containsAll(listOf("paused", "resumed", "notice", "joinWaiting", "stakeDebit", "payout", "welcome")) shouldBe true
     }
 
     /** §16.3, §16.9, §13.1 no 1×1 entre dois humanos não há robô: quem desiste perde e o outro vence. */
@@ -463,7 +441,8 @@ internal fun scanGuestMessage(
     roundOf: (JsonObject) -> Int? = ::roundOfMessage,
 ): Boolean {
     val text = delivery.bytes.decodeToString()
-    text shouldNotContain seed.toString()
+    // Semente curta (testes de queda) coincidiria com números comuns (tamanhos, ids); a varredura dela usa sementes longas.
+    if (kotlin.math.abs(seed) >= 1_000_000) text shouldNotContain seed.toString()
     otherTokens.forEach { text shouldNotContain it }
     val root = Json.parseToJsonElement(text).jsonObject
     val keys = mutableSetOf<String>()

@@ -16,6 +16,7 @@ import com.gtranca.net.ProtocolCodec
 import com.gtranca.net.SuccessorAck
 import com.gtranca.net.TableNotice
 import com.gtranca.net.TableStage
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -60,7 +61,8 @@ class MultiplayerRecoveryTest {
         var table: TestTable? = null
         var count = 0
         var drops = 0
-        network.tap = { d ->
+        val scanner = LeakScanner(seed)
+        network.tap = scanner.tap { d ->
             val t = table
             // A cada 150 mensagens ao convidado do assento 2, a conexão dele cai (a mensagem em trânsito se perde).
             if (t != null && d.to == t.endpoints.getValue(Seat(2)).id && ++count % 150 == 0) {
@@ -73,12 +75,16 @@ class MultiplayerRecoveryTest {
         }
         val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), network = network)
         table = t
+        scanner.registerTable(t)
+        scanner.watch(this, t.host)
         val notices = collectNotices(t.guests)
         driveGuests(t, seed)
         driveHost(t, seed)
         t.host.run()
         advanceUntilIdle()
         (drops > 0) shouldBe true
+        // §16.4 a vista completa do reingresso e os avisos também passaram pela varredura.
+        scanner.failures.shouldBeEmpty()
         t.host.controller.currentMatch.history shouldBe reference.currentMatch.history
         t.host.controller.currentMatch.winner shouldBe reference.currentMatch.winner
         t.guests.getValue(Seat(2)).view.value!!.stage shouldBe TableStage.GAME_OVER
@@ -220,13 +226,18 @@ class MultiplayerRecoveryTest {
         )
         newHost.hostSeat shouldBe Seat(1)
         driveHostOf(newHost, seed)
-        backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
-            newHost.decision.collect { d -> if (d?.seat == Seat(0)) newHost.replaceWithRobot() }
-        }
+        // §16.10, §16.12 o antigo anfitrião volta (outra conexão) com o token dele, como jogador comum.
+        val oldHostBack = GuestSession(t.network.transport(), "Anfitrião")
+        driveGuests(t, seed, guests = mapOf(Seat(0) to oldHostBack))
+        oldHostBack.join(t.scope, "mesa-1", token = t.hostSession.hostToken, seat = Seat(0))
         newHost.run()
         advanceUntilIdle()
         newHost.controller.state.value.stage shouldBe Stage.GAME_OVER
         newHost.controller.currentMatch.history.take(historyAtDrop.size) shouldBe historyAtDrop
+        oldHostBack.status.value shouldBe GuestStatus.Playing
+        oldHostBack.roster.value.single { it.seat == Seat(0) }.isHost shouldBe false
+        oldHostBack.roster.value.single { it.seat == Seat(1) }.isHost shouldBe true
+        oldHostBack.view.value!!.stage shouldBe TableStage.GAME_OVER
         listOf(Seat(2), Seat(3)).forEach { seat ->
             val g = t.guests.getValue(seat)
             g.status.value shouldBe GuestStatus.Playing
@@ -306,5 +317,60 @@ class MultiplayerRecoveryTest {
         advanceUntilIdle()
         solo.host.controller.state.value.stage shouldBe Stage.GAME_OVER
         solo.host.noSuccessor.value shouldBe true
+    }
+
+    /**
+     * §16.9 (decisão de 2026-10-21) assento VAGO: o anfitrião escolhe aguardar e quem desistiu volta com o token; joga de
+     * novo no assento, mas a aposta continua perdida (retida no assento; ver N14 no plano).
+     */
+    @Test
+    fun `§16_9 assento VAGO - aguardar e quem desistiu volta pelo token`() = runTest {
+        val seed = 97L
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(3)), stake = 100)
+        val quitter = t.guests.getValue(Seat(1))
+        val token = quitter.token!!
+        driveGuests(t, seed, guests = mapOf(Seat(3) to t.guests.getValue(Seat(3))))
+        driveHost(t, seed)
+        val game = launch { t.host.run() }
+        runCurrent()
+        quitter.resign()
+        advanceUntilIdle()
+        t.host.decision.value shouldBe HostDecision(Seat(1), quitter.playerId, PauseReason.VACANT)
+        t.host.waitForPlayer()
+        advanceUntilIdle()
+        t.guests.getValue(Seat(3)).paused.value?.hostChoice shouldBe NoticeKind.WAITING
+        val back = GuestSession(t.network.transport(), "Volta")
+        driveGuests(t, seed, guests = mapOf(Seat(1) to back))
+        back.join(t.scope, "mesa-1", token = token, seat = Seat(1))
+        game.join()
+        advanceUntilIdle()
+        back.status.value shouldBe GuestStatus.Playing
+        back.playerId shouldBe quitter.playerId
+        back.stakeDebit.value shouldBe null
+        t.host.ledger.value.seats[1].forfeited shouldBe true
+        t.host.controller.state.value.stage shouldBe Stage.GAME_OVER
+        back.view.value!!.stage shouldBe TableStage.GAME_OVER
+    }
+
+    /** §13.1, §16.3, §16.9 no 1×1 entre humanos, a desistência do **anfitrião** dá a vitória ao convidado, que leva 2A. */
+    @Test
+    fun `§16_9 §13_1 anfitriao desiste no 1x1 e o convidado vence`() = runTest {
+        val seed = 98L
+        val t = openTable(GameMode.INDIVIDUAL, seed, listOf(Seat(1)), stake = 100)
+        val guest = t.guests.getValue(Seat(1))
+        val finished = mutableListOf<com.gtranca.net.GameFinished>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            guest.gameEvents.collect { if (it is com.gtranca.net.GameFinished) finished += it }
+        }
+        val game = launch { t.host.run() }
+        runCurrent()
+        t.host.handOver(resign = true) shouldBe null
+        game.join()
+        advanceUntilIdle()
+        val state = t.host.controller.state.value
+        state.resigned shouldBe true
+        state.winner shouldBe GameMode.INDIVIDUAL.sideOf(Seat(1))
+        finished shouldBe listOf(com.gtranca.net.GameFinished(GameMode.INDIVIDUAL.sideOf(Seat(1)), resigned = true))
+        guest.payout.value shouldBe com.gtranca.net.Payout(stake = 100, received = 200)
     }
 }

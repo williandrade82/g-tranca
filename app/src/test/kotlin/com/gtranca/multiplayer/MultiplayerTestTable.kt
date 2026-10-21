@@ -22,6 +22,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.random.Random
+import java.util.concurrent.ConcurrentHashMap
 
 /** Bot determinístico (Fácil) do assento: o mesmo nos jogos de referência e nos "humanos" simulados. */
 internal fun testBot(seed: Long, seat: Seat): BotPlayer = createBot(Difficulty.FACIL, Random(botSeed(seed, seat.index)))
@@ -162,5 +163,72 @@ internal fun TestScope.driveHostOf(host: MultiplayerHost, seed: Long) {
                 controller.submit(seat, driver.chooseAction(snapshot.view, snapshot.humanLegal), snapshot.humanRequestId)
             }
         }
+    }
+}
+
+/**
+ * §16.4 varredura de vazamento instalável em qualquer teste: cada mensagem **serializada** a um convidado registrado é
+ * conferida contra o estado real do anfitrião naquele instante (ver `scanGuestMessage`); o estado completo só pode ir a
+ * um sucessor. Compõe com outro `tap` ([next]).
+ */
+internal class LeakScanner(private val seed: Long) {
+    private val endpoints = ConcurrentHashMap<String, Pair<Seat, GuestSession>>()
+    val failures: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+    val successorMessages: MutableSet<Seat> = ConcurrentHashMap.newKeySet()
+    private val fromDiscard = ConcurrentHashMap<Int, MutableSet<com.gtranca.engine.model.Card>>()
+    val types: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    @Volatile
+    var host: MultiplayerHost? = null
+
+    @Volatile
+    var checked = 0
+
+    fun register(endpoint: com.gtranca.net.EndpointId, seat: Seat, session: GuestSession) {
+        endpoints[endpoint.value] = seat to session
+    }
+
+    fun registerTable(table: TestTable) {
+        host = table.host
+        table.endpoints.forEach { (seat, transport) -> register(transport.id, seat, table.guests.getValue(seat)) }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun watch(scope: TestScope, host: MultiplayerHost) {
+        this.host = host
+        scope.backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(scope.testScheduler)) {
+            host.controller.events.collect { event ->
+                if (event is com.gtranca.game.GameEvent.ActionApplied) {
+                    fromDiscard.getOrPut(event.roundNumber) { ConcurrentHashMap.newKeySet() } += event.event.takenFromDiscard
+                }
+            }
+        }
+    }
+
+    fun tap(next: (com.gtranca.net.Delivery) -> List<com.gtranca.net.Delivery> = { listOf(it) }): (com.gtranca.net.Delivery) -> List<com.gtranca.net.Delivery> = { delivery ->
+        scan(delivery)
+        next(delivery)
+    }
+
+    private fun scan(delivery: com.gtranca.net.Delivery) {
+        val (seat, session) = endpoints[delivery.to.value] ?: return
+        val current = host ?: return
+        val type = runCatching {
+            kotlinx.serialization.json.Json.parseToJsonElement(delivery.bytes.decodeToString())
+                .let { (it as kotlinx.serialization.json.JsonObject)["p"] as? kotlinx.serialization.json.JsonObject }
+                ?.get("t")?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+        }.getOrNull() ?: return
+        types += type
+        if (type == "successorState") {
+            val id = current.sessionPlayerAt(seat)
+            if (id == null || id !in current.sessionSuccessors()) failures += "assento ${seat.index}: estado completo a quem não é sucessor"
+            successorMessages += seat
+            return
+        }
+        val match = current.controller.currentMatch
+        val tokens = endpoints.filterKeys { it != delivery.to.value }.values.mapNotNull { it.second.token }.filter { it != session.token }
+        runCatching { scanGuestMessage(delivery, seat, match, fromDiscard[match.roundNumber].orEmpty(), tokens, seed) }
+            .onSuccess { if (it) checked++ }
+            .onFailure { failures += "assento ${seat.index} ($type): ${it.message}" }
     }
 }
