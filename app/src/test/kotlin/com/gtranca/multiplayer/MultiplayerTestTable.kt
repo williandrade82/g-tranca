@@ -94,6 +94,21 @@ internal fun TestScope.driveGuests(
                 }
             }
         }
+        // §16.5 depois de um reingresso, a vista (igual à de antes) volta a pedir a jogada: reenvia a mesma escolha (sem
+        // sortear de novo; se já tinha chegado, a repetida é recusada).
+        var last: Pair<Long, com.gtranca.engine.Action>? = null
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
+            var was: com.gtranca.net.GuestStatus? = null
+            guest.status.collect { status ->
+                val view = guest.view.value
+                val choice = last
+                if (was == com.gtranca.net.GuestStatus.Reconnecting && status == com.gtranca.net.GuestStatus.Playing &&
+                    view != null && choice != null && choice.first == view.requestId) {
+                    guest.propose(choice.second, choice.first)
+                }
+                was = status
+            }
+        }
         backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
             var answered = 0L
             guest.view.collect { view ->
@@ -101,7 +116,9 @@ internal fun TestScope.driveGuests(
                 if (view.legal.isNotEmpty() && view.requestId > answered) {
                     answered = view.requestId
                     val rules = guest.rules.value!!.rules
-                    guest.propose(driver.chooseAction(view.toPlayerView(rules), view.legal), view.requestId)
+                    val action = driver.chooseAction(view.toPlayerView(rules), view.legal)
+                    last = view.requestId to action
+                    guest.propose(action, view.requestId)
                 }
             }
         }
@@ -120,6 +137,26 @@ internal fun TestScope.driveHost(table: TestTable, seed: Long) {
             if (snapshot.stage == Stage.ROUND_OVER && continued < snapshot.roundNumber) {
                 continued = snapshot.roundNumber
                 table.host.continueRound()
+            }
+            if (snapshot.humanLegal.isNotEmpty()) {
+                controller.submit(seat, driver.chooseAction(snapshot.view, snapshot.humanLegal), snapshot.humanRequestId)
+            }
+        }
+    }
+}
+
+/** Um anfitrião qualquer (inclusive o sucessor que assumiu) joga o próprio assento como o bot desse assento jogaria. */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun TestScope.driveHostOf(host: MultiplayerHost, seed: Long) {
+    val seat = host.hostSeat
+    val driver = testBot(seed, seat)
+    val controller = host.controller
+    backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
+        var continued = 0
+        controller.stateOf(seat).collect { snapshot ->
+            if (snapshot.stage == Stage.ROUND_OVER && continued < snapshot.roundNumber) {
+                continued = snapshot.roundNumber
+                host.continueRound()
             }
             if (snapshot.humanLegal.isNotEmpty()) {
                 controller.submit(seat, driver.chooseAction(snapshot.view, snapshot.humanLegal), snapshot.humanRequestId)

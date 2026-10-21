@@ -169,6 +169,10 @@ class GuestSession(
     /** Depois de um reingresso a partida mostrada vem da primeira mensagem do jogo. */
     private var resync = false
 
+    /** §16.10 o anfitrião anunciou o novo anfitrião (passagem do cargo). */
+    @Volatile
+    private var handedTo: Int? = null
+
     private val held = ArrayDeque<Payload>()
 
     /** Troca para um assento vago (§16.2), mesmo depois de confirmar; só na sala de espera. */
@@ -245,7 +249,8 @@ class GuestSession(
     }
 
     private suspend fun reconnect() {
-        val first = _roster.value.firstOrNull { it.id == playerId }?.successorRank == 1 && successorState != null
+        // §16.10 se o cargo foi passado a outro, quem assume é ele: aqui só se reingressa.
+        val first = handedTo == null && _roster.value.firstOrNull { it.id == playerId }?.successorRank == 1 && successorState != null
         var found = false
         withTimeoutOrNull(if (first) successorGraceMillis else reconnectTimeoutMillis) {
             while (!found) {
@@ -281,7 +286,7 @@ class GuestSession(
                 when (payload) {
                     is SuccessorState -> {
                         successorState = payload
-                        current.sendLocked(SuccessorAck(payload.stateSeq))
+                        current.controlLocked(SuccessorAck(payload.stateSeq))
                     }
                     SuccessorDrop -> successorState = null
                     BecomeHost -> successorState?.let {
@@ -353,7 +358,10 @@ class GuestSession(
             }
             is Paused -> _paused.value = payload
             Resumed -> _paused.value = null
-            is TableNotice -> _notices.tryEmit(payload)
+            is TableNotice -> {
+                if (payload.kind == NoticeKind.HOST_CHANGED) handedTo = payload.playerId
+                _notices.tryEmit(payload)
+            }
             is Payout -> _payout.value = payload
             is StakeDebit -> _stakeDebit.value = payload.amount
             is GameFinished -> {

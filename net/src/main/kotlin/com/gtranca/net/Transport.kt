@@ -70,6 +70,25 @@ class MemoryNetwork {
     /** Pares conectados agora: entregas só entre eles (uma queda corta o par). */
     private val links = mutableSetOf<Pair<EndpointId, EndpointId>>()
 
+    /** Pontas que não conseguem (re)conectar agora (fora do alcance). */
+    private val blocked = mutableSetOf<EndpointId>()
+
+    /** Pontas "mortas" (aparelho desligado): não anunciam, não enviam e não conectam mais. */
+    private val dead = mutableSetOf<EndpointId>()
+
+    /** A ponta [id] fica fora do alcance (as tentativas de conexão falham) até [unblock]. */
+    @Synchronized
+    fun block(id: EndpointId) { blocked += id }
+
+    @Synchronized
+    fun unblock(id: EndpointId) { blocked -= id }
+
+    /** O aparelho [id] some de vez (queda abrupta, §16.10): como [drop], e nunca mais anuncia nem envia. */
+    fun kill(id: EndpointId) {
+        synchronized(this) { dead += id }
+        drop(id)
+    }
+
     private fun key(a: EndpointId, b: EndpointId) = if (a.value < b.value) a to b else b to a
 
     @Volatile
@@ -83,13 +102,14 @@ class MemoryNetwork {
 
     internal fun advertised(): StateFlow<Map<String, Pair<TableAdvert, EndpointId>>> = tables.asStateFlow()
 
-    internal fun advertise(advert: TableAdvert, host: EndpointId) = tables.update { it + (advert.tableId to (advert to host)) }
+    internal fun advertise(advert: TableAdvert, host: EndpointId) = if (synchronized(this) { host in dead }) Unit else tables.update { it + (advert.tableId to (advert to host)) }
 
     internal fun stopAdvertising(host: EndpointId) = tables.update { map -> map.filterValues { it.second != host } }
 
     @Synchronized
     internal fun connect(guest: EndpointId, tableId: String): EndpointId {
         val host = tables.value[tableId]?.second ?: error("Mesa não encontrada")
+        check(guest !in blocked && guest !in dead && host !in dead) { "Fora do alcance" }
         links += key(guest, host)
         node(host).push(TransportEvent.Connected(guest))
         node(guest).push(TransportEvent.Connected(host))

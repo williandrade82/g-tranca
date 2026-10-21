@@ -33,6 +33,7 @@ class ReliableLink(
     private var resendJob: Job? = null
     private var resends = 0
     private var closed = false
+    private var requested: Long? = null
 
     /** Envia [payload] na sequência (será reenviado até ser confirmado). */
     suspend fun sendLocked(payload: Payload) {
@@ -48,13 +49,28 @@ class ReliableLink(
         if (closed) return emptyList()
         confirm(envelope.ack)
         if (envelope.seq == 0L) {
-            (envelope.p as? ResendRequest)?.let { request -> unacked.filter { it.first >= request.from }.forEach { transmit(it.first, it.second) } }
-            return emptyList()
+            return when (val p = envelope.p) {
+                is ResendRequest -> {
+                    unacked.filter { it.first >= p.from }.forEach { transmit(it.first, it.second) }
+                    emptyList()
+                }
+                AckOnly -> emptyList()
+                // Controle da sessão (ex.: confirmação do sucessor): fora da sequência, não segura nem é segurado.
+                else -> listOf(p)
+            }
         }
         val ready = link.accept(envelope).map { it.p }
-        link.missing?.let { control(ResendRequest(it)) }
+        if (ready.isNotEmpty()) requested = null
+        // Pede o reenvio uma vez por lacuna (sem tempestade de pedidos); se o reenvio também se perder, o temporizador
+        // do outro lado reenvia.
+        link.missing?.takeIf { it != requested }?.let { requested = it; control(ResendRequest(it)) }
         if (link.lastInOrder > ackSent) armAck() else if (ready.isEmpty() && link.missing == null) control(AckOnly)
         return ready
+    }
+
+    /** Envia [payload] fora da sequência (controle): sem reenvio nem ordem; para o que não pode segurar o resto. */
+    suspend fun controlLocked(payload: Payload) {
+        if (!closed) control(payload)
     }
 
     /** Encerra a conexão: nada mais sai nem é reenviado. */

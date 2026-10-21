@@ -76,6 +76,9 @@ class HostSession(
     private var collector: Job? = null
     private var successorIds: List<Int> = emptyList()
 
+    /** §16.10 quem ainda não soube que este é o novo anfitrião (avisado ao reingressar). */
+    private val hostNoticePending = mutableSetOf<Int>()
+
     @Volatile
     var game: HostGamePort? = null
 
@@ -104,6 +107,7 @@ class HostSession(
             }
             hostToken = members.getValue(hostId).token
             nextId = resumed.nextPlayerId
+            hostNoticePending += members.keys - hostId
         }
         _roster = MutableStateFlow(rosterLocked())
     }
@@ -399,6 +403,9 @@ class HostSession(
         publishRosterLocked(broadcast = false)
         p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = started))
         broadcastLocked(RosterUpdate(_roster.value), except = member)
+        if (hostNoticePending.remove(member.info.id)) {
+            p.link.sendLocked(TableNotice(NoticeKind.HOST_CHANGED, hostSeat, hostId))
+        }
         if (started) {
             broadcastLocked(TableNotice(NoticeKind.RECONNECTED, member.info.seat, member.info.id), except = member)
             advertiseLocked()
@@ -520,6 +527,7 @@ class HostSession(
         member.link = null
         refreshSuccessorsLocked()
         publishRosterLocked(broadcast = true)
+        if (started) advertiseLocked()
     }
 
     private suspend fun refuseLocked(p: Pending, message: String) {

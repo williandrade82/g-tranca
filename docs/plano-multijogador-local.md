@@ -165,7 +165,7 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
 3. **`:net`: protocolo + sessão + `MemoryTransport`** e a orquestração do anfitrião (`app/…/multiplayer/MultiplayerHost.kt`) — FEITA (reenvio de perdidas fica na etapa 4); testes JVM: partida completa com humanos simulados e
    robôs igual à local; varredura de vazamento no JSON; jogada ilegal/fora da vez/duplicada/de assento alheio recusada; versões diferentes
    recusadas; mensagens perdidas/reordenadas. *(net-comm-dev)*
-4. **Reconexão e papéis:** token, queda na vez, substituição por robô, recrutamento, entrada no meio do jogo com aprovação, desistência com
+4. **Reconexão e papéis — FEITA** (protocolo v3: `ReliableLink` com confirmação, pedido de reenvio por lacuna e reenvio por tempo; confirmação do sucessor fora da sequência; carência de 5 s para o 1º sucessor assumir e 60 s para os demais reingressarem; pedidos numerados sem repetir entre anfitriões; assento VAGO de §16.9; pontos a confirmar em N14): token, queda na vez, substituição por robô, recrutamento, entrada no meio do jogo com aprovação, desistência com
    repasse da aposta (`GroupBetLedger`), passagem de anfitrião e sucessão com ack (tudo na JVM, relógio virtual). *(net-comm-dev)*
 5. **Transporte real no Android:** Nearby `P2P_STAR`, permissões nas três faixas de API, descoberta e anúncio; roteiro de teste em 2 a 4 celulares reais. *(net-comm-dev)*
 6. **Telas** (conforme `docs/telas.md` atualizado), indicador de vez remoto, ViewModels para convidados nos assentos 1 a 3. *(android-ui-dev)*

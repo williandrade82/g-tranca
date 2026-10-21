@@ -370,6 +370,8 @@ data class SuccessorState(
     val nextPlayerId: Int,
     /** Personagens dos assentos de robô, por assento (§16.8 o primeiro não usado substitui). */
     val robotPersonas: Map<Int, String> = emptyMap(),
+    /** Maior número de pedido já usado na rede: o novo anfitrião numera os seus depois dele. */
+    val requestBase: Long = 0,
 ) : Payload {
     override fun toString(): String = "SuccessorState(stateSeq=$stateSeq)" // nunca registrar cartas nem tokens
 }

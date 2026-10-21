@@ -149,6 +149,15 @@ class MultiplayerHost(
     /** §16.10 aviso ao anfitrião: sem sucessor disponível, uma queda dele encerra a mesa. */
     val noSuccessor: StateFlow<Boolean> = _noSuccessor.asStateFlow()
 
+    /**
+     * Os pedidos na rede nunca se repetem na mesa: o anfitrião que assume (§16.10) numera os dele depois dos do anterior
+     * (o controlador novo recomeça do 1).
+     */
+    private val requestOffset: Long = restored?.requestBase ?: 0
+
+    @Volatile
+    private var maxWireRequest: Long = requestOffset
+
     private val pauseLock = Mutex()
     private val stateSeq = AtomicLong(restored?.stateSeq ?: 0)
     private val latestState = MutableStateFlow<SuccessorState?>(null)
@@ -219,7 +228,10 @@ class MultiplayerHost(
     private suspend fun sendView(seat: Seat, snapshot: GameSnapshot) {
         val history = snapshot.history.takeIf { it != sentHistory[seat.index] }
         sentHistory[seat.index] = snapshot.history
-        session.sendView(seat, snapshot.toSeatView(history))
+        val view = snapshot.toSeatView(history)
+        val wire = if (view.requestId == 0L) view else view.copy(requestId = view.requestId + requestOffset)
+        if (wire.requestId > maxWireRequest) maxWireRequest = wire.requestId
+        session.sendView(seat, wire)
     }
 
     /** §16.13 fim do jogo: o que cada humano recebe vai a cada um (só o dele). */
@@ -249,6 +261,7 @@ class MultiplayerHost(
         ledger = _ledger.value,
         nextPlayerId = session.nextPlayerId(),
         robotPersonas = _robotPersonas.value,
+        requestBase = maxWireRequest,
     )
 
     /** Envia o estado mais recente ao 1º e ao 2º sucessores (e a quem acaba de virar sucessor). */
@@ -398,12 +411,15 @@ class MultiplayerHost(
         val request = session.joinRequests.value.firstOrNull { it.requestId == requestId } ?: return false
         val seat = request.seat
         val wasRobot = seat !in remote
-        if (wasRobot && !controller.replacePlayer(seat, HumanPlayer())) return false
+        if (wasRobot) {
+            if (!controller.replacePlayer(seat, HumanPlayer())) return false
+            remote += seat
+            startViewJob(seat)
+        }
         val info = session.approveJoin(requestId) ?: return false
         var debit = 0
         _ledger.update { ledger -> ledger.occupy(seat.index, info.id).also { debit = it.second }.first }
         if (wasRobot) _robotPersonas.update { it - seat.index }
-        remote += seat
         session.sendTo(seat, StakeDebit(debit))
         evaluatePause()
         return true
@@ -441,11 +457,11 @@ class MultiplayerHost(
         val open = controller.stateOf(seat).value.humanRequestId
         if (open == 0L) return ActionRejected(requestId, RejectReason.NOT_YOUR_TURN)
         if (requestId <= (answered[seat.index] ?: 0L)) return ActionRejected(requestId, RejectReason.STALE_REQUEST)
-        if (requestId != open) return ActionRejected(requestId, RejectReason.STALE_REQUEST)
-        controller.explain(seat, action, requestId)?.let {
+        if (requestId != open + requestOffset) return ActionRejected(requestId, RejectReason.STALE_REQUEST)
+        controller.explain(seat, action, open)?.let {
             return ActionRejected(requestId, RejectReason.ILLEGAL, (it as? Enum<*>)?.name)
         }
-        if (!controller.submit(seat, action, requestId)) return ActionRejected(requestId, RejectReason.ILLEGAL)
+        if (!controller.submit(seat, action, open)) return ActionRejected(requestId, RejectReason.ILLEGAL)
         answered[seat.index] = requestId
         return null
     }
@@ -518,7 +534,7 @@ class MultiplayerHost(
                 computeDispatcher = computeDispatcher,
                 restored = state,
             )
-            session.broadcast(TableNotice(NoticeKind.HOST_CHANGED, me.info.seat, myId))
+            // O aviso de novo anfitrião vai a cada um ao reingressar (HostSession).
             return host
         }
     }
