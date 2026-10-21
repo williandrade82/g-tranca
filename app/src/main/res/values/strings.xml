@@ -400,4 +400,15 @@
     <string name="profile_photo_remove">Remover foto</string>
     <string name="profile_photo_error">Não foi possível usar essa foto. Tente outra.</string>
     <string name="profile_photo_hint">A foto fica só neste aparelho. Sem foto, vale o avatar escolhido abaixo.</string>
+
+    <!-- Multijogador local: acesso ao Nearby (§16) -->
+    <string name="mp_access_title">Jogar com quem está perto</string>
+    <string name="mp_access_explain">Para achar mesas e jogadores por perto, o Tranca-Bot usa o Bluetooth e o Wi-Fi do aparelho. Não usa internet e nada sai daqui além da partida, só para os celulares da mesa. O Android vai pedir a sua permissão a seguir.</string>
+    <string name="mp_access_denied">Sem essa permissão não dá para achar outros celulares. Você pode tentar de novo ou liberar em Configurações > Apps > Tranca-Bot > Permissões. O jogo contra os robôs continua normal.</string>
+    <string name="mp_access_location_off">Neste Android a busca por aparelhos só funciona com a localização ligada. Ligue a localização e toque em Tentar de novo. Nada é rastreado: ela só libera a busca por perto.</string>
+    <string name="mp_access_no_play_services">Este aparelho não tem o Google Play Services (ou está desatualizado), que o jogo em grupo precisa para achar outros celulares. Por enquanto o multijogador não funciona nele; o jogo contra os robôs continua normal.</string>
+    <string name="mp_access_allow">Continuar</string>
+    <string name="mp_access_retry">Tentar de novo</string>
+    <string name="mp_access_not_now">Agora não</string>
+    <string name="mp_access_close">Fechar</string>
 </resources>

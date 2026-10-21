@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Só no build debug: laboratório do Nearby para testar o transporte em celulares reais (etapa 5). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.gtranca.debug.NearbyLabActivity"
+            android:exported="true"
+            android:label="Nearby (teste)"
+            android:screenOrientation="portrait" />
+    </application>
+</manifest>
