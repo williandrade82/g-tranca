@@ -139,7 +139,9 @@ private fun MultiplayerOverlay(table: MultiplayerTable, personas: List<Persona>,
     }
 
     if (host != null && !resigned) HostPanels(table, host, personas)
-    if (tookOver) {
+    // §16.10 no provisório, "Você agora é o anfitrião" só depois de confirmado (antes vale "Aguardando os outros jogadores").
+    val committed by remember(host) { host?.committed ?: flowOf(true) }.collectAsState(true)
+    if (tookOver && committed) {
         GMessage(
             modifier = Modifier.testTag("mp-host-now"),
             title = stringResource(R.string.mp_host_now_title),

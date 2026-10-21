@@ -38,10 +38,13 @@ object MultiplayerHub {
     /** Mesas anunciadas por perto (§16.2); a busca para sozinha quando ninguém mais observa. */
     fun discover(context: Context): Flow<List<TableAdvert>> = transport(context).discover()
 
-    /** Uma mesa nova (a anterior, se houver, é deixada). */
+    /**
+     * Uma mesa nova. A anterior, se houver, é deixada antes de a nova entrar ou publicar (um leitor por transporte); uma
+     * entrega de resultado ainda aberta nela (§16.11) acaba aqui.
+     */
     fun newTable(context: Context, data: GameData): MultiplayerTable {
-        _table.value?.let { old -> scope.launch { old.leave() } }
-        return MultiplayerTable(transport(context), scope, DataMpCoins(data)).also { _table.value = it }
+        val leaving = _table.value?.let { old -> scope.launch { old.leave() } }
+        return MultiplayerTable(transport(context), scope, DataMpCoins(data), after = leaving).also { _table.value = it }
     }
 
     /** O jogador saiu das telas da mesa: fecha o que não precisa mais ficar aberto (§16.11 o anfitrião segue entregando). */

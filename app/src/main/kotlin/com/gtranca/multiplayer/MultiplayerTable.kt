@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 
 /** Papel deste aparelho na mesa multijogador (§16.1); muda na sucessão (§16.10). */
@@ -103,6 +104,8 @@ class MultiplayerTable(
     /** Robôs do anfitrião; `null` = os do nível da mesa. */
     private val botFactory: ((GameConfig) -> ((Seat, Random) -> BotPlayer))? = null,
     private val newSeed: () -> Long = { Random.nextLong() },
+    /** Saída da mesa anterior no mesmo transporte: entrar ou publicar só depois dela (um leitor por transporte). */
+    private val after: Job? = null,
 ) {
     private val _role = MutableStateFlow<MpRole?>(null)
     val role: StateFlow<MpRole?> = _role.asStateFlow()
@@ -190,6 +193,7 @@ class MultiplayerTable(
     /** [join] sem esperar: a mesa não achada vira [MpEnd.NotFound]. */
     fun joinAsync(tableId: String, playerName: String) {
         scope.launch {
+            after?.join()
             try {
                 join(tableId, playerName)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -203,6 +207,7 @@ class MultiplayerTable(
     /** [host] sem esperar. */
     fun hostAsync(rules: TableRules, playerName: String, tableId: String) {
         scope.launch {
+            after?.join()
             try {
                 host(rules, playerName, tableId)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -244,11 +249,19 @@ class MultiplayerTable(
         scope.launch { runHost(host) }
     }
 
-    /** Sai da sala (antes do início) ou fecha tudo depois do fim. Durante o jogo use [resign]. */
+    /**
+     * Sai da mesa e solta o transporte (um só leitor por transporte): na sala avisa a saída; depois do início só
+     * desliga (nunca vira desistência). O anfitrião fecha a sessão: uma entrega de resultado ainda aberta (§16.11) acaba
+     * aqui. Durante o jogo use [resign].
+     */
     suspend fun leave() {
         when (val role = _role.value) {
-            is MpRole.Hosting -> if (role.host == null) role.session.close()
-            is MpRole.Guesting -> role.session.leave()
+            is MpRole.Hosting -> role.session.close()
+            is MpRole.Guesting -> {
+                val status = role.session.status.value
+                if (status == GuestStatus.Lobby || status == GuestStatus.Connecting) role.session.leave()
+                role.session.release()
+            }
             null -> Unit
         }
         watchers.forEach { it.cancel() }
@@ -290,6 +303,10 @@ class MultiplayerTable(
         }
         when (val role = _role.value) {
             is MpRole.Guesting -> {
+                // §16.13 quem sai das telas antes de o prêmio chegar continua esperando por ele (em segundo plano).
+                if (!_resigned.value && _received.value == null && _end.value == null) {
+                    withTimeoutOrNull(PAYOUT_WAIT_MILLIS) { combine(_received, _end) { r, e -> r != null || e != null }.first { it } }
+                }
                 role.session.release()
                 watchers.forEach { it.cancel() }
                 _role.value = null
@@ -540,6 +557,9 @@ class MultiplayerTable(
     private fun gameId(): String = "mp-${_role.value?.tableId}-$myId"
 
     companion object {
+        /** Espera técnica pelo prêmio de quem sai das telas antes de ele chegar (não é regra de §16.15). */
+        const val PAYOUT_WAIT_MILLIS: Long = 30_000
+
         fun configOf(rules: TableRules): GameConfig =
             GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake)
     }

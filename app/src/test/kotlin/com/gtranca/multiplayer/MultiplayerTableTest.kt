@@ -20,7 +20,10 @@ import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -41,7 +44,16 @@ class MultiplayerTableTest {
         }
     }
 
-    private class Setup(val host: MultiplayerTable, val guest: MultiplayerTable, val hostCoins: FakeCoins, val guestCoins: FakeCoins, val scope: CoroutineScope)
+    private class Setup(
+        val host: MultiplayerTable,
+        val guest: MultiplayerTable,
+        val hostCoins: FakeCoins,
+        val guestCoins: FakeCoins,
+        val scope: CoroutineScope,
+        val rules: TableRules,
+        /** Nova mesa no mesmo transporte (outro jogo no mesmo celular). */
+        val again: (host: Boolean) -> MultiplayerTable,
+    )
 
     private suspend fun TestScope.setup(seed: Long, targetScore: Int = 500, stake: Int = 50): Setup {
         val network = MemoryNetwork()
@@ -52,13 +64,112 @@ class MultiplayerTableTest {
         val hostCoins = FakeCoins()
         val guestCoins = FakeCoins()
         val bots: (GameConfig) -> ((Seat, kotlin.random.Random) -> com.gtranca.ai.BotPlayer) = { { seat, _ -> testBot(seed, seat) } }
-        val host = MultiplayerTable(network.transport(), scope, hostCoins, dispatcher, bots, newSeed = { seed })
-        val guest = MultiplayerTable(network.transport(), scope, guestCoins, dispatcher, bots, newSeed = { seed })
+        val hostTransport = network.transport()
+        val guestTransport = network.transport()
+        val host = MultiplayerTable(hostTransport, scope, hostCoins, dispatcher, bots, newSeed = { seed })
+        val guest = MultiplayerTable(guestTransport, scope, guestCoins, dispatcher, bots, newSeed = { seed })
         host.host(rules, "Ana", "mesa-1")
         advanceUntilIdle()
         guest.join("mesa-1", "Beto")
         advanceUntilIdle()
-        return Setup(host, guest, hostCoins, guestCoins, scope)
+        val again = { isHost: Boolean ->
+            MultiplayerTable(if (isHost) hostTransport else guestTransport, scope, if (isHost) hostCoins else guestCoins, dispatcher, bots, newSeed = { seed })
+        }
+        return Setup(host, guest, hostCoins, guestCoins, scope, rules, again)
+    }
+
+    @Test
+    fun `um leitor por transporte - sair da sala e entrar de novo, e o anfitrião que joga duas vezes`() = runTest {
+        val seed = 45L
+        val t = setup(seed)
+        // Convidado sai da sala e entra de novo pelo mesmo transporte: chega à sala e confirma.
+        t.guest.leave()
+        advanceUntilIdle()
+        t.host.roster.value.size shouldBe 1
+        val guest2 = t.again(false)
+        guest2.join("mesa-1", "Beto")
+        advanceUntilIdle()
+        guest2.mySeat shouldBe Seat(1)
+        guest2.confirmSeat()
+        advanceUntilIdle()
+        t.host.roster.value.first { it.id == guest2.myId }.confirmed shouldBe true
+        // O anfitrião joga até o fim e publica outra mesa no mesmo transporte; o convidado entra nela.
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(guest2, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        t.host.leave()
+        guest2.leave()
+        advanceUntilIdle()
+        val host2 = t.again(true)
+        host2.host(t.rules.copy(tableName = "Revanche"), "Ana", "mesa-2")
+        advanceUntilIdle()
+        val guest3 = t.again(false)
+        guest3.join("mesa-2", "Beto")
+        advanceUntilIdle()
+        guest3.mySeat shouldBe Seat(1)
+        host2.roster.value.size shouldBe 2
+    }
+
+    @Test
+    fun `§16_13 quem sai das telas antes do premio chegar ainda recebe`() = runTest {
+        val seed = 46L
+        val t = setup(seed)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        drive(t.scope, guestDriver, seed)
+        // Assim que a tela do convidado chega ao fim do jogo, ele toca "Voltar ao início".
+        t.scope.launch { guestDriver.state.first { it.stage == Stage.GAME_OVER }; t.guest.exitScreens() }
+        advanceUntilIdle()
+        t.guestCoins.settled shouldHaveSize 1
+        t.guest.role.value shouldBe null
+    }
+
+    @Test
+    fun `§16_6 a tela do convidado - a vez chega pelo condutor e a compra vai ao anfitrião`() = runTest {
+        val seed = 47L
+        val t = setup(seed, targetScore = 3000)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        kotlinx.coroutines.Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val personas = t.guest.personas(Persona("Beto"), "VAGO") { it }
+            val vm = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(t.rules),
+                animationMillis = 0,
+                swapAnimationMillis = 0,
+                externalDriver = guestDriver,
+                externalPersonas = personas,
+                multiplayer = true,
+            )
+            drive(t.scope, hostDriver, seed)
+            advanceUntilIdle()
+            val ui = vm.uiState.value
+            ui.snapshot.viewerSeat shouldBe Seat(1)
+            ui.isHumanTurn shouldBe true
+            ui.turnHeld shouldBe false
+            ui.canDraw shouldBe true
+            vm.onDraw()
+            advanceUntilIdle()
+            // O anfitrião aplicou a compra: a vista volta com a fase de jogar.
+            vm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
+            vm.uiState.value.isHumanTurn shouldBe true
+        } finally {
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
     }
 
     /** Joga o assento deste aparelho como o robô do assento jogaria, pela vista da tela, e avança as telas de resultado. */
