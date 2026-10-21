@@ -18,6 +18,7 @@
 - **Modo individual:** 2 jogadores (humano × máquina). Cada jogador é um **lado**.
 - **Modo duplas:** 4 jogadores (humano + parceiro virtual × dupla virtual). Cada dupla é um **lado**; os parceiros sentam em posições opostas.
 - Neste documento, **"lado"** significa o jogador (modo individual) ou a dupla (modo duplas).
+- No **multijogador local** (§16), os assentos de uma mesa podem ser ocupados por **jogadores humanos**, cada um no seu celular, e os demais por jogadores virtuais; os lados e as regras de jogo são exatamente os mesmos.
 
 ---
 
@@ -117,6 +118,7 @@ Ao pegar o lixo de forma válida:
 
 ### **5.6. Visibilidade**
 - O lixo é **aberto**: todas as cartas que o compõem ficam visíveis a todos os jogadores (humanos e virtuais).
+- No multijogador local (§16.4), o lixo inteiro é enviado a todos os celulares; as demais cartas ocultas (mãos dos outros, monte e mortos) nunca são.
 
 ---
 
@@ -317,6 +319,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
 ### **13.1. Desistência**
 - Durante o jogo, o jogador humano pode **desistir**, depois de confirmar a decisão (se cancelar, o jogo continua exatamente como estava). A opção não é oferecida na tela de pontuação da partida (§12).
 - Ao desistir, o jogo termina imediatamente e o **outro lado** (o jogador virtual ou a dupla adversária) é declarado **vencedor**. A partida em andamento não é pontuada. O jogador **perde a aposta** (§14.6).
+- **Jogo em grupo (multijogador, §16):** o parágrafo acima vale só para o jogo contra jogadores virtuais (um humano). Na mesa multijogador, quem desiste **não encerra o jogo**: é **substituído na hora por um jogador virtual**, perde a aposta e o jogo segue para os demais (§16.9). A exceção é o **1×1 entre dois humanos** (§16.3), onde não há robô para assumir: o outro humano é declarado **vencedor**, como acima.
 
 ---
 
@@ -383,6 +386,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 - Uma **mesa** reúne o perfil de regras, a pontuação-alvo e o modo (individual ou duplas).
 - Antes de entrar numa mesa, o jogador pode **ver as regras** (as diferenças em relação à Clássica). Ao entrar, as regras são aceitas e **não mudam mais** até o fim do jogo; o jogo salvo ("Continuar") retoma com as mesmas regras.
 - Uma mesa reúne também a **dificuldade** dos jogadores virtuais e a **aposta** (§14.6).
+- **Mesas multijogador** (§16) são abertas por **jogadores humanos** e aparecem na mesma lista, só quando a pesquisa por perto (botão de Wi-Fi) está ligada.
 - **Mesas dos jogadores virtuais:** em "Novo jogo", o app lista algumas mesas já abertas por jogadores virtuais, cada uma com **perfil da casa**, **modo**, **dificuldade**, **pontuação-alvo** (1.500, 2.000 ou 3.000) e os **personagens que a ocupam** (§14.5), tudo sorteado ao montar a lista. A mesa de **duplas** mostra os **três** personagens (adversário à esquerda, parceiro e adversário à direita) com um retrato pequeno de cada um; a de **individual**, o personagem adversário. Tocar numa mesa mostra as **regras da mesa** e os personagens; o jogador **inicia o jogo** ou volta. **O jogo começa com exatamente os personagens da mesa escolhida**: nada é sorteado de novo ao iniciar.
 - **Criar mesa:** o jogador escolhe dificuldade, modo, regras (**Clássica**, **Tranca Paulista** ou **Personalizada**) e pontuação-alvo (padrão 3.000). Ao criar, as vagas de parceiro e adversários são preenchidas por personagens sorteados nesse momento (§14.5) e abre a **tela da mesa**, a mesma das mesas abertas pelos jogadores virtuais, com os personagens sorteados e as regras. Ali o jogador **inicia o jogo**, **sorteia de novo** (novos personagens, mesma configuração, quantas vezes quiser) ou volta à criação. O jogo começa (distribuição das cartas, §3) com exatamente os personagens mostrados.
 - **Regras personalizadas do jogador:** cada jogador tem **um** perfil personalizado (origem: Clássica na primeira vez), que é o seu padrão ao escolher "Personalizada". Ele é editado no **Perfil** do jogador ("Meu padrão para regras personalizadas") ou em "Criar mesa": tocar em "Personalizada" sempre abre a tela "Personalizar regra" (mesmo já escolhida); ao salvar, volta-se à criação da mesa com "Personalizada" escolhida; ao voltar sem salvar, a escolha anterior é mantida. Os parâmetros editáveis são os de §14.2, exceto a pontuação-alvo, escolhida na mesa.
@@ -420,6 +424,7 @@ As moedas são só do jogo contra os jogadores virtuais: **nunca há compra de m
 - **Fim do jogo (§13):** os apostadores do lado **perdedor** perdem a aposta (já debitada); o **prêmio** é a soma das apostas dos perdedores, repartido entre os vencedores **na proporção da aposta de cada um**: cada vencedor recebe a **própria aposta** mais **prêmio × (aposta dele ÷ soma das apostas dos vencedores)**. O arredondamento para moedas inteiras é feito pelo **maior resto** (a moeda que sobra vai a quem tem a maior parte fracionária; empate: o primeiro na ordem dos assentos). A soma do que se recebe é sempre igual à soma das apostas.
 - **Exemplos** (todos apostam a mesma quantia A): no **individual**, o vencedor recebe **2A** (a sua e a do outro); em **duplas**, cada vencedor recebe **2A** (a sua mais metade das duas apostas perdidas). Com apostas diferentes (uso futuro), 2 vencedores com 100 e 300 e 2 perdedores com 200 e 200: prêmio 400; o de 100 recebe 100 + 100 = 200 e o de 300 recebe 300 + 300 = 600.
 - **Desistência (§13.1):** o jogador **perde a aposta**; nada é creditado.
+- **Mesa multijogador (§16):** valem as regras acima, com as diferenças de §16.13 (aposta de cada humano retida no próprio celular, herança da aposta, prêmio de quem desistiu e mesa em que sobra só o anfitrião). O saldo de cada humano é **local e não verificável** (risco de adulteração aceito por ora).
 - **Resultado em moedas:** o jogador vê, no fim do jogo, quanto ganhou ou perdeu (recebido menos a aposta), e as estatísticas mostram a soma desse resultado. O saldo e essa soma pertencem à **carteira**: zerar as estatísticas (contagem de jogos) não os altera. Se o aplicativo for fechado entre o débito da aposta e o primeiro salvamento do jogo, a aposta se perde (nunca se ganha sem apostar).
 
 ---
@@ -490,3 +495,95 @@ flowchart TD
 - **Ficar sem cartas** só é permitido quando leva a pegar o morto ou a bater (§8), e bater exige também que o lado tenha pelo menos uma canastra (§11.1). Sem morto disponível, o lado que ainda não pegou morto pode bater assim mesmo (§9.5). Como o motor só oferece jogadas válidas, os fluxogramas não mostram caminhos ilegais.
 - **3 vermelhos** que entram na mão por qualquer via (compra, morto ou reposição) são baixados e repostos automaticamente, inclusive em cadeia (§6.5, §9.4); não são uma ação do jogador.
 - **Duplas:** os parceiros compartilham os conjuntos e o morto do lado (§6.4, §9.1); o morto pego por um deles vale para a batida do outro (§11.1).
+
+---
+
+# **16. Multijogador Local**
+
+Modo opcional, **sem internet**: até 4 pessoas, cada uma no seu celular, na mesma mesa. Nada do jogo contra jogadores virtuais muda; o multijogador é uma opção a mais na lista de mesas (§14.4). As regras de jogo (§1 a §13) valem sem alteração; esta seção trata só de quem joga onde, do que cada celular vê e do que acontece quando alguém cai ou sai.
+
+### **16.1. Papéis**
+- **Anfitrião:** o celular que cria e sustenta a mesa. É a **autoridade**: só ele roda o jogo e conhece **todas** as cartas. Valida cada jogada com as jogadas legais (§4.3), aplica e transmite o resultado. O anfitrião também joga.
+- **Convidado:** o celular que entra numa mesa. Envia **apenas a jogada pretendida** e pedidos de sala (posição, nome, sair, desistir); nunca valida regra por conta própria. Jogada ilegal, fora da vez, duplicada ou de assento alheio é **recusada com o motivo**, sem alterar o jogo.
+- **Robô:** todo assento sem humano é de um jogador virtual (§14.5). Os personagens e a dificuldade são escolhidos pelo **anfitrião** antes do início; nada é sorteado de novo ao iniciar.
+- **Sucessores:** o 1º e o 2º convidados humanos na ordem de entrada **e** com a comunicação disponível; ver §16.10.
+- **Aparelhos e versões:** só participam aparelhos com o serviço de comunicação por proximidade do Google (Google Play Services). Versões diferentes do jogo **não jogam juntas**, e o app diz isso com clareza ("Versão do jogo diferente: atualize o app nos dois celulares").
+
+### **16.2. Mesa multijogador**
+- **Criar mesa multijogador (anfitrião):** o anfitrião define, **antes de publicar**: **nome da mesa**, **perfil de regras** (§14.3), **pontuação-alvo**, **aposta** (§14.6), **dificuldade** e os **personagens dos robôs** (§14.5). Depois escolhe a **própria posição** e **publica** a mesa. Esses dados (as regras da mesa) são enviados **uma única vez**, ao entrar na mesa, e não mudam até o fim do jogo; entrar é aceitar as regras (§14.4).
+- **Quatro posições:** toda mesa é criada com **4 assentos** (duas duplas, "Dupla 1" e "Dupla 2", com os parceiros em posições opostas, §1.1). Humanos podem ser **parceiros, adversários ou ambos**, conforme o assento escolhido. A exceção é a mesa reduzida (§16.3).
+- **Escolher a posição:** o jogador vê a mesa redonda com os assentos e sempre joga na **posição de baixo da tela**. Pode **rotacionar** a mesa para a esquerda ou a direita, e o seu marcador cai sempre num **assento vago** (o inicial também é um assento vago). O **nome** do jogador é editável e começa com o nome do perfil (§14.1); **não há foto** (medalhão com a inicial) e a **cor do baralho não trafega**: cada um vê o baralho na própria cor. Nomes repetidos entre humanos são permitidos. Confirmar a posição leva a **"Aguardando início do jogo"**, e a tela continua recebendo as atualizações: cada alteração (posição, nome, entrada, saída) é enviada ao anfitrião e **redistribuída a todos**. **Sair** está disponível o tempo todo.
+- **Quem inicia:** o anfitrião, quando quiser. Assentos vagos ficam com robôs.
+- **Saldo:** cada humano só entra se o saldo for maior ou igual à aposta (§14.6); caso contrário a mesa aparece como "saldo insuficiente".
+
+### **16.3. Mesa reduzida (1×1)**
+- A mesa é **sempre criada com 4 posições**. Enquanto houver **0 ou 1 convidado conectado** (além do anfitrião), o anfitrião pode **excluir duas posições**; a mesa vira **individual** (2 assentos, um **em frente** ao outro, §1.1). Com **2 ou mais convidados** conectados, a exclusão é **bloqueada**.
+- Com **1 convidado**, é um **1×1 entre dois humanos**: ao excluir as posições, o convidado vai **sempre para o assento do adversário**, em frente ao anfitrião, **qualquer que fosse o assento que escolheu**; a mudança aparece na tela dos dois. **Anfitrião sozinho:** o adversário é um robô.
+- O anfitrião pode **restaurar as 4 posições** antes do início; os assentos extras voltam vagos. A exclusão e a restauração só valem **antes do início**.
+- Numa mesa reduzida e cheia (2 de 2) ninguém mais entra. **Desistência no 1×1** entre humanos: §13.1 (o outro vence). **Queda de conexão** no 1×1: §16.8.
+- A mesa reduzida segue as regras do modo **individual** (§1.1, §14.4, §14.6).
+
+### **16.4. Informação visível e oculta**
+- **Cada celular recebe tudo o que é visível na mesa daquele assento:** a **própria mão**, o tamanho das mãos dos outros, o **lixo inteiro**, os jogos baixados dos dois lados, os 3 vermelhos, a **última jogada de cada jogador**, o placar, de quem é a vez e a situação dos mortos (pego ou não).
+- **Nunca** vai a um convidado: a **mão dos outros**, as **cartas do monte**, as **cartas dos mortos**, a **semente** do sorteio nem o estado completo do jogo. O que vai nas mensagens segue exatamente a vista de um jogador (§14.5: a mesma informação que um robô recebe).
+- **Única exceção:** o **1º e o 2º sucessores** (§16.10) recebem, e mantêm **atualizado o tempo todo**, o estado completo do jogo (inclusive mãos, monte, mortos e a semente), para assumir se o anfitrião cair ou desistir. Os demais convidados **nunca** recebem isso. Salvaguardas: o estado do sucessor vive **só em memória** (nunca em disco, registro ou tela), o app **nunca o exibe**, e ele é **descartado** quando o jogador deixa de ser sucessor ou o jogo termina.
+- O **token** de cada jogador (§16.5) só é conhecido pelo dono, pelo anfitrião e pelos sucessores.
+- **Endurecimento futuro (fora do escopo):** o estado do sucessor poderia ir **cifrado**, com a chave liberada só na passagem do cargo. Registrado como ideia, no mesmo espírito do risco das moedas.
+
+### **16.5. Identidade e reconexão**
+- Cada jogador recebe um **token** ao entrar. O token identifica o jogador (não o aparelho nem a conexão) e dá o direito de **reingressar no mesmo assento**.
+- **Todos** conhecem a identificação (id, nome e ordem de entrada) de todos os demais; o token não faz parte dela.
+- **Reingresso:** com o token certo, o jogador volta ao assento enquanto este **não foi substituído nem ocupado**. Token desconhecido ou de outro assento é recusado.
+- Cada mensagem tem **número de sequência**: mensagem duplicada ou atrasada é descartada e a perdida é reenviada, sem alterar o jogo.
+
+### **16.6. Ritmo e animações**
+- Cada jogada processada pelo anfitrião é enviada às telas, que apenas a **processam**. O jogo só **pára** quando precisa da decisão de um humano.
+- **Cada aparelho** executa a própria animação, na velocidade escolhida pelo seu jogador; **não há sincronização** de animação entre aparelhos. A vez de um humano só é **entregue a ele** depois de a animação do seu aparelho terminar.
+- **Sem limite de tempo** por jogada.
+- A mesa mostra o **indicador de vez** também para humanos remotos (nome e medalhão com a inicial).
+
+### **16.7. Entrada no meio do jogo**
+- Uma pessoa pode **ocupar o lugar de um robô** ou de quem saiu, desde que o **anfitrião permita** (ele aprova cada pedido). Quem entra herda o assento **exatamente como está** (mão, jogos e vez) e já entra jogando, como num jogo pausado que acaba de abrir.
+- **Aposta:** quem ocupa o lugar de **quem saiu** herda a aposta já retida, e **nada é debitado de novo**. Quem ocupa o lugar de um **robô** debita a aposta normalmente (§14.6; **a confirmar**) e a aposta virtual do robô deixa de existir; para isso o saldo deve ser maior ou igual à aposta.
+- A mesa em andamento aparece na lista com a marca **"jogo em andamento"** quando há assento ocupável: o da vez de quem caiu (§16.8, opção 3) ou um assento de robô que o anfitrião liberou.
+
+### **16.8. Queda de conexão**
+- O jogo **pausa quando chega a vez de quem caiu**: a mesa espera o **mesmo jogador**, e os demais são informados. O anfitrião escolhe entre três ações, e **todos são avisados** de cada ação dele:
+  1. **Aguardar o reingresso:** a tela de espera fecha quando o jogador reconecta e o jogo segue. Se ele **desistir**, o anfitrião é avisado, esta opção fica **desativada** e a opção 3 é ativada na hora.
+  2. **Substituir por um robô:** efeito **imediato**, enviado a todos; a jogada continua. O robô é o primeiro personagem ainda **não usado na mesa**, no nível da mesa.
+  3. **Recrutar outro jogador:** a mesa volta à lista com a marca **"jogo em andamento"**; o jogo fica **pausado para todos**, que são informados das ações do anfitrião; o anfitrião vê **"aguardando recrutamento"** e ainda pode **substituir por robô**. Quem entra (aprovado pelo anfitrião, §16.7) ocupa **exatamente o assento da vez** e já entra jogando.
+- O jogador que caiu pode **reingressar** (§16.5) enquanto o assento não for substituído nem ocupado.
+- Se quem caiu é o **anfitrião**: §16.10. No **1×1** entre humanos valem as mesmas três ações; o robô da opção 2 passa a ser o adversário.
+- **Aposta de quem foi substituído por robô** (opção 2): fica retida no assento, como na desistência (§16.9) (**a confirmar**).
+
+### **16.9. Desistência**
+- **Voluntária** (tecla Voltar do Android, ou bandeira e confirmação): o jogador é **substituído na hora por um robô** (primeiro personagem não usado, §16.8) e **perde a aposta**, que fica com o robô. A desistência encerra **só para quem desistiu**; o jogo segue para os demais.
+- **Prêmio do assento desistente:** se o **lado** desse assento **vencer**, o que caberia ao assento (§14.6) vai para o **outro humano da dupla**; se **não houver outro humano** que possa receber, vai para o **anfitrião** (dono da mesa). Se o lado perder, nada é pago.
+- **Mesa só com o anfitrião:** se todos os demais humanos desistirem, o anfitrião **leva todas as moedas** caso ele vença (o que cabe aos assentos que desistiram vai para ele). Se perder, mesmo para robôs, perde **só a quantia que apostou**.
+- **Anfitrião que desiste** pode **passar o cargo** (§16.10) a outro **humano** (nunca a robô); a desistência dele vira a de um jogador comum.
+- **No 1×1 entre dois humanos:** §13.1 (o outro vence e leva a aposta).
+
+### **16.10. Anfitrião e sucessão**
+- **Sucessores:** o **1º e o 2º** seguem a **ordem de entrada** e a **disponibilidade de comunicação** (quem está conectado e respondendo). Eles recebem o estado completo (§16.4) para poder assumir.
+- **Confirmação de jogada:** o anfitrião só considera uma jogada **confirmada** depois que o **1º sucessor confirmou o recebimento** da atualização, para uma queda abrupta não perder jogadas. Se o 1º sucessor não confirma dentro de um **tempo limite**, ele é marcado como indisponível e o **2º** passa a 1º. Sem sucessor disponível, o jogo **segue** e o anfitrião é avisado de que uma queda dele encerrará a mesa.
+- **Anfitrião cai ou desiste:** deixa de ser anfitrião. O **1º sucessor humano disponível assume sozinho** (ou o humano que o anfitrião que desiste escolher); **nunca um robô**. O escolhido é **avisado**. Ao assumir, o sucessor inicia o jogo a partir do estado recebido, **avisa a todos**, os convidados reconectam à mesa pelo token e o jogo **continua**. Se não houver humano para assumir, o **jogo termina** e a mesa fecha.
+- O antigo anfitrião, se voltar, **reingressa como jogador comum** (token).
+- O **"dono da mesa"** (§16.9, §16.13) é sempre o **anfitrião atual**.
+
+### **16.11. Próxima partida**
+- Ao fim de cada partida (§12), todos veem os pontos. O jogo segue para a próxima partida (§4.1) quando **todos os humanos conectados** tocaram **Continuar**, ou quando o **anfitrião força** o avanço. Robôs e desconectados não seguram a mesa.
+
+### **16.12. Salvamento e "Continuar"**
+- O **anfitrião não retoma como anfitrião**: ao desconectar ou desistir ele deixa de ser anfitrião. "Continuar" (início) pode aparecer para quem era anfitrião, mas ele volta à mesa como **jogador comum**, reingressando com o token.
+- O aparelho de um **jogador comum** guarda **só a sessão** (mesa, assento, token e nome), **nunca o jogo**. O aparelho que é **anfitrião ou sucessor** **não grava** o estado completo em disco para retomada.
+- A sessão multijogador e o jogo salvo contra robôs (§14) ficam em **espaços separados** e coexistem; "Continuar" mostra o que existir.
+
+### **16.13. Moedas e apostas na mesa multijogador**
+- A aposta vale **em grupo**, como em §14.6: cada humano aposta o valor da mesa, **debitado no próprio celular** ao começar; os robôs também apostam (virtualmente). O fim do jogo é pago pela fórmula de §14.6, calculada pelo anfitrião e enviada a cada humano.
+- **Assento de robô:** o que caberia a um assento ocupado por robô de origem **não é pago** (moeda virtual, §14.6). **Exceção:** o assento que era de um humano que **desistiu** (ou foi substituído, §16.8): a aposta dele **fica retida no robô**; se o lado vencer, o que caberia ao assento vai ao **outro humano da dupla** ou, na falta, ao **anfitrião** (§16.9).
+- **Herança** (§16.7): quem entra no lugar de quem saiu assume a aposta retida, sem novo débito; no lugar de um robô, debita (a confirmar).
+- **Mesa só com o anfitrião:** ver §16.9.
+- O saldo é **local e não verificável**; o código de apostas de grupo é isolado para endurecer depois.
+
+### **16.14. Estatísticas**
+- Os jogos multijogador contam nas estatísticas e no resultado em moedas de **cada** jogador, como os demais, marcados como multijogador.

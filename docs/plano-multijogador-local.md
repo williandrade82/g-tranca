@@ -1,6 +1,6 @@
 # Plano: multijogador local (até 4 pessoas, cada uma no seu celular, sem internet)
 
-Status: **proposta, aguardando respostas às perguntas da seção "Decisões abertas"**. Nenhum código foi escrito. Origem: `docs/plano-teamplay.md`.
+Status: **aprovado em 2026-10-20** (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário). **Etapa 1 feita** (aguardando revisão); N12 e N13 abaixo aguardam confirmação. Origem: `docs/plano-teamplay.md`.
 Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, código e `rules-auditor`. O jogo individual e o fluxo atual contra
 robôs **não mudam**; o multijogador é uma opção nova na tela de mesas disponíveis.
 
@@ -149,11 +149,13 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
 | N7 | **Modo da mesa multijogador.** | **Resolvida pelo usuário:** criada sempre com 4 posições; o anfitrião pode excluir duas se houver só um jogador conectado (ver "Mesa reduzida"). |
 | N10 | Mesa reduzida: "apenas um jogador conectado". | **Resolvida pelo usuário** (ver "Mesa reduzida"): 0 ou 1 convidado permite excluir; 2 ou mais bloqueia; o convidado vai ao assento do adversário. |
 | N11 | **Desistência num 1×1 entre dois humanos:** o hoje (§13.1 individual) dá a vitória ao outro lado; no grupo o robô assume. Qual vale aqui? | O **§13.1 do individual**: o outro humano vence e leva a aposta (não entra robô, pois não restaria jogo). Uma queda de conexão ainda pode ser **substituída por robô** pelo anfitrião ou aguardar. |
+| N12 | **Aposta de quem cai e é substituído por robô** (ação 2 de §16.8, sem desistir): perde a aposta como na desistência? | **Sim**: fica retida no assento (robô); se o jogador reingressar **antes** da substituição, nada se perde. |
+| N13 | **Entrar no lugar de um robô no meio do jogo** (§16.7): quem entra debita a aposta? | **Sim**, debita a aposta da mesa (saldo ≥ aposta) e a aposta virtual do robô some; no lugar de quem saiu, herda a retida. |
 | N8 | **"Continuar" e o jogo salvo local:** a sessão multijogador (mesa, assento, token, nome) convive com o slot do jogo salvo contra robôs? | **Slot separado**: um jogo salvo contra robôs e uma sessão multijogador podem coexistir; "Continuar" no início mostra o que existir, e o multijogador tenta reingressar pelo token. |
 | N9 | **Perfil de pontos da mesa vs. estatísticas:** o resultado de uma mesa multijogador conta nas estatísticas e no resultado em moedas de cada celular como hoje? | **Sim**, com o modo marcado como multijogador, sem mudar as contas atuais. |
 
 ## Etapas (um commit por etapa; pare para revisão ao fim de cada uma)
-1. **`definition.md` e `docs/telas.md`:** nova seção de multijogador (§14.7 ou §16), reescrita de §13.1 e §14.6 para o jogo em grupo (individual
+1. **`definition.md` (§16 novo, §13.1, §14.6, §5.6, §14.4) e `docs/telas.md` (3.13 a 3.15, modais, glossário). — FEITA** (itens "a confirmar" marcados em §16.7, §16.8 e §16.13): nova seção de multijogador (§14.7 ou §16), reescrita de §13.1 e §14.6 para o jogo em grupo (individual
    intacto), a exceção da informação oculta para os sucessores (regra de §5.6/§14), e as telas e modais novos (botão Wi-Fi, linha da mesa
    multijogador, criar mesa, escolha de posição, sala de espera, queda/recrutamento, vez remota). Nenhum código. *(android-ui-dev para telas,
    rules-engine-dev para o texto das regras)*
