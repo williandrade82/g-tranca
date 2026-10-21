@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 1
+const val PROTOCOL_VERSION: Int = 2
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
@@ -44,6 +44,8 @@ data class PlayerInfo(
     val joinOrder: Int,
     val seat: Seat? = null,
     val isHost: Boolean = false,
+    /** §16.2 confirmou a posição ("Aguardando início do jogo"); o anfitrião já entra confirmado. */
+    val confirmed: Boolean = false,
 )
 
 /**
@@ -155,7 +157,7 @@ data class SeatView(
     }
 }
 
-/** Conteúdo de uma mensagem. Convidado → anfitrião: [Hello], sala, [ProposeAction], [ContinueRound]. O resto vai do anfitrião. */
+/** Conteúdo de uma mensagem. Convidado → anfitrião: [Hello], sala, [ProposeAction], [Resign]. O resto vai do anfitrião. */
 @Serializable
 sealed interface Payload
 
@@ -174,10 +176,25 @@ data class Welcome(val token: String, val you: Int, val rules: TableRules, val r
 @SerialName("rejected")
 data class Rejected(val message: String) : Payload
 
-/** Convidado escolhe um assento vago (§16.2). */
+/** Convidado troca para um assento **vago** (§16.2); ao entrar ele já ocupa o primeiro livre. */
 @Serializable
 @SerialName("chooseSeat")
 data class ChooseSeat(val seat: Seat) : Payload
+
+/** §16.2 convidado confirma a posição ("Aguardando início do jogo"). */
+@Serializable
+@SerialName("confirmSeat")
+data object ConfirmSeat : Payload
+
+/** §16.9 convidado desiste; aceito a qualquer momento depois do início (não depende da vez). */
+@Serializable
+@SerialName("resign")
+data object Resign : Payload
+
+/** §16.9 o jogador do [seat] desistiu e um robô assumiu o assento (aviso público a todos). */
+@Serializable
+@SerialName("seatToRobot")
+data class SeatTakenByRobot(val seat: Seat) : Payload
 
 /** Convidado muda o nome (§16.2). */
 @Serializable
@@ -214,10 +231,21 @@ data class RoundStarted(val roundNumber: Int) : Payload
 @SerialName("played")
 data class Played(val roundNumber: Int, val event: PublicEvent, val redThrees: List<RedThreeLaid> = emptyList()) : Payload
 
-/** §12 a partida foi pontuada. */
+/**
+ * §16.11 pacote de fim de partida, enviado **só** ao convidado do assento de [view]: o detalhamento §12 ([record], só
+ * contagens e pontos), os [totals], o vencedor do jogo se ele terminou ([gameWinner], §13) e a mesa final vista desse
+ * assento (só a mão dele). Nada de mãos alheias, monte, mortos ou semente (§16.4). O convidado conduz sozinho as telas de
+ * resultado; o que chegar da partida seguinte fica guardado até ele avançar ([GuestSession.advance]).
+ */
 @Serializable
-@SerialName("roundScored")
-data class RoundScored(val roundNumber: Int) : Payload
+@SerialName("roundOver")
+data class RoundOver(
+    val roundNumber: Int,
+    val record: RoundRecord,
+    val totals: List<Int>,
+    val gameWinner: Side? = null,
+    val view: SeatView,
+) : Payload
 
 /** §13 o jogo terminou. */
 @Serializable
@@ -233,8 +261,3 @@ data class ProposeAction(val requestId: Long, val action: Action) : Payload
 @Serializable
 @SerialName("actionRejected")
 data class ActionRejected(val requestId: Long, val reason: RejectReason, val ruleError: String? = null) : Payload
-
-/** §16.11 o convidado tocou "Continuar" no fim da partida [roundNumber]. */
-@Serializable
-@SerialName("continue")
-data class ContinueRound(val roundNumber: Int) : Payload

@@ -2,6 +2,7 @@ package com.gtranca.game
 
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.model.RedThreeLaid
+import com.gtranca.engine.model.RoundRecord
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 
@@ -25,8 +26,16 @@ sealed interface GameEvent {
         val redThrees: List<RedThreeLaid>,
     ) : GameEvent
 
-    /** A partida [roundNumber] terminou e foi pontuada (§12). */
-    data class RoundScored(val roundNumber: Int) : GameEvent
+    /**
+     * A partida [roundNumber] terminou e foi pontuada (§12): o detalhamento [record] (só contagens e pontos), os
+     * [totals] depois dela e, se o jogo terminou (§13), o [gameWinner].
+     */
+    data class RoundScored(
+        val roundNumber: Int,
+        val record: RoundRecord,
+        val totals: List<Int>,
+        val gameWinner: Side?,
+    ) : GameEvent
 
     /** O jogo terminou (§13); [resigned] se foi por desistência (§13.1). */
     data class GameFinished(val winner: Side, val resigned: Boolean) : GameEvent

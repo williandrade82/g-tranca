@@ -32,8 +32,8 @@ class SessionTest {
 
     @Test
     fun `§16_1 versao diferente e reconhecida antes de ler o conteudo`() {
-        val bytes = ProtocolCodec(version = 2).encode(1, Hello("Ana"))
-        ProtocolCodec().decode(bytes) shouldBe Decoded.VersionMismatch(2)
+        val bytes = ProtocolCodec(version = PROTOCOL_VERSION + 1).encode(1, Hello("Ana"))
+        ProtocolCodec().decode(bytes) shouldBe Decoded.VersionMismatch(PROTOCOL_VERSION + 1)
         // Mesmo com um tipo de mensagem que esta versão não conhece.
         ProtocolCodec().decode("""{"v":9,"seq":1,"p":{"t":"novidade"}}""".encodeToByteArray()) shouldBe Decoded.VersionMismatch(9)
         ProtocolCodec().decode("lixo".encodeToByteArray()) shouldBe Decoded.Malformed
@@ -44,7 +44,7 @@ class SessionTest {
     @Test
     fun `§16_5 duplicada e atrasada sao descartadas e a adiantada espera as anteriores`() {
         val link = SequencedLink()
-        fun e(seq: Long) = Envelope(PROTOCOL_VERSION, seq, ContinueRound(seq.toInt()))
+        fun e(seq: Long) = Envelope(PROTOCOL_VERSION, seq, Rename("n$seq"))
         link.accept(e(1)).map { it.seq } shouldBe listOf(1L)
         link.accept(e(1)).shouldBeEmpty()
         link.accept(e(3)).shouldBeEmpty()
@@ -79,7 +79,7 @@ class SessionTest {
     }
 
     @Test
-    fun `§16_2 §16_5 sala com token so para o dono, assento vago e nomes repetidos`() = runTest {
+    fun `§16_2 §16_5 sala com token so para o dono, assento automatico, troca so para vago e nomes repetidos`() = runTest {
         val network = MemoryNetwork()
         val sent = mutableListOf<Delivery>()
         network.tap = { sent += it; listOf(it) }
@@ -94,16 +94,19 @@ class SessionTest {
         ana.rules.value shouldBe rules
         ana.token shouldBe "token-1-secreto"
         ana2.token shouldBe "token-2-secreto"
+        // §16.2 cada um ocupa automaticamente o primeiro assento livre.
+        ana.roster.value.map { it.name to it.seat } shouldBe listOf("Anfitrião" to Seat(0), "Ana" to Seat(1), "Ana" to Seat(2))
 
+        // §16.2 só troca para assento vago: nunca com outro jogador nem para o do anfitrião.
         ana.chooseSeat(Seat(2))
+        ana2.chooseSeat(Seat(0))
         advanceUntilIdle()
-        ana2.chooseSeat(Seat(2)) // ocupado
-        ana2.chooseSeat(Seat(0)) // do anfitrião
+        ana.roster.value.map { it.seat } shouldBe listOf(Seat(0), Seat(1), Seat(2))
+        ana.chooseSeat(Seat(3))
         advanceUntilIdle()
-        ana2.roster.value.first { it.id == ana2.playerId }.seat shouldBe null
-        ana2.chooseSeat(Seat(1))
+        ana2.chooseSeat(Seat(3)) // já ocupado
         advanceUntilIdle()
-        ana.roster.value.map { it.name to it.seat } shouldBe listOf("Anfitrião" to Seat(0), "Ana" to Seat(2), "Ana" to Seat(1))
+        ana.roster.value.map { it.name to it.seat } shouldBe listOf("Anfitrião" to Seat(0), "Ana" to Seat(3), "Ana" to Seat(2))
         ana.roster.value.map { it.joinOrder } shouldBe listOf(0, 1, 2)
 
         // O token de cada um só vai a ele mesmo (no Welcome); a sala nunca o traz.
@@ -113,12 +116,68 @@ class SessionTest {
             listOf("token-1-secreto", "token-2-secreto").filter { it != own }.forEach { text shouldNotContain it }
         }
 
-        host.startGame() shouldBe mapOf(Seat(2) to ana.playerId, Seat(1) to ana2.playerId)
+        ana.confirmSeat()
+        ana2.confirmSeat()
         advanceUntilIdle()
+        host.roster.value.all { it.confirmed } shouldBe true
+        host.startGame() shouldBe mapOf(Seat(3) to ana.playerId, Seat(2) to ana2.playerId)
+        advanceUntilIdle()
+        host.droppedAtStart.value.shouldBeEmpty()
         ana.status.value shouldBe GuestStatus.Playing
         // Depois do início ninguém mais entra (entrada no meio do jogo: etapa 4).
         val late = GuestSession(network.transport(), "Caio")
         runCatching { late.join(sessionScope, "m") }.isFailure shouldBe true // a mesa deixou de ser anunciada
         late.status.value.shouldBeInstanceOf<GuestStatus.Connecting>()
+    }
+
+    @Test
+    fun `§16_2 quem esta na mesa ocupa o assento e a quinta pessoa recebe mesa cheia`() = runTest {
+        val network = MemoryNetwork()
+        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
+        host.open(sessionScope)
+        val guests = (1..3).map { GuestSession(network.transport(), "G$it").also { g -> g.join(sessionScope, "m"); advanceUntilIdle() } }
+        guests.map { it.status.value } shouldBe List(3) { GuestStatus.Lobby }
+        host.roster.value.map { it.seat } shouldBe listOf(Seat(0), Seat(1), Seat(2), Seat(3))
+        // O último a entrar não tem para onde trocar.
+        guests.last().chooseSeat(Seat(1))
+        advanceUntilIdle()
+        host.roster.value.last().seat shouldBe Seat(3)
+        // Ninguém confirmou ainda, mas a mesa está cheia.
+        val fifth = GuestSession(network.transport(), "Quinto").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        fifth.status.value shouldBe GuestStatus.Refused("Mesa cheia.")
+    }
+
+    @Test
+    fun `§16_2 nome em branco vira Jogador N`() = runTest {
+        val network = MemoryNetwork()
+        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
+        host.open(sessionScope)
+        val a = GuestSession(network.transport(), "   ").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        val b = GuestSession(network.transport(), "Bia").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        b.rename(" ")
+        advanceUntilIdle()
+        host.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Jogador ${a.playerId}", "Jogador ${b.playerId}")
+    }
+
+    @Test
+    fun `§16_2 quem nao confirmou a posicao e desconectado no inicio e o anfitriao e avisado`() = runTest {
+        val network = MemoryNetwork()
+        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
+        host.open(sessionScope)
+        val ok = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        val late = GuestSession(network.transport(), "Bia").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        ok.confirmSeat()
+        advanceUntilIdle()
+        host.startGame() shouldBe mapOf(Seat(1) to ok.playerId)
+        advanceUntilIdle()
+        host.droppedAtStart.value.map { it.name to it.id } shouldBe listOf("Bia" to late.playerId)
+        late.status.value shouldBe GuestStatus.Closed
+        ok.status.value shouldBe GuestStatus.Playing
+        ok.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Ana")
     }
 }

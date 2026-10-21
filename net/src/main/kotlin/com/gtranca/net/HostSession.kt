@@ -16,8 +16,11 @@ interface HostGamePort {
     /** Jogada do convidado no [seat] para o pedido [requestId]; `null` se aceita, ou a recusa (sem alterar o jogo). */
     fun propose(seat: Seat, requestId: Long, action: Action): ActionRejected?
 
-    /** §16.11 o humano do [seat] tocou "Continuar" no fim da partida [roundNumber]. */
-    fun continueRound(seat: Seat, roundNumber: Int)
+    /**
+     * §16.9 o convidado do [seat] desistiu (a qualquer momento depois do início, na vez de qualquer um). Devolve se a
+     * desistência foi aplicada.
+     */
+    fun resign(seat: Seat): Boolean
 }
 
 /**
@@ -49,7 +52,15 @@ class HostSession(
     @Volatile
     var game: HostGamePort? = null
 
-    private val _roster = MutableStateFlow(listOf(PlayerInfo(id = 0, name = hostName, joinOrder = 0, seat = HOST_SEAT, isHost = true)))
+    private val _roster = MutableStateFlow(listOf(PlayerInfo(id = 0, name = hostName, joinOrder = 0, seat = HOST_SEAT, isHost = true, confirmed = true)))
+
+    private val _droppedAtStart = MutableStateFlow<List<PlayerInfo>>(emptyList())
+
+    /**
+     * §16.2 aviso ao anfitrião: quem ainda não tinha confirmado a posição quando o jogo começou e foi desconectado (o
+     * assento ficou com robô). Fica disponível para a interface mostrar depois.
+     */
+    val droppedAtStart: StateFlow<List<PlayerInfo>> = _droppedAtStart.asStateFlow()
 
     /** Sala atual (id, nome, ordem de entrada e assento de cada um; sem tokens). */
     val roster: StateFlow<List<PlayerInfo>> = _roster.asStateFlow()
@@ -68,8 +79,10 @@ class HostSession(
         mutex.withLock {
             check(!started) { "O jogo já começou" }
             started = true
-            // Quem entrou e não escolheu assento não joga.
-            guests.values.filter { it.player != null && it.player!!.seat == null }.forEach { removeLocked(it) }
+            // §16.2 quem não confirmou a posição é desconectado, e o anfitrião é avisado.
+            val unconfirmed = guests.values.filter { it.player?.confirmed == false }.toList()
+            _droppedAtStart.value = unconfirmed.mapNotNull { it.player }
+            unconfirmed.forEach { removeLocked(it) }
             transport.stopAdvertising()
             broadcastLocked(GameStarted(_roster.value))
         }
@@ -82,6 +95,14 @@ class HostSession(
         mutex.withLock {
             val guest = guests.values.firstOrNull { it.player?.seat == seat } ?: return
             sendLocked(guest, ViewUpdate(view))
+        }
+    }
+
+    /** Envia [payload] **só** ao convidado sentado no [seat] (ex.: o pacote de fim de partida, §16.11). */
+    suspend fun sendTo(seat: Seat, payload: Payload) {
+        mutex.withLock {
+            val guest = guests.values.firstOrNull { it.player?.seat == seat } ?: return
+            sendLocked(guest, payload)
         }
     }
 
@@ -116,11 +137,26 @@ class HostSession(
             return
         }
         when (payload) {
+            // §16.2 só para um assento vago (nunca troca com outro jogador); o próprio assento é aceito sem mudança.
             is ChooseSeat -> if (!started) {
-                if (isFreeLocked(payload.seat)) updatePlayerLocked(guest, player.copy(seat = payload.seat)) else broadcastLocked(RosterUpdate(_roster.value))
+                if (payload.seat == player.seat || isFreeLocked(payload.seat)) {
+                    updatePlayerLocked(guest, player.copy(seat = payload.seat))
+                } else {
+                    broadcastLocked(RosterUpdate(_roster.value))
+                }
             }
-            is Rename -> if (payload.name.isNotBlank()) updatePlayerLocked(guest, player.copy(name = payload.name.trim()))
+            ConfirmSeat -> if (!started && player.seat != null) updatePlayerLocked(guest, player.copy(confirmed = true))
+            is Rename -> updatePlayerLocked(guest, player.copy(name = nameOrDefault(payload.name, player.id)))
             Leave -> if (!started) removeLocked(guest)
+            // §16.9 aceita a qualquer momento depois do início: o robô assume, todos são avisados e quem desistiu sai.
+            Resign -> {
+                val seat = player.seat
+                if (started && seat != null && game?.resign(seat) == true) {
+                    removeLocked(guest)
+                    // No 1×1 entre dois humanos não entra robô: o fim de jogo (§13.1) vai a todos pelo jogo.
+                    if (rules.mode.seatCount > 2) broadcastLocked(SeatTakenByRobot(seat))
+                }
+            }
             is ProposeAction -> {
                 val seat = player.seat
                 val port = game
@@ -131,7 +167,7 @@ class HostSession(
                 }
                 if (rejection != null) sendLocked(guest, rejection)
             }
-            is ContinueRound -> player.seat?.let { seat -> if (started) game?.continueRound(seat, payload.roundNumber) }
+
             else -> Unit
         }
     }
@@ -141,7 +177,9 @@ class HostSession(
         val seats = rules.mode.seatCount
         if (_roster.value.size >= seats) return refuseLocked(guest, "Mesa cheia.")
         val id = nextId++
-        val info = PlayerInfo(id = id, name = hello.name.trim().ifBlank { "Jogador $id" }, joinOrder = id)
+        // §16.2 ocupa automaticamente o primeiro assento livre.
+        val seat = (0 until seats).map(::Seat).first(::isFreeLocked)
+        val info = PlayerInfo(id = id, name = nameOrDefault(hello.name, id), joinOrder = id, seat = seat)
         val token = newToken()
         guest.player = info
         guest.token = token
@@ -179,6 +217,9 @@ class HostSession(
     private suspend fun sendLocked(guest: Guest, payload: Payload) {
         transport.send(guest.endpoint, codec.encode(guest.link.nextSeq(), payload))
     }
+
+    /** §16.2 nome em branco vira "Jogador N" (N = id do jogador na mesa). */
+    private fun nameOrDefault(name: String, id: Int): String = name.trim().ifBlank { "Jogador $id" }
 
     companion object {
         /** §16.2 o anfitrião ocupa sempre a posição 1. */

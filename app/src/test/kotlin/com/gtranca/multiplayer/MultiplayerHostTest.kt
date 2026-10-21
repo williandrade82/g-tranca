@@ -15,6 +15,9 @@ import com.gtranca.game.Stage
 import com.gtranca.net.ActionRejected
 import com.gtranca.net.Delivery
 import com.gtranca.net.GameFinished
+import com.gtranca.net.GuestStatus
+import com.gtranca.net.RoundOver
+import com.gtranca.net.SeatTakenByRobot
 import com.gtranca.net.MemoryNetwork
 import com.gtranca.net.ProtocolCodec
 import com.gtranca.net.RejectReason
@@ -27,6 +30,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -262,7 +266,126 @@ class MultiplayerHostTest {
             guest.view.value!!.totals shouldBe match.totals
         }
     }
-}
+
+    /**
+     * §16.11 cada convidado recebe o pacote de fim de partida (só o que é visível a ele) e conduz as telas sozinho: o
+     * anfitrião distribui a próxima partida sem esperar quem ainda está nas telas, e o convidado guarda a partida nova
+     * até avançar. O jogo só espera a jogada do jogador da vez; o resultado é o mesmo da partida local.
+     */
+    @Test
+    fun `§16_11 o jogo nao espera o convidado nas telas de resultado`() = runTest {
+        val seed = 61L
+        val local = reference(GameMode.DUPLAS, seed, 1000, StandardTestDispatcher(testScheduler))
+        local.run()
+
+        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)))
+        val slow = table.guests.getValue(Seat(2))
+        val packages = ConcurrentHashMap<Seat, MutableList<RoundOver>>()
+        table.guests.forEach { (seat, guest) ->
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                guest.roundOver.collect { if (it != null) packages.getOrPut(seat) { mutableListOf() } += it }
+            }
+        }
+        // No meio das telas da partida 1 do convidado lento, o anfitrião já distribuiu a 2 (e o jogo foi até a vez de quem
+        // falta jogar), mas o lento continua vendo a mesa final da 1: a partida nova está guardada.
+        var slowStillOnResults: Boolean? = null
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
+            slow.roundOver.first { it?.roundNumber == 1 }
+            delay(30_000)
+            slowStillOnResults = table.host.controller.currentMatch.roundNumber == 2 &&
+                slow.roundOver.value?.roundNumber == 1 && slow.view.value!!.roundNumber == 1
+        }
+        driveGuests(table, seed, advanceDelay = { if (it == Seat(2)) 60_000L else 0L })
+        driveHost(table, seed)
+        table.host.run()
+        advanceUntilIdle()
+
+        val match = table.host.controller.currentMatch
+        table.host.controller.state.value.stage shouldBe Stage.GAME_OVER
+        match.history shouldBe local.currentMatch.history
+        match.totals shouldBe local.currentMatch.totals
+        (match.history.size > 1) shouldBe true
+        slowStillOnResults shouldBe true
+        table.guests.keys.forEach { seat ->
+            val received = packages.getValue(seat)
+            received.map { it.roundNumber } shouldBe match.history.map { it.number }
+            received.map { it.record } shouldBe match.history
+            received.last().gameWinner shouldBe match.winner
+            received.dropLast(1).all { it.gameWinner == null } shouldBe true
+            // A mesa final do pacote é a do próprio assento.
+            received.all { it.view.seat == seat && it.view.legal.isEmpty() } shouldBe true
+            table.guests.getValue(seat).view.value!!.stage shouldBe TableStage.GAME_OVER
+        }
+    }
+
+    /**
+     * §16.9 desistência do convidado: aceita a qualquer momento (na vez dele e fora dela); um robô assume na hora, todos
+     * são avisados, o jogo segue até o fim para os demais e quem desistiu sai (derrota por desistência, §13.1).
+     */
+    @Test
+    fun `§16_9 convidado desiste na vez e fora dela e o robo assume`() = runTest {
+        val seed = 71L
+        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)))
+        val controller = table.host.controller
+        val notices = ConcurrentHashMap<Seat, MutableList<SeatTakenByRobot>>()
+        table.guests.forEach { (seat, guest) ->
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                guest.gameEvents.collect { if (it is SeatTakenByRobot) notices.getOrPut(seat) { mutableListOf() } += it }
+            }
+        }
+        val game = launch { table.host.run() }
+        advanceUntilIdle()
+        val hostBot = testBot(seed, Seat(0))
+        while (controller.currentMatch.currentRound.currentSeat == Seat(0)) {
+            val s = controller.stateOf(Seat(0)).value
+            controller.submit(Seat(0), hostBot.chooseAction(s.view, s.humanLegal), s.humanRequestId)
+            advanceUntilIdle()
+        }
+        val onTurn = controller.currentMatch.currentRound.currentSeat
+        val offTurn = table.guests.keys.first { it != onTurn }
+        val stays = table.guests.keys.single { it != onTurn && it != offTurn }
+        (controller.stateOf(onTurn).value.humanRequestId > 0L) shouldBe true
+
+        table.guests.getValue(offTurn).resign()
+        table.guests.getValue(onTurn).resign()
+        advanceUntilIdle()
+        table.host.resignedSeats shouldBe setOf(onTurn, offTurn)
+        table.guests.getValue(onTurn).status.value shouldBe GuestStatus.Resigned
+        table.guests.getValue(offTurn).status.value shouldBe GuestStatus.Resigned
+        notices.getValue(stays).map { it.seat }.toSet() shouldBe setOf(onTurn, offTurn)
+        table.hostSession.roster.value.map { it.seat }.toSet() shouldBe setOf(Seat(0), stays)
+        // A vez de quem desistiu passou ao robô, que jogou sem esperar ninguém.
+        controller.stateOf(onTurn).value.humanRequestId shouldBe 0L
+
+        driveGuests(table, seed, guests = mapOf(stays to table.guests.getValue(stays)))
+        driveHost(table, seed)
+        game.join()
+        advanceUntilIdle()
+        controller.state.value.stage shouldBe Stage.GAME_OVER
+        controller.state.value.resigned shouldBe false
+        table.guests.getValue(stays).view.value!!.stage shouldBe TableStage.GAME_OVER
+    }
+
+    /** §16.3, §16.9, §13.1 no 1×1 entre dois humanos não há robô: quem desiste perde e o outro vence. */
+    @Test
+    fun `§16_9 §13_1 desistencia no 1x1 entre humanos da a vitoria ao outro`() = runTest {
+        val seed = 81L
+        val table = openTable(GameMode.INDIVIDUAL, seed, listOf(Seat(1)))
+        val finished = mutableListOf<GameFinished>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            table.host.controller.events.collect { if (it is GameEvent.GameFinished) finished += GameFinished(it.winner, it.resigned) }
+        }
+        val game = launch { table.host.run() }
+        advanceUntilIdle()
+        table.guests.getValue(Seat(1)).resign()
+        advanceUntilIdle()
+        game.join()
+        val state = table.host.controller.state.value
+        state.stage shouldBe Stage.GAME_OVER
+        state.resigned shouldBe true
+        state.winner shouldBe GameMode.INDIVIDUAL.sideOf(Seat(0))
+        finished shouldBe listOf(GameFinished(GameMode.INDIVIDUAL.sideOf(Seat(0)), resigned = true))
+    }}
 
 private val forbiddenKeys = setOf("seed", "stock", "mortos", "hands", "dealReplacements", "currentRound", "match")
 
@@ -304,7 +427,7 @@ private fun roundOfMessage(root: JsonObject): Int? {
     val p = root["p"]?.jsonObject ?: return null
     return when (p["t"]?.jsonPrimitive?.content) {
         "view" -> p["view"]!!.jsonObject["roundNumber"]!!.jsonPrimitive.int
-        "played" -> p["roundNumber"]!!.jsonPrimitive.int
+        "played", "roundOver" -> p["roundNumber"]!!.jsonPrimitive.int
         else -> null
     }
 }

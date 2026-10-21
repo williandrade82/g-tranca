@@ -401,7 +401,8 @@ class GameController(
                 if (resigned) return
                 val scoredRound = match.roundNumber
                 match = match.finishRound()
-                _events.tryEmit(GameEvent.RoundScored(scoredRound))
+                lastScored = scoredRound to match.currentRound
+                _events.tryEmit(GameEvent.RoundScored(scoredRound, match.history.last(), match.totals, match.winner))
                 if (match.isOver) {
                     match.winner?.let { _events.tryEmit(GameEvent.GameFinished(it, resigned = false)) }
                     publishLocked(Stage.GAME_OVER)
@@ -505,15 +506,32 @@ class GameController(
         return (RoundEngine.validate(round, seat, action, match.rules) as? RuleResult.Failure)?.error
     }
 
+    /** Última partida pontuada (número e a partida encerrada), para a vista de fim de partida de cada assento (§16.11). */
+    @Volatile
+    private var lastScored: Pair<Int, RoundState>? = null
+
     /**
-     * §13.1 desistência do humano: o jogo termina imediatamente, o outro lado vence e a partida em andamento não
+     * §16.11 vista do [seat] na partida [roundNumber] já encerrada (a mesa final, só com a mão dele), mesmo que a próxima
+     * já tenha sido distribuída; `null` se essa não é a última partida pontuada.
+     */
+    fun roundEndViewOf(seat: Seat, roundNumber: Int): PlayerView? {
+        val (number, round) = lastScored ?: return null
+        return if (number == roundNumber) round.viewFor(seat, match.rules) else null
+    }
+
+    /** §13.1 desistência do humano deste aparelho: [resign] do [viewerSeat] (o jogo local de sempre). */
+    fun resign(): Boolean = resign(viewerSeat)
+
+    /**
+     * §13.1 desistência do humano do [seat]: o jogo termina imediatamente, o outro lado vence e a partida em andamento não
      * é pontuada (os totais ficam como estavam). Publica [Stage.GAME_OVER] e encerra o laço, inclusive se um bot
      * estiver pensando (a decisão dele é descartada). Devolve `false` se o jogo já tinha terminado.
      */
-    fun resign(): Boolean {
+    fun resign(seat: Seat): Boolean {
+        config.mode.requireSeat(seat)
         val accepted = synchronized(lock) {
             if (match.isOver || resigned) return@synchronized false
-            resignedWinner = config.mode.sides.first { it != config.mode.sideOf(viewerSeat) }
+            resignedWinner = config.mode.sides.first { it != config.mode.sideOf(seat) }
             awaitingNextRound.set(false)
             awaitingPresentation.set(null)
             // Sob a trava, `match` não está no meio de uma ação nem de uma pontuação: os totais e o histórico são

@@ -57,7 +57,7 @@ internal suspend fun TestScope.openTable(
         GuestSession(transport, "Convidado ${seat.index}").also { it.join(scope, "mesa-1") }
     }
     advanceUntilIdle()
-    guests.forEach { (seat, guest) -> guest.chooseSeat(seat) }
+    guests.forEach { (seat, guest) -> guest.chooseSeat(seat); guest.confirmSeat() }
     advanceUntilIdle()
     val seats = hostSession.startGame().keys
     advanceUntilIdle()
@@ -69,20 +69,31 @@ internal suspend fun TestScope.openTable(
     return TestTable(network, hostSession, host, guests, endpoints)
 }
 
-/** Cada convidado joga o que o bot do assento jogaria (mesma semente) e toca "Continuar" no fim de cada partida. */
+/**
+ * Cada convidado joga o que o bot do assento jogaria (mesma semente) e avança as próprias telas de resultado quando recebe
+ * o pacote de fim de partida (§16.11); [advanceDelay] simula quem demora nessas telas (o jogo não espera por ele).
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
-internal fun TestScope.driveGuests(table: TestTable, seed: Long) {
-    table.guests.forEach { (seat, guest) ->
+internal fun TestScope.driveGuests(
+    table: TestTable,
+    seed: Long,
+    advanceDelay: (Seat) -> Long = { 0L },
+    guests: Map<Seat, GuestSession> = table.guests,
+) {
+    guests.forEach { (seat, guest) ->
         val driver = testBot(seed, seat)
         backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
+            guest.roundOver.collect { over ->
+                if (over != null) {
+                    advanceDelay(seat).takeIf { it > 0 }?.let { kotlinx.coroutines.delay(it) }
+                    guest.advance()
+                }
+            }
+        }
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
             var answered = 0L
-            var continued = 0
             guest.view.collect { view ->
                 if (view == null) return@collect
-                if (view.stage == TableStage.ROUND_OVER && continued < view.roundNumber) {
-                    continued = view.roundNumber
-                    guest.continueRound()
-                }
                 if (view.legal.isNotEmpty() && view.requestId > answered) {
                     answered = view.requestId
                     val rules = guest.rules.value!!.rules
