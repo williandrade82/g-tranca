@@ -21,6 +21,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DebugCrashReport.install(this)
+        if (savedInstanceState == null) DebugCrashReport.showPending(this)
         // Cria os efeitos sonoros fora da thread principal, antes de o primeiro ser tocado.
         lifecycleScope.launch(Dispatchers.Default) { sound.warmUp() }
         // Todas as telas têm fundo verde escuro: ícones claros nas barras do sistema.
