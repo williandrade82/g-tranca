@@ -172,11 +172,19 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
    repasse da aposta (`GroupBetLedger`), passagem de anfitrião e sucessão com ack (tudo na JVM, relógio virtual). *(net-comm-dev)*
 5. **Transporte real no Android — FEITA:** Nearby `P2P_STAR`, permissões nas três faixas de API, descoberta e anúncio; roteiro de teste em 2 a 4 celulares reais. *(net-comm-dev)*
    Em `app/…/net/nearby/` (`NearbyTransport` sobre a interface `NearbyApi`, testada na JVM com um Nearby falso; `GmsNearbyApi` é a real;
-   `MultiplayerAccess`/`MultiplayerAccessGate` são o ponto de entrada das telas). Achados conferidos no AAR `play-services-nearby` 19.5.1:
-   payload BYTES até 1 047 552 bytes (a maior mensagem medida numa partida, `SuccessorState`, tem ~12 KB: sem fragmentação); o AAR não
-   declara permissões (todas no nosso manifesto); não há como atualizar o anúncio: trocar os dados = parar e anunciar de novo, sem derrubar
-   as conexões (o transporte só reanuncia se os bytes mudaram, para a mesa não "sumir" à toa da busca dos sucessores); existe `setLowPower`
-   na busca e no anúncio (não usado: validar nos celulares antes). O anúncio vai binário no `endpointInfo` (teto conservador de 100 bytes).
+   `MultiplayerAccess`/`MultiplayerAccessGate` são o ponto de entrada das telas).
+   - **Conferido no AAR** `play-services-nearby` 19.5.1: payload BYTES até 1 047 552 bytes (a maior mensagem medida numa partida,
+     `SuccessorState`, tem ~12 KB: sem fragmentação); o AAR não declara permissões (todas no nosso manifesto); não há método para
+     atualizar o anúncio (trocar os dados = parar e anunciar de novo; o transporte só reanuncia se os bytes mudaram, para a mesa não
+     "sumir" à toa da busca dos sucessores); existe `setLowPower` na busca e no anúncio (não usado).
+   - **Conferido na documentação** (atualizada em 10/06/2026): lista de permissões; `ACCESS_LOCAL_NETWORK` obrigatória no Android 17 com
+     `targetSdk` 37 (o nosso); a documentação limita a localização à API 31, aqui ela vai até a 32 (superconjunto); P2P_STAR permite
+     anunciar e procurar ao mesmo tempo.
+   - **A validar no celular:** parar e reanunciar não derruba as conexões; quanto tempo a mesa some da busca no reanúncio (precisa ficar
+     abaixo dos 3 s de §16.15); a busca vê o `endpointInfo` novo; demora do `onEndpointLost` quando o anfitrião cai; se a busca contínua
+     do anfitrião atrapalha as conexões; tamanho máximo do `endpointInfo` (não documentado; teto conservador de 100 bytes, formato binário).
+   - `GuestSession.join`/`returnToTable` esperam a mesa procurada na busca por até 10 s (antes pegavam a primeira lista, que no rádio
+     real pode trazer só outra mesa).
    **Bateria:** o anfitrião busca o jogo todo (vigia de §16.10) e anuncia o jogo todo; é o custo de uma busca BLE contínua. Medir nos
    celulares; se pesar, usar `setLowPower(true)` na busca do anfitrião. Laboratório do Nearby só no debug (`NearbyLabActivity`, via `adb`).
 6. **Telas** (conforme `docs/telas.md` atualizado), indicador de vez remoto, ViewModels para convidados nos assentos 1 a 3. *(android-ui-dev)*
