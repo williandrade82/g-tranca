@@ -18,6 +18,8 @@ class NearbyPermissionsTest {
         )
         NearbyPermissions.required(33) shouldContain NearbyPermissions.NEARBY_WIFI_DEVICES
         NearbyPermissions.required(36) shouldNotContain NearbyPermissions.FINE_LOCATION
+        NearbyPermissions.required(36) shouldNotContain NearbyPermissions.ACCESS_LOCAL_NETWORK
+        NearbyPermissions.required(37) shouldContain NearbyPermissions.ACCESS_LOCAL_NETWORK
         NearbyPermissions.needsLocationOn(32) shouldBe true
         NearbyPermissions.needsLocationOn(33) shouldBe false
     }

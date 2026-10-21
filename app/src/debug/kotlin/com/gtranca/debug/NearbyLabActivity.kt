@@ -77,6 +77,7 @@ class NearbyLabActivity : ComponentActivity() {
 private const val PING: Byte = 1
 private const val PONG: Byte = 2
 private const val BULK: Byte = 3
+private const val BULK_ACK: Byte = 4
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -98,7 +99,16 @@ private fun Lab(t: NearbyTransport) {
                 is TransportEvent.Received -> when (e.bytes.firstOrNull()) {
                     PING -> t.send(e.endpoint, e.bytes.copyOf().also { it[0] = PONG })
                     PONG -> add("pong de ${e.endpoint.value}: ${System.currentTimeMillis() - ByteBuffer.wrap(e.bytes, 1, 8).long} ms")
-                    BULK -> add("recebidos ${e.bytes.size} bytes de ${e.endpoint.value}")
+                    BULK -> {
+                        add("recebidos ${e.bytes.size} bytes de ${e.endpoint.value}")
+                        // Confirma com o carimbo do remetente: ele mede a ida e volta de uma mensagem desse tamanho.
+                        t.send(e.endpoint, ByteBuffer.allocate(13).put(BULK_ACK).putLong(ByteBuffer.wrap(e.bytes, 1, 8).long).putInt(e.bytes.size).array())
+                    }
+                    BULK_ACK -> {
+                        val b = ByteBuffer.wrap(e.bytes, 1, 12)
+                        val sentAt = b.long
+                        add("confirmação de ${b.int} bytes de ${e.endpoint.value}: ${System.currentTimeMillis() - sentAt} ms")
+                    }
                     else -> add("bytes desconhecidos")
                 }
             }
@@ -131,9 +141,17 @@ private fun Lab(t: NearbyTransport) {
             Button(onClick = {
                 peers.forEach { p -> ui.launch { t.send(p, ByteBuffer.allocate(9).put(PING).putLong(System.currentTimeMillis()).array()) } }
             }) { Text("Ping") }
-            Button(onClick = {
-                peers.forEach { p -> ui.launch { t.send(p, ByteArray(100_000).also { it[0] = BULK }); add("enviados 100000 bytes") } }
-            }) { Text("Enviar 100 KB") }
+            listOf(12_000 to "12 KB", 100_000 to "100 KB").forEach { (size, label) ->
+                Button(onClick = {
+                    peers.forEach { p ->
+                        ui.launch {
+                            val bytes = ByteArray(size).also { ByteBuffer.wrap(it).put(BULK).putLong(System.currentTimeMillis()) }
+                            t.send(p, bytes)
+                            add("enviados $size bytes")
+                        }
+                    }
+                }) { Text("Enviar $label") }
+            }
             Button(onClick = { peers.toList().forEach { p -> ui.launch { t.disconnect(p) } } }) { Text("Desconectar") }
         }
         tables.forEach { table ->

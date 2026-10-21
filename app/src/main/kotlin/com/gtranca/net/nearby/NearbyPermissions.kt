@@ -6,6 +6,9 @@ package com.gtranca.net.nearby
  * - API 26–30: localização (o Android exige para achar aparelhos por Bluetooth/Wi-Fi).
  * - API 31–32: Bluetooth (procurar, anunciar, conectar) e localização (a busca por Wi-Fi ainda a exige).
  * - API 33+: Bluetooth e "Dispositivos Wi-Fi por perto" (`neverForLocation`); localização deixa de ser pedida.
+ * - API 37+: também a rede local (`ACCESS_LOCAL_NETWORK`, documentação do Nearby de 10/06/2026).
+ * A documentação limita a localização à API 31; aqui ela vai até a 32 (12L ainda exige localização para a busca Wi-Fi):
+ * pedir a mais não quebra, a menos pode deixar a busca vazia.
  */
 object NearbyPermissions {
     const val FINE_LOCATION = "android.permission.ACCESS_FINE_LOCATION"
@@ -18,7 +21,11 @@ object NearbyPermissions {
     private val bluetooth = listOf(BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT)
     private val location = listOf(FINE_LOCATION, COARSE_LOCATION)
 
+    /** Android 17+ com `targetSdk` 37+: rede local (o Nearby usa o Wi-Fi da rede, `WIFI_LAN`). */
+    const val ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
+
     fun required(sdk: Int): List<String> = when {
+        sdk >= 37 -> bluetooth + NEARBY_WIFI_DEVICES + ACCESS_LOCAL_NETWORK
         sdk >= 33 -> bluetooth + NEARBY_WIFI_DEVICES
         sdk >= 31 -> bluetooth + location
         else -> location

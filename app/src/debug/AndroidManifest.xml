@@ -6,6 +6,12 @@
             android:name="com.gtranca.debug.NearbyLabActivity"
             android:exported="true"
             android:label="Nearby (teste)"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="portrait">
+            <!-- Segundo ícone "Nearby (teste)" só no APK debug, para abrir sem adb. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

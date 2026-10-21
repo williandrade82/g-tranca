@@ -170,9 +170,16 @@ class GuestSession(
         this.token = token
         this.requestedSeat = seat
         collector = scope.launch { transport.events.collect { handle(it) } }
-        val advert = transport.discover().first().preferred(tableId) ?: error("Mesa não encontrada")
+        val advert = findTable() ?: error("Mesa não encontrada")
         connectAndHello(advert, seat)
     }
+
+    /**
+     * A mesa [tableId] na busca (o anúncio preferido, §16.10), esperando até [FIND_TABLE_MILLIS]: no rádio real a busca
+     * acha as mesas aos poucos, e a primeira lista pode trazer outra mesa e não esta.
+     */
+    private suspend fun findTable(): TableAdvert? =
+        withTimeoutOrNull(FIND_TABLE_MILLIS) { transport.discover().mapNotNull { it.preferred(tableId) }.first() }
 
     private suspend fun connectAndHello(advert: TableAdvert, seat: Seat?) {
         val endpoint = transport.connect(advert)
@@ -191,7 +198,7 @@ class GuestSession(
             if (_status.value != GuestStatus.Resigned || token == null) return false
             _status.value = GuestStatus.Reconnecting
         }
-        val advert = transport.discover().first().preferred(tableId)
+        val advert = findTable()
         if (advert != null && runCatching { connectAndHello(advert, seat) }.isSuccess) return true
         mutex.withLock { if (_status.value == GuestStatus.Reconnecting) _status.value = GuestStatus.Resigned }
         return false
@@ -473,5 +480,8 @@ class GuestSession(
         /** §16.15 intervalos da reconexão: 1 s dobrando até 15 s; depois, a cada 15 s. */
         const val RETRY_MIN_MILLIS: Long = 1_000
         const val RETRY_MAX_MILLIS: Long = 15_000
+
+        /** Espera técnica pela mesa na busca ao entrar ou voltar (não é regra de §16.15: só o tempo do rádio achar). */
+        const val FIND_TABLE_MILLIS: Long = 10_000
     }
 }
