@@ -182,6 +182,24 @@ class MultiplayerHost(
     /** §16.10 outro anfitrião da mesma mesa prevaleceu: este parou e o aparelho volta como convidado. */
     val superseded: StateFlow<Boolean> get() = session.superseded
 
+    /** §16.10 confirmado como anfitrião (o provisório só retoma o jogo depois disto). */
+    val committed: StateFlow<Boolean> get() = session.committed
+
+    /**
+     * §16.10, §16.15 provisório com outros humanos sem reingresso depois de 30 s: a tela "Aguardando os outros jogadores"
+     * mostra **Assumir mesmo assim** ([forceCommit]). (Provisório, revisar com produto.)
+     */
+    val canForceCommit: StateFlow<Boolean> get() = session.canForceCommit
+
+    /** §16.10 "Assumir mesmo assim": confirma o cargo e o jogo retoma. Devolve se confirmou. */
+    suspend fun forceCommit(): Boolean = session.forceCommit()
+
+    /** §16.11 depois do fim, ainda há humano fora sem o resultado (a mesa segue anunciada para a entrega). */
+    val resultsPending: StateFlow<Boolean> get() = session.resultsPending
+
+    /** §16.11, §16.15 entrega encerrada (todos receberam ou 5 min): a tela pode fechar a mesa. */
+    val deliveryEnded: StateFlow<Boolean> get() = session.deliveryEnded
+
     init {
         // Uma só fonte das regras da mesa: as que os convidados receberam (§16.2) são as que o anfitrião aplica.
         session.rules.let {

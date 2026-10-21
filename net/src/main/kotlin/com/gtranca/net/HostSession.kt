@@ -74,6 +74,10 @@ class HostSession(
     resumed: ResumedTable? = null,
     /** §16.10, §16.15 provisório sem outro humano que possa confirmar: confirma sozinho depois deste tempo. */
     private val provisionalSoloMillis: Long = PROVISIONAL_SOLO_MILLIS,
+    /** §16.10, §16.15 provisório com outros humanos e sem reingresso: oferece "Assumir mesmo assim" depois deste tempo. */
+    private val provisionalForceMillis: Long = PROVISIONAL_FORCE_MILLIS,
+    /** §16.11, §16.15 depois do fim do jogo, a mesa fecha quando todos receberam ou depois deste tempo. */
+    private val finishedOpenMillis: Long = FINISHED_OPEN_MILLIS,
 ) {
     private class Member(val token: String, var info: PlayerInfo) {
         var link: ReliableLink? = null
@@ -119,6 +123,27 @@ class HostSession(
      * esta sessão fechou e o aparelho volta como convidado com [hostToken].
      */
     val superseded: StateFlow<Boolean> = _superseded.asStateFlow()
+
+    private val _canForceCommit = MutableStateFlow(false)
+
+    /**
+     * §16.10, §16.15 provisório com outros humanos que ninguém confirmou no tempo: a tela mostra "Assumir mesmo assim"
+     * ([forceCommit]). Volta a `false` ao ser confirmado ou ao fechar. (Provisório, revisar com produto.)
+     */
+    val canForceCommit: StateFlow<Boolean> = _canForceCommit.asStateFlow()
+
+    private val _resultsPending = MutableStateFlow(false)
+
+    /** §16.11 depois do fim do jogo, ainda há humano fora que não recebeu o resultado e o prêmio. */
+    val resultsPending: StateFlow<Boolean> = _resultsPending.asStateFlow()
+
+    private val _deliveryEnded = MutableStateFlow(false)
+
+    /**
+     * §16.11, §16.15 depois do fim do jogo, a entrega do resultado acabou (todos receberam ou passaram 5 min): a mesa não
+     * é mais anunciada e quem voltar é recusado. Os conectados seguem ligados; o anfitrião pode fechar a sessão.
+     */
+    val deliveryEnded: StateFlow<Boolean> = _deliveryEnded.asStateFlow()
 
     /** §16.8 assento da pausa (decisão do anfitrião pendente): aceita pedido de entrada mesmo sem vaga aberta (§16.7). */
     private var awaitingSeat: Seat? = null
@@ -218,13 +243,30 @@ class HostSession(
                 delay(provisionalSoloMillis)
                 mutex.withLock { commitLocked() }
             }
+        } else if (provisionalRank > 0) {
+            // §16.10 com outros humanos e ninguém reingressa: depois do tempo de §16.15, oferece "Assumir mesmo assim".
+            scope.launch {
+                delay(provisionalForceMillis)
+                mutex.withLock { if (provisionalRank > 0 && !closed) _canForceCommit.value = true }
+            }
         }
+    }
+
+    /**
+     * §16.10 "Assumir mesmo assim": o provisório passa a confirmado e retoma o jogo. Só vale depois de [canForceCommit];
+     * devolve se confirmou. (Provisório, revisar com produto.)
+     */
+    suspend fun forceCommit(): Boolean = mutex.withLock {
+        if (!_canForceCommit.value || provisionalRank == 0 || closed) return@withLock false
+        commitLocked()
+        true
     }
 
     /** §16.10 o provisório passa a anfitrião confirmado (retoma o jogo e anuncia sem a marca de provisório). */
     private suspend fun commitLocked() {
         if (provisionalRank == 0 || closed) return
         provisionalRank = 0
+        _canForceCommit.value = false
         _committed.value = true
         advertiseLocked()
     }
@@ -421,7 +463,34 @@ class HostSession(
             // Guardado para todos (quem cai logo depois do fim também recebe); quem está conectado já recebeu agora.
             results.forEach { (id, payloads) -> if (members[id]?.info?.resigned == false) finals[id] = payloads }
             advertiseLocked()
+            if (finishers.isEmpty() && !closed) {
+                // §16.11, §16.15 a entrega fica aberta até todos receberem (com folga para quem cair logo depois do
+                // fim) ou até o tempo acabar. Ao encerrar, só deixa de anunciar e recusa reingressos: quem está
+                // conectado não é desligado (segue nas suas telas de resultado).
+                finishers += scope.launch { delay(finishedOpenMillis); endDelivery() }
+                finishers += scope.launch {
+                    while (true) {
+                        _resultsPending.first { !it }
+                        delay(FINISHED_GRACE_MILLIS)
+                        if (!_resultsPending.value) break
+                    }
+                    endDelivery()
+                }
+            }
         }
+    }
+
+    private val finishers = mutableListOf<Job>()
+
+    /** §16.11 fim da entrega do resultado: a mesa deixa de ser anunciada e quem voltar depois é recusado. */
+    private suspend fun endDelivery() {
+        mutex.withLock {
+            if (_deliveryEnded.value) return
+            _deliveryEnded.value = true
+            finals.clear()
+            advertiseLocked()
+        }
+        finishers.forEach { it.cancel() }
     }
 
     /**
@@ -444,6 +513,8 @@ class HostSession(
             finished = true
             closed = true
             finals.clear()
+            _canForceCommit.value = false
+            _resultsPending.value = false
             if (advertising) transport.stopAdvertising()
             advertising = false
             members.values.forEach { m -> m.link?.let { it.close(); transport.disconnect(it.endpoint) }; m.link = null }
@@ -452,6 +523,7 @@ class HostSession(
         }
         watcher?.cancel()
         collector?.cancel()
+        finishers.forEach { it.cancel() }
     }
 
     private suspend fun handle(event: TransportEvent) {
@@ -731,7 +803,9 @@ class HostSession(
      * recebeu o resultado (§16.11).
      */
     private suspend fun advertiseLocked(force: Boolean = false) {
-        val want = !closed && (!finished || finals.keys.any { members[it]?.link == null })
+        val outside = finished && !closed && finals.keys.any { members[it]?.link == null }
+        _resultsPending.value = outside
+        val want = !closed && (!finished || outside)
         if (want) {
             if (!advertising || force || started) transport.advertise(advertLocked())
             advertising = true
@@ -786,6 +860,15 @@ class HostSession(
 
         /** §16.15 provisório sem outro humano que possa confirmar. */
         const val PROVISIONAL_SOLO_MILLIS: Long = 15_000
+
+        /** §16.15 provisório com outros humanos: "Assumir mesmo assim" (provisório, revisar com produto). */
+        const val PROVISIONAL_FORCE_MILLIS: Long = 30_000
+
+        /** §16.11, §16.15 mesa aberta depois do fim do jogo para quem estava fora (provisório, revisar com produto). */
+        const val FINISHED_OPEN_MILLIS: Long = 5 * 60_000
+
+        /** Folga antes de encerrar a entrega: quem cair logo depois do fim ainda volta (reenvio de §16.15: 1 s, até 5 vezes). */
+        const val FINISHED_GRACE_MILLIS: Long = 5_000
 
         /** §16.5 eventos simultâneos: o assento já tem dono. */
         const val SEAT_TAKEN_MESSAGE: String = "A vaga foi preenchida."

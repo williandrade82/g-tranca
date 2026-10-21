@@ -181,7 +181,7 @@ class MultiplayerResilienceTest {
         runCurrent()
         t.host.handOver(resign = true) shouldBe null
         game.join()
-        advanceUntilIdle()
+        runCurrent()
         t.host.controller.state.value.resigned shouldBe true
         t.host.ledger.value.seats[0].forfeited shouldBe true
         // §16.13 o lado vencedor (assentos 1 e 3) divide 4A: o humano recebe 2A; a parte do robô se perde.
@@ -201,6 +201,91 @@ class MultiplayerResilienceTest {
         back.view.value!!.stage shouldBe com.gtranca.net.TableStage.GAME_OVER
         // Entregue: a mesa deixa de ser anunciada.
         t.network.adverts().shouldBeEmpty()
+        t.host.deliveryEnded.value shouldBe true
+    }
+
+    /**
+     * §16.11, §16.15 (provisório, revisar com produto) quem estava fora e não voltou em 5 min não recebe mais: a mesa deixa
+     * de ser anunciada e o reingresso é recusado.
+     */
+    @Test
+    fun `§16_11 depois de 5 min a entrega encerra e quem volta e recusado`() = runTest {
+        val seed = 103L
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1)), stake = 100)
+        val guest = t.guests.getValue(Seat(1))
+        val token = guest.token!!
+        val game = launch { t.host.run() }
+        runCurrent()
+        val endpoint = t.endpoints.getValue(Seat(1)).id
+        t.network.block(endpoint)
+        t.network.drop(endpoint)
+        guest.release()
+        runCurrent()
+        t.host.handOver(resign = true) shouldBe null
+        game.join()
+        runCurrent()
+        t.host.resultsPending.value shouldBe true
+        advanceTimeBy(com.gtranca.net.HostSession.FINISHED_OPEN_MILLIS - 1)
+        runCurrent()
+        t.network.adverts().single().listed shouldBe false
+        advanceTimeBy(2)
+        runCurrent()
+        t.host.deliveryEnded.value shouldBe true
+        t.network.adverts().shouldBeEmpty()
+
+        t.network.unblock(endpoint)
+        val back = GuestSession(t.network.transport(), "Convidado 1")
+        // A mesa não aparece mais: o reingresso falha e nada é entregue.
+        runCatching { back.join(t.scope, "mesa-1", token = token, seat = Seat(1)) }.isFailure shouldBe true
+        advanceUntilIdle()
+        back.payout.value shouldBe null
+        back.status.value shouldNotBe GuestStatus.Playing
+    }
+
+    /**
+     * §16.10, §16.15 (provisório, revisar com produto) o anfitrião cai e os outros humanos fecharam o aparelho: ninguém
+     * reingressa no provisório. Depois de 30 s ele vê "Assumir mesmo assim"; ao usar, vira confirmado e o jogo vai até o
+     * fim igual ao local.
+     */
+    @Test
+    fun `§16_10 provisorio nunca confirmado assume mesmo assim apos 30 s`() = runTest {
+        val seed = 102L
+        val network = com.gtranca.net.MemoryNetwork()
+        var table: TestTable? = null
+        var count = 0
+        network.tap = { d ->
+            val t = table
+            if (t != null && d.from == t.hostTransport.id && ++count == 400) {
+                network.kill(t.endpoints.getValue(Seat(2)).id)
+                network.kill(t.endpoints.getValue(Seat(3)).id)
+                network.kill(d.from)
+            }
+            listOf(d)
+        }
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), network = network)
+        table = t
+        driveGuests(t, seed)
+        driveHost(t, seed)
+        val oldGame = launch { t.host.run() }
+        val first = t.guests.getValue(Seat(1))
+        val newHost = takeOverOf(t, Seat(1), first, seed)
+        oldGame.cancel()
+        first.takeOverRank shouldBe 1
+        driveHostOf(newHost, seed)
+        robotOnPause(newHost, listOf(Seat(0), Seat(2), Seat(3)))
+        val newGame = launch { newHost.run() }
+        advanceTimeBy(com.gtranca.net.HostSession.PROVISIONAL_FORCE_MILLIS - 1)
+        runCurrent()
+        newHost.committed.value shouldBe false
+        newHost.canForceCommit.value shouldBe false
+        advanceTimeBy(2)
+        runCurrent()
+        newHost.canForceCommit.value shouldBe true
+        newHost.forceCommit() shouldBe true
+        newHost.committed.value shouldBe true
+        newGame.join()
+        advanceUntilIdle()
+        newHost.controller.state.value.stage shouldBe Stage.GAME_OVER
     }
 
     /** §16.10 passagem do cargo: sem confirmação do escolhido no tempo limite, vai ao próximo; o escolhido descarta o estado. */
