@@ -220,7 +220,7 @@ Todos levam o **cabeçalho de marca**.
 | **Você agora é o anfitrião** | mensagem | sucessor, ao assumir (§16.10) | avisa que a mesa passou para ele |
 | **Aguardando os outros jogadores** | mensagem (anfitrião provisório) | sucessor que assumiu e ainda não foi confirmado (§16.10) | explica que a mesa espera alguém reingressar; depois de 30 s (§16.15) mostra o botão **Assumir mesmo assim**, que confirma o cargo e retoma o jogo (*provisório, revisar com produto*) |
 | **Desistir da mesa?** | mensagem (perigo) | bandeira ou Voltar do Android, em mesa multijogador | explica que um robô assume o lugar, que a aposta se perde e que o jogo segue para os demais; no 1×1 entre humanos, que o outro vence |
-| **Mesa encerrada** | mensagem | sem humano para assumir ou o anfitrião fechou (inclusive depois do fim do jogo, quando todos receberam o resultado ou passaram 5 min, §16.11) | volta ao início |
+| **Mesa encerrada** | mensagem | sem humano para assumir ou o anfitrião fechou (quem volta depois que a entrega do resultado acabou, §16.11, também vê esta mensagem; quem está nas telas de resultado não é interrompido) | volta ao início |
 | Onde baixar? | diálogo | "Baixar" com mais de uma possibilidade | cada opção com cartas, destino e pontos |
 | Como usar o descarte? | diálogo | pegar o lixo com mais de um plano | cada plano; dica "ou selecione as cartas da mão antes de tocar no lixo" |
 
