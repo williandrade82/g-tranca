@@ -5,7 +5,7 @@ Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, cód
 robôs **não mudam**; o multijogador é uma opção nova na tela de mesas disponíveis.
 
 ## Objetivo
-Uma mesa de **4 assentos** (duplas) em que 1 a 4 pessoas jogam, cada uma no seu celular, e os assentos vagos têm robôs. Um celular é o
+Uma mesa **criada sempre com 4 assentos** (duplas) em que 1 a 4 pessoas jogam, cada uma no seu celular, e os assentos vagos têm robôs. **Exceção (mesa reduzida):** com apenas um jogador conectado, o anfitrião pode **excluir duas posições**, e a mesa passa a ser de 2 assentos (individual); ver "Mesa reduzida". Um celular é o
 **anfitrião** (autoridade: roda o `GameController` e o `:core-engine`); os demais são **convidados**. Sem internet: Nearby Connections
 (`P2P_STAR`).
 
@@ -129,6 +129,14 @@ local; o resultado em moedas é calculado pelo anfitrião e enviado a cada um.
 Pedidas **só** ao ligar o botão de Wi-Fi ou ao criar mesa, com uma explicação antes ("para achar mesas por perto; nada sai do aparelho e não
 usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
 
+### Mesa reduzida (4 → 2 assentos; decidido em 2026-10-20)
+- A criação é **sempre de 4 posições**. Enquanto houver **0 ou 1 convidado conectado** (além do anfitrião), o anfitrião pode **excluir duas posições**; a mesa vira **individual** (2 assentos, um **em frente** ao outro, `GameMode.INDIVIDUAL`). Com **2 ou mais convidados conectados**, a exclusão é **bloqueada**.
+- **Anfitrião + 1 convidado:** é um 1×1 entre dois humanos. Ao excluir as posições, o convidado vai **sempre para o assento do adversário** (em frente ao anfitrião), **seja qual for o assento que escolheu**. A mudança aparece **na tela do anfitrião e na do convidado** (a posição dele é atualizada e redistribuída como qualquer alteração de posição). **Anfitrião sozinho:** o adversário é um robô.
+- **Restaurar as 4 posições:** o anfitrião pode voltar atrás antes do início; os assentos extras voltam vagos e o convidado fica onde está, podendo reposicionar-se (para restaurar com 2 convidados já não há o que restaurar: a exclusão estava bloqueada).
+- Depois que **um 2º convidado** conecta, a exclusão deixa de ser possível; se a mesa já estava reduzida, ele **não consegue entrar** (mesa cheia, 2 de 2).
+- Vale só **antes do início**. A mesa continua anunciada com os dados atualizados (a lista mostra os 2 jogadores e "Vago", sem "Dupla 1/Dupla 2").
+- Efeitos a tratar: o círculo de "Escolha sua posição" com 2 assentos, 1 personagem (não 3), aposta e prêmio (§14.6 individual), sucessão (com 2 humanos o único sucessor é o outro; sem outro humano não há sucessor, ver N5), e a regra do individual para "desistência" do 1×1 (o outro humano vence; sem robô para assumir, N11).
+
 ## Decisões abertas (com a minha recomendação)
 | # | Pergunta | Recomendação |
 |---|---|---|
@@ -138,7 +146,9 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
 | N4 | **Anfitrião desiste sem passar o cargo**: passa sozinho ao 1º sucessor, ou o jogo acaba para todos? | **Passa sozinho** ao 1º sucessor humano disponível (nunca a robô); se não houver humano, o jogo termina e a mesa fecha. |
 | N5 | **Sem sucessor disponível** (ex.: o anfitrião está só com 1 convidado que cai, ou ninguém responde ao ack): o jogo continua sem proteção contra queda abrupta, ou pausa até haver sucessor? | **Continua**, com aviso ao anfitrião ("sem sucessor: uma queda encerra a mesa"). |
 | N6 | **Personagem do robô que substitui** um humano (queda ou desistência) e quem o escolhe. | O **anfitrião** escolheu os personagens dos assentos vagos ao criar a mesa; ao substituir, usa o primeiro personagem ainda **não usado na mesa**, no nível da mesa; nada é sorteado de novo. |
-| N7 | **Modo da mesa multijogador:** só duplas (4 assentos), sem 1×1 entre dois humanos? | **Só duplas** (como o pedido: "toda mesa tem 4 assentos" e cards "Dupla 1/Dupla 2"). |
+| N7 | **Modo da mesa multijogador.** | **Resolvida pelo usuário:** criada sempre com 4 posições; o anfitrião pode excluir duas se houver só um jogador conectado (ver "Mesa reduzida"). |
+| N10 | Mesa reduzida: "apenas um jogador conectado". | **Resolvida pelo usuário** (ver "Mesa reduzida"): 0 ou 1 convidado permite excluir; 2 ou mais bloqueia; o convidado vai ao assento do adversário. |
+| N11 | **Desistência num 1×1 entre dois humanos:** o hoje (§13.1 individual) dá a vitória ao outro lado; no grupo o robô assume. Qual vale aqui? | O **§13.1 do individual**: o outro humano vence e leva a aposta (não entra robô, pois não restaria jogo). Uma queda de conexão ainda pode ser **substituída por robô** pelo anfitrião ou aguardar. |
 | N8 | **"Continuar" e o jogo salvo local:** a sessão multijogador (mesa, assento, token, nome) convive com o slot do jogo salvo contra robôs? | **Slot separado**: um jogo salvo contra robôs e uma sessão multijogador podem coexistir; "Continuar" no início mostra o que existir, e o multijogador tenta reingressar pelo token. |
 | N9 | **Perfil de pontos da mesa vs. estatísticas:** o resultado de uma mesa multijogador conta nas estatísticas e no resultado em moedas de cada celular como hoje? | **Sim**, com o modo marcado como multijogador, sem mudar as contas atuais. |
 
