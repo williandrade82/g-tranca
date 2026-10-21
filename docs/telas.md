@@ -185,8 +185,36 @@ Todos levam o **cabeçalho de marca**.
 
 ---
 
-## 6. O que ainda não está aqui
+## 6. Capturas de tela
 
-- Capturas de tela de cada tela (guardar em `docs/telas/` quando houver).
+Tiradas em 2026-10-19 no emulador Pixel 4 (API 33, 1080×2280), versão 0.85, dados zerados (saldo inicial 1000 moedas). Ficam em [docs/telas/](telas/).
+
+| Tela / modal | Arquivo(s) |
+|---|---|
+| 3.1 Início (sem jogo salvo / com jogo salvo) | `01-inicio.png`, `01b-inicio-com-jogo-salvo.png` |
+| 3.2 Mesas disponíveis (individual / duplas, rolada) | `02-mesas-disponiveis.png`, `02b-mesas-disponiveis-duplas.png` |
+| 3.3 Regras da mesa (mesa de duplas dos robôs; mesa criada, com o ícone de sortear) | `03-regras-da-mesa.png`, `03b-regras-da-mesa-rolado.png`, `03c-regras-da-mesa-mesa-criada.png`, `03d-regras-da-mesa-mesa-criada-rolado.png` |
+| 3.4 Criar mesa | `04-criar-mesa.png`, `04b-criar-mesa-rolado.png` |
+| 3.5 Personalizar regra | `05-personalizar-regra.png`, `05b-personalizar-regra-rolado.png` |
+| 3.6 Perfil | `07-perfil.png`, `07b-perfil-rolado.png` |
+| 3.7 Estatísticas | `08-estatisticas.png`, `08b-estatisticas-rolado.png` |
+| 3.8 Mesa de jogo (início, com lixo e jogadas, com jogos baixados, carta selecionada, individual) | `09-mesa-de-jogo.png`, `09b-mesa-com-lixo-e-jogadas.png`, `09c-mesa-com-jogos-baixados.png`, `09d-barra-de-acoes-carta-selecionada.png`, `09e-mesa-de-jogo-individual.png` |
+| Modal Detalhe do jogador | `10-modal-detalhe-jogador.png` |
+| Modal Símbolos das jogadas | `11-modal-simbolos.png` |
+| Modal Zerar estatísticas? | `12-modal-zerar-estatisticas.png` |
+| Modal Desistir do jogo? | `13-modal-desistir.png` |
+| Modal Voltar ao início? | `14-modal-voltar-ao-inicio.png` |
+| Modal Começar um novo jogo? | `15-modal-novo-jogo.png` |
+| Modal Lixo completo | `18-modal-lixo-completo.png` |
+| 3.11 Fim de jogo (derrota por desistência) | `24-fim-de-jogo-derrota.png` |
+
+**Sem captura (a fazer depois)** — dependem de situações que o emulador não força por toques:
+- 3.9 Anúncio da partida / do jogo, 3.10 Pontos da partida, 3.12 Revisão da mesa final e a variação de **vitória** do Fim de jogo: exigem terminar uma partida jogando. Desistir leva direto ao Fim de jogo (derrota), sem passar pelo anúncio. Caminho sugerido: adaptar [EndScreensTest.kt](../app/src/androidTest/kotlin/com/gtranca/EndScreensTest.kt), que monta essas telas com dados fixos.
+- Modais *Onde baixar?*, *Como usar o descarte?* e *Recusar a compra?*: dependem da mão sorteada (ou do monte acabar sem morto).
+- Faixa de troca de 3 vermelho de outro assento e pulso/selo de canastra (animações curtas).
+- Variações: mesa com "saldo insuficiente", Perfil com foto, Estatísticas com partidas jogadas.
+
+## 7. O que ainda não está aqui
+
 - Textos exatos de cada mensagem de erro (ver `strings.xml`).
 - Conferência visual no celular das mudanças de 18–19/10 (ver o status em `docs/plano-nomes-aos-bots.md`).

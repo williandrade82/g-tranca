@@ -73,4 +73,5 @@ Identificadores em inglês; textos da interface em português (pt-BR) em `string
 - `rules-engine-dev`: implementa o `:core-engine` com TDD.
 - `bot-ai-dev`: implementa os jogadores virtuais no `:ai`.
 - `android-ui-dev`: telas Compose, ViewModels e `:data`.
+- `net-comm-dev`: comunicação entre dispositivos (multijogador local): protocolo, transporte, sessão e reconexão.
 - `rules-auditor`: revisão somente leitura do código contra `definition.md`.
