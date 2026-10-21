@@ -333,6 +333,7 @@ class GameController(
                 }
                 turnEvents = List(config.mode.seatCount) { emptyList() }
                 turnReds.reset(match.currentRound.redThreeLog)
+                turnReds.beginTurn(match.currentRound.currentSeat)
                 roundEvents = emptyList()
                 // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho do início da
                 // vez do 1º jogador (§3.5). Sem humano (bots, :sim), não há espera.
@@ -401,6 +402,12 @@ class GameController(
                     recordEvent(event)
                     val laid = match.currentRound.redThreeLog.drop(round.redThreeLog.size)
                     turnReds.record(seat, startsTurn(event), laid)
+                    // §3.5 a vez passou: a do próximo começa já (com as trocas de 3 vermelho do início dela), antes da compra.
+                    match.currentRound.let { next ->
+                        if (next.phase != Phase.FINISHED && next.currentSeat != seat) {
+                            turnReds.beginTurn(next.currentSeat)
+                        }
+                    }
                     roundEvents = roundEvents + event
                     bots().forEach { it.observe(event) }
                     _events.tryEmit(GameEvent.ActionApplied(match.roundNumber, event, laid))

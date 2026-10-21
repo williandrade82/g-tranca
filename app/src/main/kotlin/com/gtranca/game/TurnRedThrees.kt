@@ -17,9 +17,23 @@ internal class TurnRedThrees(private val seatCount: Int) {
 
     private var pending: List<List<Card>> = List(seatCount) { emptyList() }
 
+    /** Assentos cuja vez já começou ([beginTurn]) antes da 1ª ação: a ação que abre a vez não apaga os 3 vermelhos dela. */
+    private var begun: Set<Int> = emptySet()
+
+    /**
+     * §3.5 a vez passou ao [seat] (descarte do anterior ou distribuição): os 3 vermelhos do início da vez dele aparecem
+     * já, antes da compra, e a vez anterior dele sai do detalhe.
+     */
+    fun beginTurn(seat: Seat) {
+        current = current.replaceAt(seat.index, pending[seat.index])
+        pending = pending.replaceAt(seat.index, emptyList())
+        begun = begun + seat.index
+    }
+
     /** Partida nova: nada nas vezes passadas; os 3 vermelhos já baixados (início da vez do 1º jogador) ficam pendentes. */
     fun reset(log: List<RedThreeLaid>) {
         current = List(seatCount) { emptyList() }
+        begun = emptySet()
         pending = List(seatCount) { seat -> log.filter { it.seat.index == seat && it.atTurnStart }.map { it.card } }
     }
 
@@ -28,7 +42,9 @@ internal class TurnRedThrees(private val seatCount: Int) {
      * dele, e o motor registrou [newEntries] nessa ação.
      */
     fun record(actor: Seat, startsTurn: Boolean, newEntries: List<RedThreeLaid>) {
-        if (startsTurn) {
+        if (startsTurn && actor.index in begun) {
+            begun = begun - actor.index
+        } else if (startsTurn) {
             current = current.replaceAt(actor.index, pending[actor.index])
             pending = pending.replaceAt(actor.index, emptyList())
         }

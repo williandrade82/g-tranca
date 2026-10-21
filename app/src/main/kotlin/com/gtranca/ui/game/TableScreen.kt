@@ -381,8 +381,8 @@ fun TableScreen(
 
     if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }
     detailSeat?.let { index ->
-        val events = snapshot.turnEvents.getOrNull(index).orEmpty()
-        if (events.isEmpty()) {
+        val events = snapshot.shownTurnEvents(index)
+        if (events.isEmpty() && snapshot.turnRedThrees.getOrNull(index).isNullOrEmpty()) {
             detailSeat = null
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
@@ -529,14 +529,14 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     val handText = countText(R.plurals.opponent_hand, R.string.opponent_hand_zero, handSize)
     val countText = countText(R.plurals.card_count, R.string.card_count_zero, handSize)
     val thinkingText = stringResource(R.string.seat_thinking)
-    val events = snapshot.turnEvents[seat.index]
+    val events = snapshot.shownTurnEvents(seat.index)
     val shape = RoundedCornerShape(Corner.sm)
     val detailHint = stringResource(R.string.seat_detail_hint)
     Column(
         modifier
             .heightIn(min = minHeight)
             .clip(shape)
-            .clickable(enabled = events.isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
+            .clickable(enabled = events.isNotEmpty() || snapshot.turnRedThrees.getOrNull(seat.index).orEmpty().isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
             .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
             .padding(horizontal = 8.dp, vertical = Spacing.sm)
@@ -593,8 +593,10 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                 icon = { CardsGlyph(TableAccent) },
             )
         }
-        if (events.isNotEmpty()) {
-            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), snapshot.turnRedThrees.getOrNull(seat.index).orEmpty())
+        val turnReds = snapshot.turnRedThrees.getOrNull(seat.index).orEmpty()
+        // §3.5 a troca de 3 vermelho do início da vez já aparece antes da compra.
+        if (events.isNotEmpty() || turnReds.isNotEmpty()) {
+            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), turnReds)
         }
     }
 }
@@ -1616,3 +1618,11 @@ private fun CanastaSeal(clean: Boolean, color: Color, flash: Float, modifier: Mo
         if (clean) drawPath(star, color) else drawPath(star, color, style = Stroke(width = outer * 0.25f))
     }
 }
+
+/**
+ * §3.5 jogadas da vez do assento [index] para a pílula e o detalhe: a vez dele que começou e ainda não teve jogada (antes
+ * da compra) não mostra mais a vez anterior; só a troca de 3 vermelho do início dela ([GameSnapshot.turnRedThrees]).
+ */
+internal fun com.gtranca.game.GameSnapshot.shownTurnEvents(index: Int): List<com.gtranca.engine.PublicEvent> =
+    if (stage == com.gtranca.game.Stage.PLAYING && view.currentSeat.index == index && view.phase == com.gtranca.engine.model.Phase.AWAITING_DRAW) emptyList()
+    else turnEvents.getOrNull(index).orEmpty()
