@@ -534,6 +534,7 @@ Modo opcional, **sem internet**: até 4 pessoas, cada uma no seu celular, na mes
 - Cada jogador recebe um **token** ao entrar. O token identifica o jogador (não o aparelho nem a conexão) e dá o direito de **reingressar no mesmo assento**.
 - **Todos** conhecem a identificação (id, nome e ordem de entrada) de todos os demais; o token não faz parte dela.
 - **Reingresso:** com o token certo, o jogador volta ao assento enquanto este **não foi substituído nem ocupado**. Token desconhecido ou de outro assento é recusado.
+- **Sessão duplicada:** se o token certo chega por uma conexão nova enquanto o dono ainda aparece conectado, **a conexão nova assume** e a antiga é fechada e não recebe mais nenhuma mensagem (nem o estado completo, se ele for sucessor). A nova recebe a vista atual e o jogo segue, mesmo que seja a vez dele.
 - Cada mensagem tem **número de sequência**: mensagem duplicada ou atrasada é descartada e a perdida é reenviada, sem alterar o jogo.
 
 ### **16.6. Ritmo e animações**

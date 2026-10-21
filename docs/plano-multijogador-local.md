@@ -76,7 +76,8 @@ Envelope: `{ protocolVersion, tableId, seq, ack, payload }`. `payload` (sealed, 
 ### Identidade e tokens
 Cada jogador recebe um **token** aleatório ao entrar. **Todos** conhecem `(id, nome, ordem de entrada)` de todos; o **token não é parte da
 identificação pública**: ele só é conhecido pelo dono, pelo anfitrião e pelos sucessores (se fosse transmitido a todos, qualquer um
-sequestraria um assento). Reingresso: `Hello(token)` no mesmo assento, enquanto não substituído nem ocupado.
+sequestraria um assento). Reingresso: `Hello(token)` no mesmo assento, enquanto não substituído nem ocupado. **Sessão duplicada (decidido):** token válido com o dono ainda conectado → a conexão nova assume, a
+antiga é fechada e não recebe mais nada (nem `SuccessorState`); a nova recebe a vista atual (§16.5).
 
 ### O que cada celular recebe (DTO por assento)
 `SeatView` = `PlayerView` **sem `rules`** + `turnEvents` por assento + `turnRedThrees` + placar, totais, histórico reduzido, vez, `thinkingSeat`,
