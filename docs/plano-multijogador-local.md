@@ -1,6 +1,6 @@
 # Plano: multijogador local (até 4 pessoas, cada uma no seu celular, sem internet)
 
-Status: **aprovado em 2026-10-20** (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário). **Etapa 1 feita** (aguardando revisão); N12 e N13 abaixo aguardam confirmação. Origem: `docs/plano-teamplay.md`.
+Status: **aprovado em 2026-10-20** (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário). **Etapas 1 e 2 feitas** (N12 e N13 confirmadas). Origem: `docs/plano-teamplay.md`.
 Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, código e `rules-auditor`. O jogo individual e o fluxo atual contra
 robôs **não mudam**; o multijogador é uma opção nova na tela de mesas disponíveis.
 
@@ -159,7 +159,7 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
    intacto), a exceção da informação oculta para os sucessores (regra de §5.6/§14), e as telas e modais novos (botão Wi-Fi, linha da mesa
    multijogador, criar mesa, escolha de posição, sala de espera, queda/recrutamento, vez remota). Nenhum código. *(android-ui-dev para telas,
    rules-engine-dev para o texto das regras)*
-2. **Refatorar o `GameController`** (humanos por assento, fluxo de eventos, snapshot por assento, `PacingPolicy`, `replaceWithBot`), mais
+2. **Refatorar o `GameController` — FEITA** (humanos por assento, fluxo de eventos, snapshot por assento, `PacingPolicy`, `replaceWithBot`), mais
    `PublicEvent` para o `:core-engine` se N1 for (a)+(c). Testes de regressão: mesma semente, mesmo resultado; testes atuais verdes.
 3. **`:net`: protocolo + sessão + `MemoryTransport`** e a orquestração do anfitrião; testes JVM: partida completa com humanos simulados e
    robôs igual à local; varredura de vazamento no JSON; jogada ilegal/fora da vez/duplicada/de assento alheio recusada; versões diferentes

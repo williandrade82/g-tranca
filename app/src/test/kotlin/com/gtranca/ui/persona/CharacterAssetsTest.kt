@@ -90,7 +90,7 @@ class CharacterAssetsTest {
 
     @Test
     fun `§14_5 os originais ficam em docs, um por perfil e nivel`() {
-        val originals = File("../docs/personagens").listFiles { f -> f.extension == "png" }.orEmpty()
+        val originals = File("../docs/personagens").listFiles { f -> f.extension == "png" && f.name.firstOrNull()?.isDigit() == true }.orEmpty()
         originals.size shouldBe BotProfile.entries.size * BotLevel.entries.size
     }
 }

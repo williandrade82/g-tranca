@@ -50,6 +50,14 @@ class HumanPlayer : SeatPlayer {
     }
 
     /**
+     * §16.8, §16.9 o assento mudou de dono: o pedido em aberto (se houver) é abandonado e [chooseAction] termina com
+     * [SeatReplacedException]; o controlador então refaz a vez com o novo jogador.
+     */
+    fun abandon() {
+        request.value?.answer?.completeExceptionally(SeatReplacedException())
+    }
+
+    /**
      * Envia a escolha do humano. Devolve `false` (e ignora) se não há pedido pendente, se [requestId] (quando
      * informado) não é o do pedido em aberto, ou se [action] não está na lista `legal` do pedido: use sempre a
      * ação vinda de `legal` (cartas representativas), resolvida contra o snapshot do mesmo pedido.
@@ -64,3 +72,6 @@ class HumanPlayer : SeatPlayer {
         return pending.answer.complete(action)
     }
 }
+
+/** O assento do humano foi dado a outro jogador enquanto o controlador esperava a jogada dele. */
+class SeatReplacedException : RuntimeException("Assento substituído")

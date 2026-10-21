@@ -26,11 +26,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -106,9 +110,16 @@ data class GameSnapshot(
  * Kotlin puro (sem Android): testável na JVM. Todo o processamento (motor e decisões dos bots, inclusive a
  * busca de CPU do Difícil) roda em [computeDispatcher], nunca na thread principal.
  *
- * @param players quem ocupa cada assento, por [Seat.index]; no máximo um [HumanPlayer].
- * @param viewerSeat assento cuja vista é publicada (o humano; num jogo só de bots, qualquer um).
- * @param botDelayMillis pausa antes de cada jogada de bot, para o humano acompanhar (0 nos testes).
+ * **Vários humanos (§16, multijogador):** [players] pode ter um [HumanPlayer] por assento. Cada humano tem o seu pedido
+ * (`humanRequestId` do snapshot dele), a sua vista ([stateOf]) e o seu [explain]/[submit]; [state] é a vista do
+ * [viewerSeat]. Cada jogada aplicada sai uma vez em [events]. Um assento pode trocar de dono durante o jogo
+ * ([replaceWithBot], [replacePlayer]) sem reiniciar nada. Com [PacingPolicy.FREE] o laço não espera nenhuma encenação
+ * de um aparelho: só pára para a decisão de um humano.
+ *
+ * @param players quem ocupa cada assento, por [Seat.index].
+ * @param viewerSeat assento cuja vista é publicada em [state] (o humano deste aparelho; num jogo só de bots, qualquer um).
+ * @param botDelayMillis pausa antes de cada jogada de bot, para o humano acompanhar (0 nos testes; ignorada em [PacingPolicy.FREE]).
+ * @param pacing ver [PacingPolicy]; o padrão é o jogo local de sempre.
  */
 class GameController(
     val config: GameConfig,
@@ -130,16 +141,28 @@ class GameController(
      * partida e ao distribuir a próxima. Deve só repassar a foto (a gravação fica fora do laço).
      */
     private val onSave: ((SaveSnapshot) -> Unit)? = null,
+    private val pacing: PacingPolicy = PacingPolicy.LOCAL_ANIMATED,
 ) {
     init {
         require(players.size == config.mode.seatCount) { "Um jogador por assento: ${config.mode.seatCount}" }
-        require(players.count { it is HumanPlayer } <= 1) { "No máximo um humano" }
+        require(players.filterIsInstance<HumanPlayer>().let { it.size == it.distinct().size }) { "Um HumanPlayer por assento" }
         config.mode.requireSeat(viewerSeat)
         require(botDelayMillis >= 0) { "Pausa negativa" }
     }
 
-    private val bots: List<BotPlayer> = players.filterIsInstance<BotSeatPlayer>().map { it.bot }
-    private val human: HumanPlayer? = players.filterIsInstance<HumanPlayer>().singleOrNull()
+    /** Quem ocupa cada assento agora (muda com [replacePlayer]); só se altera sob a trava. */
+    @Volatile
+    private var current: List<SeatPlayer> = players.toList()
+
+    private fun humanSeats(): List<Seat> = config.mode.seats.filter { current[it.index] is HumanPlayer }
+
+    private fun bots(): List<BotPlayer> = current.filterIsInstance<BotSeatPlayer>().map { it.bot }
+
+    /** Há humano e o ritmo é o do aparelho local: o laço espera as encenações da interface. */
+    private fun animated(): Boolean = pacing == PacingPolicy.LOCAL_ANIMATED && humanSeats().isNotEmpty()
+
+    /** Assento do humano a que [submit] e [explain] sem assento se referem: o único humano, ou o do [viewerSeat]. */
+    private fun primarySeat(): Seat = humanSeats().singleOrNull() ?: viewerSeat
     private val started = AtomicBoolean(false)
     private val nextRoundSignal = Channel<Unit>(Channel.CONFLATED)
     private val awaitingNextRound = AtomicBoolean(false)
@@ -186,15 +209,26 @@ class GameController(
             // Retomada: a vista da última vez de cada assento vem do log; trocas já passadas não se reencenam.
             roundEvents = restored.events
             restored.events.forEach(::recordEvent)
-        } else if (human != null && hasStartSwaps()) {
+        } else if (animated() && hasStartSwaps()) {
             // §3.5 com humano, a 1ª jogada espera a encenação das trocas do início da vez do 1º jogador (ver [dealPresentationDone]).
             awaitingPresentation.set(PresentationKey(1, match.currentRound.redThreeLog.size))
         }
     }
 
-    /** Partida e identificador do pedido em aberto ao humano; `null` fora da espera pelo humano. */
-    @Volatile
-    private var humanRequest: Pair<Long, RoundState>? = null
+    /** Por assento ([Seat.index]), identificador e partida do pedido em aberto ao humano dele; ausente fora da espera. */
+    private val humanRequests = java.util.concurrent.atomic.AtomicReference<Map<Int, Pair<Long, RoundState>>>(emptyMap())
+
+    private fun setRequest(seat: Seat, request: Pair<Long, RoundState>?) {
+        humanRequests.updateAndGet { if (request == null) it - seat.index else it + (seat.index to request) }
+    }
+
+    private val _events = MutableSharedFlow<GameEvent>(extraBufferCapacity = EVENT_BUFFER)
+
+    /**
+     * Cada jogada processada, em ordem (§16.6). Só informação pública ([GameEvent]). Quem retransmite deve consumir sem
+     * demora: o buffer é de [EVENT_BUFFER] eventos e, se encher, o evento novo é descartado (nunca bloqueia o jogo).
+     */
+    val events: SharedFlow<GameEvent> = _events.asSharedFlow()
 
     /** §13.1 o humano desistiu: nada mais é aplicado nem publicado além do fim de jogo. */
     @Volatile
@@ -203,10 +237,22 @@ class GameController(
     @Volatile
     private var loopJob: Job? = null
 
-    private val _state = MutableStateFlow(snapshot(initialStage(), humanLegal = emptyList(), thinkingSeat = null))
+    /** Uma vista por assento humano (mais a do [viewerSeat]), por [Seat.index]. */
+    private val seatStates = ConcurrentHashMap<Int, MutableStateFlow<GameSnapshot>>().also { states ->
+        (humanSeats() + viewerSeat).distinct().forEach { seat ->
+            states[seat.index] = MutableStateFlow(snapshot(seat, initialStage(), humanLegal = emptyList(), thinkingSeat = null))
+        }
+    }
 
-    /** Estado atual para a interface. */
-    val state: StateFlow<GameSnapshot> = _state.asStateFlow()
+    /** Estado atual para a interface deste aparelho: a vista do [viewerSeat]. */
+    val state: StateFlow<GameSnapshot> = seatStates.getValue(viewerSeat.index).asStateFlow()
+
+    /**
+     * Estado atual na vista do [seat] humano (§16.4): a mão é só a dele, e as ações legais e o pedido são os dele.
+     * Só existe para os assentos humanos (e o [viewerSeat]).
+     */
+    fun stateOf(seat: Seat): StateFlow<GameSnapshot> =
+        (seatStates[seat.index] ?: error("Sem vista para o assento ${seat.index}")).asStateFlow()
 
     /**
      * Jogo atual completo, para persistência e testes. **Não** use para desenhar a mesa (contém as mãos de
@@ -237,12 +283,12 @@ class GameController(
             val awaitNext = synchronized(lock) {
                 if (match.isOver || resigned) return
                 if (!match.isAwaitingNextRound) return@synchronized false
-                if (human != null) awaitingNextRound.set(true)
+                if (humanSeats().isNotEmpty()) awaitingNextRound.set(true)
                 publishLocked(Stage.ROUND_OVER)
                 true
             }
             if (awaitNext) {
-                if (human != null) nextRoundSignal.receive()
+                if (humanSeats().isNotEmpty()) nextRoundSignal.receive()
                 synchronized(lock) {
                     if (resigned) return
                     match = match.startNextRound()
@@ -254,10 +300,10 @@ class GameController(
             val freshDeal = !resuming
             val waitDeal = synchronized(lock) {
                 if (match.isOver || resigned) return
-                bots.forEach { it.onNewRound() }
+                bots().forEach { it.onNewRound() }
                 if (resuming) {
                     // Retomada no meio da partida: os bots reconstroem a memória com os eventos públicos já aplicados.
-                    roundEvents.forEach { event -> bots.forEach { it.observe(event) } }
+                    roundEvents.forEach { event -> bots().forEach { it.observe(event) } }
                     publishLocked(Stage.PLAYING)
                     return@synchronized false
                 }
@@ -266,18 +312,19 @@ class GameController(
                 roundEvents = emptyList()
                 // Com humano, a 1ª jogada só acontece depois de a interface encenar as trocas de 3 vermelho do início da
                 // vez do 1º jogador (§3.5). Sem humano (bots, :sim), não há espera.
-                val wait = human != null && hasStartSwaps()
+                val wait = animated() && hasStartSwaps()
                 // Na 1ª partida a espera já foi armada na construção (o 1º snapshot pode ser igual ao inicial).
                 if (wait && match.roundNumber > 1) {
                     awaitingPresentation.set(PresentationKey(match.roundNumber, match.currentRound.redThreeLog.size))
                 }
+                _events.tryEmit(GameEvent.RoundStarted(match.roundNumber))
                 publishLocked(Stage.PLAYING)
                 wait
             }
             resuming = false
             // A pausa da distribuição vem antes da espera das trocas do início da vez: elas só são encenadas depois da
             // distribuição, então o tempo total é o maior dos dois, e não a soma (sem pausa morta depois do "Baixar").
-            if (freshDeal && human != null && dealDelayMillis > 0) awaitDealAnimation(match.roundNumber)
+            if (freshDeal && animated() && dealDelayMillis > 0) awaitDealAnimation(match.roundNumber)
             if (waitDeal) presentationSignal.receive()
             while (true) {
                 val round = synchronized(lock) {
@@ -288,56 +335,75 @@ class GameController(
                 val seat = round.currentSeat
                 val legal = RoundEngine.legalActions(round, seat, match.rules)
                 check(legal.isNotEmpty()) { "Assento ${seat.index} sem ações legais na fase ${round.phase}" }
-                val action = when (val player = players[seat.index]) {
+                val player = current[seat.index]
+                val chosen: Action? = when (player) {
                     is BotSeatPlayer -> {
                         publish(Stage.PLAYING, thinkingSeat = seat)
-                        if (botDelayMillis > 0) delay(botDelayMillis)
+                        if (botDelayMillis > 0 && pacing == PacingPolicy.LOCAL_ANIMATED) delay(botDelayMillis)
                         player.bot.chooseAction(round.viewFor(seat, match.rules), legal)
                     }
                     is HumanPlayer -> {
                         val requestId = requestCounter.incrementAndGet()
-                        synchronized(lock) {
+                        val registered = synchronized(lock) {
                             if (resigned) return
-                            humanRequest = requestId to round
-                            publishLocked(Stage.PLAYING, humanLegal = legal, requestId = requestId)
+                            // §16.8 o assento mudou de dono antes de o pedido abrir: refaz a vez com o novo jogador.
+                            if (current[seat.index] !== player) return@synchronized false
+                            setRequest(seat, requestId to round)
+                            publishLocked(Stage.PLAYING, humanSeat = seat, humanLegal = legal, requestId = requestId)
+                            true
                         }
-                        try {
-                            player.chooseAction(legal, requestId)
-                        } finally {
-                            humanRequest = null
+                        if (!registered) {
+                            null
+                        } else {
+                            try {
+                                player.chooseAction(legal, requestId)
+                            } catch (_: SeatReplacedException) {
+                                null
+                            } finally {
+                                setRequest(seat, null)
+                            }
                         }
                     }
                 }
+                // Assento trocado durante a decisão (§16.8, §16.9): a escolha do antigo dono é descartada.
+                val action = chosen ?: continue
                 check(action in legal) { "Assento ${seat.index}: ação fora de legalActions: $action" }
-                val waitSwaps = synchronized(lock) {
+                val waitSwaps: Boolean? = synchronized(lock) {
                     // §13.1 desistência durante a decisão (ex.: bot pensando): nada mais é aplicado.
                     if (resigned) return
+                    if (current[seat.index] !== player) return@synchronized null
                     val event = PublicEvent.of(round.discardPile, seat, action)
                     match = match.play(seat, action)
                     recordEvent(event)
-                    turnReds.record(seat, startsTurn(event), match.currentRound.redThreeLog.drop(round.redThreeLog.size))
+                    val laid = match.currentRound.redThreeLog.drop(round.redThreeLog.size)
+                    turnReds.record(seat, startsTurn(event), laid)
                     roundEvents = roundEvents + event
-                    bots.forEach { it.observe(event) }
+                    bots().forEach { it.observe(event) }
+                    _events.tryEmit(GameEvent.ActionApplied(match.roundNumber, event, laid))
                     save()
                     // §4.3/§6.5 com humano, uma ação que fez alguém trocar 3 vermelho (compra, reposição em cadeia,
                     // morto) só é seguida da próxima depois de a interface encenar essas trocas: assim a ordem vista é a
                     // real (compra/troca → baixas → descarte) e o descarte é sempre o último movimento de quem joga.
                     val after = match.currentRound
                     // Inclui as trocas do início da vez do PRÓXIMO jogador (§3.5), feitas na mesma passagem de vez.
-                    val wait = human != null && after.phase != Phase.FINISHED && after.redThreeLog.size > round.redThreeLog.size
+                    val wait = animated() && after.phase != Phase.FINISHED && after.redThreeLog.size > round.redThreeLog.size
                     if (wait) awaitingPresentation.set(PresentationKey(match.roundNumber, after.redThreeLog.size))
                     // Durante a encenação, quem trocou continua "jogando" (a vez passa ao humano só depois): o texto e o
-                    // destaque seguem o adversário em vez de um "Aguarde…" neutro.
-                    publishLocked(Stage.PLAYING, thinkingSeat = after.redThreeLog.lastOrNull()?.seat.takeIf { wait && it != viewerSeat })
+                    // destaque seguem o adversário em vez de um "Aguarde…" neutro (cada vista exclui o próprio assento).
+                    publishLocked(Stage.PLAYING, thinkingSeat = after.redThreeLog.lastOrNull()?.seat.takeIf { wait })
                     wait
                 }
+                if (waitSwaps == null) continue
                 if (waitSwaps) presentationSignal.receive()
             }
             synchronized(lock) {
                 // §13.1 a partida que terminou depois da desistência nunca é pontuada.
                 if (resigned) return
+                val scoredRound = match.roundNumber
                 match = match.finishRound()
+                _events.tryEmit(GameEvent.RoundScored(scoredRound))
                 if (match.isOver) {
+                    match.winner?.let { _events.tryEmit(GameEvent.GameFinished(it, resigned = false)) }
                     publishLocked(Stage.GAME_OVER)
                     return
                 }
@@ -378,7 +444,7 @@ class GameController(
     fun saveSnapshot(): SaveSnapshot = synchronized(lock) { SaveSnapshot(match, roundEvents, botRandomCalls()) }
 
     /** Posição do sorteio de cada assento (0 para o humano), para o jogo retomado continuar igual. */
-    private fun botRandomCalls(): List<Long> = players.map { (it as? BotSeatPlayer)?.random?.calls ?: 0L }
+    private fun botRandomCalls(): List<Long> = current.map { (it as? BotSeatPlayer)?.random?.calls ?: 0L }
 
     /**
      * Confirmação do humano para distribuir a próxima partida (tela de fim de partida). Ignorada fora da
@@ -416,9 +482,12 @@ class GameController(
      * Envia a jogada do humano para o pedido [requestId] (o de [GameSnapshot.humanRequestId] em que ela foi
      * resolvida). Recusada se o pedido não é mais o em aberto ou se a ação não está em `legal`.
      */
-    fun submit(action: Action, requestId: Long): Boolean {
+    fun submit(action: Action, requestId: Long): Boolean = submit(primarySeat(), action, requestId)
+
+    /** Como [submit], para o humano do [seat] (§16.1: o anfitrião só aceita a jogada de quem tem o pedido em aberto). */
+    fun submit(seat: Seat, action: Action, requestId: Long): Boolean {
         if (resigned) return false
-        return human?.submit(action, requestId) ?: false
+        return (current.getOrNull(seat.index) as? HumanPlayer)?.submit(action, requestId) ?: false
     }
 
     /**
@@ -427,10 +496,13 @@ class GameController(
      * publicadas em [GameSnapshot.humanLegal]: um toque atrasado nunca recebe o motivo de outra situação.
      * Só devolve o motivo, nunca o estado oculto.
      */
-    fun explain(action: Action, requestId: Long): RuleError? {
-        val (id, round) = humanRequest ?: return null
+    fun explain(action: Action, requestId: Long): RuleError? = explain(primarySeat(), action, requestId)
+
+    /** Como [explain], para o humano do [seat]. */
+    fun explain(seat: Seat, action: Action, requestId: Long): RuleError? {
+        val (id, round) = humanRequests.get()[seat.index] ?: return null
         if (id != requestId || resigned) return null
-        return (RoundEngine.validate(round, viewerSeat, action, match.rules) as? RuleResult.Failure)?.error
+        return (RoundEngine.validate(round, seat, action, match.rules) as? RuleResult.Failure)?.error
     }
 
     /**
@@ -446,7 +518,8 @@ class GameController(
             awaitingPresentation.set(null)
             // Sob a trava, `match` não está no meio de uma ação nem de uma pontuação: os totais e o histórico são
             // os de antes da partida em andamento (ela nunca é pontuada).
-            _state.value = snapshot(Stage.GAME_OVER, humanLegal = emptyList(), thinkingSeat = null)
+            seatStates.forEach { (index, flow) -> flow.value = snapshot(Seat(index), Stage.GAME_OVER, humanLegal = emptyList(), thinkingSeat = null) }
+            resignedWinner?.let { _events.tryEmit(GameEvent.GameFinished(it, resigned = true)) }
             true
         }
         // Interrompe esperas (humano, distribuição, próxima partida, pausa); decisões de CPU em curso terminam e
@@ -474,6 +547,47 @@ class GameController(
     /** §3.5 houve troca de 3 vermelho no início da vez do 1º jogador (registro público do motor ainda não vazio). */
     private fun hasStartSwaps(): Boolean = match.currentRound.redThreeLog.isNotEmpty()
 
+    /**
+     * §16.8, §16.9 troca o jogador do [seat] por [newPlayer] (um robô ou outro humano), sem reiniciar o jogo: a mão e a vez
+     * do assento ficam como estão. O pedido em aberto do antigo humano é abandonado, a decisão em curso do antigo bot é
+     * descartada e o laço refaz a vez com o novo jogador. Um robô novo reconstrói a memória com os eventos públicos da
+     * partida (como no jogo retomado). Devolve `false` se o jogo já terminou (ou foi desistido).
+     */
+    fun replacePlayer(seat: Seat, newPlayer: SeatPlayer): Boolean {
+        config.mode.requireSeat(seat)
+        var old: SeatPlayer? = null
+        val accepted = synchronized(lock) {
+            if (match.isOver || resigned) return@synchronized false
+            old = current[seat.index]
+            if (old === newPlayer) return@synchronized false
+            require(newPlayer !is HumanPlayer || current.none { it === newPlayer }) { "Esse HumanPlayer já ocupa outro assento" }
+            current = current.toMutableList().also { it[seat.index] = newPlayer }
+            when (newPlayer) {
+                is BotSeatPlayer -> {
+                    newPlayer.bot.onNewRound()
+                    roundEvents.forEach { newPlayer.bot.observe(it) }
+                }
+                is HumanPlayer -> seatStates.getOrPut(seat.index) {
+                    MutableStateFlow(snapshot(seat, initialStage(), humanLegal = emptyList(), thinkingSeat = null))
+                }
+            }
+            _events.tryEmit(GameEvent.SeatReplaced(seat, byBot = newPlayer is BotSeatPlayer))
+            true
+        }
+        if (!accepted) return false
+        (old as? HumanPlayer)?.abandon()
+        if (humanSeats().isEmpty() || pacing == PacingPolicy.FREE) {
+            // Sem humano na tela local, ninguém mais vai confirmar encenação nem a próxima partida: libera as esperas.
+            if (awaitingPresentation.getAndSet(null) != null) presentationSignal.trySend(Unit)
+            if (humanSeats().isEmpty() && awaitingNextRound.compareAndSet(true, false)) nextRoundSignal.trySend(Unit)
+        }
+        return true
+    }
+
+    /** §16.9 troca o jogador do [seat] por um robô [bot] (com o [random] contado, se o jogo precisa retomar o sorteio dele). */
+    fun replaceWithBot(seat: Seat, bot: BotPlayer, random: CountingRandom? = null): Boolean =
+        replacePlayer(seat, BotSeatPlayer(bot, random))
+
     private fun publish(stage: Stage, thinkingSeat: Seat? = null) {
         synchronized(lock) { publishLocked(stage, thinkingSeat = thinkingSeat) }
     }
@@ -481,27 +595,32 @@ class GameController(
     /** Publica o snapshot; chamar só com a trava. Depois da desistência, o fim de jogo nunca é sobrescrito. */
     private fun publishLocked(
         stage: Stage,
+        humanSeat: Seat? = null,
         humanLegal: List<Action> = emptyList(),
         thinkingSeat: Seat? = null,
         requestId: Long = 0,
     ) {
         if (resigned) return
-        _state.value = snapshot(stage, humanLegal, thinkingSeat, requestId)
+        // Só o humano da vez recebe as ações legais e o pedido; as demais vistas são só de quem observa.
+        seatStates.forEach { (index, flow) ->
+            val owner = index == humanSeat?.index
+            flow.value = snapshot(Seat(index), stage, if (owner) humanLegal else emptyList(), thinkingSeat, if (owner) requestId else 0)
+        }
     }
 
-    private fun snapshot(stage: Stage, humanLegal: List<Action>, thinkingSeat: Seat?, requestId: Long = 0): GameSnapshot {
+    private fun snapshot(seat: Seat, stage: Stage, humanLegal: List<Action>, thinkingSeat: Seat?, requestId: Long = 0): GameSnapshot {
         val current = match
         return GameSnapshot(
             config = config,
-            viewerSeat = viewerSeat,
-            view = current.currentRound.viewFor(viewerSeat, current.rules),
+            viewerSeat = seat,
+            view = current.currentRound.viewFor(seat, current.rules),
             roundNumber = current.roundNumber,
             totals = current.totals,
             history = current.history,
             stage = stage,
             winner = resignedWinner ?: current.winner,
             humanLegal = humanLegal,
-            thinkingSeat = thinkingSeat,
+            thinkingSeat = thinkingSeat?.takeIf { it != seat },
             turnEvents = turnEvents,
             turnRedThrees = turnReds.current,
             humanRequestId = requestId,
@@ -516,6 +635,9 @@ class GameController(
         /** Folga da espera pelo aviso da interface de que a distribuição terminou (rede de segurança). */
         private const val DEAL_SIGNAL_GRACE_MILLIS: Long = 4_000
 
+        /** Eventos que cabem em [events] sem o consumidor ler. */
+        private const val EVENT_BUFFER: Int = 512
+
         /**
          * Jogadores de um jogo do app: o [human] no [humanSeat] e bots da dificuldade da [config] nos demais
          * assentos, cada um com `Random(botSeed(gameSeed, assento))`. [botFactory] permite trocar os bots nos
@@ -529,10 +651,17 @@ class GameController(
             botFactory: (Seat, Random) -> BotPlayer = { _, random -> createBot(config.difficulty, random) },
             /** Sorteios já feitos por assento (jogo salvo): cada bot continua do ponto em que parou. */
             randomCalls: List<Long> = emptyList(),
+        ): List<SeatPlayer> = playersForTable(config, gameSeed, mapOf(humanSeat to human), botFactory, randomCalls)
+
+        /** Como [playersFor], com um humano em cada assento de [humans] (§16, multijogador) e bots nos demais. */
+        fun playersForTable(
+            config: GameConfig,
+            gameSeed: Long,
+            humans: Map<Seat, HumanPlayer>,
+            botFactory: (Seat, Random) -> BotPlayer = { _, random -> createBot(config.difficulty, random) },
+            randomCalls: List<Long> = emptyList(),
         ): List<SeatPlayer> = config.mode.seats.map { seat ->
-            if (seat == humanSeat) {
-                human
-            } else {
+            humans[seat] ?: run {
                 val random = CountingRandom(botSeed(gameSeed, seat.index), randomCalls.getOrElse(seat.index) { 0L })
                 BotSeatPlayer(botFactory(seat, random), random)
             }
