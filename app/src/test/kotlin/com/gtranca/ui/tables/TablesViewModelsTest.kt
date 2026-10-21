@@ -46,6 +46,20 @@ class TablesViewModelsTest {
     }
 
     @Test
+    fun `§16_2 criar mesa multijogador e sempre de 4 posicoes, com nome curto, sem mudar o ultimo modo`() = withMain {
+        val settings = FakeSettings(Settings(lastMode = GameMode.INDIVIDUAL))
+        val vm = CreateTableViewModel(settings)
+        advanceUntilIdle()
+        vm.onTypeChange(true)
+        vm.onTableNameChange("Mesa da família no domingo à tarde com todos")
+        vm.uiState.value.tableName.length shouldBe TABLE_NAME_MAX
+        val config = vm.onCreate()!!
+        config.mode shouldBe GameMode.DUPLAS
+        advanceUntilIdle()
+        settings.state.value.lastMode shouldBe GameMode.INDIVIDUAL
+    }
+
+    @Test
     fun `§14_4 mesas dos jogadores virtuais usam perfis da casa e metas usuais`() {
         val tables = Tables.botTables(seed = 42)
         tables.size shouldBe Tables.BOT_TABLE_COUNT

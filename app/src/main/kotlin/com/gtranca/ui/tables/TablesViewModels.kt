@@ -144,6 +144,9 @@ data class CreateTableUiState(
     /** §14.6 aposta escolhida e saldo da carteira. */
     val stake: Int = Coins.DEFAULT_STAKE,
     val balance: Int = Coins.INITIAL_BALANCE,
+    /** §16.2 tipo Multijogador: mesa sempre de 4 posições (o modo some da tela) e com [tableName]. */
+    val multiplayer: Boolean = false,
+    val tableName: String = "",
 ) {
     val targetScore: Int? get() = parseTargetScore(targetText)
 
@@ -161,7 +164,7 @@ data class CreateTableUiState(
 
     val canCreate: Boolean get() = targetScore != null && loaded && canAfford
 
-    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(mode, difficulty, it, rules, stake) }
+    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(if (multiplayer) GameMode.DUPLAS else mode, difficulty, it, rules, stake) }
 
     companion object {
         const val MAX_TARGET: Int = Int.MAX_VALUE
@@ -221,6 +224,12 @@ class CreateTableViewModel(
 
     fun onDifficultyChange(difficulty: Difficulty) = _uiState.update { it.copy(difficulty = difficulty) }
 
+    /** §16.2 tipo da mesa: contra robôs ou multijogador. */
+    fun onTypeChange(multiplayer: Boolean) = _uiState.update { it.copy(multiplayer = multiplayer) }
+
+    /** §16.2 nome da mesa multijogador (até [TABLE_NAME_MAX] caracteres). */
+    fun onTableNameChange(name: String) = _uiState.update { it.copy(tableName = name.take(TABLE_NAME_MAX)) }
+
     fun onRulesChange(choice: RulesChoice) = _uiState.update { it.copy(rulesChoice = choice) }
 
     fun onTargetChange(text: String) = _uiState.update { it.copy(targetText = text) }
@@ -233,6 +242,8 @@ class CreateTableViewModel(
         val state = _uiState.value
         if (!state.canCreate) return null
         val config = state.toConfig() ?: return null
+        // A mesa multijogador não muda o último modo escolhido contra robôs.
+        if (state.multiplayer) return config
         settings?.let { repo ->
             if (writes != null) writes.enqueue { repo.setLastMode(config.mode) }
             else viewModelScope.launch { safely { repo.setLastMode(config.mode) } }
@@ -240,6 +251,9 @@ class CreateTableViewModel(
         return config
     }
 }
+
+/** §16.2 tamanho máximo do nome da mesa multijogador (o anúncio corta o que não couber, AdvertCodec). */
+const val TABLE_NAME_MAX: Int = 24
 
 /** Estado do editor das regras personalizadas (§14.2, §14.4). */
 data class RulesEditorUiState(

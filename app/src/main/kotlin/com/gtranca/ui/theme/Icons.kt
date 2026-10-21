@@ -44,6 +44,59 @@ fun RecycleIcon(color: Color, modifier: Modifier = Modifier, size: Dp = 24.dp) {
     }
 }
 
+/** §16 ícone de Wi-Fi (três arcos e um ponto), desenhado no código; [crossed] = desligado (um risco por cima). */
+@Composable
+fun WifiIcon(color: Color, crossed: Boolean, modifier: Modifier = Modifier, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val stroke = w * 0.09f
+        val base = Offset(w / 2, w * 0.82f)
+        drawCircle(color, w * 0.07f, base)
+        listOf(0.22f, 0.40f, 0.58f).forEach { fr ->
+            val r = w * fr
+            drawArc(color, 225f, 90f, false, Offset(base.x - r, base.y - r), Size(2 * r, 2 * r), style = Stroke(stroke, cap = StrokeCap.Round))
+        }
+        if (crossed) drawLine(color, Offset(w * 0.12f, w * 0.12f), Offset(w * 0.88f, w * 0.88f), stroke, StrokeCap.Round)
+    }
+}
+
+/** §16 ícone de mesa (tampo oval com pés), para o menu do anfitrião. */
+@Composable
+fun TableIcon(color: Color, modifier: Modifier = Modifier, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val stroke = w * 0.09f
+        drawOval(color, Offset(w * 0.08f, w * 0.22f), Size(w * 0.84f, w * 0.3f), style = Stroke(stroke))
+        drawLine(color, Offset(w * 0.24f, w * 0.48f), Offset(w * 0.2f, w * 0.88f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * 0.76f, w * 0.48f), Offset(w * 0.8f, w * 0.88f), stroke, StrokeCap.Round)
+    }
+}
+
+/** §16.2 seta curva de girar a mesa; [clockwise] = para a direita. */
+@Composable
+fun RotateIcon(color: Color, clockwise: Boolean, modifier: Modifier = Modifier, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val stroke = w * 0.1f
+        val r = w * 0.32f
+        val center = Offset(w / 2, w / 2)
+        val start = if (clockwise) 200f else 340f
+        val sweep = if (clockwise) 250f else -250f
+        drawArc(color, start, sweep, false, Offset(center.x - r, center.y - r), Size(2 * r, 2 * r), style = Stroke(stroke, cap = StrokeCap.Round))
+        val end = (start + sweep) * PI.toFloat() / 180f
+        val tip = Offset(center.x + r * cos(end), center.y + r * sin(end))
+        val tangent = end + if (clockwise) PI.toFloat() / 2 else -PI.toFloat() / 2
+        val head = w * 0.2f
+        val path = Path().apply {
+            moveTo(tip.x + head * cos(tangent), tip.y + head * sin(tangent))
+            lineTo(tip.x + head * 0.8f * cos(tangent + 2.2f), tip.y + head * 0.8f * sin(tangent + 2.2f))
+            lineTo(tip.x + head * 0.8f * cos(tangent - 2.2f), tip.y + head * 0.8f * sin(tangent - 2.2f))
+            close()
+        }
+        drawPath(path, color, style = Fill)
+    }
+}
+
 /** Ícone de "ver regras": uma lista (pontos e linhas) com uma lupa por cima, desenhado no código. */
 @Composable
 fun RulesIcon(color: Color, modifier: Modifier = Modifier, size: Dp = 24.dp) {

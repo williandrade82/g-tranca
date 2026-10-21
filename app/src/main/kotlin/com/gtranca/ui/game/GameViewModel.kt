@@ -130,6 +130,8 @@ data class GameUiState(
     val swapNoticeMillis: Long = 0,
     /** §16.6 multijogador: a vez já chegou, mas este aparelho ainda anima as jogadas anteriores. */
     val turnHeld: Boolean = false,
+    /** §16.6 multijogador: a vez de um humano remoto também aparece (não há robô "pensando" nela). */
+    val remoteTurns: Boolean = false,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
     private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
@@ -191,8 +193,11 @@ class GameViewModel(
     externalDriver: TableDriver? = null,
     /** §16 nomes e avatares dos assentos vindos da sala (mudam no jogo: robô substituto, "VAGO"); `null` = sorteio local. */
     private val externalPersonas: StateFlow<List<Persona>>? = null,
-    /** §16.6 a vez só é entregue ao jogador depois de terminar as animações deste aparelho (o anfitrião não as espera). */
-    private val holdTurnForAnimations: Boolean = false,
+    /**
+     * §16 mesa multijogador: a vez só é entregue ao jogador depois de terminar as animações deste aparelho (o anfitrião não
+     * as espera, §16.6) e a mesa indica a vez também dos humanos remotos.
+     */
+    private val multiplayer: Boolean = false,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -318,7 +323,7 @@ class GameViewModel(
 
     /** §16.6 a vez fica segura enquanto este aparelho ainda anima (distribuição, voos, trocas de 3 vermelho). */
     private fun turnHeld(state: Local): Boolean =
-        holdTurnForAnimations && (!state.dealDone || state.flights.isNotEmpty() || state.swaps.isNotEmpty() || state.settling > 0)
+        multiplayer && (!state.dealDone || state.flights.isNotEmpty() || state.swaps.isNotEmpty() || state.settling > 0)
 
     init {
         viewModelScope.launch {
@@ -586,6 +591,7 @@ class GameViewModel(
             animationMillis = effectiveMillis(state),
             personas = externalPersonas?.value ?: personas,
             turnHeld = held,
+            remoteTurns = multiplayer,
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
         )

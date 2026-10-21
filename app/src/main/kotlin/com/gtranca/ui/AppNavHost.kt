@@ -40,6 +40,8 @@ import com.gtranca.game.WriteQueue
 import kotlin.random.Random
 import com.gtranca.game.appData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hasRoute
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -104,13 +106,24 @@ data class NewTableRoute(
     val rulesJson: String,
     val seed: Long,
     val stake: Int = 0,
+    /** §16.2 nome da mesa multijogador; `null` = mesa contra robôs. */
+    val multiName: String? = null,
 ) {
     fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson, stake = stake).toConfig()
 
     companion object {
-        fun of(config: GameConfig, seed: Long) = GameRoute.of(config).let { NewTableRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, seed, it.stake) }
+        fun of(config: GameConfig, seed: Long, multiName: String? = null) =
+            GameRoute.of(config).let { NewTableRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, seed, it.stake, multiName) }
     }
 }
+
+/** §16.2 sala da mesa multijogador ("Escolha sua posição"); a mesa está em [com.gtranca.multiplayer.MultiplayerHub]. */
+@Serializable
+object SeatPickerRoute
+
+/** §16 jogo da mesa multijogador. */
+@Serializable
+object MultiplayerGameRoute
 
 /** §14.4 editor das regras personalizadas; [fromCreate]: ao salvar, "Criar mesa" escolhe "Personalizada". */
 @Serializable
@@ -228,13 +241,60 @@ fun AppNavHost() {
             ) { navController.popBackStack() }
         }
         composable<TablesRoute> {
+            // §16 botão de Wi-Fi: desligado por padrão; ligado, pede as permissões e procura mesas por perto.
+            var wifiOn by rememberSaveable { mutableStateOf(false) }
+            var asking by remember { mutableStateOf(false) }
+            if (asking) {
+                com.gtranca.net.nearby.MultiplayerAccessGate(
+                    onReady = { asking = false; wifiOn = true },
+                    onCancel = { asking = false; wifiOn = false },
+                )
+            }
+            val adverts by remember(wifiOn) {
+                if (wifiOn) com.gtranca.multiplayer.MultiplayerHub.discover(context).map { list -> list.filter { it.listed } }
+                else kotlinx.coroutines.flow.flowOf(emptyList())
+            }.collectAsStateWithLifecycle(emptyList())
+            val profile = rememberProfile(data)
             TablesScreen(
                 viewModel { TablesViewModel(settings = data.settings, wallet = data.wallet) },
                 onOpen = { table -> navController.navigate(TableRulesRoute(table.id)) { launchSingleTop = true } },
                 onCreate = { navController.navigate(CreateTableRoute) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
+                multiplayer = com.gtranca.ui.tables.TablesMultiplayer(
+                    wifiOn = wifiOn,
+                    onToggle = { if (wifiOn) wifiOn = false else asking = true },
+                    tables = adverts.distinctBy { it.tableId },
+                    onOpen = { advert ->
+                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data).joinAsync(advert.tableId, profile?.name.orEmpty())
+                        navController.navigate(SeatPickerRoute) { launchSingleTop = true }
+                    },
+                ),
             )
         }
+        composable<SeatPickerRoute> {
+            val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
+            val balance by remember(data) { data.wallet.wallet.map { it.balance }.catch { emit(0) } }.collectAsStateWithLifecycle(Int.MAX_VALUE)
+            val current = table
+            if (current == null) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+            } else {
+                com.gtranca.ui.multiplayer.SeatPickerScreen(
+                    current,
+                    balance,
+                    onStarted = {
+                        navController.navigate(MultiplayerGameRoute) {
+                            popUpTo(HomeRoute) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
+                    onLeave = {
+                        com.gtranca.multiplayer.MultiplayerHub.leave()
+                        navController.popBackStack()
+                    },
+                )
+            }
+        }
+        composable<MultiplayerGameRoute> { MultiplayerGameDestination(data, navController) }
         composable<TableRulesRoute> { entry ->
             val route = entry.toRoute<TableRulesRoute>()
             // A lista sorteada vive na entrada das mesas: a mesa aberta é a mesma que o jogador tocou.
@@ -263,6 +323,7 @@ fun AppNavHost() {
                     vm.reloadCustomRules(select = true)
                 }
             }
+            val profile = rememberProfile(data)
             CreateTableScreen(
                 vm,
                 onCreate = { config ->
@@ -271,6 +332,15 @@ fun AppNavHost() {
                 },
                 onCustomize = { navController.navigate(RulesEditorRoute(fromCreate = true)) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
+                // §16.2 mesa multijogador: os robôs dos assentos vagos aparecem em "Regras da mesa" antes de publicar.
+                onCreateMultiplayer = { config, name ->
+                    navController.navigate(NewTableRoute.of(config, System.nanoTime(), name)) { launchSingleTop = true }
+                },
+                accessGate = { ready, cancel -> com.gtranca.net.nearby.MultiplayerAccessGate(ready, cancel) },
+                defaultTableName = androidx.compose.ui.res.stringResource(
+                    com.gtranca.R.string.create_table_name_default,
+                    profile?.name?.takeIf { it.isNotBlank() } ?: PlayerProfile.DEFAULT_NAME,
+                ),
             )
         }
         composable<NewTableRoute> { entry ->
@@ -278,12 +348,34 @@ fun AppNavHost() {
             val vm = viewModel { CreatedTableViewModel(route.toConfig(), route.seed, data.settings, data.wallet) }
             val table by vm.table.collectAsStateWithLifecycle()
             val balance by vm.balance.collectAsStateWithLifecycle()
+            val profile = rememberProfile(data)
+            val multiName = route.multiName
             TableRulesScreen(
                 table,
-                onStart = { config -> navController.startGame(config, table.seed) },
+                onStart = { config ->
+                    if (multiName == null) {
+                        navController.startGame(config, table.seed)
+                    } else {
+                        // §16.2 publica a mesa: as regras vão uma vez a quem entrar; os robôs são os mostrados, na ordem dos
+                        // assentos que ficarem vagos.
+                        val rules = com.gtranca.net.TableRules(
+                            tableName = multiName,
+                            mode = config.mode,
+                            rules = config.rules,
+                            targetScore = config.targetScore,
+                            stake = config.stake,
+                            difficulty = config.difficulty.id,
+                            robots = table.players.mapNotNull { it.character?.profile?.code },
+                        )
+                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data)
+                            .hostAsync(rules, profile?.name.orEmpty(), com.gtranca.net.nearby.newTableId())
+                        navController.navigate(SeatPickerRoute) { launchSingleTop = true }
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 onReroll = vm::reroll,
                 balance = balance,
+                multiplayerName = multiName,
             )
         }
         composable<RulesEditorRoute> { entry ->
@@ -304,6 +396,86 @@ fun AppNavHost() {
     }
     }
     }
+}
+
+/** Perfil do jogador (nome, avatar), lido uma vez; `null` enquanto carrega. */
+@Composable
+private fun rememberProfile(data: GameData): PlayerProfile? {
+    val profile by produceState<PlayerProfile?>(null, data) {
+        value = data.settings.settings.catch { emit(Settings()) }.first().let { PlayerProfile.decode(it.profileId) }
+    }
+    return profile
+}
+
+/**
+ * §16 a tela do jogo multijogador: o condutor da mesa ([com.gtranca.multiplayer.MultiplayerDriver]) e os nomes vêm da
+ * mesa do [com.gtranca.multiplayer.MultiplayerHub]; nada é gravado (§16.12). Vive enquanto a tela estiver na pilha.
+ */
+class MultiplayerGameHolder(
+    val table: com.gtranca.multiplayer.MultiplayerTable,
+    self: com.gtranca.game.Persona,
+    vacant: String,
+    disconnected: String,
+) : ViewModel() {
+    val personas = table.personas(self, vacant) { name -> disconnected.format(name) }
+    val driver = kotlinx.coroutines.flow.MutableStateFlow<com.gtranca.multiplayer.MultiplayerDriver?>(null)
+
+    init {
+        val scope = viewModelScope
+        scope.launch {
+            driver.value = com.gtranca.multiplayer.MultiplayerDriver.create(table, scope) { com.gtranca.game.GameController.DEFAULT_BOT_DELAY_MILLIS }
+        }
+    }
+}
+
+@Composable
+private fun MultiplayerGameDestination(data: GameData, navController: NavHostController) {
+    val context = LocalContext.current
+    val goHome: () -> Unit = {
+        com.gtranca.multiplayer.MultiplayerHub.exit()
+        navController.popBackStack(HomeRoute, inclusive = false)
+    }
+    val table = remember { com.gtranca.multiplayer.MultiplayerHub.table.value }
+    val profile = rememberProfile(data)
+    if (table == null) {
+        LaunchedEffect(Unit) { goHome() }
+        return
+    }
+    if (profile == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    val photoPath = com.gtranca.ui.profile.ProfilePhoto.savedPath(context)
+    val vacant = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_seat_vacant)
+    val disconnected = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_seat_disconnected)
+    val holder = viewModel { MultiplayerGameHolder(table, profile.persona(PlayerProfile.DEFAULT_NAME, photoPath), vacant, disconnected) }
+    val driver by holder.driver.collectAsStateWithLifecycle()
+    val personas by holder.personas.collectAsStateWithLifecycle()
+    val readyDriver = driver
+    val rules = table.rules.value
+    if (readyDriver == null || rules == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    val prefs by produceState<Settings?>(null) { value = data.settings.settings.catch { emit(Settings()) }.first() }
+    val loaded = prefs ?: run {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    val viewModel = viewModel {
+        GameViewModel(
+            com.gtranca.multiplayer.MultiplayerTable.configOf(rules),
+            initialHand = HandPrefs.parse(loaded.handSortId),
+            playerProfile = profile,
+            playerPhoto = photoPath,
+            slowAnimations = loaded.slowAnimations,
+            externalDriver = readyDriver,
+            externalPersonas = holder.personas,
+            multiplayer = true,
+        )
+    }
+    val hooks = com.gtranca.ui.multiplayer.rememberMultiplayerHooks(table, personas, goHome)
+    GameScreen(viewModel, hooks, goHome)
 }
 
 /** Abre o jogo da mesa escolhida; voltar do jogo leva ao início (as telas de mesa saem da pilha). */

@@ -1,5 +1,6 @@
 package com.gtranca.ui.tables
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,6 +86,7 @@ private fun TableFrame(
     title: String,
     tag: String,
     bottom: @Composable RowScope.() -> Unit,
+    titleExtra: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     GBackground(Modifier.fillMaxSize().testTag(tag)) {
@@ -92,7 +95,14 @@ private fun TableFrame(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.lg),
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
-                GTitle(title, Modifier.semantics { heading() })
+                if (titleExtra == null) {
+                    GTitle(title, Modifier.semantics { heading() })
+                } else {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        GTitle(title, Modifier.weight(1f).semantics { heading() })
+                        titleExtra()
+                    }
+                }
                 content()
             }
             Row(
@@ -123,9 +133,23 @@ fun rulesName(rules: RuleSet): String = when (rules.id) {
 
 // ---------- Mesas disponíveis ----------
 
-/** §14.4 "Novo jogo": mesas abertas pelos jogadores virtuais + "Criar mesa". */
+/** §16 a parte multijogador de "Mesas disponíveis": o botão de Wi-Fi e as mesas achadas por perto. */
+class TablesMultiplayer(
+    val wifiOn: Boolean,
+    val onToggle: () -> Unit,
+    val tables: List<com.gtranca.net.TableAdvert>,
+    val onOpen: (com.gtranca.net.TableAdvert) -> Unit,
+)
+
+/** §14.4 "Novo jogo": mesas abertas pelos jogadores virtuais + "Criar mesa"; §16 com o Wi-Fi, as mesas por perto. */
 @Composable
-fun TablesScreen(viewModel: TablesViewModel, onOpen: (TableOffer) -> Unit, onCreate: () -> Unit, onBack: () -> Unit) {
+fun TablesScreen(
+    viewModel: TablesViewModel,
+    onOpen: (TableOffer) -> Unit,
+    onCreate: () -> Unit,
+    onBack: () -> Unit,
+    multiplayer: TablesMultiplayer? = null,
+) {
     val tables by viewModel.tables.collectAsStateWithLifecycle()
     val balance by viewModel.balance.collectAsStateWithLifecycle()
     TableFrame(
@@ -135,10 +159,104 @@ fun TablesScreen(viewModel: TablesViewModel, onOpen: (TableOffer) -> Unit, onCre
             BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, onClick = onBack)
             BottomButton(stringResource(R.string.tables_create), "tables-create", GButtonKind.Primary, onClick = onCreate)
         },
+        titleExtra = multiplayer?.let { mp -> { WifiButton(mp.wifiOn, mp.onToggle) } },
     ) {
         Text(stringResource(R.string.tables_subtitle), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
         Text(stringResource(R.string.coins_balance, balance), Modifier.testTag("coins-balance"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
+        if (multiplayer != null && multiplayer.wifiOn) {
+            // §16.2 mesas abertas por perto, acrescentadas à lista (aparecem e somem conforme a busca).
+            if (multiplayer.tables.isEmpty()) {
+                Text(stringResource(R.string.mp_searching), Modifier.testTag("tables-searching"), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
+            }
+            multiplayer.tables.forEach { advert -> MultiplayerTableCard(advert) { multiplayer.onOpen(advert) } }
+        }
         tables.forEach { table -> TableCard(table, balance) { onOpen(table) } }
+    }
+}
+
+/** §16 botão de Wi-Fi (3.2): ligado, procura mesas por perto; desligado, nada de rede. */
+@Composable
+private fun WifiButton(on: Boolean, onToggle: () -> Unit) {
+    val description = stringResource(if (on) R.string.mp_wifi_on_desc else R.string.mp_wifi_off_desc)
+    val shape = RoundedCornerShape(Corner.sm)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(shape)
+            .background(if (on) GColors.RoyalBlue else androidx.compose.ui.graphics.Color.Transparent, shape)
+            .border(1.dp, GColors.Gold.copy(alpha = if (on) 0.9f else 0.5f), shape)
+            .clickable(onClickLabel = description, role = Role.Switch, onClick = onToggle)
+            .semantics { contentDescription = description }
+            .testTag("tables-wifi"),
+        contentAlignment = Alignment.Center,
+    ) { com.gtranca.ui.theme.WifiIcon(if (on) GColors.Gold else GColors.Steel, crossed = !on, size = 28.dp) }
+}
+
+/**
+ * §16 card de mesa multijogador, primeira versão (docs/telas.md 3.2): nome da mesa, anfitrião e "jogo em andamento"; no
+ * lugar do retrato, o banner "Multi player". Regras, aposta e posições aparecem ao entrar (o anúncio é curto).
+ */
+@Composable
+private fun MultiplayerTableCard(advert: com.gtranca.net.TableAdvert, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(Corner.md)
+    val id = advert.tableId
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(GColors.Indigo, shape)
+            .border(1.dp, GColors.Gold.copy(alpha = 0.8f), shape)
+            .clickable(onClick = onClick)
+            .padding(Spacing.md)
+            .testTag("table-$id"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        MultiBanner(Modifier.width(96.dp).testTag("table-$id-multi-banner"))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(advert.tableName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GColors.Champagne, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(stringResource(R.string.mp_table_host, advert.hostName), style = MaterialTheme.typography.bodyMedium, color = GColors.Gold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (advert.inProgress) {
+                Text(
+                    stringResource(R.string.mp_in_progress),
+                    Modifier
+                        .background(GColors.Bordeaux, RoundedCornerShape(Corner.sm))
+                        .padding(horizontal = Spacing.sm, vertical = 2.dp)
+                        .testTag("table-$id-in-progress"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GColors.Ivory,
+                )
+            }
+            Text(stringResource(R.string.mp_table_details_inside), style = MaterialTheme.typography.bodySmall, color = GColors.Steel)
+        }
+    }
+}
+
+/** §16 banner animado "Multi" / "player" (o brilho dourado pulsa; parado sem animações do sistema). */
+@Composable
+private fun MultiBanner(modifier: Modifier) {
+    val motion = com.gtranca.ui.theme.rememberMotionEnabled()
+    val glow = if (motion) {
+        val value by androidx.compose.animation.core.rememberInfiniteTransition(label = "multi").animateFloat(
+            0.55f, 1f,
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween<Float>(1200), androidx.compose.animation.core.RepeatMode.Reverse),
+            label = "glow",
+        )
+        value
+    } else {
+        1f
+    }
+    val shape = RoundedCornerShape(Corner.sm)
+    Column(
+        modifier
+            .clip(shape)
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(GColors.RoyalStart, GColors.Midnight)), shape)
+            .border(2.dp, GColors.Gold.copy(alpha = glow), shape)
+            .padding(vertical = Spacing.sm),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(stringResource(R.string.mp_banner_multi), color = GColors.Gold.copy(alpha = glow), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.mp_banner_player), color = GColors.Champagne, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -253,13 +371,26 @@ private fun seatsInDisplayOrder(table: TableOffer): List<Pair<Persona, Int>> = l
 
 /** §14.4 regras de uma mesa aberta: o jogador inicia o jogo ou volta. */
 @Composable
-fun TableRulesScreen(table: TableOffer, onStart: (GameConfig) -> Unit, onBack: () -> Unit, onReroll: (() -> Unit)? = null, balance: Int = Int.MAX_VALUE) {
+fun TableRulesScreen(
+    table: TableOffer,
+    onStart: (GameConfig) -> Unit,
+    onBack: () -> Unit,
+    onReroll: (() -> Unit)? = null,
+    balance: Int = Int.MAX_VALUE,
+    /** §16.2 mesa multijogador: o nome dela vai no título e o botão é "Publicar mesa". */
+    multiplayerName: String? = null,
+) {
     TableFrame(
-        stringResource(R.string.table_rules_title),
+        multiplayerName?.let { "${stringResource(R.string.table_rules_title)} · $it" } ?: stringResource(R.string.table_rules_title),
         "table-rules-screen",
         bottom = {
             BottomButton(stringResource(R.string.back), "table-rules-back", GButtonKind.Secondary, onClick = onBack)
-            BottomButton(stringResource(R.string.table_rules_start), "table-rules-start", GButtonKind.Primary, enabled = Coins.canJoin(balance, table.stake)) { onStart(table.toConfig()) }
+            BottomButton(
+                stringResource(if (multiplayerName != null) R.string.table_rules_publish else R.string.table_rules_start),
+                "table-rules-start",
+                GButtonKind.Primary,
+                enabled = Coins.canJoin(balance, table.stake),
+            ) { onStart(table.toConfig()) }
         },
     ) {
         // §14.5 nível dos robôs (estrelas e nome) centralizado; à direita, sortear outros (só em mesa criada pelo jogador).
@@ -448,25 +579,59 @@ fun CreateTableScreen(
     onCreate: (GameConfig) -> Unit,
     onCustomize: () -> Unit,
     onBack: () -> Unit,
+    /** §16.2 criar mesa multijogador (configuração e nome da mesa); `null` = sem o tipo Multijogador. */
+    onCreateMultiplayer: ((GameConfig, String) -> Unit)? = null,
+    /** §16 porta das permissões do Nearby (pedidas ao escolher o tipo Multijogador). */
+    accessGate: (@Composable (onReady: () -> Unit, onCancel: () -> Unit) -> Unit)? = null,
+    defaultTableName: String = "",
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var asking by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (asking && accessGate != null) {
+        accessGate({ asking = false; viewModel.onTypeChange(true) }, { asking = false; viewModel.onTypeChange(false) })
+    }
     TableFrame(
         stringResource(R.string.create_title),
         "create-table-screen",
         bottom = {
             BottomButton(stringResource(R.string.back), "create-back", GButtonKind.Secondary, onClick = onBack)
             BottomButton(stringResource(R.string.create_submit), "create-table", GButtonKind.Primary, enabled = state.canCreate) {
-                viewModel.onCreate()?.let(onCreate)
+                val config = viewModel.onCreate() ?: return@BottomButton
+                if (state.multiplayer && onCreateMultiplayer != null) {
+                    onCreateMultiplayer(config, state.tableName.trim().ifBlank { defaultTableName })
+                } else {
+                    onCreate(config)
+                }
             }
         },
     ) {
         GPanel(Modifier.fillMaxWidth()) {
-            Section(stringResource(R.string.home_mode)) {
-                ModeCard(stringResource(R.string.mode_individual), 1, state.mode == GameMode.INDIVIDUAL, "mode-individual") {
-                    viewModel.onModeChange(GameMode.INDIVIDUAL)
+            if (onCreateMultiplayer != null) {
+                Section(stringResource(R.string.create_type)) {
+                    Chip(stringResource(R.string.create_type_bots), !state.multiplayer, "create-type-bots") { viewModel.onTypeChange(false) }
+                    Chip(stringResource(R.string.create_type_multi), state.multiplayer, "create-type-multi") {
+                        if (!state.multiplayer) asking = true
+                    }
                 }
-                ModeCard(stringResource(R.string.mode_duplas_short), 2, state.mode == GameMode.DUPLAS, "mode-duplas") {
-                    viewModel.onModeChange(GameMode.DUPLAS)
+            }
+            if (state.multiplayer) {
+                OutlinedTextField(
+                    value = state.tableName,
+                    onValueChange = viewModel::onTableNameChange,
+                    label = { Text(stringResource(R.string.create_table_name)) },
+                    placeholder = { Text(defaultTableName) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth().testTag("create-table-name"),
+                )
+            } else {
+                Section(stringResource(R.string.home_mode)) {
+                    ModeCard(stringResource(R.string.mode_individual), 1, state.mode == GameMode.INDIVIDUAL, "mode-individual") {
+                        viewModel.onModeChange(GameMode.INDIVIDUAL)
+                    }
+                    ModeCard(stringResource(R.string.mode_duplas_short), 2, state.mode == GameMode.DUPLAS, "mode-duplas") {
+                        viewModel.onModeChange(GameMode.DUPLAS)
+                    }
                 }
             }
             Section(stringResource(R.string.home_difficulty)) {

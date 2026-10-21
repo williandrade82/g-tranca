@@ -41,9 +41,21 @@ val LocalTableRules = androidx.compose.runtime.staticCompositionLocalOf { com.gt
 /** Sem coringas (§1, §6.3) não há canastra suja: os textos dizem só "Canastra". */
 val com.gtranca.engine.RuleSet.noWilds: Boolean get() = maxWildsPerMeld == 0
 
+/**
+ * §16 o que a tela do jogo ganha na mesa multijogador (3.14, 3.15): o menu do anfitrião no cabeçalho, os modais e faixas
+ * da mesa por cima, o resultado em moedas vindo do anfitrião e "Voltar à mesa" no fim de jogo.
+ */
+class MultiplayerScreenHooks(
+    val headerExtra: @Composable () -> Unit,
+    val overlay: @Composable () -> Unit,
+    /** Moedas ganhas (ou perdidas, negativo) no fim; `null` enquanto o anfitrião não envia. */
+    val coinsNet: () -> Int?,
+    val gameOverExtra: @Composable () -> Unit,
+)
+
 /** Tela do jogo: mesa, fim de partida (§12) ou fim de jogo (§13), conforme o estado. */
 @Composable
-fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
+fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = null, onExit: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ObserveAnimationScale(viewModel::onAnimationScaleChanged)
     // Velocidade das animações (Perfil ou botão da mesa): vale já na jogada seguinte.
@@ -53,7 +65,12 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     var confirmExit by rememberSaveable { mutableStateOf(false) }
 
     BackHandler {
-        if (snapshot.stage == Stage.GAME_OVER) onExit() else confirmExit = true
+        when {
+            snapshot.stage == Stage.GAME_OVER -> onExit()
+            // §16.9 no multijogador, Voltar é a desistência (mesma confirmação da bandeira).
+            multiplayer != null -> viewModel.onResign()
+            else -> confirmExit = true
+        }
     }
 
     // Depois do fim do jogo (§13) não há mais o que desistir.
@@ -65,17 +82,43 @@ fun GameScreen(viewModel: GameViewModel, onExit: () -> Unit) {
     androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules) {
     if (reviewingTable) FinalTableReview(state, viewModel) { reviewingTable = false }
     else when (state.endScreen) {
-        null -> TableScreen(state, viewModel)
+        null -> TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra)
         EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign }, state.personas, state.animationMillis > 0, review)
         EndScreen.ROUND_POINTS ->
             RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
         EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext, state.personas, state.animationMillis > 0, review)
-        EndScreen.FINAL -> GameOverScreen(snapshot, onExit, state.personas, state.animationMillis > 0)
+        EndScreen.FINAL -> GameOverScreen(
+            snapshot, onExit, state.personas, state.animationMillis > 0,
+            multiplayer = multiplayer != null,
+            multiplayerNet = multiplayer?.coinsNet?.invoke(),
+            extra = multiplayer?.gameOverExtra,
+        )
     }
     }
 
     // §13.1 desistência: disponível na mesa, na encenação e na tela de anúncio (não na de pontos, decisão do usuário).
-    if (state.confirmResign) ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign)
+    if (state.confirmResign) {
+        if (multiplayer != null) {
+            // §16.9 "Desistir da mesa?": um robô não assume na hora; a aposta se perde e o jogo segue para os demais.
+            GMessage(
+                modifier = Modifier.testTag("resign-dialog"),
+                title = stringResource(R.string.mp_resign_title),
+                text = stringResource(if (snapshot.view.mode.seatCount == 2) R.string.mp_resign_text_duel else R.string.mp_resign_text),
+                illustration = MessageIllustration.Flag,
+                tone = MessageTone.Danger,
+                confirmText = stringResource(R.string.resign_confirm),
+                onConfirm = viewModel::onConfirmResign,
+                confirmTag = "resign-confirm",
+                dismissText = stringResource(R.string.cancel),
+                onDismiss = viewModel::onDismissResign,
+                dismissTag = "resign-cancel",
+                onDismissRequest = viewModel::onDismissResign,
+            )
+        } else {
+            ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign)
+        }
+    }
+    multiplayer?.overlay?.invoke()
 
     if (confirmExit) {
         GMessage(

@@ -188,7 +188,7 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
      real pode trazer só outra mesa).
    **Bateria:** o anfitrião busca o jogo todo (vigia de §16.10) e anuncia o jogo todo; é o custo de uma busca BLE contínua. Medir nos
    celulares; se pesar, usar `setLowPower(true)` na busca do anfitrião. Laboratório do Nearby só no debug (`NearbyLabActivity`, via `adb`).
-6. **Telas** (conforme `docs/telas.md` atualizado), indicador de vez remoto, ViewModels para convidados nos assentos 1 a 3. *(android-ui-dev)*
+6. **Telas** (conforme `docs/telas.md` atualizado), indicador de vez remoto, ViewModels para convidados nos assentos 1 a 3. *(android-ui-dev)* — **FEITA (primeira versão)**: a tela do jogo conduz a mesa por um `TableDriver` (o local é o `GameController` de sempre; o `MultiplayerDriver` segue o papel do aparelho, anfitrião ou convidado, inclusive na sucessão); `MultiplayerTable`/`MultiplayerHub` guardam a mesa entre as telas; botão de Wi-Fi e card na lista, tipo Multijogador em Criar mesa, Publicar mesa, Escolha sua posição, pausa e pedidos do anfitrião, menu do anfitrião, avisos, reconexão, "Voltar à mesa", "Aguardando os outros jogadores" e moedas do fim. **Fora desta etapa:** card completo (anúncio maior), Excluir duas posições (§16.3, sem API na sessão), Continuar da sessão (§16.12, sem espaço no `:data`) e a marca "multijogador" nas estatísticas (§16.14).
 7. **Loja:** `docs/loja/ficha-da-loja.md` e política de privacidade com as novas permissões ("nada sai do aparelho; sem internet").
    Revisão final do `rules-auditor` quanto a vazamento (só os sucessores recebem estado oculto; token não trafega no roster).
 

@@ -226,6 +226,8 @@ fun TableScreen(
     modifier: Modifier = Modifier,
     /** Revisão da mesa final: no lugar da barra de ações, só "Continuar" (não há jogada possível). */
     onReviewContinue: (() -> Unit)? = null,
+    /** §16 multijogador: ícone extra no cabeçalho (menu do anfitrião, 3.14). */
+    headerExtra: (@Composable () -> Unit)? = null,
 ) {
     val snapshot = state.snapshot
     val view = snapshot.view
@@ -322,7 +324,7 @@ fun TableScreen(
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
-                    Header(state, events) { showLegend = true }
+                    Header(state, events, headerExtra) { showLegend = true }
                     // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
                     Column(
@@ -412,7 +414,7 @@ fun TableScreen(
 }
 
 @Composable
-private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit) {
+private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable () -> Unit)?, onLegend: () -> Unit) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val other = view.mode.sides.first { it != view.side }
@@ -451,6 +453,7 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
                     .testTag("score"),
             )
         }
+        extra?.invoke()
         SoundButton(OnTable)
         SpeedButton(OnTable)
         // Legenda dos símbolos das jogadas dos outros assentos.
@@ -519,7 +522,9 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     val snapshot = state.snapshot
     val view = snapshot.view
     val role = SeatRole.of(view.mode, seat, snapshot.viewerSeat)
-    val thinking = snapshot.thinkingSeat == seat
+    // §16.6 no multijogador a vez de um humano remoto também é destacada.
+    val thinking = snapshot.thinkingSeat == seat ||
+        (state.remoteTurns && snapshot.thinkingSeat == null && view.phase != Phase.FINISHED && view.currentSeat == seat)
     val handSize = view.handSizes[seat.index]
     val handText = countText(R.plurals.opponent_hand, R.string.opponent_hand_zero, handSize)
     val countText = countText(R.plurals.card_count, R.string.card_count_zero, handSize)
@@ -917,7 +922,9 @@ private fun ReviewContinueBar(onContinue: () -> Unit) {
 @Composable
 private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     val snapshot = state.snapshot
+    // §16.6 no multijogador, a vez de um humano remoto aparece como a dos robôs ("Vez de <nome>").
     val thinking = snapshot.thinkingSeat
+        ?: snapshot.view.currentSeat.takeIf { state.remoteTurns && it != snapshot.viewerSeat && snapshot.view.phase != Phase.FINISHED }
     val status = when {
         state.awaitingDraw -> stringResource(R.string.turn_draw)
         state.playing -> stringResource(R.string.turn_play)

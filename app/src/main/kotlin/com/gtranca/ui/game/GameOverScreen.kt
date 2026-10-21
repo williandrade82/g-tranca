@@ -55,7 +55,17 @@ import com.gtranca.game.GameSnapshot
 
 /** Fim de jogo (§13): vencedor, totais e o resultado de cada partida. */
 @Composable
-fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: List<Persona> = emptyList(), animate: Boolean = true) {
+fun GameOverScreen(
+    snapshot: GameSnapshot,
+    onBackToHome: () -> Unit,
+    personas: List<Persona> = emptyList(),
+    animate: Boolean = true,
+    /** §16.13 multijogador: o resultado em moedas vem do anfitrião ([multiplayerNet], `null` enquanto não chega). */
+    multiplayer: Boolean = false,
+    multiplayerNet: Int? = null,
+    /** §16.9 multijogador: botões a mais ("Voltar à mesa"). */
+    extra: (@Composable () -> Unit)? = null,
+) {
     val view = snapshot.view
     val sides = listOf(view.side) + view.mode.sides.filter { it != view.side }
     val won = !snapshot.resigned && snapshot.winner == view.side
@@ -102,10 +112,13 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
                 GColors.Ivory,
             )
             // §14.6 quanto o jogador ganhou ou perdeu em moedas (recebido menos a aposta)
-            if (snapshot.config.stake > 0) {
-                val stake = snapshot.config.stake
-                val won = !snapshot.resigned && snapshot.winner == view.side
-                val net = Coins.humanPayout(view.mode.seatCount, stake, won) - stake
+            val stakeNet: Int? = when {
+                snapshot.config.stake <= 0 -> null
+                multiplayer -> multiplayerNet ?: if (snapshot.resigned) -snapshot.config.stake else null
+                else -> Coins.humanPayout(view.mode.seatCount, snapshot.config.stake, !snapshot.resigned && snapshot.winner == view.side) - snapshot.config.stake
+            }
+            if (stakeNet != null) {
+                val net = stakeNet
                 Text(
                     stringResource(if (net >= 0) R.string.coins_result_gain else R.string.coins_result_loss, kotlin.math.abs(net)),
                     Modifier.fillMaxWidth().testTag("coins-result"),
@@ -118,6 +131,7 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
             GPanel(Modifier.fillMaxWidth().testTag("game-over-table")) {
                 ResultsTable(snapshot, sides, view.mode, view.side, personas)
             }
+            extra?.invoke()
             GButton(onBackToHome, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("back-home")) {
                 Text(stringResource(R.string.back_to_home))
             }
