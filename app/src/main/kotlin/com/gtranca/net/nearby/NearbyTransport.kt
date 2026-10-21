@@ -4,6 +4,7 @@ import com.gtranca.net.EndpointId
 import com.gtranca.net.LocalTransport
 import com.gtranca.net.TableAdvert
 import com.gtranca.net.TransportEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -112,7 +113,14 @@ class NearbyTransport(
             if (current != null && current.contentEquals(bytes)) return
             if (current != null) api.stopAdvertising()
             advertised = null
-            api.startAdvertising(bytes, connectionCallback)
+            try {
+                api.startAdvertising(bytes, connectionCallback)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Falha do rádio não fecha o app nem derruba a mesa: as conexões seguem e o próximo anúncio tenta de novo.
+                return
+            }
             advertised = bytes
         }
     }

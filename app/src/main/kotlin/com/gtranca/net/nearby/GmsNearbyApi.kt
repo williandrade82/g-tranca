@@ -7,6 +7,7 @@ import com.google.android.gms.nearby.connection.ConnectionInfo
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback
 import com.google.android.gms.nearby.connection.ConnectionResolution
 import com.google.android.gms.nearby.connection.ConnectionsClient
+import com.google.android.gms.nearby.connection.ConnectionsStatusCodes
 import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo
 import com.google.android.gms.nearby.connection.DiscoveryOptions
 import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback
@@ -34,7 +35,14 @@ class GmsNearbyApi(context: Context) : NearbyApi {
 
     override suspend fun startAdvertising(endpointInfo: ByteArray, callback: ConnectionCallback) {
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_STAR).build()
-        client.startAdvertising(endpointInfo, SERVICE_ID, lifecycle(callback), options).await()
+        try {
+            client.startAdvertising(endpointInfo, SERVICE_ID, lifecycle(callback), options).await()
+        } catch (e: com.google.android.gms.common.api.ApiException) {
+            // 8001: um anúncio anterior (mesa anterior ou estado perdido) ainda está ativo no serviço: para e anuncia de novo.
+            if (e.statusCode != ConnectionsStatusCodes.STATUS_ALREADY_ADVERTISING) throw e
+            client.stopAdvertising()
+            client.startAdvertising(endpointInfo, SERVICE_ID, lifecycle(callback), options).await()
+        }
     }
 
     override fun stopAdvertising() = client.stopAdvertising()
