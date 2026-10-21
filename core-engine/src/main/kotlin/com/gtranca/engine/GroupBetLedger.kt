@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 /**
  * Aposta de um assento na mesa multijogador (§16.13). [holder] é o id público do humano dono da aposta (`null` = robô de
  * origem, aposta virtual). [forfeited] = o humano desistiu ou foi substituído (§16.8, §16.9): a aposta fica **retida no
- * assento** e o que couber a ele vai ao parceiro humano ou ao anfitrião.
+ * assento** e a parte dele no prêmio se perde (salvo se ele voltar pelo token, [GroupBetLedger.restore]).
  */
 @Serializable
 data class SeatStake(val holder: Int? = null, val forfeited: Boolean = false)
@@ -35,33 +35,35 @@ data class GroupBetLedger(val stake: Int, val seats: List<SeatStake>) {
         return copy(seats = seats.toMutableList().also { it[seat] = SeatStake(holder = playerId) }) to debit
     }
 
+    /** §16.9 quem desistiu voltou pelo token (o anfitrião aguardou): recupera a aposta. */
+    fun restore(seat: Int, playerId: Int): GroupBetLedger {
+        val current = seats[seat]
+        if (current.holder != playerId || !current.forfeited) return this
+        return copy(seats = seats.toMutableList().also { it[seat] = current.copy(forfeited = false) })
+    }
+
     /**
-     * §14.6, §16.9, §16.13 quanto cada humano recebe ao fim do jogo (por id; ausente = 0). [winners] diz, por assento, se
-     * está no lado vencedor; [hostId] é o anfitrião atual (dono da mesa). O assento de robô de origem não paga ninguém; o
-     * de quem desistiu paga ao outro humano da dupla que não desistiu ou, na falta, ao anfitrião.
+     * §16.13 quanto cada humano recebe ao fim do jogo (por id; ausente = 0): o prêmio (soma das apostas de todos os
+     * assentos) é dividido **igualmente entre os assentos vencedores**; cada humano vencedor recebe a parte do seu assento.
+     * A parte de assento com robô (de origem ou substituto) ou de quem desistiu sem voltar **se perde** ([lost]).
      */
-    fun payouts(winners: List<Boolean>, hostId: Int): Map<Int, Int> {
-        require(winners.size == seats.size) { "Um resultado por assento" }
-        val base = Coins.payouts(List(seats.size) { stake }, winners)
+    fun payouts(winners: List<Boolean>): Map<Int, Int> {
+        val shares = shares(winners)
         val result = mutableMapOf<Int, Int>()
-        // §16.9 mesa só com o anfitrião: se ele perde, perde só a aposta dele (nada dos assentos que desistiram).
-        val onlyHost = seats.none { it.holder != null && !it.forfeited && it.holder != hostId }
-        val hostLost = seats.indices.none { seats[it].holder == hostId && !seats[it].forfeited && winners[it] }
-        if (onlyHost && hostLost) return emptyMap()
         seats.forEachIndexed { i, s ->
             val holder = s.holder ?: return@forEachIndexed
-            val amount = base[i]
-            if (amount == 0) return@forEachIndexed
-            val to = if (!s.forfeited) holder else {
-                if (amount == 0) return@forEachIndexed
-                val partner = seats.indices.firstOrNull { j ->
-                    j != i && j % 2 == i % 2 && seats[j].holder != null && !seats[j].forfeited
-                }
-                partner?.let { seats[it].holder } ?: hostId
-            }
-            result[to] = (result[to] ?: 0) + amount
+            if (s.forfeited || shares[i] == 0) return@forEachIndexed
+            result[holder] = (result[holder] ?: 0) + shares[i]
         }
         return result
+    }
+
+    /** §16.13 a parte dos assentos vencedores sem humano que receba (robô, VAGO, desistente): não vai a ninguém. */
+    fun lost(winners: List<Boolean>): Int = shares(winners).sum() - payouts(winners).values.sum()
+
+    private fun shares(winners: List<Boolean>): List<Int> {
+        require(winners.size == seats.size) { "Um resultado por assento" }
+        return Coins.payouts(List(seats.size) { stake }, winners)
     }
 
     companion object {

@@ -91,7 +91,7 @@ class MultiplayerHost(
     computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     restored: SuccessorState? = null,
     /** Personagens disponíveis para substituir (§16.8: o primeiro ainda não usado na mesa). */
-    private val personaPool: List<String> = session.rules.robots,
+    private val personaPool: List<String> = com.gtranca.game.BotProfile.entries.map { it.code },
     private val successorAckTimeoutMillis: Long = SUCCESSOR_ACK_TIMEOUT_MILLIS,
 ) : HostGamePort {
 
@@ -238,7 +238,7 @@ class MultiplayerHost(
     private suspend fun settle() {
         val winner = controller.state.value.winner ?: return
         val winners = config.mode.seats.map { config.mode.sideOf(it) == winner }
-        val result = _ledger.value.payouts(winners, session.hostId)
+        val result = _ledger.value.payouts(winners)
         _payouts.value = result
         session.roster.value.filter { it.id != session.hostId }.forEach { p ->
             session.sendToPlayer(p.id, Payout(config.stake, result[p.id] ?: 0))
@@ -274,7 +274,7 @@ class MultiplayerHost(
             targets.forEach { id ->
                 if ((sent[id] ?: -1) < state.stateSeq) {
                     sent[id] = state.stateSeq
-                    session.sendToPlayer(id, state.copy(members = session.membersForSuccessor()))
+                    session.sendSuccessorState(id, state.copy(members = session.membersForSuccessor()))
                 }
             }
             sent.keys.retainAll(targets.toSet())
@@ -331,7 +331,8 @@ class MultiplayerHost(
             },
         )
         runJob?.cancel()
-        session.sendToPlayer(target.id, state)
+        // §16.4 o estado completo vai só ao escolhido; nenhum outro convidado o recebe.
+        session.sendHandOverState(target.id, state)
         session.handOver(target.id)
         return target.id
     }
@@ -390,8 +391,9 @@ class MultiplayerHost(
         remote -= target
         viewJobs.remove(target.index)?.cancel()
         _ledger.update { it.forfeit(target.index) }
+        // §16.8 sempre um personagem que não está na mesa.
         _robotPersonas.update { used -> personaPool.firstOrNull { it !in used.values }?.let { used + (target.index to it) } ?: used }
-        session.seatToRobot(target)
+        session.seatToRobot(target, _robotPersonas.value[target.index])
         evaluatePause()
         return true
     }
@@ -446,6 +448,8 @@ class MultiplayerHost(
     override fun onSeatAttached(seat: Seat) {
         val scope = scope ?: return
         scope.launch {
+            // §16.9 quem desistiu e voltou pelo token recupera a aposta.
+            session.playerAt(seat)?.let { p -> _ledger.update { it.restore(seat.index, p.id) } }
             sentHistory.remove(seat.index)
             if (seat in remote) sendView(seat, controller.stateOf(seat).value)
             _decision.value?.takeIf { it.seat != seat }?.let { session.sendTo(seat, Paused(it.seat, it.reason, it.choice)) }

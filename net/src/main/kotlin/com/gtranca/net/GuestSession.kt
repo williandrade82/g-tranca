@@ -205,7 +205,10 @@ class GuestSession(
 
     suspend fun rename(newName: String) = send(Rename(newName))
 
-    suspend fun leave() = send(Leave)
+    suspend fun leave() {
+        successorState = null
+        send(Leave)
+    }
 
     /** Propõe [action] para o pedido em aberto da vista atual (ou para [requestId], se informado). */
     suspend fun propose(action: Action, requestId: Long = _view.value?.requestId ?: 0) = send(ProposeAction(requestId, action))
@@ -213,6 +216,8 @@ class GuestSession(
     /** Solta o transporte (para o mesmo aparelho virar anfitrião, §16.10, ou sair). */
     suspend fun release() {
         mutex.withLock {
+            // §16.4 quem assumiu já passou o estado ao anfitrião novo; aqui ele não fica mais guardado.
+            successorState = null
             link?.close()
             link = null
         }

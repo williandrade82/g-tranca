@@ -323,7 +323,13 @@ enum class NoticeKind {
 /** Aviso público a todos (§16.8): [playerId] é o jogador a que se refere, [seat] o assento. Nada oculto. */
 @Serializable
 @SerialName("notice")
-data class TableNotice(val kind: NoticeKind, val seat: Seat? = null, val playerId: Int? = null) : Payload
+data class TableNotice(
+    val kind: NoticeKind,
+    val seat: Seat? = null,
+    val playerId: Int? = null,
+    /** §16.8 personagem do robô que assumiu ([NoticeKind.REPLACED_BY_ROBOT]); sempre um que não estava na mesa. */
+    val persona: String? = null,
+) : Payload
 
 /** Por que o jogo está pausado (§16.8, §16.9). */
 @Serializable

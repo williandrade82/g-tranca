@@ -19,6 +19,7 @@ import com.gtranca.net.TableStage
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -179,6 +180,10 @@ class MultiplayerRecoveryTest {
         // nem é mais anunciada.
         t.host.ledger.value.seats[1].forfeited shouldBe true
         t.hostSession.playerAt(Seat(1)) shouldBe null
+        // §16.8 o robô substituto é sempre um personagem que não estava na mesa.
+        val personas = t.host.robotPersonas.value
+        personas[1] shouldNotBe null
+        personas.filterKeys { it != 1 }.values.contains(personas[1]) shouldBe false
         t.network.unblock(t.endpoints.getValue(Seat(1)).id)
         val late = GuestSession(t.network.transport(), "Convidado 1")
         runCatching { late.join(t.scope, "mesa-1", token = token, seat = Seat(1)) }.isFailure shouldBe true
@@ -253,13 +258,21 @@ class MultiplayerRecoveryTest {
     @Test
     fun `§16_10 anfitriao desiste e passa o cargo ao escolhido`() = runTest {
         val seed = 95L
-        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), stake = 100)
+        val network = com.gtranca.net.MemoryNetwork()
+        var handing = false
+        val fullStateTo = mutableSetOf<String>()
+        network.tap = { d -> if (handing && typeOf(d.bytes) is com.gtranca.net.SuccessorState) fullStateTo += d.to.value; listOf(d) }
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), stake = 100, network = network)
         val chosen = t.guests.getValue(Seat(3))
         driveGuests(t, seed)
         val oldGame = launch { t.host.run() }
         advanceUntilIdle()
         // O jogo pára na vez do anfitrião; ele desiste e passa o cargo.
+        handing = true
         t.host.handOver(newHostId = chosen.playerId, resign = true) shouldBe chosen.playerId
+        // §16.4 na passagem do cargo o estado completo vai só ao escolhido.
+        fullStateTo shouldBe setOf(t.endpoints.getValue(Seat(3)).id.value)
+        handing = false
         // O escolhido assume na hora (sem deixar o relógio correr: os outros aguardam a mesa nova).
         runCurrent()
         oldGame.isCancelled shouldBe true
@@ -347,7 +360,8 @@ class MultiplayerRecoveryTest {
         back.status.value shouldBe GuestStatus.Playing
         back.playerId shouldBe quitter.playerId
         back.stakeDebit.value shouldBe null
-        t.host.ledger.value.seats[1].forfeited shouldBe true
+        // §16.9 quem volta pelo token recupera a aposta.
+        t.host.ledger.value.seats[1].forfeited shouldBe false
         t.host.controller.state.value.stage shouldBe Stage.GAME_OVER
         back.view.value!!.stage shouldBe TableStage.GAME_OVER
     }

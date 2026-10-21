@@ -90,6 +90,11 @@ class HostSession(
 
     private val _roster: MutableStateFlow<List<PlayerInfo>>
 
+    private fun snapshotLocked() {
+        memberSnapshot = members.values.map { MemberRecord(it.info, it.token) }
+        nextIdSnapshot = nextId
+    }
+
     init {
         if (resumed == null) {
             hostId = 0
@@ -110,6 +115,7 @@ class HostSession(
             hostNoticePending += members.keys - hostId
         }
         _roster = MutableStateFlow(rosterLocked())
+        snapshotLocked()
     }
 
     /** Assento do anfitrião. */
@@ -261,17 +267,20 @@ class HostSession(
      * §16.8 opção 2: um robô assumiu o [seat]. O humano que estava nele sai da sala (o token deixa de valer) e todos são
      * avisados. Devolve o id de quem saiu.
      */
-    suspend fun seatToRobot(seat: Seat): Int? = mutex.withLock {
+    suspend fun seatToRobot(seat: Seat, persona: String? = null): Int? = mutex.withLock {
         val member = memberAtLocked(seat)?.takeIf { it.info.id != hostId } ?: return@withLock null
         closeSeatLocked(seat)
         removeMemberLocked(member, disconnect = true)
-        broadcastLocked(TableNotice(NoticeKind.REPLACED_BY_ROBOT, seat, member.info.id))
+        broadcastLocked(TableNotice(NoticeKind.REPLACED_BY_ROBOT, seat, member.info.id, persona))
         member.info.id
     }
 
     /** §16.9 o anfitrião marca a própria desistência (o assento dele fica "VAGO" depois que ele passar o cargo). */
     suspend fun markHostResigned() {
-        mutex.withLock { updateLocked(members.getValue(hostId)) { it.copy(resigned = true) } }
+        mutex.withLock {
+            updateLocked(members.getValue(hostId)) { it.copy(resigned = true) }
+            publishRosterLocked(broadcast = true)
+        }
     }
 
     /** §16.10 o sucessor [playerId] não confirmou a tempo: deixa de ser sucessor (o próximo sobe). */
@@ -381,8 +390,17 @@ class HostSession(
         if (token != null) return rejoinLocked(p, payload, token)
         if (!started) return welcomeLocked(p, payload)
         // §16.7 jogo em andamento: só entra num assento aberto, com a aprovação do anfitrião.
-        val seat = _openSeats.value.minByOrNull { it.index }
-            ?: return refuseLocked(p, if (finished) "O jogo desta mesa terminou." else "O jogo desta mesa já começou.")
+        // §16.7 durante o jogo só se entra no assento que o anfitrião abriu (o pedido diz qual, se houver mais de um).
+        val open = _openSeats.value
+        val seat = payload.seat?.takeIf { it in open } ?: open.singleOrNull()
+            ?: return refuseLocked(
+                p,
+                when {
+                    finished -> "O jogo desta mesa terminou."
+                    open.isEmpty() -> "O jogo desta mesa já começou."
+                    else -> "Escolha um dos assentos abertos pelo anfitrião."
+                },
+            )
         val request = JoinRequest(nextRequest++, payload.name.trim(), seat)
         p.request = request
         _joinRequests.value = _joinRequests.value + request
@@ -499,6 +517,7 @@ class HostSession(
     }
 
     private suspend fun publishRosterLocked(broadcast: Boolean) {
+        snapshotLocked()
         _roster.value = rosterLocked()
         if (broadcast) broadcastLocked(RosterUpdate(_roster.value))
     }
@@ -567,10 +586,36 @@ class HostSession(
     }
 
     /** Todos os humanos com os tokens, para o estado do sucessor (§16.10). Só o anfitrião chama. */
-    fun membersForSuccessor(): List<MemberRecord> = members.values.map { MemberRecord(it.info, it.token) }
+    fun membersForSuccessor(): List<MemberRecord> = memberSnapshot
 
     /** Próximo id público (o sucessor continua a numeração). */
-    fun nextPlayerId(): Int = nextId
+    fun nextPlayerId(): Int = nextIdSnapshot
+
+    /** Foto dos humanos e tokens, refeita sob a trava a cada mudança da sala (lida sem trava pelo jogo). */
+    @Volatile
+    private var memberSnapshot: List<MemberRecord> = emptyList()
+
+    @Volatile
+    private var nextIdSnapshot: Int = 0
+
+    /**
+     * §16.4, §16.10 envia o estado completo ao jogador [playerId] **só se ele ainda é sucessor** (conferido sob a trava:
+     * quem acabou de ser rebaixado e recebeu [SuccessorDrop] nunca recebe outro estado). Devolve se enviou.
+     */
+    suspend fun sendSuccessorState(playerId: Int, state: SuccessorState): Boolean = mutex.withLock {
+        if (playerId !in successorIds) return@withLock false
+        val link = members[playerId]?.link ?: return@withLock false
+        link.sendLocked(state)
+        true
+    }
+
+    /**
+     * §16.10 passagem do cargo: o estado completo vai **só** ao escolhido [playerId] (mesmo que não seja sucessor), e a
+     * nenhum outro convidado.
+     */
+    suspend fun sendHandOverState(playerId: Int, state: SuccessorState) {
+        mutex.withLock { members[playerId]?.takeIf { it.info.id != hostId }?.link?.sendLocked(state) }
+    }
 
     /** §16.2 nome em branco vira "Jogador N" (N = id do jogador na mesa). */
     private fun nameOrDefault(name: String, id: Int): String = name.trim().ifBlank { "Jogador $id" }

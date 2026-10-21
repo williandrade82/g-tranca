@@ -202,4 +202,32 @@ class SessionTest {
         host.roster.value.single { it.id == ana.playerId }.seat shouldBe Seat(3)
         ana.seat shouldBe Seat(3)
     }
+
+    /** §16.4, §16.10 quem acabou de deixar de ser sucessor nunca recebe outro estado completo. */
+    @Test
+    fun `§16_10 sucessor rebaixado nao recebe mais o estado completo`() = runTest {
+        val network = MemoryNetwork()
+        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
+        host.open(sessionScope)
+        val a = GuestSession(network.transport(), "A").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        a.confirmSeat()
+        advanceUntilIdle()
+        host.startGame()
+        advanceUntilIdle()
+        host.successors.value shouldBe listOf(a.playerId)
+        val match = com.gtranca.engine.startMatch(GameMode.DUPLAS, 1000, kotlin.random.Random(1), RuleSet.DEFAULT)
+        val state = SuccessorState(1, match, emptyList(), emptyList(), host.membersForSuccessor(), null, host.nextPlayerId())
+        host.sendSuccessorState(a.playerId, state) shouldBe true
+        advanceUntilIdle()
+        a.holdsSuccessorState shouldBe true
+        // Rebaixado (sem confirmação a tempo): recebe o descarte e o envio seguinte é barrado sob a trava.
+        host.markUnavailable(a.playerId)
+        host.sendSuccessorState(a.playerId, state.copy(stateSeq = 2)) shouldBe false
+        advanceUntilIdle()
+        a.holdsSuccessorState shouldBe false
+        // Sair também descarta.
+        a.leave()
+        a.holdsSuccessorState shouldBe false
+    }
 }
