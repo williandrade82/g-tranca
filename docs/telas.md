@@ -218,8 +218,9 @@ Todos levam o **cabeçalho de marca**.
 | **Aguardando <nome>** | diálogo (anfitrião) | chega a vez de quem caiu | três ações: **Aguardar o reingresso**, **Substituir por um robô** e **Recrutar outro jogador** (desativa o que não vale; com o recrutamento ativo vira "Aguardando recrutamento", ainda com **Substituir por robô**) |
 | **Passar o cargo** | diálogo (anfitrião) | menu do anfitrião ou ao desistir | lista os humanos disponíveis pela ordem de entrada (nunca robôs); **Passar** / **Cancelar** |
 | **Você agora é o anfitrião** | mensagem | sucessor, ao assumir (§16.10) | avisa que a mesa passou para ele |
+| **Aguardando os outros jogadores** | mensagem (anfitrião provisório) | sucessor que assumiu e ainda não foi confirmado (§16.10) | explica que a mesa espera alguém reingressar; depois de 30 s (§16.15) mostra o botão **Assumir mesmo assim**, que confirma o cargo e retoma o jogo (*provisório, revisar com produto*) |
 | **Desistir da mesa?** | mensagem (perigo) | bandeira ou Voltar do Android, em mesa multijogador | explica que um robô assume o lugar, que a aposta se perde e que o jogo segue para os demais; no 1×1 entre humanos, que o outro vence |
-| **Mesa encerrada** | mensagem | sem humano para assumir ou o anfitrião fechou | volta ao início |
+| **Mesa encerrada** | mensagem | sem humano para assumir ou o anfitrião fechou (inclusive depois do fim do jogo, quando todos receberam o resultado ou passaram 5 min, §16.11) | volta ao início |
 | Onde baixar? | diálogo | "Baixar" com mais de uma possibilidade | cada opção com cartas, destino e pontos |
 | Como usar o descarte? | diálogo | pegar o lixo com mais de um plano | cada plano; dica "ou selecione as cartas da mão antes de tocar no lixo" |
 
