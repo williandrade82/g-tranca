@@ -54,7 +54,7 @@ Início ──► Mesas disponíveis ──► Regras da mesa ──► JOGO
   └──► Estatísticas
 
 Mesas disponíveis ──(Wi-Fi ligado)──► Escolha sua posição ──► Aguardando início do jogo ──► JOGO (multijogador)
-Mesas disponíveis ──► Criar mesa (tipo Multijogador) ──► Regras da mesa (robôs) ──► Sala da mesa (anfitrião, na posição 1; publica) ──► Iniciar jogo ──► JOGO (multijogador)
+Mesas disponíveis ──► Criar mesa (tipo Multijogador) ──► Regras da mesa ──► Sala da mesa (anfitrião, na posição 1; publica) ──► Iniciar jogo ──► JOGO (multijogador)
 Início ──► Continuar (sessão multijogador) ──► reingresso na mesa ──► JOGO (multijogador)
 
 JOGO: mesa ─► anúncio da partida ─► pontos da partida ─► (próxima partida | anúncio do jogo ─► fim de jogo) ─► Início
@@ -97,13 +97,13 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Objetivo:** ver quem joga e as regras da mesa; iniciar o jogo. Serve às mesas dos robôs e à mesa recém-criada.
 **De cima para baixo:**
 1. Título "Regras da mesa".
-2. **Faixa de nível** centralizada ("Nível dos robôs:" ★ nome do nível). À direita, o **ícone de reciclagem** (sortear outros jogadores) — **só em mesa criada pelo jogador**.
-3. **Painel dos robôs**
+2. **Faixa de nível** centralizada ("Nível dos robôs:" ★ nome do nível). À direita, o **ícone de reciclagem** (sortear outros jogadores) — **só em mesa criada pelo jogador contra robôs** (nunca na mesa multijogador).
+3. **Painel dos robôs** (não aparece na mesa multijogador: os robôs só são apresentados quando o jogo começa)
    - *Individual:* um bloco do robô (retrato, "Mesa de <nome>", bordão, característica, descrição) e "Modo · Dificuldade".
    - *Duplas:* **parceiro** sozinho, centralizado e ~40% maior; título **Adversários**; os dois adversários lado a lado **na posição do jogo** (esquerdo à esquerda), sem rótulos "Adv.".
 4. **Painel da aposta** e saldo; aviso vermelho se não houver saldo.
 5. **Resumo das regras** (§14.2), destacando o que difere da Clássica.
-6. Barra fixa: **Voltar** e **Iniciar jogo** (desabilitado sem saldo). Em **mesa multijogador** (criada em 3.4), o botão é **Publicar mesa** e leva à *sala da mesa* (3.13, no modo do anfitrião); os robôs mostrados são os dos assentos que ficarem vagos (até 3, o ícone de sortear de novo vale) e o **nome da mesa** aparece no título.
+6. Barra fixa: **Voltar** e **Iniciar jogo** (desabilitado sem saldo). Em **mesa multijogador** (criada em 3.4), o botão é **Publicar mesa** e leva à *sala da mesa* (3.13, no modo do anfitrião) e o **nome da mesa** aparece no título. Os robôs **não** são mostrados antes do início (nem aqui nem na sala): o anfitrião os sorteia sem exibir e, no início do jogo, cada assento vago recebe o seu robô, o mesmo (personagem, nome e assento) em todos os aparelhos (§16.2).
 
 **Regras:** §14.2, §14.4, §14.5, §14.6.
 **Tags:** `table-rules-screen`, `table-rules-level`, `table-rules-reroll`, `table-rules-roster`, `table-rules-partner`, `table-rules-opponents`, `table-rules-left`, `table-rules-right`, `table-rules-portrait`, `table-rules-stake`, `rules-summary`, `table-rules-start`.
@@ -111,7 +111,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 ### 3.4 Criar mesa (`CreateTableScreen`)
 **Objetivo:** montar uma mesa (§14.4).
 **Seções:** **Tipo** (Contra robôs / **Multijogador**), Modo (Individual/Duplas; **oculto no multijogador**, onde a mesa é sempre de 4 posições, §16.2), **Nome da mesa** (campo de texto; **só no multijogador**), Dificuldade, **Aposta (moedas)** com saldo, **Regras** (Clássica, Tranca Paulista, Personalizada), **Pontuação-alvo** (campo numérico, padrão 3000, com mensagens de erro). Barra fixa: **Voltar** e **Criar mesa** (habilitado quando válido e com saldo).
-**Navegação:** "Personalizada" sempre abre *Personalizar regra*; ao criar, abre *Regras da mesa* com os robôs sorteados. No **multijogador**, os mesmos campos (dificuldade, aposta, regras, pontuação-alvo) valem para a mesa, mais o **nome da mesa** (§16.2); ao criar, abre *Regras da mesa* (3.3) com os robôs sorteados e dali o anfitrião segue para *Escolha sua posição* (3.13), onde a mesa é **publicada**. As permissões do Nearby são pedidas ao escolher o tipo Multijogador (modal *Procurar mesas por perto*).
+**Navegação:** "Personalizada" sempre abre *Personalizar regra*; ao criar, abre *Regras da mesa* com os robôs sorteados. No **multijogador**, os mesmos campos (dificuldade, aposta, regras, pontuação-alvo) valem para a mesa, mais o **nome da mesa** (§16.2); ao criar, abre *Regras da mesa* (3.3) sem os robôs e dali o anfitrião segue para *Escolha sua posição* (3.13), onde a mesa é **publicada**. As permissões do Nearby são pedidas ao escolher o tipo Multijogador (modal *Procurar mesas por perto*).
 **Tags:** `mode-individual`, `mode-duplas`, `rules-custom`, `create-table`, `create-back`; no multijogador: `create-type-multi`, `create-table-name`.
 
 ### 3.5 Personalizar regra (`RulesEditorScreen`)
