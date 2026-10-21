@@ -289,6 +289,12 @@ class GuestSession(
     private fun lostLocked() {
         link?.close()
         link = null
+        // §16.11 com o resultado e o prêmio já recebidos, o jogo acabou para este aparelho: não há o que reingressar.
+        if (_payout.value != null) {
+            if (_status.value == GuestStatus.Playing || _status.value == GuestStatus.Reconnecting) _status.value = GuestStatus.Closed
+            successorState = null
+            return
+        }
         when (_status.value) {
             GuestStatus.Playing, GuestStatus.Reconnecting -> {
                 _status.value = GuestStatus.Reconnecting
@@ -307,10 +313,13 @@ class GuestSession(
      * §16.5 tenta voltar **sem limite enquanto a mesa existir** (quem decide o assento é o anfitrião, §16.8): intervalos de
      * 1 s dobrando até 15 s e, depois, a cada 15 s (poupa bateria). Mesa ausente da busca por 60 s seguidos =
      * encerrada. §16.10 o sucessor só assume com evidência de queda: a mesa sumiu da busca por 3 s (1º) ou 6 s (2º); se o
-     * cargo foi passado a outro, só reingressa. Quem esperava aprovação refaz o pedido (sem token) no anfitrião que achar.
+     * cargo acabou de ser passado a outro (que ainda não assumiu), só reingressa. Quem esperava aprovação refaz o pedido (sem token) no anfitrião que achar.
      */
     private suspend fun reconnect() {
-        val rank = if (handedTo == null && successorState != null && _status.value == GuestStatus.Reconnecting) {
+        // §16.10 se o cargo foi passado a outro (aviso de novo anfitrião que a sala ainda não mostra), quem assume é ele.
+        val handed = handedTo
+        val handedPending = handed != null && handed != _roster.value.firstOrNull { it.isHost }?.id
+        val rank = if (!handedPending && successorState != null && _status.value == GuestStatus.Reconnecting) {
             _roster.value.firstOrNull { it.id == playerId }?.successorRank ?: 0
         } else {
             0

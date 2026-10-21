@@ -543,6 +543,107 @@ class MultiplayerResilienceTest {
         t.host.controller.state.value.stage shouldBe Stage.GAME_OVER
     }
 
+    /** §16.11 quem recebeu o resultado e o prêmio e depois cai não reingressa nem recebe o fim do jogo de novo. */
+    @Test
+    fun `§16_11 o resultado nao chega duas vezes`() = runTest {
+        val seed = 115L
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1)), stake = 100)
+        val guest = t.guests.getValue(Seat(1))
+        var finishedCount = 0
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { guest.gameEvents.collect { if (it is GameFinished) finishedCount++ } }
+        driveGuests(t, seed)
+        driveHost(t, seed)
+        t.host.run()
+        advanceUntilIdle()
+        guest.payout.value shouldNotBe null
+        t.network.drop(t.endpoints.getValue(Seat(1)).id)
+        advanceUntilIdle()
+        guest.status.value shouldBe GuestStatus.Closed
+        finishedCount shouldBe 1
+    }
+
+    /**
+     * §16.10 duas quedas seguidas: o anfitrião cai, o 1º sucessor assume e os demais reingressam nele; depois o novo
+     * anfitrião também cai e o novo 1º sucessor assume. O jogo vai até o fim.
+     */
+    @Test
+    fun `§16_10 segunda queda de anfitriao - o novo 1o sucessor assume`() = runTest {
+        val seed = 116L
+        val network = com.gtranca.net.MemoryNetwork()
+        var table: TestTable? = null
+        var count = 0
+        var secondHost: com.gtranca.net.EndpointId? = null
+        var count2 = 0
+        network.tap = { d ->
+            val t = table
+            if (t != null && d.from == t.hostTransport.id && ++count == 300) network.kill(d.from)
+            if (d.from == secondHost && ++count2 == 300) network.kill(d.from)
+            listOf(d)
+        }
+        val t = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), network = network)
+        table = t
+        driveGuests(t, seed)
+        driveHost(t, seed)
+        val oldGame = launch { t.host.run() }
+        val first = takeOverOf(t, Seat(1), t.guests.getValue(Seat(1)), seed)
+        oldGame.cancel()
+        secondHost = t.endpoints.getValue(Seat(1)).id
+        driveHostOf(first, seed)
+        robotOnPause(first, listOf(Seat(0)))
+        val firstGame = launch { first.run() }
+        val second = t.guests.getValue(Seat(2))
+        val third = takeOverOf(t, Seat(2), second, seed)
+        firstGame.cancel()
+        second.takeOverRank shouldBe 1
+        driveHostOf(third, seed)
+        robotOnPause(third, listOf(Seat(0), Seat(1)))
+        third.run()
+        advanceUntilIdle()
+        third.controller.state.value.stage shouldBe Stage.GAME_OVER
+        t.guests.getValue(Seat(3)).view.value!!.stage shouldBe com.gtranca.net.TableStage.GAME_OVER
+        t.guests.getValue(Seat(3)).roster.value.single { it.isHost }.seat shouldBe Seat(2)
+    }
+
+    /**
+     * §16.10 o provisório sem outro humano que confirme (1×1) é confirmado depois do tempo de §16.15; confirmado, ele
+     * prevalece: quando o original volta ao alcance, é o original que deixa o cargo, sem pagar nada.
+     */
+    @Test
+    fun `§16_10 confirmado prevalece sobre o original`() = runTest {
+        val seed = 117L
+        val network = com.gtranca.net.MemoryNetwork()
+        var table: TestTable? = null
+        var count = 0
+        network.tap = { d ->
+            val t = table
+            if (t != null && d.to == t.endpoints.getValue(Seat(1)).id && ++count == 60) {
+                network.block(d.to)
+                network.drop(d.to)
+                emptyList()
+            } else {
+                listOf(d)
+            }
+        }
+        val t = openTable(GameMode.INDIVIDUAL, seed, listOf(Seat(1)), network = network, stake = 100)
+        table = t
+        driveGuests(t, seed)
+        driveHost(t, seed)
+        val original = launch { t.host.run() }
+        val guest = t.guests.getValue(Seat(1))
+        val provisional = takeOverOf(t, Seat(1), guest, seed)
+        guest.takeOverRank shouldBe 1
+        val provisionalGame = launch { provisional.run() }
+        advanceTimeBy(HostSession.PROVISIONAL_SOLO_MILLIS + 1_000)
+        t.network.adverts().none { it.hostId == guest.playerId && it.provisionalRank > 0 } shouldBe true
+        t.network.unblock(t.endpoints.getValue(Seat(1)).id)
+        runCurrent()
+        t.host.superseded.value shouldBe true
+        original.isCompleted shouldBe true
+        t.host.payouts.value shouldBe null
+        provisional.superseded.value shouldBe false
+        provisionalGame.cancel()
+    }
+
     /** §16.7 aprovação atômica: o candidato saiu antes da aprovação e o assento continua com o robô (o jogo segue). */
     @Test
     fun `§16_7 aprovacao de quem ja saiu nao muda o assento`() = runTest {

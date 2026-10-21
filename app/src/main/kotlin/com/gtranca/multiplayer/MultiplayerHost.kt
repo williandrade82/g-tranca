@@ -364,6 +364,10 @@ class MultiplayerHost(
 
     override fun onSuccessorAck(playerId: Int, stateSeq: Long) {
         acks.update { if ((it[playerId] ?: 0) >= stateSeq) it else it + (playerId to stateSeq) }
+        // §16.10 quem foi marcado indisponível volta a contar só ao confirmar o estado mais recente (uma confirmação
+        // atrasada de um estado antigo não o promove de novo, para não custar o tempo limite a cada jogada).
+        val latest = latestState.value?.stateSeq ?: return
+        if (stateSeq >= latest && playerId !in session.successors.value) scope?.launch { session.markAvailable(playerId) }
     }
 
     /**

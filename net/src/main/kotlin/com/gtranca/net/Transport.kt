@@ -33,9 +33,11 @@ data class TableAdvert(
 ) {
     /**
      * §16.10 este anúncio prevalece sobre [other] (da mesma mesa): o anfitrião confirmado mais recente, depois o original,
-     * depois o provisório (o 1º antes do 2º).
+     * depois o provisório (o 1º antes do 2º); empate (raro, ex.: dois confirmados da mesma geração) vai ao menor id, para a
+     * ordem ser total e só um deixar o cargo.
      */
-    fun outranks(other: TableAdvert): Boolean = compareValuesBy(this, other, { if (it.provisionalRank == 0) 1 else 0 }, { it.epoch }, { -it.provisionalRank }) > 0
+    fun outranks(other: TableAdvert): Boolean =
+        compareValuesBy(this, other, { if (it.provisionalRank == 0) 1 else 0 }, { it.epoch }, { -it.provisionalRank }, { -it.hostId }) > 0
 }
 
 /** §16.10 o anúncio preferido da mesa [tableId] entre os encontrados (ou `null` se ela não está na busca). */

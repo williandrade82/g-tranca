@@ -112,14 +112,33 @@ internal fun TestScope.driveGuests(
                 was = status
             }
         }
+        var answered = 0L
+        // §16.10 a jogada reenviada no reingresso chegou ao anfitrião novo antes de ele abrir o pedido (mesmo número, mesma
+        // decisão): quando o pedido abre, a mesma escolha vai de novo.
         backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
-            var answered = 0L
+            guest.rejections.collect { r ->
+                val choice = last
+                if (r.reason == com.gtranca.net.RejectReason.NOT_YOUR_TURN && choice != null && r.requestId == choice.first) {
+                    answered = r.requestId - 1
+                    guest.view.value?.takeIf { it.requestId == choice.first && it.legal.isNotEmpty() }?.let {
+                        answered = it.requestId
+                        guest.propose(choice.second, choice.first)
+                    }
+                }
+            }
+        }
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
             guest.view.collect { view ->
                 if (view == null) return@collect
                 if (view.legal.isNotEmpty() && view.requestId > answered) {
                     answered = view.requestId
-                    val rules = guest.rules.value!!.rules
-                    val action = driver.chooseAction(view.toPlayerView(rules), view.legal)
+                    val choice = last
+                    // A mesma decisão (mesmo pedido) não é sorteada de novo.
+                    val action = if (choice != null && choice.first == view.requestId) {
+                        choice.second
+                    } else {
+                        driver.chooseAction(view.toPlayerView(guest.rules.value!!.rules), view.legal)
+                    }
                     last = view.requestId to action
                     guest.propose(action, view.requestId)
                 }

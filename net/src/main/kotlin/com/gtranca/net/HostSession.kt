@@ -82,6 +82,9 @@ class HostSession(
     /** Uma conexão ainda sem jogador (antes do [Hello]) ou à espera de aprovação (§16.7). */
     private class Pending(val link: ReliableLink) {
         var request: JoinRequest? = null
+
+        /** §16.11 conexão só para entregar o resultado depois do fim: nada mais é processado nela. */
+        var resultsOnly = false
     }
 
     private val mutex = Mutex()
@@ -388,6 +391,15 @@ class HostSession(
         mutex.withLock { if (playerId !in successorIds) members[playerId]?.link?.sendLocked(SuccessorDrop) }
     }
 
+    /** §16.10 quem foi marcado indisponível confirmou o estado mais recente: volta a contar como sucessor. */
+    suspend fun markAvailable(playerId: Int) {
+        mutex.withLock {
+            if (!unavailable.remove(playerId)) return
+            refreshSuccessorsLocked()
+            publishRosterLocked(broadcast = true)
+        }
+    }
+
     /** §16.10 o sucessor [playerId] não confirmou a tempo: deixa de ser sucessor (o próximo sobe). */
     suspend fun markUnavailable(playerId: Int) {
         mutex.withLock {
@@ -499,6 +511,7 @@ class HostSession(
 
     /** Uma conexão sem jogador: só [Hello] (entrada, reingresso ou pedido de entrada no meio). */
     private suspend fun helloLocked(p: Pending, payload: Payload) {
+        if (p.resultsOnly) return
         if (payload !is Hello) return refuseLocked(p, "Entre na mesa antes de jogar.")
         if (p.request != null) return
         val token = payload.token
@@ -568,6 +581,7 @@ class HostSession(
     private suspend fun resultsOnlyLocked(p: Pending, member: Member) {
         val results = finals.remove(member.info.id)
             ?: return refuseLocked(p, "O jogo desta mesa terminou.")
+        p.resultsOnly = true
         p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = true))
         results.forEach { p.link.sendLocked(it) }
         // A conexão fica (as mensagens acima precisam ser confirmadas) até o convidado ou o anfitrião fecharem.
@@ -606,14 +620,7 @@ class HostSession(
                 }
                 if (rejection != null) member.link?.sendLocked(rejection)
             }
-            is SuccessorAck -> {
-                // §16.10 quem foi marcado indisponível e confirma de novo volta a contar.
-                if (unavailable.remove(player.id)) {
-                    refreshSuccessorsLocked()
-                    publishRosterLocked(broadcast = true)
-                }
-                game?.onSuccessorAck(player.id, payload.stateSeq)
-            }
+            is SuccessorAck -> game?.onSuccessorAck(player.id, payload.stateSeq)
             else -> Unit
         }
     }
