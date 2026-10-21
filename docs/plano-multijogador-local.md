@@ -155,7 +155,7 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
 | N9 | **Perfil de pontos da mesa vs. estatísticas:** o resultado de uma mesa multijogador conta nas estatísticas e no resultado em moedas de cada celular como hoje? | **Sim**, com o modo marcado como multijogador, sem mudar as contas atuais. |
 
 ## Etapas (um commit por etapa; pare para revisão ao fim de cada uma)
-1. **`definition.md` (§16 novo, §13.1, §14.6, §5.6, §14.4) e `docs/telas.md` (3.13 a 3.15, modais, glossário). — FEITA** (itens "a confirmar" marcados em §16.7, §16.8 e §16.13): nova seção de multijogador (§14.7 ou §16), reescrita de §13.1 e §14.6 para o jogo em grupo (individual
+1. **`definition.md` (§16 novo, §13.1, §14.6, §5.6, §14.4) e `docs/telas.md` (3.4 com o tipo Multijogador, 3.3, 3.13 e 3.14, modais, glossário). — FEITA** (itens "a confirmar" marcados em §16.7, §16.8 e §16.13): nova seção de multijogador (§14.7 ou §16), reescrita de §13.1 e §14.6 para o jogo em grupo (individual
    intacto), a exceção da informação oculta para os sucessores (regra de §5.6/§14), e as telas e modais novos (botão Wi-Fi, linha da mesa
    multijogador, criar mesa, escolha de posição, sala de espera, queda/recrutamento, vez remota). Nenhum código. *(android-ui-dev para telas,
    rules-engine-dev para o texto das regras)*
