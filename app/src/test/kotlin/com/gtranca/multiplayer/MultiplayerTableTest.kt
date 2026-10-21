@@ -296,6 +296,33 @@ class MultiplayerTableTest {
     }
 
     @Test
+    fun `§16_10 passar o cargo depois de o convidado jogar - a vez do novo anfitrião não fica presa ao pedido antigo`() = runTest {
+        val seed = 50L
+        val t = setup(seed, targetScore = 1000)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        // O convidado joga algumas vezes antes da troca (tem pedido respondido com a numeração do anfitrião antigo).
+        var turns = 0
+        t.scope.launch { guestDriver.state.collect { if (it.humanLegal.isNotEmpty()) turns++ } }
+        drive(t.scope, hostDriver, seed) { turns < 6 }
+        drive(t.scope, guestDriver, seed) { turns < 6 }
+        advanceUntilIdle()
+        (turns >= 6) shouldBe true
+        t.host.passRole(t.guest.myId) shouldBe true
+        advanceUntilIdle()
+        (t.guest.role.value is MpRole.Hosting) shouldBe true
+        drive(t.scope, hostDriver, seed)
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        guestDriver.state.value.stage shouldBe Stage.GAME_OVER
+    }
+
+    @Test
     fun `§16_2 os robos sao os do anfitriao, iguais em todos os aparelhos e no assento certo`() = runTest {
         val seed = 48L
         // Ordem diferente da dos perfis: um sorteio local no convidado daria outros robôs.

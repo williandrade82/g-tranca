@@ -84,7 +84,8 @@ class MultiplayerDriver private constructor(
         synchronized(lock) {
             var snapshot = shown
             val done = answered.value
-            if (done != 0L && snapshot.humanRequestId == done && snapshot.humanLegal.isNotEmpty()) snapshot = snapshot.copy(humanLegal = emptyList())
+            // Só o convidado responde por rede; no anfitrião (inclusive depois de assumir, §16.10) vale o controlador.
+            if (table.role.value is MpRole.Guesting && done != 0L && snapshot.humanRequestId == done && snapshot.humanLegal.isNotEmpty()) snapshot = snapshot.copy(humanLegal = emptyList())
             if (table.resigned.value) snapshot = asResigned(snapshot)
             if (snapshot != _state.value) _state.value = snapshot
         }
@@ -95,6 +96,8 @@ class MultiplayerDriver private constructor(
         scope.launch { sourceOf(table).collect { pacer.offer(it) } }
         scope.launch { table.resigned.collect { refresh() } }
         scope.launch { answered.collect { refresh() } }
+        // §16.10 na troca de papel o pedido respondido era de outra numeração (do anfitrião anterior).
+        scope.launch { table.role.collect { answered.value = 0; refresh() } }
         table.role.flatMapLatest { role ->
             (role as? MpRole.Guesting)?.session?.rejections ?: emptyFlow()
         }.onEach { rejection ->
