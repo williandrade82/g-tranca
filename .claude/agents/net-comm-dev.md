@@ -22,6 +22,11 @@ Você é o especialista em comunicação entre dispositivos do G-Tranca. Tudo o 
 - Mensagens `@Serializable` (kotlinx.serialization) com **versão de protocolo**: versões diferentes → recusar com mensagem clara em pt-BR.
 - Módulo novo `:net` (Kotlin/JVM puro) para protocolo, sessão e transporte em memória; só pode depender de `:core-engine`. O que for Android fica em `:app` (ou `:net-android`, se o plano justificar). Respeite `app → …; net → core-engine`; o `core-engine` não depende de nada.
 
+## Princípio de rede: fluidez acima de rigidez
+- O usuário quer o sistema **o mais fluido possível**. Quando uma regra de rede tiver duas leituras, prefira a que mantém o jogo andando e devolve o jogador à mesa sem atrito (desde que não vaze informação oculta nem quebre `definition.md`). Proponha nesse sentido; a decisão final continua sendo do usuário.
+- Ex.: token válido chegando com o dono ainda "conectado" → a **conexão nova assume** e a antiga é fechada (decidido em 21/10/2026).
+- `definition.md` §16 é a fonte da verdade; as regras abaixo resumem o histórico e, se divergirem, vale o `definition.md`.
+
 ## Regras de sessão decididas pelo usuário
 **Identidade e reconexão**
 - Cada jogador recebe um **token** ao entrar; ele o identifica (não o endpoint do transporte) e dá direito a **reingressar no mesmo assento**. Todos os participantes conhecem a **identificação** (id, nome, ordem de entrada) de todos os demais.
@@ -36,12 +41,12 @@ Você é o especialista em comunicação entre dispositivos do G-Tranca. Tudo o 
 - O jogador que caiu pode reingressar enquanto o assento não for substituído/ocupado.
 
 **Desistência**
-- Voluntária (tecla Voltar do Android ou bandeira + confirmação): o jogador é **substituído na hora por um robô** e **perde a aposta**, que fica com o robô. Se o lado do robô vencer, o prêmio vai para o outro humano da dupla; se não houver outro humano que possa receber, vai para o **dono da mesa** (anfitrião).
+- Voluntária (tecla Voltar do Android ou bandeira + confirmação; convidado avisa o anfitrião, aceito a qualquer momento). Mesa de 4: o assento fica **"VAGO"**, o jogo segue até a vez dele e aí o anfitrião escolhe aguardar, robô (personagem que não está na mesa) ou abrir a vaga. 1×1: o outro vence na hora. Quem volta pelo token recupera a aposta.
+- Prêmio (§16.13): dividido igualmente entre os **assentos** vencedores; parte de robô/VAGO/desistente se perde (não vai a ninguém). Durante o jogo, só se entra no assento aberto pelo anfitrião.
 - Desistência só encerra para quem desistiu; o jogo continua para os demais.
 - Anfitrião pode **passar o cargo** a outro humano (nunca a robô); o escolhido é avisado de que agora é o anfitrião e a desistência do antigo vira a de um jogador comum. A ordem de sucessão segue a **ordem de entrada** e a **disponibilidade de comunicação**.
 - Se o anfitrião cai ou desiste, deixa de ser anfitrião e, se voltar, reingressa como jogador comum (token). **Sucessores:** o 1º e o 2º (ordem de entrada + disponibilidade) mantêm o **estado completo** (Match, mãos, monte, mortos, semente) atualizado o tempo todo. É a **única exceção** à regra de não enviar cartas ocultas; os demais convidados nunca recebem isso. Canal seguro não resolve o risco (o sucessor precisa decifrar para assumir); salvaguardas: estado só em memória (nunca disco, log ou tela), descartado ao deixar de ser sucessor ou no fim do jogo. O anfitrião só confirma uma jogada depois do ack do 1º sucessor (ou estratégia justificada no plano). Ao assumir, o sucessor cria um `GameController` a partir do Match e avisa a todos.
 - "Continuar": quem era anfitrião pode vê-lo, mas volta como jogador comum. Jogador comum guarda só a sessão (mesa, assento, token, nome), nunca o Match. Estatísticas valem para todos.
-- Se todos os demais desistirem: se o anfitrião vencer, leva todas as moedas; se perder (mesmo para robôs), perde só a sua aposta.
 
 **Moedas**: apostas valem em grupo; o saldo é local e **não verificável** (risco de adulteração aceito por ora; não construa segurança, mas isole o código de moedas para endurecer depois).
 
