@@ -252,6 +252,16 @@ fun AppNavHost() {
             }
             val adverts by remember(wifiOn) {
                 if (wifiOn) com.gtranca.multiplayer.MultiplayerHub.discover(context).map { list -> list.filter { it.listed } }
+                    .catch { e ->
+                        // O Nearby recusou a busca (ex.: ApiException com código de status): avisa e desliga, sem fechar o app.
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(com.gtranca.R.string.mp_discovery_failed, e.message ?: e.javaClass.simpleName),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        wifiOn = false
+                        emit(emptyList())
+                    }
                 else kotlinx.coroutines.flow.flowOf(emptyList())
             }.collectAsStateWithLifecycle(emptyList())
             val profile = rememberProfile(data)

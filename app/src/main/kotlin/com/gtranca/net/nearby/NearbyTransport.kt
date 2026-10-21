@@ -145,7 +145,12 @@ class NearbyTransport(
         lingerJob = null
         if (!discovering) {
             found.value = emptyMap()
-            api.startDiscovery(discoveryCallback)
+            try {
+                api.startDiscovery(discoveryCallback)
+            } catch (e: Exception) {
+                subscribers-- // a busca não começou: quem pediu recebe o erro e não fica contado
+                throw e
+            }
             discovering = true
             discoveryStartedAt = now()
         }
