@@ -4,6 +4,7 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.model.Seat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,6 +109,19 @@ class GuestSession(
 
     /** Vista do assento deste jogador, com o histórico sempre preenchido (§16.4). */
     val view: StateFlow<SeatView?> = _view.asStateFlow()
+
+    private val _viewUpdates = MutableSharedFlow<SeatView>(replay = 1, extraBufferCapacity = 4096, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /**
+     * §16.6 cada vista recebida, em ordem e **sem juntar** (o [view] guarda só a última): uma por jogada do anfitrião, para
+     * a tela animar uma jogada por vez. A última fica para quem começar a ouvir depois.
+     */
+    val viewUpdates: SharedFlow<SeatView> = _viewUpdates.asSharedFlow()
+
+    private val _robots = MutableStateFlow<Map<Int, String>>(emptyMap())
+
+    /** §16.2, §16.8 personagem de cada assento de robô (índice → id), como o anfitrião escolheu; vazio antes do início. */
+    val robots: StateFlow<Map<Int, String>> = _robots.asStateFlow()
 
     private val _game = MutableSharedFlow<Payload>(extraBufferCapacity = Int.MAX_VALUE)
 
@@ -411,6 +425,7 @@ class GuestSession(
                 playerId = payload.you
                 _rules.value = payload.rules
                 _roster.value = payload.roster
+                if (payload.started && payload.robots.isNotEmpty()) _robots.value = payload.robots
                 if (payload.started) {
                     // §16.5, §16.7 reingresso ou entrada no meio: a vista completa vem em seguida (e antes dela o fim de
                     // partida que faltou). Quem está nas telas de resultado continua nelas: o que é da partida seguinte
@@ -433,6 +448,7 @@ class GuestSession(
             is RosterUpdate -> _roster.value = payload.roster
             is GameStarted -> {
                 _roster.value = payload.roster
+                if (payload.robots.isNotEmpty()) _robots.value = payload.robots
                 _status.value = GuestStatus.Playing
             }
             is ViewUpdate -> {
@@ -440,6 +456,7 @@ class GuestSession(
                 val previous = _view.value
                 val view = payload.view
                 _view.value = if (view.history == null) view.copy(history = previous?.history ?: emptyList()) else view
+                _viewUpdates.tryEmit(_view.value!!)
             }
             is ActionRejected -> _rejections.tryEmit(payload)
             is RoundOver -> {
@@ -447,6 +464,7 @@ class GuestSession(
                 _roundOver.value = payload
                 val previous = _view.value
                 _view.value = payload.view.let { v -> if (v.history == null) v.copy(history = previous?.history ?: emptyList()) else v }
+                _viewUpdates.tryEmit(_view.value!!)
             }
             is Paused -> _paused.value = payload
             Resumed -> _paused.value = null

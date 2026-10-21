@@ -129,10 +129,21 @@ class MultiplayerHost(
     /** §16.13 apostas em grupo (retidas, herdadas, perdidas). */
     val ledger: StateFlow<GroupBetLedger> = _ledger.asStateFlow()
 
+    /**
+     * §16.2 os robôs são os que a sessão anunciou no início ([HostSession.robots], os mesmos em todos os aparelhos); no
+     * sucessor, os herdados. Toda mudança volta à sessão, para quem entrar com o jogo em andamento receber os mesmos.
+     */
     private val _robotPersonas = MutableStateFlow(
-        restored?.robotPersonas ?: config.mode.seats.filter { it !in remote && it != hostSeat }
-            .zip(session.rules.robots).associate { (seat, persona) -> seat.index to persona },
-    )
+        restored?.robotPersonas ?: session.robots.ifEmpty {
+            config.mode.seats.filter { it !in remote && it != hostSeat }
+                .zip(session.rules.robots).associate { (seat, persona) -> seat.index to persona }
+        },
+    ).also { session.robots = it.value }
+
+    private fun updateRobots(change: (Map<Int, String>) -> Map<Int, String>) {
+        _robotPersonas.update(change)
+        session.robots = _robotPersonas.value
+    }
 
     /** §16.8 personagem de cada assento de robô (o substituto é o primeiro do [personaPool] ainda não usado). */
     val robotPersonas: StateFlow<Map<Int, String>> = _robotPersonas.asStateFlow()
@@ -521,7 +532,7 @@ class MultiplayerHost(
         viewJobs.remove(target.index)?.cancel()
         _ledger.update { it.forfeit(target.index) }
         // §16.8 sempre um personagem que não está na mesa.
-        _robotPersonas.update { used -> personaPool.firstOrNull { it !in used.values }?.let { used + (target.index to it) } ?: used }
+        updateRobots { used -> personaPool.firstOrNull { it !in used.values }?.let { used + (target.index to it) } ?: used }
         session.seatToRobot(target, _robotPersonas.value[target.index])
         evaluatePause()
         return true
@@ -564,7 +575,7 @@ class MultiplayerHost(
         var debit = 0
         // §16.8 opção 3: quem caiu e foi substituído por outro convidado perde a aposta, que o novo herda.
         _ledger.update { ledger -> ledger.forfeit(seat.index).occupy(seat.index, info.id).also { debit = it.second }.first }
-        if (wasRobot) _robotPersonas.update { it - seat.index }
+        if (wasRobot) updateRobots { it - seat.index }
         session.sendTo(seat, StakeDebit(debit))
         evaluatePause()
         return true

@@ -55,12 +55,17 @@ class MultiplayerTableTest {
         val again: (host: Boolean) -> MultiplayerTable,
     )
 
-    private suspend fun TestScope.setup(seed: Long, targetScore: Int = 500, stake: Int = 50): Setup {
+    private suspend fun TestScope.setup(
+        seed: Long,
+        targetScore: Int = 500,
+        stake: Int = 50,
+        robots: List<String> = listOf("jovem", "sobrio", "atleta"),
+    ): Setup {
         val network = MemoryNetwork()
         val dispatcher = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(dispatcher + Job())
         val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = targetScore, stake = stake)
-        val rules = TableRules("Mesa da família", GameMode.DUPLAS, config.rules, targetScore, stake, Difficulty.FACIL.id, listOf("jovem", "sobrio", "atleta"))
+        val rules = TableRules("Mesa da família", GameMode.DUPLAS, config.rules, targetScore, stake, Difficulty.FACIL.id, robots)
         val hostCoins = FakeCoins()
         val guestCoins = FakeCoins()
         val bots: (GameConfig) -> ((Seat, kotlin.random.Random) -> com.gtranca.ai.BotPlayer) = { { seat, _ -> testBot(seed, seat) } }
@@ -288,6 +293,31 @@ class MultiplayerTableTest {
         guestDriver.state.value.stage shouldBe Stage.GAME_OVER
         t.hostCoins.settled shouldHaveSize 1
         t.guestCoins.settled shouldHaveSize 1
+    }
+
+    @Test
+    fun `§16_2 os robos sao os do anfitriao, iguais em todos os aparelhos e no assento certo`() = runTest {
+        val seed = 48L
+        // Ordem diferente da dos perfis: um sorteio local no convidado daria outros robôs.
+        val t = setup(seed, robots = listOf("atleta", "alternativo", "sobrio"))
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostPersonas = t.host.personas(Persona("Ana"), "VAGO") { it }
+        val guestPersonas = t.guest.personas(Persona("Beto"), "VAGO") { it }
+        advanceUntilIdle()
+        // Convidado no assento 1: os robôs ficam nos assentos 2 e 3, na ordem escolhida pelo anfitrião.
+        listOf(2, 3).forEach { seat ->
+            guestPersonas.value[seat] shouldBe hostPersonas.value[seat]
+            guestPersonas.value[seat].character.shouldNotBeNull()
+        }
+        hostPersonas.value[2].character!!.profile shouldBe com.gtranca.game.BotProfile.ATLETA
+        hostPersonas.value[3].character!!.profile shouldBe com.gtranca.game.BotProfile.ALTERNATIVO
+        // Quem volta à mesa (reingresso com o jogo em andamento) recebe os mesmos robôs.
+        val guestSession = (t.guest.role.value as MpRole.Guesting).session
+        guestSession.robots.value shouldBe mapOf(2 to "atleta", 3 to "alternativo")
+        (t.host.role.value as MpRole.Hosting).session.robots shouldBe mapOf(2 to "atleta", 3 to "alternativo")
     }
 
     @Test

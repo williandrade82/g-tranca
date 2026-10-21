@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 4
+const val PROTOCOL_VERSION: Int = 5
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
@@ -198,6 +198,8 @@ data class Welcome(
     val roster: List<PlayerInfo>,
     /** O jogo já está em andamento (reingresso ou entrada no meio, §16.5, §16.7): o convidado vai direto à mesa. */
     val started: Boolean = false,
+    /** Com o jogo em andamento: o personagem de cada assento de robô (índice do assento → id), escolhido pelo anfitrião. */
+    val robots: Map<Int, String> = emptyMap(),
 ) : Payload
 
 /** Entrada ou mensagem recusada, com o motivo em pt-BR (ex.: [VERSION_MISMATCH_MESSAGE]). */
@@ -238,7 +240,11 @@ data class RosterUpdate(val roster: List<PlayerInfo>) : Payload
 /** O anfitrião iniciou o jogo; assentos sem humano ficam com robôs (§16.2). */
 @Serializable
 @SerialName("started")
-data class GameStarted(val roster: List<PlayerInfo>) : Payload
+data class GameStarted(
+    val roster: List<PlayerInfo>,
+    /** Personagem de cada assento de robô (índice do assento → id): todos os aparelhos mostram os mesmos robôs. */
+    val robots: Map<Int, String> = emptyMap(),
+) : Payload
 
 /** Vista do assento do destinatário (§16.4). */
 @Serializable

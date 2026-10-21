@@ -342,8 +342,8 @@ class MultiplayerTable(
         val mode = rules?.mode ?: return emptyList()
         val level = BotLevel.of(Difficulty.fromId(rules.difficulty))
         val me = myId
-        val used = mutableSetOf<String>()
-        robots.values.forEach { used += it }
+        // Antes de o anfitrião anunciar os robôs (não acontece com o jogo em andamento): a mesma conta que ele faz no início.
+        val fallback = mode.seats.filter { seat -> roster.none { it.seat == seat } }.zip(rules.robots).associate { (seat, code) -> seat.index to code }
         return mode.seats.map { seat ->
             val player = roster.firstOrNull { it.seat == seat }
             when {
@@ -354,7 +354,7 @@ class MultiplayerTable(
                     color = player.id.mod(Persona.COLORS),
                 )
                 else -> {
-                    val code = robots[seat.index] ?: BotProfile.entries.map { it.code }.firstOrNull { it !in used }?.also { used += it }
+                    val code = robots[seat.index] ?: fallback[seat.index]
                     val profile = BotProfile.entries.firstOrNull { it.code == code } ?: BotProfile.entries.first()
                     Persona(profile.botName, "", BotCharacter(profile, level))
                 }
@@ -388,9 +388,7 @@ class MultiplayerTable(
                             // §16.13 quem estava na sala debita a aposta ao começar (quem entra no meio: StakeDebit).
                             if (was == GuestStatus.Lobby && rules != null) {
                                 if (rules.stake > 0) coins.debit(rules.stake)
-                                seedRobots(rules, guest.roster.value)
                             }
-                            if (was == GuestStatus.WaitingApproval && rules != null) seedRobots(rules, guest.roster.value)
                             if (was == GuestStatus.Reconnecting || was == GuestStatus.Resigned) _resigned.value = false
                         }
                         GuestStatus.Resigned -> _resigned.value = true
@@ -402,6 +400,8 @@ class MultiplayerTable(
                     was = status
                 }
             },
+            // §16.2 os robôs são sempre os escolhidos pelo anfitrião (nunca sorteados aqui), por assento.
+            scope.launch { guest.robots.collect { if (it.isNotEmpty()) robots.value = it } },
             scope.launch { guest.notices.collect { onNotice(it) } },
             scope.launch {
                 guest.stakeDebit.collect { amount -> if (amount != null && amount > 0) coins.debit(amount) }
@@ -419,12 +419,6 @@ class MultiplayerTable(
                 takeOver(role)
             },
         )
-    }
-
-    private fun seedRobots(rules: TableRules, roster: List<PlayerInfo>) {
-        if (robots.value.isNotEmpty()) return
-        val humans = roster.mapNotNull { it.seat }.toSet()
-        robots.value = rules.mode.seats.filter { it !in humans }.zip(rules.robots).associate { (seat, code) -> seat.index to code }
     }
 
     private suspend fun onNotice(notice: TableNotice) {

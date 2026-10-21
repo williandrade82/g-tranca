@@ -157,6 +157,14 @@ class HostSession(
     @Volatile
     var game: HostGamePort? = null
 
+    /**
+     * §16.2, §16.8 personagem de cada assento de robô (índice do assento → id), a única fonte: vai a todos no
+     * [GameStarted] e a quem entra com o jogo em andamento ([Welcome]). Definido no início ([startGame]) e mantido pelo
+     * jogo do anfitrião (robô substituto, entrada no meio).
+     */
+    @Volatile
+    var robots: Map<Int, String> = emptyMap()
+
     /** Id público do anfitrião atual (dono da mesa, §16.10). */
     val hostId: Int
 
@@ -299,7 +307,12 @@ class HostSession(
             refreshSuccessorsLocked()
             publishRosterLocked(broadcast = false)
             advertiseLocked()
-            broadcastLocked(GameStarted(_roster.value))
+            if (robots.isEmpty()) {
+                // §16.2 os assentos sem humano recebem os robôs escolhidos pelo anfitrião, em ordem de assento.
+                val humans = _roster.value.mapNotNull { it.seat }.toSet()
+                robots = rules.mode.seats.filter { it !in humans }.zip(rules.robots).associate { (seat, code) -> seat.index to code }
+            }
+            broadcastLocked(GameStarted(_roster.value, robots))
         }
         return guestSeats()
     }
@@ -390,7 +403,7 @@ class HostSession(
             refuseRequestsLocked(request.seat)
             refreshSuccessorsLocked()
             publishRosterLocked(broadcast = false)
-            member.link!!.sendLocked(Welcome(member.token, id, rules, _roster.value, started = true))
+            member.link!!.sendLocked(Welcome(member.token, id, rules, _roster.value, started = true, robots = robots))
             broadcastLocked(RosterUpdate(_roster.value), except = member)
             broadcastLocked(TableNotice(NoticeKind.JOINED, request.seat, id))
             advertiseLocked()
@@ -643,7 +656,7 @@ class HostSession(
         commitLocked()
         refreshSuccessorsLocked()
         publishRosterLocked(broadcast = false)
-        p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = started))
+        p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = started, robots = if (started) robots else emptyMap()))
         broadcastLocked(RosterUpdate(_roster.value), except = member)
         if (hostNoticePending.remove(member.info.id)) {
             p.link.sendLocked(TableNotice(NoticeKind.HOST_CHANGED, hostSeat, hostId))
@@ -664,7 +677,7 @@ class HostSession(
         val results = finals.remove(member.info.id)
             ?: return refuseLocked(p, "O jogo desta mesa terminou.")
         p.resultsOnly = true
-        p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = true))
+        p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = true, robots = robots))
         results.forEach { p.link.sendLocked(it) }
         // A conexão fica (as mensagens acima precisam ser confirmadas) até o convidado ou o anfitrião fecharem.
         advertiseLocked()

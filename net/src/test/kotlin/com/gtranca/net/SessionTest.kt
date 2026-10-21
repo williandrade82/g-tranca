@@ -255,4 +255,28 @@ class SessionTest {
         a.status.value shouldBe GuestStatus.Playing
         host.successors.value shouldBe listOf(a.playerId)
     }
+
+    /** §16.2 os robôs vão do anfitrião a todos, por assento: no início e a quem volta com o jogo em andamento. */
+    @Test
+    fun `§16_2 robos por assento no inicio e no reingresso`() = runTest {
+        val network = MemoryNetwork()
+        val host = HostSession(network.transport(), "m", rules.copy(robots = listOf("atleta", "zen", "sobrio")), "Anfitrião")
+        host.open(sessionScope)
+        val transport = network.transport()
+        val a = GuestSession(transport, "A").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        a.confirmSeat()
+        advanceUntilIdle()
+        host.startGame()
+        advanceUntilIdle()
+        // Convidado no assento 1: robôs nos assentos 2 e 3, na ordem do anfitrião.
+        host.robots shouldBe mapOf(2 to "atleta", 3 to "zen")
+        a.robots.value shouldBe host.robots
+        // O anfitrião troca um robô (§16.8) e o convidado volta pelo token: recebe a lista atual.
+        host.robots = mapOf(2 to "atleta", 3 to "sobrio")
+        network.drop(transport.id)
+        advanceTimeBy(3_000)
+        a.status.value shouldBe GuestStatus.Playing
+        a.robots.value shouldBe mapOf(2 to "atleta", 3 to "sobrio")
+    }
 }
