@@ -181,7 +181,7 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 **Anfitrião** (cabeçalho da mesa de jogo, 3.8): ícone de **mesa** com o menu do anfitrião: *Passar o cargo* e *Liberar um assento de robô para entrada* (§16.7).
 **Telas de resultado (3.9 a 3.11) em grupo:** cada aparelho as percorre no seu tempo, como no jogo contra robôs (§16.11). O **Continuar** do anfitrião distribui a próxima partida; o do convidado só avança as telas dele (a próxima partida, já recebida, aparece depois). Ninguém espera ninguém.
 **Desistir (convidado):** mesma bandeira e confirmação do jogo contra robôs (§13.1); a desistência vale a qualquer momento e o jogador vai para o fim de jogo como derrota por desistência. Na mesa de 4 posições, a **pílula do assento** dele passa a mostrar **"VAGO"** para todos e o jogo segue até a vez desse assento (§16.9); no 1×1 o outro vence na hora.
-**Fim de jogo (3.11):** mostra o resultado em moedas de cada celular; a derrota por desistência é a de quem desistiu.
+**Fim de jogo (3.11):** mostra o resultado em moedas de cada celular (prêmio dividido por assento vencedor; a parte de robô ou de assento VAGO se perde, §16.13); a derrota por desistência é a de quem desistiu.
 **Tags:** `host-menu`, `host-pass-role`, `host-open-seat`.
 
 ### 3.15 Pausa da mesa multijogador (queda, assento VAGO e recrutamento)
@@ -189,7 +189,7 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 **Pílula do assento:** "VAGO" (desistência ou vaga aberta) ou o nome com o indicador **desconectado** (queda, ainda reservado ao jogador).
 **Anfitrião (modal de pausa):** "<nome> não está na mesa" e três botões: **Aguardar** (o modal fica em "Aguardando <nome>" e fecha quando ele reingressa), **Colocar um robô** (efeito imediato) e **Abrir vaga** (o modal passa a "Aguardando recrutamento", ainda com **Colocar um robô**). Um **pedido de entrada** ("<nome> quer entrar no lugar de <assento>") com **Aceitar** e **Recusar**.
 **Convidados:** faixa "Jogo pausado: aguardando <nome>" / "aguardando o anfitrião" / "aguardando recrutamento", atualizada a cada ação do anfitrião; some quando o jogo segue.
-**Avisos:** "<nome> saiu da mesa" (queda), "<nome> desistiu", "<nome> foi substituído por um robô", "<nome> entrou na mesa", "<nome> é o novo anfitrião" (§16.10) e, só ao anfitrião, "Sem sucessor: uma queda sua encerra a mesa".
+**Avisos:** "<nome> saiu da mesa" (queda), "<nome> desistiu", "<nome> foi substituído por <personagem>" (sempre um personagem que não estava na mesa), "<nome> entrou na mesa", "<nome> é o novo anfitrião" (§16.10) e, só ao anfitrião, "Sem sucessor: uma queda sua encerra a mesa".
 **Regras:** §16.7, §16.8, §16.9, §16.10.
 **Tags:** `mp-pause`, `mp-pause-wait`, `mp-pause-robot`, `mp-pause-recruit`, `mp-join-request`, `mp-join-accept`, `mp-join-refuse`, `mp-paused-banner`.
 
