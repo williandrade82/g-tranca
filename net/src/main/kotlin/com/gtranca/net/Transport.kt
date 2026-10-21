@@ -3,9 +3,8 @@ package com.gtranca.net
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 
@@ -13,14 +12,35 @@ import kotlinx.coroutines.flow.update
 @JvmInline
 value class EndpointId(val value: String)
 
-/** Mesa anunciada (o necessário para a lista de mesas; as regras vão no [Welcome]). */
+/**
+ * Mesa anunciada (o necessário para a lista de mesas; as regras vão no [Welcome]). A mesa fica anunciada o jogo todo para
+ * o reingresso pelo token (§16.5, §16.7); [listed] diz se ela aparece na **lista** para quem não está nela.
+ */
 data class TableAdvert(
     val tableId: String,
     val tableName: String,
     val hostName: String,
-    /** §16.7 "jogo em andamento" com assento ocupável (aprovação do anfitrião); fora disso, só reingresso pelo token. */
+    /** §16.7 "jogo em andamento" com assento ocupável (aprovação do anfitrião). */
     val inProgress: Boolean = false,
-)
+    /** §16.7 aparece na lista de mesas (antes do início, ou com vaga aberta); fora disso, só para reingresso. */
+    val listed: Boolean = true,
+    /** Id público do anfitrião que anuncia (§16.10: distingue o original de quem assumiu). */
+    val hostId: Int = 0,
+    /** §16.10 geração do anfitrião: 0 = o original; cada sucessão soma 1. */
+    val epoch: Int = 0,
+    /** §16.10 posição do sucessor que assumiu por queda e ainda não foi confirmado (1 ou 2); 0 = confirmado. */
+    val provisionalRank: Int = 0,
+) {
+    /**
+     * §16.10 este anúncio prevalece sobre [other] (da mesma mesa): o anfitrião confirmado mais recente, depois o original,
+     * depois o provisório (o 1º antes do 2º).
+     */
+    fun outranks(other: TableAdvert): Boolean = compareValuesBy(this, other, { if (it.provisionalRank == 0) 1 else 0 }, { it.epoch }, { -it.provisionalRank }) > 0
+}
+
+/** §16.10 o anúncio preferido da mesa [tableId] entre os encontrados (ou `null` se ela não está na busca). */
+fun List<TableAdvert>.preferred(tableId: String): TableAdvert? =
+    filter { it.tableId == tableId }.reduceOrNull { best, a -> if (a.outranks(best)) a else best }
 
 /** Eventos do transporte: só conexões e bytes. */
 sealed interface TransportEvent {
@@ -46,8 +66,8 @@ interface LocalTransport {
     /** Convidado: mesas publicadas por perto (o estado atual da busca). */
     fun discover(): Flow<List<TableAdvert>>
 
-    /** Convidado: conecta-se à mesa; devolve a ponta do anfitrião. */
-    suspend fun connect(tableId: String): EndpointId
+    /** Convidado: conecta-se à mesa anunciada por [advert] (aquele anfitrião); devolve a ponta dele. */
+    suspend fun connect(advert: TableAdvert): EndpointId
 
     suspend fun send(endpoint: EndpointId, bytes: ByteArray)
 
@@ -60,32 +80,42 @@ class Delivery(val from: EndpointId, val to: EndpointId, val bytes: ByteArray)
 /**
  * Rede em memória: anfitrião e convidados no mesmo processo (testes JVM, sem Android e sem relógio real). Entrega
  * na hora, em ordem; [tap] vê (e pode alterar) cada entrega: devolver vazio perde a mensagem, duas cópias a duplicam, e
- * guardar para entregar depois com [deliver] a reordena.
+ * guardar para entregar depois com [deliver] a reordena. Cada anfitrião tem o seu anúncio (dois podem anunciar a mesma
+ * mesa, §16.10). Uma ponta fora do alcance ([block]) não vê nem é vista na busca e não conecta.
  */
 class MemoryNetwork {
     private val nodes = mutableMapOf<EndpointId, MemoryTransport>()
-    private val tables = MutableStateFlow<Map<String, Pair<TableAdvert, EndpointId>>>(emptyMap())
+    private val tables = MutableStateFlow<Map<EndpointId, TableAdvert>>(emptyMap())
     private var counter = 0
 
     /** Pares conectados agora: entregas só entre eles (uma queda corta o par). */
     private val links = mutableSetOf<Pair<EndpointId, EndpointId>>()
 
-    /** Pontas que não conseguem (re)conectar agora (fora do alcance). */
-    private val blocked = mutableSetOf<EndpointId>()
+    /** Pontas fora do alcance agora: não veem nem são vistas na busca, e as conexões falham. */
+    private val blocked = MutableStateFlow<Set<EndpointId>>(emptySet())
 
-    /** Pontas "mortas" (aparelho desligado): não anunciam, não enviam e não conectam mais. */
+    /** Pontas "mortas" (aparelho desligado): não anunciam, não veem, não enviam e não conectam mais. */
     private val dead = mutableSetOf<EndpointId>()
 
-    /** A ponta [id] fica fora do alcance (as tentativas de conexão falham) até [unblock]. */
+    /** Pontas que veem a busca mas cujas conexões falham (rádio instável). */
+    private val jammed = mutableSetOf<EndpointId>()
+
+    /** As conexões da ponta [id] falham (ela continua vendo as mesas) até [unjam]. */
     @Synchronized
-    fun block(id: EndpointId) { blocked += id }
+    fun jam(id: EndpointId) { jammed += id }
 
     @Synchronized
-    fun unblock(id: EndpointId) { blocked -= id }
+    fun unjam(id: EndpointId) { jammed -= id }
+
+    /** A ponta [id] fica fora do alcance até [unblock]. */
+    fun block(id: EndpointId) = blocked.update { it + id }
+
+    fun unblock(id: EndpointId) = blocked.update { it - id }
 
     /** O aparelho [id] some de vez (queda abrupta, §16.10): como [drop], e nunca mais anuncia nem envia. */
     fun kill(id: EndpointId) {
         synchronized(this) { dead += id }
+        blocked.update { it + id }
         drop(id)
     }
 
@@ -100,16 +130,27 @@ class MemoryNetwork {
         return MemoryTransport(this, id).also { nodes[id] = it }
     }
 
-    internal fun advertised(): StateFlow<Map<String, Pair<TableAdvert, EndpointId>>> = tables.asStateFlow()
+    /** Anúncios que a ponta [viewer] vê agora. */
+    internal fun visibleTo(viewer: EndpointId): Flow<List<TableAdvert>> = combine(tables, blocked) { map, out ->
+        if (viewer in out) emptyList() else map.filterKeys { it !in out }.values.toList()
+    }.distinctUntilChanged()
 
-    internal fun advertise(advert: TableAdvert, host: EndpointId) = if (synchronized(this) { host in dead }) Unit else tables.update { it + (advert.tableId to (advert to host)) }
+    /** Todos os anúncios (visão de fora da rede, para os testes). */
+    fun adverts(): List<TableAdvert> = tables.value.values.toList()
 
-    internal fun stopAdvertising(host: EndpointId) = tables.update { map -> map.filterValues { it.second != host } }
+    internal fun advertise(advert: TableAdvert, host: EndpointId) {
+        if (synchronized(this) { host in dead }) return
+        tables.update { it + (host to advert) }
+    }
+
+    internal fun stopAdvertising(host: EndpointId) = tables.update { it - host }
 
     @Synchronized
-    internal fun connect(guest: EndpointId, tableId: String): EndpointId {
-        val host = tables.value[tableId]?.second ?: error("Mesa não encontrada")
-        check(guest !in blocked && guest !in dead && host !in dead) { "Fora do alcance" }
+    internal fun connect(guest: EndpointId, advert: TableAdvert): EndpointId {
+        val host = tables.value.entries.firstOrNull { it.value.tableId == advert.tableId && it.value.hostId == advert.hostId }?.key
+            ?: error("Mesa não encontrada")
+        val out = blocked.value
+        check(guest !in out && host !in out && guest !in dead && host !in dead && guest !in jammed) { "Fora do alcance" }
         links += key(guest, host)
         node(host).push(TransportEvent.Connected(guest))
         node(guest).push(TransportEvent.Connected(host))
@@ -124,16 +165,16 @@ class MemoryNetwork {
     }
 
     /**
-     * Queda abrupta da ponta [id] (sem aviso do jogo): todos os pares dela recebem a desconexão e, se era anfitrião, a
-     * mesa deixa de ser anunciada (§16.8, §16.10).
+     * Queda abrupta da ponta [id] (sem aviso do jogo): todos os pares dela recebem a desconexão. O anúncio fica (o
+     * aparelho segue vivo, só fora do alcance) a menos que ele tenha morrido ([kill]).
      */
     fun drop(id: EndpointId) {
-        val peers = synchronized(this) {
+        val (peers, gone) = synchronized(this) {
             val mine = links.filter { it.first == id || it.second == id }
             links.removeAll(mine.toSet())
-            mine.map { if (it.first == id) it.second else it.first }
+            mine.map { if (it.first == id) it.second else it.first } to (id in dead)
         }
-        stopAdvertising(id)
+        if (gone) stopAdvertising(id)
         peers.forEach { peer ->
             nodes[peer]?.push(TransportEvent.Disconnected(id))
             nodes[id]?.push(TransportEvent.Disconnected(peer))
@@ -169,12 +210,11 @@ class MemoryTransport internal constructor(private val network: MemoryNetwork, v
 
     override suspend fun stopAdvertising() = network.stopAdvertising(id)
 
-    override fun discover(): Flow<List<TableAdvert>> = network.advertised().map { map -> map.values.map { it.first } }
+    override fun discover(): Flow<List<TableAdvert>> = network.visibleTo(id)
 
-    override suspend fun connect(tableId: String): EndpointId = network.connect(id, tableId)
+    override suspend fun connect(advert: TableAdvert): EndpointId = network.connect(id, advert)
 
     override suspend fun send(endpoint: EndpointId, bytes: ByteArray) = network.send(id, endpoint, bytes)
 
     override suspend fun disconnect(endpoint: EndpointId) = network.disconnect(id, endpoint)
-
 }

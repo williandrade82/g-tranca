@@ -167,6 +167,21 @@ class MultiplayerHost(
     private var scope: CoroutineScope? = null
     private var runJob: Job? = null
 
+    /** §16.11 último pacote de fim de partida de cada assento (reenviado a quem volta sem tê-lo recebido). */
+    private val lastRoundOver = ConcurrentHashMap<Int, RoundOver>()
+
+    /** §16.10 durante a passagem do cargo as vistas não esperam a confirmação do sucessor. */
+    @Volatile
+    private var handingOver = false
+
+    /** §16.10 escolha da pausa herdada do anfitrião anterior (aplicada quando a mesma pausa reabrir). */
+    @Volatile
+    private var restoredDecision: Pair<Seat, NoticeKind>? =
+        restored?.let { r -> r.decisionSeat?.let { seat -> r.decisionChoice?.let { seat to it } } }
+
+    /** §16.10 outro anfitrião da mesma mesa prevaleceu: este parou e o aparelho volta como convidado. */
+    val superseded: StateFlow<Boolean> get() = session.superseded
+
     init {
         // Uma só fonte das regras da mesa: as que os convidados receberam (§16.2) são as que o anfitrião aplica.
         session.rules.let {
@@ -176,10 +191,15 @@ class MultiplayerHost(
         session.game = this
     }
 
-    /** Roda o jogo até o fim (§13) ou até o anfitrião passar o cargo ([handOver]). */
+    /**
+     * Roda o jogo até o fim (§13) ou até o anfitrião passar o cargo ([handOver]). O anfitrião provisório (§16.10) só
+     * começa depois de confirmado; se outro anfitrião prevalecer ([superseded]), pára sem pagar nada.
+     */
     suspend fun run() = coroutineScope {
+        if (!session.awaitCommitted()) return@coroutineScope
         scope = this
         runJob = coroutineContext[Job]
+        val stepDown = launch { session.superseded.first { it }; runJob?.cancel() }
         val outbox = Channel<Pair<Long, Payload>>(Channel.UNLIMITED)
         val outboxSeat = Channel<Triple<Long, Seat, Payload>>(Channel.UNLIMITED)
         val relay = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -187,7 +207,12 @@ class MultiplayerHost(
                 val seq = stateSeq.get()
                 if (event is GameEvent.RoundScored) {
                     // §16.11 pacote de fim de partida, por assento (a mesa final traz a mão de quem recebe).
-                    remote.forEach { seat -> roundOver(seat, event)?.let { outboxSeat.trySend(Triple(seq, seat, it)) } }
+                    remote.forEach { seat ->
+                        roundOver(seat, event)?.let {
+                            lastRoundOver[seat.index] = it
+                            outboxSeat.trySend(Triple(seq, seat, it))
+                        }
+                    }
                 } else {
                     toPayload(event)?.let { outbox.trySend(seq to it) }
                 }
@@ -196,6 +221,8 @@ class MultiplayerHost(
         }
         val drain = launch { for ((seq, payload) in outbox) { awaitConfirmed(seq); session.broadcast(payload) } }
         val drainSeat = launch { for ((seq, seat, payload) in outboxSeat) { awaitConfirmed(seq); session.sendTo(seat, payload) } }
+        // §16.10 os sucessores têm um estado desde o início (antes da 1ª jogada da partida não há ponto de salvamento).
+        if (latestState.value == null) latestState.value = successorState(controller.saveSnapshot())
         val successorJob = launch { successorRelay() }
         remote.forEach { startViewJob(it) }
         evaluatePause()
@@ -209,8 +236,8 @@ class MultiplayerHost(
         drain.join()
         drainSeat.join()
         successorJob.cancel()
-        settle()
-        session.finish()
+        stepDown.cancel()
+        session.finish(settle())
     }
 
     private fun startViewJob(seat: Seat) {
@@ -234,15 +261,30 @@ class MultiplayerHost(
         session.sendView(seat, wire)
     }
 
-    /** §16.13 fim do jogo: o que cada humano recebe vai a cada um (só o dele). */
-    private suspend fun settle() {
-        val winner = controller.state.value.winner ?: return
+    /**
+     * §16.13 fim do jogo: o que cada humano recebe vai a cada um (só o dele). Devolve, por jogador, o pacote para quem
+     * está fora e volta depois do fim (§16.11): o fim da última partida, a vista final, o fim do jogo e o prêmio.
+     */
+    private suspend fun settle(): Map<Int, List<Payload>> {
+        val state = controller.state.value
+        val winner = state.winner ?: return emptyMap()
         val winners = config.mode.seats.map { config.mode.sideOf(it) == winner }
         val result = _ledger.value.payouts(winners)
         _payouts.value = result
+        val finals = mutableMapOf<Int, List<Payload>>()
         session.roster.value.filter { it.id != session.hostId }.forEach { p ->
-            session.sendToPlayer(p.id, Payout(config.stake, result[p.id] ?: 0))
+            val payout = Payout(config.stake, result[p.id] ?: 0)
+            session.sendToPlayer(p.id, payout)
+            val seat = p.seat ?: return@forEach
+            val view = controller.stateOf(seat).value.toSeatView(controller.stateOf(seat).value.history)
+            finals[p.id] = listOfNotNull(
+                lastRoundOver[seat.index]?.takeIf { it.gameWinner != null },
+                com.gtranca.net.ViewUpdate(view),
+                GameFinished(winner, state.resigned),
+                payout,
+            )
         }
+        return finals
     }
 
     // ---- §16.10 sucessão -------------------------------------------------------------------------------------------
@@ -252,22 +294,39 @@ class MultiplayerHost(
         latestState.value = successorState(snapshot)
     }
 
-    private fun successorState(snapshot: SaveSnapshot): SuccessorState = SuccessorState(
-        stateSeq = stateSeq.incrementAndGet(),
-        match = snapshot.match,
-        events = snapshot.events,
-        botRandomCalls = snapshot.botRandomCalls,
-        members = session.membersForSuccessor(),
-        ledger = _ledger.value,
-        nextPlayerId = session.nextPlayerId(),
-        robotPersonas = _robotPersonas.value,
-        requestBase = maxWireRequest,
+    private fun successorState(snapshot: SaveSnapshot): SuccessorState = withMeta(
+        SuccessorState(
+            stateSeq = stateSeq.incrementAndGet(),
+            match = snapshot.match,
+            events = snapshot.events,
+            botRandomCalls = snapshot.botRandomCalls,
+            members = session.membersForSuccessor(),
+            nextPlayerId = session.nextPlayerId(),
+        ),
     )
+
+    /** A sala atual no estado do sucessor (§16.10): tokens, apostas, personagens, vagas abertas e a escolha da pausa. */
+    private fun withMeta(state: SuccessorState): SuccessorState {
+        val decision = _decision.value
+        return state.copy(
+            members = session.membersForSuccessor(),
+            ledger = _ledger.value,
+            nextPlayerId = session.nextPlayerId(),
+            robotPersonas = _robotPersonas.value,
+            requestBase = maxWireRequest,
+            epoch = session.epoch,
+            openSeats = session.openSeats.value.sortedBy { it.index },
+            decisionSeat = decision?.seat,
+            decisionChoice = decision?.choice,
+        )
+    }
 
     /** Envia o estado mais recente ao 1º e ao 2º sucessores (e a quem acaba de virar sucessor). */
     private suspend fun successorRelay(): Unit = coroutineScope {
         val sent = ConcurrentHashMap<Int, Long>()
         suspend fun push() {
+            // §16.4 na passagem do cargo o estado completo vai só ao escolhido (os sucessores o descartam).
+            if (handingOver) return
             val state = latestState.value ?: return
             val targets = session.successors.value
             _noSuccessor.value = targets.isEmpty()
@@ -280,6 +339,11 @@ class MultiplayerHost(
             sent.keys.retainAll(targets.toSet())
         }
         launch { session.successors.collect { push() } }
+        // §16.10 a sala muda sem jogada (entrada, vaga aberta, escolha na pausa, apostas): o estado vai de novo.
+        launch {
+            kotlinx.coroutines.flow.combine(session.roster, session.openSeats, _decision, _ledger, _robotPersonas) { _, _, _, _, _ -> Unit }
+                .collect { latestState.update { st -> st?.let { withMeta(it.copy(stateSeq = stateSeq.incrementAndGet())) } } }
+        }
         latestState.collect { push() }
     }
 
@@ -289,6 +353,7 @@ class MultiplayerHost(
      */
     private suspend fun awaitConfirmed(seq: Long) {
         while (true) {
+            if (handingOver) return
             val first = session.successors.value.firstOrNull() ?: return
             if (latestState.value == null) return
             val ok = withTimeoutOrNull(successorAckTimeoutMillis) { acks.first { (it[first] ?: 0) >= seq } } != null
@@ -313,28 +378,61 @@ class MultiplayerHost(
             return null
         }
         val candidates = session.roster.value.filter { it.id != session.hostId && it.connected && !it.resigned }
-        val target = candidates.firstOrNull { it.id == newHostId } ?: session.successors.value.firstOrNull()?.let { id -> candidates.firstOrNull { it.id == id } }
-            ?: candidates.minByOrNull { it.joinOrder }
-        if (target == null) {
-            if (resign) controller.resign(hostSeat)
-            return null
+        // §16.10 o escolhido, depois os sucessores e a ordem de entrada.
+        val ordered = (
+            listOfNotNull(candidates.firstOrNull { it.id == newHostId }) +
+                session.successors.value.mapNotNull { id -> candidates.firstOrNull { it.id == id } } +
+                candidates.sortedBy { it.joinOrder }
+            ).distinctBy { it.id }
+        if (ordered.isEmpty()) return noHumanForHost(resign)
+        handingOver = true
+        try {
+            if (resign) {
+                _ledger.update { it.forfeit(hostSeat.index) }
+                session.markHostResigned()
+            }
+            for (target in ordered) {
+                // §16.4 o estado completo vai só ao escolhido; nenhum outro convidado o recebe. §16.10 o anfitrião só sai
+                // depois da confirmação dele; sem ela no tempo limite, o próximo disponível.
+                val state = handOverState()
+                session.sendHandOverState(target.id, state)
+                val acked = withTimeoutOrNull(successorAckTimeoutMillis) { acks.first { (it[target.id] ?: 0) >= state.stateSeq } } != null
+                if (!acked) {
+                    session.dropHandOverState(target.id)
+                    continue
+                }
+                // O jogo pára aqui; se andou enquanto esperava (robôs), o escolhido recebe o estado final.
+                runJob?.cancel()
+                val final = handOverState()
+                if (final.match != state.match || final.events != state.events) session.sendHandOverState(target.id, final)
+                session.handOver(target.id)
+                return target.id
+            }
+        } finally {
+            handingOver = false
         }
-        if (resign) {
-            _ledger.update { it.forfeit(hostSeat.index) }
-            session.markHostResigned()
-        }
-        // O jogo pára aqui; o estado final (com o anfitrião fora) vai ao escolhido, que assume a partir dele.
-        val final = controller.saveSnapshot()
-        val state = successorState(final).copy(
-            members = session.membersForSuccessor().map {
+        return noHumanForHost(resign)
+    }
+
+    /** Estado do jogo agora, com o anfitrião fora (para quem assume na passagem do cargo). */
+    private fun handOverState(): SuccessorState = successorState(controller.saveSnapshot()).let { state ->
+        state.copy(
+            members = state.members.map {
                 if (it.info.id == session.hostId) it.copy(info = it.info.copy(connected = false, isHost = false)) else it
             },
         )
-        runJob?.cancel()
-        // §16.4 o estado completo vai só ao escolhido; nenhum outro convidado o recebe.
-        session.sendHandOverState(target.id, state)
-        session.handOver(target.id)
-        return target.id
+    }
+
+    /**
+     * §16.9 sem humano conectado que receba o cargo: com [resign] é a desistência do lado do anfitrião (§13.1): o jogo
+     * termina, o outro lado vence e a aposta dele fica perdida; quem estava fora no lado vencedor recebe ao voltar (§16.11).
+     */
+    private fun noHumanForHost(resign: Boolean): Int? {
+        if (resign) {
+            _ledger.update { it.forfeit(hostSeat.index) }
+            controller.resign(hostSeat)
+        }
+        return null
     }
 
     // ---- §16.8, §16.9 pausa e decisão do anfitrião --------------------------------------------------------------
@@ -349,11 +447,17 @@ class MultiplayerHost(
             if (absent) {
                 if (current?.seat != waiting) {
                     val reason = if (player == null || player.resigned) PauseReason.VACANT else PauseReason.DISCONNECTED
-                    _decision.value = HostDecision(waiting!!, player?.id, reason)
-                    session.broadcast(Paused(waiting, reason))
+                    // §16.10 a escolha já feita pelo anfitrião anterior nesta mesma pausa continua valendo.
+                    val choice = restoredDecision?.takeIf { it.first == waiting }?.second
+                    restoredDecision = null
+                    _decision.value = HostDecision(waiting!!, player?.id, reason, choice)
+                    // §16.7 pedidos de entrada para o assento da vez são aceitos enquanto o anfitrião decide.
+                    session.setAwaitingSeat(waiting)
+                    session.broadcast(Paused(waiting, reason, choice))
                 }
             } else if (current != null) {
                 _decision.value = null
+                session.setAwaitingSeat(null)
                 session.closeSeat(current.seat)
                 session.broadcast(Resumed)
             }
@@ -398,7 +502,10 @@ class MultiplayerHost(
         return true
     }
 
-    /** §16.7 libera um assento de **robô** para alguém entrar (com aprovação); o robô joga até lá. */
+    /**
+     * §16.7 libera um assento de **robô** para alguém entrar (com aprovação); o robô joga até lá. Na mesa reduzida
+     * (anfitrião × robô, §16.3) quem entra faz um 1×1 entre humanos.
+     */
     suspend fun openRobotSeat(seat: Seat) {
         if (seat in remote || seat == hostSeat) return
         session.openSeat(seat)
@@ -412,15 +519,26 @@ class MultiplayerHost(
     suspend fun approveJoin(requestId: Int): Boolean {
         val request = session.joinRequests.value.firstOrNull { it.requestId == requestId } ?: return false
         val seat = request.seat
-        val wasRobot = seat !in remote
-        if (wasRobot) {
-            if (!controller.replacePlayer(seat, HumanPlayer())) return false
-            remote += seat
-            startViewJob(seat)
+        // §16.7 pedido feito durante a decisão da pausa: aprovar = abrir a vaga e aprovar.
+        if (seat !in session.openSeats.value) {
+            if (_decision.value?.seat != seat) return false
+            openSeatForRecruit()
         }
-        val info = session.approveJoin(requestId) ?: return false
+        var wasRobot = false
+        // O assento só muda de jogador se a sessão aprovar (sob a trava dela): sem corrida com a saída do candidato nem
+        // com a volta do dono (§16.5).
+        val info = session.approveJoin(requestId) attach@{ s ->
+            wasRobot = s !in remote
+            if (wasRobot) {
+                if (!controller.replacePlayer(s, HumanPlayer())) return@attach false
+                remote += s
+            }
+            true
+        } ?: return false
+        if (wasRobot) startViewJob(seat)
         var debit = 0
-        _ledger.update { ledger -> ledger.occupy(seat.index, info.id).also { debit = it.second }.first }
+        // §16.8 opção 3: quem caiu e foi substituído por outro convidado perde a aposta, que o novo herda.
+        _ledger.update { ledger -> ledger.forfeit(seat.index).occupy(seat.index, info.id).also { debit = it.second }.first }
         if (wasRobot) _robotPersonas.update { it - seat.index }
         session.sendTo(seat, StakeDebit(debit))
         evaluatePause()
@@ -444,12 +562,16 @@ class MultiplayerHost(
         scope?.launch { evaluatePause() }
     }
 
-    /** §16.5, §16.7 quem (re)entra recebe a vista completa (com o histórico) e, se o jogo está pausado, o porquê. */
-    override fun onSeatAttached(seat: Seat) {
+    /**
+     * §16.5, §16.7 quem (re)entra recebe o fim da última partida se ainda não o tinha recebido (§16.11), a vista completa
+     * (com o histórico) e, se o jogo está pausado, o porquê.
+     */
+    override fun onSeatAttached(seat: Seat, roundOverSeen: Int) {
         val scope = scope ?: return
         scope.launch {
             // §16.9 quem desistiu e voltou pelo token recupera a aposta.
             session.playerAt(seat)?.let { p -> _ledger.update { it.restore(seat.index, p.id) } }
+            lastRoundOver[seat.index]?.takeIf { it.roundNumber > roundOverSeen }?.let { session.sendTo(seat, it) }
             sentHistory.remove(seat.index)
             if (seat in remote) sendView(seat, controller.stateOf(seat).value)
             _decision.value?.takeIf { it.seat != seat }?.let { session.sendTo(seat, Paused(it.seat, it.reason, it.choice)) }
@@ -474,6 +596,9 @@ class MultiplayerHost(
     internal fun sessionPlayerAt(seat: Seat): Int? = session.playerAt(seat)?.id
 
     internal fun sessionSuccessors(): List<Int> = session.successors.value
+
+    /** §16.7 pedidos de entrada esperando a aprovação deste anfitrião. */
+    fun sessionJoinRequests(): StateFlow<List<com.gtranca.net.JoinRequest>> = session.joinRequests
 
     /** §16.11 o anfitrião terminou as telas de resultado: distribui a próxima partida (sem esperar ninguém). */
     fun continueRound(): Boolean = controller.continueToNextRound()
@@ -528,11 +653,19 @@ class MultiplayerHost(
             scope: CoroutineScope,
             botFactory: ((Seat, Random) -> BotPlayer)? = null,
             computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+            /** §16.10 [com.gtranca.net.GuestSession.takeOverRank]: 0 = passagem do cargo; 1 ou 2 = provisório pela queda. */
+            provisionalRank: Int = 0,
         ): MultiplayerHost {
             val me = state.members.first { it.info.id == myId }
             val session = HostSession(
                 transport, tableId, rules, me.info.name,
-                resumed = com.gtranca.net.ResumedTable(myId, state.members, state.nextPlayerId),
+                resumed = com.gtranca.net.ResumedTable(
+                    myId, state.members, state.nextPlayerId,
+                    epoch = state.epoch + 1,
+                    provisionalRank = provisionalRank,
+                    previousHostId = state.members.firstOrNull { it.info.isHost }?.info?.id,
+                    openSeats = state.openSeats.toSet(),
+                ),
             )
             session.open(scope)
             val config = GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake)

@@ -13,6 +13,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
@@ -124,10 +125,12 @@ class SessionTest {
         advanceUntilIdle()
         host.droppedAtStart.value.shouldBeEmpty()
         ana.status.value shouldBe GuestStatus.Playing
-        // Depois do início ninguém mais entra (entrada no meio do jogo: etapa 4).
+        // §16.7 depois do início a mesa segue anunciada (para o reingresso), mas fora da lista, e sem vaga aberta ninguém entra.
+        network.adverts().single().listed shouldBe false
         val late = GuestSession(network.transport(), "Caio")
-        runCatching { late.join(sessionScope, "m") }.isFailure shouldBe true // a mesa deixou de ser anunciada
-        late.status.value.shouldBeInstanceOf<GuestStatus.Connecting>()
+        late.join(sessionScope, "m")
+        advanceUntilIdle()
+        late.status.value shouldBe GuestStatus.Refused("O jogo desta mesa já começou.")
     }
 
     @Test
@@ -229,5 +232,27 @@ class SessionTest {
         // Sair também descarta.
         a.leave()
         a.holdsSuccessorState shouldBe false
+    }
+
+    /** §16.10 quem foi marcado indisponível volta a contar como sucessor ao reingressar. */
+    @Test
+    fun `§16_10 indisponivel volta a ser sucessor no reingresso`() = runTest {
+        val network = MemoryNetwork()
+        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
+        host.open(sessionScope)
+        val transport = network.transport()
+        val a = GuestSession(transport, "A").also { it.join(sessionScope, "m") }
+        advanceUntilIdle()
+        a.confirmSeat()
+        advanceUntilIdle()
+        host.startGame()
+        advanceUntilIdle()
+        host.markUnavailable(a.playerId)
+        host.successors.value.shouldBeEmpty()
+        // A conexão cai e ele volta sozinho pelo token (a mesa segue anunciada, §16.7).
+        network.drop(transport.id)
+        advanceTimeBy(3_000)
+        a.status.value shouldBe GuestStatus.Playing
+        host.successors.value shouldBe listOf(a.playerId)
     }
 }

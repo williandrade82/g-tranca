@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 3
+const val PROTOCOL_VERSION: Int = 4
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
@@ -180,7 +180,13 @@ sealed interface Payload
  */
 @Serializable
 @SerialName("hello")
-data class Hello(val name: String, val token: String? = null, val seat: Seat? = null) : Payload
+data class Hello(
+    val name: String,
+    val token: String? = null,
+    val seat: Seat? = null,
+    /** §16.5 última partida cujo pacote de fim (§16.11) este aparelho recebeu; o anfitrião reenvia o que faltar. */
+    val roundOverSeen: Int = 0,
+) : Payload
 
 /** Entrada aceita: o [token] (só deste jogador, §16.5), o id público dele, as regras da mesa (uma vez) e a sala. */
 @Serializable
@@ -219,7 +225,7 @@ data object Resign : Payload
 @SerialName("rename")
 data class Rename(val name: String) : Payload
 
-/** Convidado sai da sala antes do início. */
+/** Convidado sai da sala; durante o jogo vale como desistência (§16.9). */
 @Serializable
 @SerialName("leave")
 data object Leave : Payload
@@ -381,6 +387,13 @@ data class SuccessorState(
     val robotPersonas: Map<Int, String> = emptyMap(),
     /** Maior número de pedido já usado na rede: o novo anfitrião numera os seus depois dele. */
     val requestBase: Long = 0,
+    /** §16.10 geração do anfitrião que enviou (0 = o original); quem assume anuncia a seguinte. */
+    val epoch: Int = 0,
+    /** §16.7, §16.10 assentos abertos a outro convidado (o novo anfitrião os herda). */
+    val openSeats: List<Seat> = emptyList(),
+    /** §16.8, §16.10 assento da pausa e a escolha já feita pelo anfitrião ([NoticeKind.WAITING]/[NoticeKind.SEAT_OPENED]). */
+    val decisionSeat: Seat? = null,
+    val decisionChoice: NoticeKind? = null,
 ) : Payload {
     override fun toString(): String = "SuccessorState(stateSeq=$stateSeq)" // nunca registrar cartas nem tokens
 }

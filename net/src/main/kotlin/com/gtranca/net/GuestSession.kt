@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -56,16 +57,26 @@ class GuestSession(
     private val transport: LocalTransport,
     val name: String,
     private val codec: ProtocolCodec = ProtocolCodec(),
-    /** §16.10 quanto o 1º sucessor espera a mesa reaparecer antes de assumir (o anfitrião pode ter só piscado). */
+    /**
+     * §16.10, §16.15 quanto tempo **sem a mesa na busca** o 1º sucessor espera antes de assumir (o 2º espera o dobro):
+     * perder só a própria conexão não basta.
+     */
     private val successorGraceMillis: Long = SUCCESSOR_GRACE_MILLIS,
-    /** Quanto os demais esperam a mesa (do anfitrião ou do sucessor) reaparecer. */
-    private val reconnectTimeoutMillis: Long = RECONNECT_TIMEOUT_MILLIS,
+    /** §16.5, §16.15 mesa ausente da busca por este tempo seguido = encerrada. */
+    private val absentLimitMillis: Long = ABSENT_LIMIT_MILLIS,
 ) {
     private val mutex = Mutex()
     private lateinit var scope: CoroutineScope
     private var link: ReliableLink? = null
     private var collector: Job? = null
     private var tableId: String = ""
+
+    /** Assento pedido ao entrar no meio do jogo (§16.7): o pedido é refeito com ele se o anfitrião cair. */
+    private var requestedSeat: Seat? = null
+
+    /** §16.5 última partida cujo pacote de fim (§16.11) foi recebido (vai no reingresso). */
+    @Volatile
+    private var roundOverSeen = 0
 
     private val _status = MutableStateFlow<GuestStatus>(GuestStatus.Connecting)
     val status: StateFlow<GuestStatus> = _status.asStateFlow()
@@ -141,21 +152,49 @@ class GuestSession(
      */
     val takeOver: StateFlow<SuccessorState?> = _takeOver.asStateFlow()
 
-    /** Conecta-se à mesa [tableId] e pede para entrar (§16.2), ou reingressa com [token] (§16.5, "Continuar"). */
+    /**
+     * §16.10 como este jogador assume: 0 = confirmado (o anfitrião passou o cargo); 1 ou 2 = provisório, pela queda do
+     * anfitrião, na posição de sucessor (ver `HostSession`: só retoma o jogo quando confirmado).
+     */
+    @Volatile
+    var takeOverRank: Int = 0
+        private set
+
+    /**
+     * Conecta-se à mesa [tableId] e pede para entrar (§16.2), ou reingressa com [token] (§16.5, "Continuar"), mesmo que
+     * a mesa não esteja na lista (ela fica anunciada o jogo todo, §16.7). Falha se a mesa não está na busca.
+     */
     suspend fun join(scope: CoroutineScope, tableId: String, token: String? = null, seat: Seat? = null) {
         this.scope = scope
         this.tableId = tableId
         this.token = token
+        this.requestedSeat = seat
         collector = scope.launch { transport.events.collect { handle(it) } }
-        connectAndHello(seat)
+        val advert = transport.discover().first().preferred(tableId) ?: error("Mesa não encontrada")
+        connectAndHello(advert, seat)
     }
 
-    private suspend fun connectAndHello(seat: Seat?) {
-        val endpoint = transport.connect(tableId)
+    private suspend fun connectAndHello(advert: TableAdvert, seat: Seat?) {
+        val endpoint = transport.connect(advert)
         mutex.withLock {
             link = ReliableLink(endpoint, transport, codec, scope, mutex)
-            link!!.sendLocked(Hello(name, token, seat))
+            link!!.sendLocked(Hello(name, token, seat, roundOverSeen))
         }
+    }
+
+    /**
+     * §16.9 "Voltar à mesa": quem desistiu reingressa pelo token enquanto o assento não foi substituído nem ocupado
+     * (recupera a aposta). Devolve se a mesa foi achada; a resposta do anfitrião chega em [status].
+     */
+    suspend fun returnToTable(): Boolean {
+        mutex.withLock {
+            if (_status.value != GuestStatus.Resigned || token == null) return false
+            _status.value = GuestStatus.Reconnecting
+        }
+        val advert = transport.discover().first().preferred(tableId)
+        if (advert != null && runCatching { connectAndHello(advert, seat) }.isSuccess) return true
+        mutex.withLock { if (_status.value == GuestStatus.Reconnecting) _status.value = GuestStatus.Resigned }
+        return false
     }
 
     private val _roundOver = MutableStateFlow<RoundOver?>(null)
@@ -205,9 +244,13 @@ class GuestSession(
 
     suspend fun rename(newName: String) = send(Rename(newName))
 
+    /** Sai da sala; durante o jogo vale como desistência (§16.9). */
     suspend fun leave() {
-        successorState = null
-        send(Leave)
+        mutex.withLock {
+            successorState = null
+            if (_status.value == GuestStatus.Playing || _status.value == GuestStatus.Reconnecting) _status.value = GuestStatus.Resigned
+            link?.sendLocked(Leave)
+        }
     }
 
     /** Propõe [action] para o pedido em aberto da vista atual (ou para [requestId], se informado). */
@@ -239,7 +282,10 @@ class GuestSession(
         }
     }
 
-    /** A conexão caiu: no jogo, tenta reingressar (§16.5) ou, se for o 1º sucessor e a mesa sumiu, assume (§16.10). */
+    /**
+     * A conexão caiu: no jogo (ou à espera da aprovação, §16.7), tenta voltar (§16.5); se for sucessor e a mesa sumiu
+     * da busca, assume (§16.10).
+     */
     private fun lostLocked() {
         link?.close()
         link = null
@@ -248,33 +294,50 @@ class GuestSession(
                 _status.value = GuestStatus.Reconnecting
                 scope.launch { reconnect() }
             }
+            GuestStatus.WaitingApproval -> scope.launch { reconnect() }
             is GuestStatus.Refused, GuestStatus.Resigned, GuestStatus.TakingOver -> Unit
             else -> _status.value = GuestStatus.Closed
         }
     }
 
+    private fun reconnecting(): Boolean =
+        link == null && (_status.value == GuestStatus.Reconnecting || _status.value == GuestStatus.WaitingApproval)
+
+    /**
+     * §16.5 tenta voltar **sem limite enquanto a mesa existir** (quem decide o assento é o anfitrião, §16.8): intervalos de
+     * 1 s dobrando até 15 s e, depois, a cada 15 s (poupa bateria). Mesa ausente da busca por 60 s seguidos =
+     * encerrada. §16.10 o sucessor só assume com evidência de queda: a mesa sumiu da busca por 3 s (1º) ou 6 s (2º); se o
+     * cargo foi passado a outro, só reingressa. Quem esperava aprovação refaz o pedido (sem token) no anfitrião que achar.
+     */
     private suspend fun reconnect() {
-        // §16.10 se o cargo foi passado a outro, quem assume é ele: aqui só se reingressa.
-        val first = handedTo == null && _roster.value.firstOrNull { it.id == playerId }?.successorRank == 1 && successorState != null
-        var found = false
-        withTimeoutOrNull(if (first) successorGraceMillis else reconnectTimeoutMillis) {
-            while (!found) {
-                transport.discover().first { list -> list.any { it.tableId == tableId } }
-                found = runCatching { connectAndHello(seat) }.isSuccess
-                if (!found) delay(RETRY_MILLIS)
-            }
+        val rank = if (handedTo == null && successorState != null && _status.value == GuestStatus.Reconnecting) {
+            _roster.value.firstOrNull { it.id == playerId }?.successorRank ?: 0
+        } else {
+            0
         }
-        if (found) return
-        mutex.withLock {
-            if (_status.value != GuestStatus.Reconnecting) return
-            val state = successorState
-            if (first && state != null) {
-                _status.value = GuestStatus.TakingOver
-                _takeOver.value = state
-            } else {
-                _status.value = GuestStatus.Closed
-                successorState = null
+        var backoff = RETRY_MIN_MILLIS
+        while (true) {
+            if (!reconnecting()) return
+            val window = if (rank > 0) rank * successorGraceMillis else absentLimitMillis
+            val advert = withTimeoutOrNull(window) { transport.discover().mapNotNull { it.preferred(tableId) }.first() }
+            if (advert == null) {
+                mutex.withLock {
+                    if (!reconnecting()) return
+                    val state = successorState
+                    if (rank > 0 && state != null) {
+                        takeOverRank = rank
+                        _status.value = GuestStatus.TakingOver
+                        _takeOver.value = state
+                    } else {
+                        _status.value = GuestStatus.Closed
+                        successorState = null
+                    }
+                }
+                return
             }
+            if (runCatching { connectAndHello(advert, if (_status.value == GuestStatus.WaitingApproval) requestedSeat else seat) }.isSuccess) return
+            delay(backoff)
+            backoff = minOf(backoff * 2, RETRY_MAX_MILLIS)
         }
     }
 
@@ -295,6 +358,7 @@ class GuestSession(
                     }
                     SuccessorDrop -> successorState = null
                     BecomeHost -> successorState?.let {
+                        takeOverRank = 0
                         _status.value = GuestStatus.TakingOver
                         _takeOver.value = it
                     }
@@ -332,10 +396,11 @@ class GuestSession(
                 _rules.value = payload.rules
                 _roster.value = payload.roster
                 if (payload.started) {
-                    // §16.5, §16.7 reingresso ou entrada no meio: a vista completa vem em seguida.
-                    resync = true
+                    // §16.5, §16.7 reingresso ou entrada no meio: a vista completa vem em seguida (e antes dela o fim de
+                    // partida que faltou). Quem está nas telas de resultado continua nelas: o que é da partida seguinte
+                    // volta a ficar guardado até o advance().
+                    resync = _roundOver.value == null
                     held.clear()
-                    _roundOver.value = null
                     _paused.value = null
                     _status.value = GuestStatus.Playing
                 } else {
@@ -362,6 +427,7 @@ class GuestSession(
             }
             is ActionRejected -> _rejections.tryEmit(payload)
             is RoundOver -> {
+                if (payload.roundNumber > roundOverSeen) roundOverSeen = payload.roundNumber
                 _roundOver.value = payload
                 val previous = _view.value
                 _view.value = payload.view.let { v -> if (v.history == null) v.copy(history = previous?.history ?: emptyList()) else v }
@@ -369,7 +435,11 @@ class GuestSession(
             is Paused -> _paused.value = payload
             Resumed -> _paused.value = null
             is TableNotice -> {
-                if (payload.kind == NoticeKind.HOST_CHANGED) handedTo = payload.playerId
+                if (payload.kind == NoticeKind.HOST_CHANGED) {
+                    handedTo = payload.playerId
+                    // §16.10 quem não é o novo anfitrião descarta o estado completo (o novo envia o dele aos sucessores).
+                    if (payload.playerId != playerId) successorState = null
+                }
                 _notices.tryEmit(payload)
             }
             is Payout -> _payout.value = payload
@@ -385,8 +455,14 @@ class GuestSession(
     }
 
     companion object {
-        const val SUCCESSOR_GRACE_MILLIS: Long = 5_000
-        const val RECONNECT_TIMEOUT_MILLIS: Long = 60_000
-        private const val RETRY_MILLIS: Long = 500
+        /** §16.15 mesa sumida da busca para o 1º sucessor assumir (o 2º: o dobro). */
+        const val SUCCESSOR_GRACE_MILLIS: Long = 3_000
+
+        /** §16.15 mesa ausente da busca até ser dada como encerrada. */
+        const val ABSENT_LIMIT_MILLIS: Long = 60_000
+
+        /** §16.15 intervalos da reconexão: 1 s dobrando até 15 s; depois, a cada 15 s. */
+        const val RETRY_MIN_MILLIS: Long = 1_000
+        const val RETRY_MAX_MILLIS: Long = 15_000
     }
 }

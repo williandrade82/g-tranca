@@ -7,6 +7,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,8 +26,11 @@ interface HostGamePort {
     /** §16.5, §16.8 a presença de algum jogador mudou (caiu, voltou, desistiu, entrou). */
     fun onPresenceChanged() {}
 
-    /** §16.5, §16.7 um jogador (re)entrou no [seat] com o jogo em andamento: precisa da vista completa. */
-    fun onSeatAttached(seat: Seat) {}
+    /**
+     * §16.5, §16.7 um jogador (re)entrou no [seat] com o jogo em andamento: precisa da vista completa e, se ainda não o
+     * recebeu (último recebido: [roundOverSeen]), do pacote de fim da última partida (§16.11).
+     */
+    fun onSeatAttached(seat: Seat, roundOverSeen: Int = Int.MAX_VALUE) {}
 
     /** §16.10 o sucessor [playerId] confirmou o estado [stateSeq]. */
     fun onSuccessorAck(playerId: Int, stateSeq: Long) {}
@@ -34,7 +40,19 @@ interface HostGamePort {
 data class JoinRequest(val requestId: Int, val name: String, val seat: Seat)
 
 /** Para um sucessor que assume (§16.10): a sala que ele herda. */
-data class ResumedTable(val hostId: Int, val members: List<MemberRecord>, val nextPlayerId: Int)
+data class ResumedTable(
+    val hostId: Int,
+    val members: List<MemberRecord>,
+    val nextPlayerId: Int,
+    /** §16.10 geração deste anfitrião (a do anterior + 1). */
+    val epoch: Int = 1,
+    /** §16.10 assumiu por queda sem confirmação ainda (posição de sucessor, 1 ou 2); 0 = confirmado (passagem do cargo). */
+    val provisionalRank: Int = 0,
+    /** Anfitrião anterior (não confirma o provisório: ele é quem pode ter só piscado). */
+    val previousHostId: Int? = null,
+    /** §16.7 assentos que o anterior tinha aberto a outro convidado. */
+    val openSeats: Set<Seat> = emptySet(),
+)
 
 /**
  * Sessão do **anfitrião** (§16.1, §16.2, §16.5, §16.7, §16.8): publica a mesa, recebe os convidados (versão, nome, token,
@@ -54,6 +72,8 @@ class HostSession(
     private val codec: ProtocolCodec = ProtocolCodec(),
     private val newToken: () -> String = ::randomToken,
     resumed: ResumedTable? = null,
+    /** §16.10, §16.15 provisório sem outro humano que possa confirmar: confirma sozinho depois deste tempo. */
+    private val provisionalSoloMillis: Long = PROVISIONAL_SOLO_MILLIS,
 ) {
     private class Member(val token: String, var info: PlayerInfo) {
         var link: ReliableLink? = null
@@ -74,7 +94,34 @@ class HostSession(
     private var finished = false
     private var advertising = false
     private var collector: Job? = null
+    private var watcher: Job? = null
+    private var closed = false
     private var successorIds: List<Int> = emptyList()
+
+    /** §16.10 geração deste anfitrião (0 = o original). */
+    val epoch: Int = resumed?.epoch ?: 0
+
+    private val previousHostId: Int? = resumed?.previousHostId
+    private var provisionalRank: Int = resumed?.provisionalRank ?: 0
+
+    private val _committed = MutableStateFlow(provisionalRank == 0)
+
+    /** §16.10 confirmado como anfitrião (o provisório só retoma o jogo depois disto). */
+    val committed: StateFlow<Boolean> = _committed.asStateFlow()
+
+    private val _superseded = MutableStateFlow(false)
+
+    /**
+     * §16.10 outro anfitrião da mesma mesa prevalece (o provisório achou o original, ou o original achou um confirmado):
+     * esta sessão fechou e o aparelho volta como convidado com [hostToken].
+     */
+    val superseded: StateFlow<Boolean> = _superseded.asStateFlow()
+
+    /** §16.8 assento da pausa (decisão do anfitrião pendente): aceita pedido de entrada mesmo sem vaga aberta (§16.7). */
+    private var awaitingSeat: Seat? = null
+
+    /** §16.11 o que falta entregar a quem estava fora no fim do jogo (por id): fim de jogo e prêmio. */
+    private val finals = mutableMapOf<Int, List<Payload>>()
 
     /** §16.10 quem ainda não soube que este é o novo anfitrião (avisado ao reingressar). */
     private val hostNoticePending = mutableSetOf<Int>()
@@ -134,7 +181,7 @@ class HostSession(
     /** §16.7 pedidos de entrada no meio do jogo esperando o anfitrião ([approveJoin]/[refuseJoin]). */
     val joinRequests: StateFlow<List<JoinRequest>> = _joinRequests.asStateFlow()
 
-    private val _openSeats = MutableStateFlow<Set<Seat>>(emptySet())
+    private val _openSeats = MutableStateFlow(resumed?.openSeats ?: emptySet())
 
     /** §16.7, §16.8 assentos abertos a outro convidado (mesa na lista com "jogo em andamento"). */
     val openSeats: StateFlow<Set<Seat>> = _openSeats.asStateFlow()
@@ -151,10 +198,45 @@ class HostSession(
     suspend fun open(scope: CoroutineScope) {
         this.scope = scope
         collector = scope.launch { transport.events.collect { handle(it) } }
+        // §16.10 outro anfitrião da mesma mesa que prevaleça (só com o jogo em andamento).
+        watcher = scope.launch {
+            transport.discover().collect { list ->
+                val mine = mutex.withLock { if (started && !closed) advertLocked() else null } ?: return@collect
+                if (list.any { it.tableId == tableId && it.hostId != hostId && it.outranks(mine) }) supersede()
+            }
+        }
         mutex.withLock {
             if (started) refreshSuccessorsLocked()
             advertiseLocked(force = true)
         }
+        // §16.10 provisório sem outro humano que possa confirmar: confirma sozinho depois do tempo de §16.15.
+        if (provisionalRank > 0 && members.values.none { it.info.id != hostId && it.info.id != previousHostId && !it.info.resigned }) {
+            scope.launch {
+                delay(provisionalSoloMillis)
+                mutex.withLock { commitLocked() }
+            }
+        }
+    }
+
+    /** §16.10 o provisório passa a anfitrião confirmado (retoma o jogo e anuncia sem a marca de provisório). */
+    private suspend fun commitLocked() {
+        if (provisionalRank == 0 || closed) return
+        provisionalRank = 0
+        _committed.value = true
+        advertiseLocked()
+    }
+
+    /** §16.10 outro anfitrião prevalece: fecha esta sessão (os convidados dela reconectam no outro). */
+    private suspend fun supersede() {
+        if (_superseded.value) return
+        _superseded.value = true
+        close()
+    }
+
+    /** §16.10 espera a confirmação (devolve `true`) ou que outro anfitrião prevaleça (`false`). */
+    suspend fun awaitCommitted(): Boolean {
+        combine(_committed, _superseded) { c, s -> c || s }.first { it }
+        return !_superseded.value
     }
 
     /** Assentos de convidados humanos (por assento, o id público), inclusive os desconectados e "VAGO". */
@@ -213,27 +295,45 @@ class HostSession(
         }
     }
 
+    /** §16.7, §16.8 assento da pausa (ou `null`): pedidos de entrada para ele são aceitos e aparecem junto das três ações. */
+    suspend fun setAwaitingSeat(seat: Seat?) {
+        mutex.withLock {
+            val before = awaitingSeat
+            awaitingSeat = seat
+            if (before != null && before != seat && before !in _openSeats.value) refuseRequestsLocked(before)
+        }
+    }
+
+    private suspend fun refuseRequestsLocked(seat: Seat) {
+        pending.values.filter { it.request?.seat == seat }.toList().forEach { refuseLocked(it, SEAT_TAKEN_MESSAGE) }
+    }
+
     /** Fecha o [seat] à entrada (ex.: o anfitrião pôs um robô); os pedidos para ele são recusados. */
     suspend fun closeSeat(seat: Seat) {
         mutex.withLock { closeSeatLocked(seat) }
     }
 
     private suspend fun closeSeatLocked(seat: Seat) {
+        // §16.5 eventos simultâneos: os pedidos restantes para o assento são recusados.
+        refuseRequestsLocked(seat)
         if (seat !in _openSeats.value) return
         _openSeats.value = _openSeats.value - seat
-        pending.values.filter { it.request?.seat == seat }.forEach { refuseLocked(it, "A vaga foi preenchida.") }
         advertiseLocked()
     }
 
     /**
      * §16.7 aprova o pedido [requestId]: o novo jogador ocupa **exatamente** o assento aberto, recebe um token e entra
      * jogando. Quem ocupava o assento (caiu ou desistiu) perde o direito de reingressar. Devolve o novo jogador.
+     *
+     * [attach] roda sob a trava, depois de conferido o pedido e antes de qualquer mudança: é onde o jogo troca o jogador do
+     * assento; se devolver `false`, nada muda (a aprovação é atômica).
      */
-    suspend fun approveJoin(requestId: Int): PlayerInfo? {
+    suspend fun approveJoin(requestId: Int, attach: (Seat) -> Boolean = { true }): PlayerInfo? {
         val info = mutex.withLock {
             val entry = pending.entries.firstOrNull { it.value.request?.requestId == requestId } ?: return null
             val request = entry.value.request!!
             if (request.seat !in _openSeats.value) return null
+            if (!attach(request.seat)) return null
             pending.remove(entry.key)
             memberAtLocked(request.seat)?.let { removeMemberLocked(it, disconnect = true) }
             val id = nextId++
@@ -242,7 +342,7 @@ class HostSession(
             members[id] = member
             _openSeats.value = _openSeats.value - request.seat
             _joinRequests.value = _joinRequests.value.filter { it.requestId != requestId }
-            pending.values.filter { it.request?.seat == request.seat }.forEach { refuseLocked(it, "A vaga foi preenchida.") }
+            refuseRequestsLocked(request.seat)
             refreshSuccessorsLocked()
             publishRosterLocked(broadcast = false)
             member.link!!.sendLocked(Welcome(member.token, id, rules, _roster.value, started = true))
@@ -251,7 +351,7 @@ class HostSession(
             advertiseLocked()
             info
         }
-        game?.onSeatAttached(info.seat!!)
+        game?.onSeatAttached(info.seat!!, Int.MAX_VALUE)
         game?.onPresenceChanged()
         return info
     }
@@ -283,6 +383,11 @@ class HostSession(
         }
     }
 
+    /** §16.10 o escolhido na passagem do cargo não confirmou: descarta o estado (se não for sucessor). */
+    suspend fun dropHandOverState(playerId: Int) {
+        mutex.withLock { if (playerId !in successorIds) members[playerId]?.link?.sendLocked(SuccessorDrop) }
+    }
+
     /** §16.10 o sucessor [playerId] não confirmou a tempo: deixa de ser sucessor (o próximo sobe). */
     suspend fun markUnavailable(playerId: Int) {
         mutex.withLock {
@@ -292,12 +397,17 @@ class HostSession(
         }
     }
 
-    /** Fim do jogo: nada mais se recruta; a mesa deixa de ser anunciada. */
-    suspend fun finish() {
+    /**
+     * Fim do jogo: nada mais se recruta. [results] é, por jogador, o fim do jogo e o prêmio dele (§16.11): quem está fora
+     * agora recebe ao voltar pelo token, e a mesa fica anunciada (fora da lista) até todos receberem.
+     */
+    suspend fun finish(results: Map<Int, List<Payload>> = emptyMap()) {
         mutex.withLock {
             finished = true
             _openSeats.value = emptySet()
             pending.values.toList().forEach { closePendingLocked(it) }
+            // Guardado para todos (quem cai logo depois do fim também recebe); quem está conectado já recebeu agora.
+            results.forEach { (id, payloads) -> if (members[id]?.info?.resigned == false) finals[id] = payloads }
             advertiseLocked()
         }
     }
@@ -308,6 +418,8 @@ class HostSession(
      */
     suspend fun handOver(newHostId: Int) {
         mutex.withLock {
+            // §16.10 os demais sucessores descartam o estado completo.
+            successorIds.filter { it != newHostId }.forEach { members[it]?.link?.sendLocked(SuccessorDrop) }
             members[newHostId]?.link?.sendLocked(BecomeHost)
             broadcastLocked(TableNotice(NoticeKind.HOST_CHANGED, members[newHostId]?.info?.seat, newHostId))
         }
@@ -318,12 +430,15 @@ class HostSession(
     suspend fun close() {
         mutex.withLock {
             finished = true
+            closed = true
+            finals.clear()
             if (advertising) transport.stopAdvertising()
             advertising = false
             members.values.forEach { m -> m.link?.let { it.close(); transport.disconnect(it.endpoint) }; m.link = null }
             pending.values.forEach { it.link.close(); transport.disconnect(it.link.endpoint) }
             pending.clear()
         }
+        watcher?.cancel()
         collector?.cancel()
     }
 
@@ -389,9 +504,9 @@ class HostSession(
         val token = payload.token
         if (token != null) return rejoinLocked(p, payload, token)
         if (!started) return welcomeLocked(p, payload)
-        // §16.7 jogo em andamento: só entra num assento aberto, com a aprovação do anfitrião.
-        // §16.7 durante o jogo só se entra no assento que o anfitrião abriu (o pedido diz qual, se houver mais de um).
-        val open = _openSeats.value
+        // §16.7 durante o jogo só se entra no assento que o anfitrião abriu (o pedido diz qual, se houver mais de um) ou,
+        // enquanto ele decide a pausa, no assento da vez (aprovar = abrir a vaga e aprovar).
+        val open = if (finished) emptySet() else _openSeats.value + listOfNotNull(awaitingSeat)
         val seat = payload.seat?.takeIf { it in open } ?: open.singleOrNull()
             ?: return refuseLocked(
                 p,
@@ -410,9 +525,10 @@ class HostSession(
     /** §16.5 reingresso pelo token, no mesmo assento, enquanto não foi substituído nem ocupado. */
     private suspend fun rejoinLocked(p: Pending, hello: Hello, token: String) {
         val member = members.values.firstOrNull { it.token == token && it.info.id != hostId }
-        if (member == null || (hello.seat != null && hello.seat != member.info.seat) || finished) {
+        if (member == null || (hello.seat != null && hello.seat != member.info.seat)) {
             return refuseLocked(p, "Não foi possível voltar à mesa: o lugar já foi ocupado.")
         }
+        if (finished) return resultsOnlyLocked(p, member)
         pending.remove(p.link.endpoint)
         // §16.5 sessão duplicada: a conexão nova assume; a antiga recebe só o aviso de encerramento (para não tentar voltar
         // nem assumir como sucessor) e é fechada.
@@ -422,8 +538,14 @@ class HostSession(
             transport.disconnect(old.endpoint)
         }
         member.link = p.link
-        // §16.9 quem desistiu e volta (o anfitrião aguardou) joga de novo no assento; a aposta continua perdida (ledger).
+        // §16.9 quem desistiu e volta (o anfitrião aguardou) joga de novo no assento e recupera a aposta (o jogo
+        // restaura o razão em onSeatAttached).
         updateLocked(member) { it.copy(connected = true, resigned = false) }
+        // §16.10 volta a contar como sucessor; §16.5 o dono voltou: a vaga fecha e os pedidos para ela são recusados.
+        unavailable -= member.info.id
+        member.info.seat?.let { closeSeatLocked(it) }
+        // §16.10 outro jogador reingressou neste anfitrião pelo token: ele também perdeu o anterior (confirma o provisório).
+        commitLocked()
         refreshSuccessorsLocked()
         publishRosterLocked(broadcast = false)
         p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = started))
@@ -436,10 +558,20 @@ class HostSession(
             advertiseLocked()
             // A vista completa e a retomada saem do jogo, fora da trava.
             scope.launch {
-                member.info.seat?.let { game?.onSeatAttached(it) }
+                member.info.seat?.let { game?.onSeatAttached(it, hello.roundOverSeen) }
                 game?.onPresenceChanged()
             }
         }
+    }
+
+    /** §16.11 voltou depois do fim: só recebe o fim do jogo e o prêmio (sem jogar). */
+    private suspend fun resultsOnlyLocked(p: Pending, member: Member) {
+        val results = finals.remove(member.info.id)
+            ?: return refuseLocked(p, "O jogo desta mesa terminou.")
+        p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = true))
+        results.forEach { p.link.sendLocked(it) }
+        // A conexão fica (as mensagens acima precisam ser confirmadas) até o convidado ou o anfitrião fecharem.
+        advertiseLocked()
     }
 
     private suspend fun processLocked(member: Member, payload: Payload) {
@@ -461,7 +593,8 @@ class HostSession(
                 updateLocked(member) { it.copy(name = nameOrDefault(payload.name, player.id)) }
                 publishRosterLocked(broadcast = true)
             }
-            Leave -> if (!started) removeMemberLocked(member, disconnect = true)
+            // §16.9 sair durante o jogo vale como desistência.
+            Leave -> if (!started) removeMemberLocked(member, disconnect = true) else resignLocked(member)
             Resign -> resignLocked(member)
             is ProposeAction -> {
                 val seat = player.seat
@@ -473,7 +606,14 @@ class HostSession(
                 }
                 if (rejection != null) member.link?.sendLocked(rejection)
             }
-            is SuccessorAck -> game?.onSuccessorAck(player.id, payload.stateSeq)
+            is SuccessorAck -> {
+                // §16.10 quem foi marcado indisponível e confirma de novo volta a contar.
+                if (unavailable.remove(player.id)) {
+                    refreshSuccessorsLocked()
+                    publishRosterLocked(broadcast = true)
+                }
+                game?.onSuccessorAck(player.id, payload.stateSeq)
+            }
             else -> Unit
         }
     }
@@ -534,7 +674,7 @@ class HostSession(
      */
     private suspend fun refreshSuccessorsLocked() {
         val old = successorIds
-        val next = if (!started || finished) emptyList() else members.values
+        val next = if (!started || finished || closed) emptyList() else members.values
             .filter { it.info.id != hostId && it.info.connected && !it.info.resigned && it.info.id !in unavailable && it.link != null }
             .sortedBy { it.info.joinOrder }
             .take(2)
@@ -569,17 +709,24 @@ class HostSession(
         transport.disconnect(p.link.endpoint)
     }
 
+    private fun advertLocked(): TableAdvert {
+        val open = !finished && _openSeats.value.isNotEmpty()
+        return TableAdvert(
+            tableId, rules.tableName, members.getValue(hostId).info.name,
+            inProgress = started && open, listed = !started || open,
+            hostId = hostId, epoch = epoch, provisionalRank = provisionalRank,
+        )
+    }
+
     /**
-     * Anúncio da mesa: antes do início, sempre; com o jogo em andamento, enquanto alguém pode voltar (desconectado, §16.5)
-     * ou há assento aberto (§16.7, marca "jogo em andamento"); nunca depois do fim.
+     * Anúncio da mesa (§16.7): durante todo o jogo, para o reingresso pelo token; na lista ([TableAdvert.listed]) só antes
+     * do início ou com vaga aberta ("jogo em andamento"). Depois do fim, só enquanto alguém que estava fora ainda não
+     * recebeu o resultado (§16.11).
      */
     private suspend fun advertiseLocked(force: Boolean = false) {
-        val open = _openSeats.value.isNotEmpty()
-        val want = !finished && (!started || open || members.values.any { it.info.id != hostId && !it.info.connected })
+        val want = !closed && (!finished || finals.keys.any { members[it]?.link == null })
         if (want) {
-            if (!advertising || force || started) {
-                transport.advertise(TableAdvert(tableId, rules.tableName, members.getValue(hostId).info.name, inProgress = started && open))
-            }
+            if (!advertising || force || started) transport.advertise(advertLocked())
             advertising = true
         } else if (advertising) {
             transport.stopAdvertising()
@@ -629,6 +776,12 @@ class HostSession(
     companion object {
         /** §16.2 o anfitrião ocupa sempre a posição 1. */
         val HOST_SEAT = Seat(0)
+
+        /** §16.15 provisório sem outro humano que possa confirmar. */
+        const val PROVISIONAL_SOLO_MILLIS: Long = 15_000
+
+        /** §16.5 eventos simultâneos: o assento já tem dono. */
+        const val SEAT_TAKEN_MESSAGE: String = "A vaga foi preenchida."
     }
 }
 

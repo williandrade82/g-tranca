@@ -84,9 +84,11 @@ internal fun TestScope.driveGuests(
     seed: Long,
     advanceDelay: (Seat) -> Long = { 0L },
     guests: Map<Seat, GuestSession> = table.guests,
+    /** Bots já usados por assento: quem volta numa sessão nova continua com o mesmo (mesmo sorteio e memória). */
+    drivers: MutableMap<Seat, com.gtranca.ai.BotPlayer>? = null,
 ) {
     guests.forEach { (seat, guest) ->
-        val driver = testBot(seed, seat)
+        val driver = drivers?.getOrPut(seat) { testBot(seed, seat) } ?: testBot(seed, seat)
         backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
             guest.roundOver.collect { over ->
                 if (over != null) {
@@ -135,6 +137,27 @@ internal fun TestScope.driveHost(table: TestTable, seed: Long) {
     backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
         var continued = 0
         controller.stateOf(seat).collect { snapshot ->
+            if (snapshot.stage == Stage.ROUND_OVER && continued < snapshot.roundNumber) {
+                continued = snapshot.roundNumber
+                table.host.continueRound()
+            }
+            if (snapshot.humanLegal.isNotEmpty()) {
+                controller.submit(seat, driver.chooseAction(snapshot.view, snapshot.humanLegal), snapshot.humanRequestId)
+            }
+        }
+    }
+}
+
+/** O anfitrião joga o próprio assento como o bot, mas só enquanto [gate] estiver aberto (para segurar o jogo num teste). */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun TestScope.driveHostGated(table: TestTable, seed: Long, gate: kotlinx.coroutines.flow.StateFlow<Boolean>) {
+    val seat = table.host.hostSeat
+    val driver = testBot(seed, seat)
+    val controller = table.host.controller
+    backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
+        var continued = 0
+        kotlinx.coroutines.flow.combine(controller.stateOf(seat), gate) { s, open -> s to open }.collect { (snapshot, open) ->
+            if (!open) return@collect
             if (snapshot.stage == Stage.ROUND_OVER && continued < snapshot.roundNumber) {
                 continued = snapshot.roundNumber
                 table.host.continueRound()

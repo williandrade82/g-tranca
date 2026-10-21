@@ -180,7 +180,7 @@ class MultiplayerRecoveryTest {
         t.host.controller.state.value.stage shouldNotBe Stage.GAME_OVER
         t.hostSession.roster.value.single { it.seat == Seat(1) }.connected shouldBe true
         old.holdsSuccessorState shouldBe true
-        // Com todos conectados a mesa não é anunciada (e ninguém a acharia); a queda do assento 3 a anuncia de novo.
+        // O assento 3 também cai (fora do alcance) e volta depois, junto com a conexão nova do assento 1.
         val away = t.guests.getValue(Seat(3))
         val awayEndpoint = t.endpoints.getValue(Seat(3)).id
         t.network.block(awayEndpoint)
@@ -245,8 +245,8 @@ class MultiplayerRecoveryTest {
         advanceUntilIdle()
         t.host.decision.value?.seat shouldBe Seat(1)
         t.host.replaceWithRobot() shouldBe true
-        // Substituído: perde a aposta (retida no assento) e o token não vale mais; sem ninguém para voltar, a mesa
-        // nem é mais anunciada.
+        // Substituído: perde a aposta (retida no assento) e o token não vale mais (§16.5: a mesa segue anunciada, mas o
+        // reingresso é recusado).
         t.host.ledger.value.seats[1].forfeited shouldBe true
         t.hostSession.playerAt(Seat(1)) shouldBe null
         // §16.8 o robô substituto é sempre um personagem que não estava na mesa.
@@ -255,7 +255,9 @@ class MultiplayerRecoveryTest {
         personas.filterKeys { it != 1 }.values.contains(personas[1]) shouldBe false
         t.network.unblock(t.endpoints.getValue(Seat(1)).id)
         val late = GuestSession(t.network.transport(), "Convidado 1")
-        runCatching { late.join(t.scope, "mesa-1", token = token, seat = Seat(1)) }.isFailure shouldBe true
+        late.join(t.scope, "mesa-1", token = token, seat = Seat(1))
+        runCurrent()
+        late.status.value.shouldBeInstanceOf<GuestStatus.Refused>()
         game.join()
         advanceUntilIdle()
         t.host.controller.state.value.stage shouldBe Stage.GAME_OVER
@@ -297,7 +299,9 @@ class MultiplayerRecoveryTest {
         val newHost = MultiplayerHost.takeOver(
             t.endpoints.getValue(Seat(1)), "mesa-1", successor.rules.value!!, successor.playerId, state, t.scope,
             botFactory = { seat, _ -> testBot(seed, seat) }, computeDispatcher = StandardTestDispatcher(testScheduler),
+            provisionalRank = successor.takeOverRank,
         )
+        successor.takeOverRank shouldBe 1
         newHost.hostSeat shouldBe Seat(1)
         driveHostOf(newHost, seed)
         // §16.10, §16.12 o antigo anfitrião volta (outra conexão) com o token dele, como jogador comum.
@@ -344,6 +348,9 @@ class MultiplayerRecoveryTest {
         handing = false
         // O escolhido assume na hora (sem deixar o relógio correr: os outros aguardam a mesa nova).
         runCurrent()
+        // §16.10 os sucessores que não são o novo anfitrião descartam o estado completo.
+        t.guests.getValue(Seat(1)).holdsSuccessorState shouldBe false
+        t.guests.getValue(Seat(2)).holdsSuccessorState shouldBe false
         oldGame.isCancelled shouldBe true
         val state = chosen.takeOver.value!!
         state.ledger!!.seats[0].forfeited shouldBe true
