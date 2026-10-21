@@ -170,18 +170,19 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 ### 3.13 Escolha sua posição (`SeatPickerScreen`)
 **Objetivo:** escolher o assento na mesa (§16.2) e esperar o início. Imagem de referência: `docs/telas/escolha-posicao-multiplayer.png`.
 **De cima para baixo:** botão de **voltar/sair** no canto (sempre disponível), título "Escolha sua posição" e subtítulo ("Você sempre joga na posição de baixo. Escolha onde deseja ficar na mesa."); a **mesa redonda de posições** com os assentos (feltro verde, aro de madeira); à esquerda e à direita os botões **rotacionar à esquerda** e **rotacionar à direita**; embaixo, o botão dourado **Confirmar posição**.
-**Mesa redonda:** cada assento mostra uma pílula com o **nome** do jogador ou **"VAGO"** e um marcador de seleção. O **marcador do jogador** (aro azul brilhante) fica sempre na posição de baixo, com o nome em **campo editável**, iniciado com o nome do perfil (sem foto; medalhão com a inicial). Rotacionar gira as posições na tela e o marcador cai sempre num **assento vago** (o inicial também é vago).
+**Mesa redonda:** cada assento mostra uma pílula com o **nome** do jogador ou **"VAGO"** e um marcador de seleção. O **marcador do jogador** (aro azul brilhante) fica sempre na posição de baixo, com o nome em **campo editável**, iniciado com o nome do perfil (sem foto; medalhão com a inicial). Ao entrar, o jogador já **ocupa o primeiro assento livre** (é o inicial); rotacionar gira as posições na tela e o marcador cai sempre num **assento vago** (nunca troca de lugar com outro jogador; sem assento vago, a rotação fica indisponível). Nome em branco vira "Jogador N".
 **Anfitrião (a mesma tela, sem escolha de posição):** o anfitrião **não escolhe posição**: fica sempre na **posição 1**, no marcador de baixo, e não há rotação nem **Confirmar posição**; o nome é editável. Antes do início, o botão **Excluir duas posições** (mesa de 2) aparece enquanto há 0 ou 1 convidado conectado e fica indisponível com 2 ou mais (§16.3); com a mesa reduzida vira **Restaurar 4 posições**. A mudança é enviada a todos e o convidado, se houver, passa para o assento em frente.
-**Estados:** *Escolher* → ao tocar **Confirmar posição**, o botão vira **Aguardando início do jogo** (desabilitado) e a tela continua recebendo as atualizações (entradas, saídas, nomes, exclusão de posições). O **anfitrião** vê **Iniciar jogo** (quando quiser; assentos vagos ficam com robôs) no lugar de Confirmar posição.
+**Estados:** *Escolher* → ao tocar **Confirmar posição**, o botão vira **Aguardando início do jogo** (desabilitado) e a tela continua recebendo as atualizações (entradas, saídas, nomes, exclusão de posições). O **anfitrião** vê **Iniciar jogo** (quando quiser; assentos vagos ficam com robôs) no lugar de Confirmar posição. Quem não confirmou a posição até o início é desconectado, e o anfitrião vê um **aviso** com os nomes.
 **Regras:** §16.2, §16.3.
 **Origem:** vem de *Regras da mesa* (anfitrião, que **publica** a mesa ao tocar em **Publicar mesa**) ou de *Mesas disponíveis* (convidado).
 **Tags:** `seat-picker`, `seat-picker-table`, `seat-slot-<n>`, `seat-picker-name`, `seat-picker-rotate-left`, `seat-picker-rotate-right`, `seat-picker-confirm`, `seat-picker-waiting`, `seat-picker-start`, `seat-picker-exclude`, `seat-picker-leave`.
 
 ### 3.14 Mesa multijogador durante o jogo
-**Anfitrião** (cabeçalho da mesa de jogo, 3.8): ícone de **mesa** com o menu do anfitrião: *Passar o cargo*, *Liberar um assento de robô para entrada* (§16.7) e *Forçar a próxima partida* (§16.11).
-**Pontos da partida (3.10) em grupo:** botão **Continuar** para todos os humanos conectados; o anfitrião vê também **Forçar** quando falta alguém.
+**Anfitrião** (cabeçalho da mesa de jogo, 3.8): ícone de **mesa** com o menu do anfitrião: *Passar o cargo* e *Liberar um assento de robô para entrada* (§16.7).
+**Telas de resultado (3.9 a 3.11) em grupo:** cada aparelho as percorre no seu tempo, como no jogo contra robôs (§16.11). O **Continuar** do anfitrião distribui a próxima partida; o do convidado só avança as telas dele (a próxima partida, já recebida, aparece depois). Ninguém espera ninguém.
+**Desistir (convidado):** mesma bandeira e confirmação do jogo contra robôs (§13.1); a desistência vale a qualquer momento e o jogador vai para o fim de jogo como derrota por desistência, enquanto um robô assume o assento (§16.9).
 **Fim de jogo (3.11):** mostra o resultado em moedas de cada celular; a derrota por desistência é a de quem desistiu.
-**Tags:** `host-menu`, `host-pass-role`, `host-open-seat`, `host-force-next`.
+**Tags:** `host-menu`, `host-pass-role`, `host-open-seat`.
 
 ---
 
