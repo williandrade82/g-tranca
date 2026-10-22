@@ -34,6 +34,24 @@ class TablesViewModelsTest {
         override suspend fun setLastMode(mode: GameMode) = state.update { it.copy(lastMode = mode) }
         override suspend fun setHandSort(id: String) = state.update { it.copy(handSortId = id) }
         override suspend fun setCustomRules(rules: RuleSet) = state.update { it.copy(customRules = rules) }
+        override suspend fun setWifiOn(on: Boolean) = state.update { it.copy(wifiOn = on) }
+    }
+
+    @Test
+    fun `§16 o botao de Wi-Fi reflete e grava a configuracao do Perfil`() = withMain {
+        val settings = FakeSettings(Settings(wifiOn = true))
+        val vm = TablesViewModel(seed = 1, settings = settings)
+        advanceUntilIdle()
+        vm.wifiOn.value shouldBe true
+        // Tocar no botão grava no Perfil.
+        vm.setWifi(false)
+        advanceUntilIdle()
+        settings.state.value.wifiOn shouldBe false
+        vm.wifiOn.value shouldBe false
+        // Mudar no Perfil reflete no botão.
+        settings.setWifiOn(true)
+        advanceUntilIdle()
+        vm.wifiOn.value shouldBe true
     }
 
     private fun <T> withMain(block: suspend kotlinx.coroutines.test.TestScope.() -> T) = runTest {

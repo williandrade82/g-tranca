@@ -252,13 +252,16 @@ fun AppNavHost() {
         composable<TablesRoute> {
             // §16 Wi-Fi do jogo (Perfil, guardado): ligado, procura mesas por perto ao abrir, sem tocar em nada. Se as
             // permissões foram retiradas, a explicação aparece de novo; "Agora não" desliga a configuração.
-            val wifiSetting by remember(data) { data.settings.settings.map { it.wifiOn }.catch { emit(false) } }.collectAsStateWithLifecycle(false)
+            val tablesVm = viewModel { TablesViewModel(settings = data.settings, wallet = data.wallet, writes = WriteQueue.app) }
+            val wifiSetting by tablesVm.wifiOn.collectAsStateWithLifecycle()
             var granted by remember { mutableStateOf(com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) }
-            val turnOff = { WriteQueue.app.enqueue { data.settings.setWifiOn(false) } }
-            if (wifiSetting && !granted) {
+            var asking by remember { mutableStateOf(false) }
+            val turnOff = { tablesVm.setWifi(false) }
+            // O botão liga: explicação e permissões; recusar deixa desligado (no botão e no Perfil).
+            if (asking || (wifiSetting && !granted)) {
                 com.gtranca.net.nearby.MultiplayerAccessGate(
-                    onReady = { granted = true },
-                    onCancel = { turnOff() },
+                    onReady = { granted = true; if (asking) tablesVm.setWifi(true); asking = false },
+                    onCancel = { if (!asking) turnOff(); asking = false },
                 )
             }
             val wifiOn = wifiSetting && granted
@@ -278,12 +281,13 @@ fun AppNavHost() {
             }.collectAsStateWithLifecycle(emptyList())
             val profile = rememberProfile(data)
             TablesScreen(
-                viewModel { TablesViewModel(settings = data.settings, wallet = data.wallet) },
+                tablesVm,
                 onOpen = { table -> navController.navigate(TableRulesRoute(table.id)) { launchSingleTop = true } },
                 onCreate = { navController.navigate(CreateTableRoute) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
                 multiplayer = com.gtranca.ui.tables.TablesMultiplayer(
                     wifiOn = wifiOn,
+                    onToggle = { if (wifiSetting) turnOff() else asking = true },
                     tables = adverts.distinctBy { it.tableId },
                     onOpen = { advert ->
                         com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, com.gtranca.multiplayer.SharedPhoto.encode(context, profile)).joinAsync(advert.tableId, profile?.name.orEmpty())

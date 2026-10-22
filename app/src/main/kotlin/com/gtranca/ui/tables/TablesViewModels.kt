@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -59,7 +61,22 @@ private suspend fun <T> safely(block: suspend () -> T): T? = try {
 }
 
 /** Lista de mesas abertas pelos jogadores virtuais (§14.4): sorteada a cada vez que a tela é aberta. */
-class TablesViewModel(seed: Long = System.nanoTime(), settings: SettingsRepository? = null, wallet: WalletRepository? = null) : ViewModel() {
+class TablesViewModel(
+    seed: Long = System.nanoTime(),
+    private val settings: SettingsRepository? = null,
+    wallet: WalletRepository? = null,
+    private val writes: com.gtranca.game.WriteQueue? = null,
+) : ViewModel() {
+    /** §16 Wi-Fi do jogo: a mesma configuração do Perfil (uma só fonte, guardada). */
+    val wifiOn: StateFlow<Boolean> = (settings?.settings?.map { it.wifiOn }?.catch { emit(false) } ?: kotlinx.coroutines.flow.flowOf(false))
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
+
+    /** §16 o botão de Wi-Fi grava a configuração do Perfil (ligar só depois da porta das permissões; a tela cuida disso). */
+    fun setWifi(on: Boolean) {
+        val repo = settings ?: return
+        writes?.enqueue { repo.setWifiOn(on) } ?: viewModelScope.launch { repo.setWifiOn(on) }
+    }
+
     private val _tables = MutableStateFlow(Tables.botTables(seed))
     val tables: StateFlow<List<TableOffer>> = _tables.asStateFlow()
 
