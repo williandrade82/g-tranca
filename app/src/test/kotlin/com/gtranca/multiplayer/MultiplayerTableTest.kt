@@ -462,6 +462,33 @@ class MultiplayerTableTest {
     }
 
     @Test
+    fun `§16_6 robos que jogam antes de a tela abrir - a tela comeca na distribuicao e anima cada jogada`() = runTest {
+        // Anfitrião sozinho com robôs (o convidado não confirmou e sai no início, §16.2).
+        var found = false
+        for (seed in 60L..80L) {
+            val t = setup(seed, targetScore = 3000)
+            t.host.startGame()
+            advanceUntilIdle()
+            val host = (t.host.role.value as MpRole.Hosting).host!!
+            // Os robôs já jogaram até a vez do anfitrião, antes de a tela existir.
+            if (host.controller.state.value.turnEvents.all { it.isEmpty() }) continue
+            found = true
+            val driver = MultiplayerDriver.create(t.host, t.scope) { 700 }
+            val seen = Collections.synchronizedList(mutableListOf<com.gtranca.game.GameSnapshot>())
+            t.scope.launch { driver.state.collect { seen += it } }
+            advanceUntilIdle()
+            // A primeira vista da tela é a da distribuição (nenhuma jogada ainda).
+            seen.first().turnEvents.all { it.isEmpty() } shouldBe true
+            // Depois, uma jogada por vista, em ordem, até a vez do anfitrião.
+            seen.zipWithNext().forEach { (a, b) -> (com.gtranca.ui.game.TableAnimations.newEvents(a, b).size <= 1) shouldBe true }
+            seen.last().humanLegal.isNotEmpty() shouldBe true
+            seen.last().turnEvents shouldBe host.controller.state.value.turnEvents
+            break
+        }
+        found shouldBe true
+    }
+
+    @Test
     fun `§16_2 girar a mesa cai sempre num assento vago`() {
         val vacant = listOf(Seat(1), Seat(3))
         com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(2), vacant, +1) shouldBe Seat(3)

@@ -163,6 +163,16 @@ class MultiplayerTable(
 
     private val photoCache = MutableStateFlow<Map<Int, ByteArray>>(emptyMap())
 
+    private val _feed = kotlinx.coroutines.channels.Channel<com.gtranca.game.GameSnapshot>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
+    /**
+     * §16.6 todas as vistas do assento deste aparelho, em ordem e **sem juntar**, desde o início do jogo (o anfitrião
+     * assina o controlador antes de ele rodar; o convidado, as vistas recebidas desde a entrada). A tela do jogo consome
+     * daqui (um só consumidor): mesmo aberta depois de os robôs jogarem, ela começa na distribuição e anima cada jogada.
+     * No reingresso, a primeira vista é a atual da mesa.
+     */
+    val feed: kotlinx.coroutines.channels.ReceiveChannel<com.gtranca.game.GameSnapshot> get() = _feed
+
     /**
      * §16.2 fotos dos outros jogadores (id → bytes do JPEG), recebidas uma vez cada e guardadas **só em memória** enquanto
      * esta mesa existe (nunca em disco); sobrevivem à troca de papel (§16.10).
@@ -442,6 +452,9 @@ class MultiplayerTable(
             // §16.2 os robôs são sempre os escolhidos pelo anfitrião (nunca sorteados aqui), por assento.
             scope.launch { guest.robots.collect { if (it.isNotEmpty()) robots.value = it } },
             scope.launch { guest.photos.collect(::mergePhotos) },
+            scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                guest.viewUpdates.collect { view -> guest.rules.value?.let { _feed.trySend(view.toSnapshot(it, 0)) } }
+            },
             scope.launch { guest.notices.collect { onNotice(it) } },
             scope.launch {
                 guest.stakeDebit.collect { amount -> if (amount != null && amount > 0) coins.debit(amount) }
@@ -495,6 +508,9 @@ class MultiplayerTable(
         return listOf(
             scope.launch { host.robotPersonas.collect { robots.value = it } },
             scope.launch { role.session.photos.collect(::mergePhotos) },
+            scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                host.controller.updatesOf(host.hostSeat).collect { _feed.trySend(it) }
+            },
             scope.launch { diffRoster(role.session) },
             scope.launch {
                 host.payouts.collect { payouts ->

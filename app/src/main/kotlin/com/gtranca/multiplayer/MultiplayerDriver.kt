@@ -93,7 +93,7 @@ class MultiplayerDriver private constructor(
 
     init {
         scope.launch { pacer.run(initial) }
-        scope.launch { sourceOf(table).collect { pacer.offer(it) } }
+        scope.launch { for (snapshot in table.feed) pacer.offer(snapshot) }
         scope.launch { table.resigned.collect { refresh() } }
         scope.launch { answered.collect { refresh() } }
         // §16.10 na troca de papel o pedido respondido era de outra numeração (do anfitrião anterior).
@@ -183,18 +183,6 @@ class MultiplayerDriver private constructor(
         private const val PRESENTATION_WAIT_MILLIS: Long = 20_000
 
         /**
-         * As vistas deste aparelho, uma por jogada e sem juntar (§16.6): do controlador (anfitrião) ou as recebidas
-         * (convidado). Segue o papel atual.
-         */
-        private fun sourceOf(table: MultiplayerTable): Flow<GameSnapshot> = table.role.flatMapLatest { role ->
-            when (role) {
-                is MpRole.Hosting -> role.host?.let { it.controller.updatesOf(it.hostSeat) } ?: emptyFlow()
-                is MpRole.Guesting -> role.session.viewUpdates.mapNotNull { view -> role.session.rules.value?.let { view.toSnapshot(it, 0) } }
-                null -> emptyFlow()
-            }
-        }
-
-        /**
          * Espera a primeira vista do assento deste aparelho e cria o condutor da tela. [paceMillis] é a pausa antes de cada
          * jogada de outro assento; as esperas pela tela ([dealWaitMillis], [presentationWaitMillis]) têm o padrão do jogo
          * local quando há pausa, e nenhuma sem pausa.
@@ -206,7 +194,8 @@ class MultiplayerDriver private constructor(
             presentationWaitMillis: (() -> Long)? = null,
             paceMillis: () -> Long,
         ): MultiplayerDriver {
-            val first = sourceOf(table).first()
+            // A primeira vista da fila (a distribuição, se o jogo acabou de começar; no reingresso, a atual).
+            val first = table.feed.receive()
             return MultiplayerDriver(table, scope, paceMillis, dealWaitMillis, presentationWaitMillis, first)
         }
 
