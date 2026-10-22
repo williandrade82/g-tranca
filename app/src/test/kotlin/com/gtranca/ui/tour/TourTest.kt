@@ -1,5 +1,6 @@
 package com.gtranca.ui.tour
 
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -33,10 +34,18 @@ class TourTest {
     }
 
     @Test
-    fun `os passos apontam para elementos distintos e terminam no icone do tour`() {
+    fun `os passos apontam para elementos distintos e incluem o icone do tour`() {
         listOf(Tours.tablesSteps, Tours.tableSteps).forEach { steps ->
             steps.map { it.target }.distinct().size shouldBe steps.size
-            steps.last().target shouldBe Tours.BUTTON
+            steps.map { it.target } shouldContain Tours.BUTTON
         }
+    }
+
+    @Test
+    fun `os passos seguem a tela de cima para baixo`() {
+        Tours.tablesSteps.map { it.target } shouldBe listOf(Tours.BUTTON, "tables-wifi", "coins-balance", "tables-first", "tables-create")
+        Tours.tableSteps.map { it.target } shouldBe listOf(
+            "score", Tours.BUTTON, "table-options", "seats", "stock", "mortos", "discard-pile", "hand", "action-bar",
+        )
     }
 }

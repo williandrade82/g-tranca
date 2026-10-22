@@ -212,21 +212,23 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 **Objetivo:** apresentar as telas na primeira vez do jogador. Cada tela com tour mostra o seu **uma única vez** (registro por tela, guardado no aparelho); o ícone do tour (letra "i" num círculo, tag `tour-button`) no alto da tela o mostra de novo a qualquer momento, e a chave **Tour guiado** do Perfil (3.6) liga ou desliga a abertura automática (ligar zera o registro de todas).
 **Formato:** a tela escurece e um **recorte** destaca o elemento real do passo; por cima do véu, um **balão** de fundo marfim com texto azul-marinho (contraste AA, ≥ 4,5:1) e borda dourada, com texto curto (até ~2 linhas), o **indicador de passo** ("2/6") e os botões **Voltar**, **Próximo** (no último, **Concluir**) e **Pular**. O tour **nunca joga nem executa nada**: tocar fora do balão não faz nada; só os botões do balão funcionam. O leitor de tela lê o texto do passo. Tags: `tour-overlay`, `tour-text`, `tour-step`, `tour-next`, `tour-back`, `tour-skip`.
 **Mesas disponíveis (3.2)** — aparece ao abrir a tela pela primeira vez; ícone ao lado do título (junto do Wi-Fi):
-1. Saldo: "Seu saldo de moedas. Cada mesa tem uma aposta; vencendo, você ganha as moedas da mesa."
-2. Primeira mesa: "Cada mesa mostra os robôs, o nível (estrelas), as regras, a aposta e a pontuação-alvo. Toque nela para ver as regras e começar."
-3. Botão de Wi-Fi: "Wi-Fi do jogo: ligado, aparecem também as mesas de outros celulares por perto para jogar junto."
-4. Criar mesa: "Crie a sua mesa: modo, nível dos robôs, regras, aposta e pontuação-alvo."
-5. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+(passos na ordem da tela, de cima para baixo e, na mesma linha, da esquerda para a direita)
+1. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+2. Botão de Wi-Fi: "Wi-Fi do jogo: ligado, aparecem também as mesas de outros celulares por perto para jogar junto."
+3. Saldo: "Seu saldo de moedas. Cada mesa tem uma aposta; vencendo, você ganha as moedas da mesa."
+4. Primeira mesa: "Cada mesa mostra os robôs, o nível (estrelas), as regras, a aposta e a pontuação-alvo. Toque nela para ver as regras e começar."
+5. Criar mesa: "Crie a sua mesa: modo, nível dos robôs, regras, aposta e pontuação-alvo."
 **Mesa de jogo (3.8)** — aparece **só na primeira vez em que é a vez do jogador**, depois das animações iniciais (distribuição e trocas de 3 vermelho) e com a vez já liberada; vale contra robôs e no multijogador:
-1. Mão: "Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora."
-2. Monte: "O monte: no começo da vez, compre uma carta daqui."
-3. Lixo: "O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer."
-4. Mortos: "Os mortos: quem acabar primeiro com as cartas da mão pega um."
-5. Outros jogadores: "Os outros jogadores: cartas na mão e a última jogada. Toque numa pílula para ver o detalhe."
-6. Placar: "O placar: os pontos de cada lado no jogo."
-7. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
-8. Som e Opções: "Som e Opções (engrenagem): velocidade, símbolos das jogadas e desistir."
-9. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+(passos na ordem da tela, de cima para baixo e, na mesma linha, da esquerda para a direita)
+1. Placar: "O placar: os pontos de cada lado no jogo."
+2. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+3. Som e Opções: "Som e Opções (engrenagem): velocidade, símbolos das jogadas e desistir."
+4. Outros jogadores: "Os outros jogadores: cartas na mão e a última jogada. Toque numa pílula para ver o detalhe."
+5. Monte: "O monte: no começo da vez, compre uma carta daqui."
+6. Mortos: "Os mortos: quem acabar primeiro com as cartas da mão pega um."
+7. Lixo: "O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer."
+8. Mão: "Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora."
+9. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
 **Multijogador:** o tour é só da tela deste aparelho e não pausa o jogo; a vez continua aberta enquanto ele está na tela (não há limite de tempo para jogar, §16).
 
 ## 4. Modais

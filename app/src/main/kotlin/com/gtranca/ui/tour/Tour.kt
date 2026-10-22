@@ -83,24 +83,25 @@ object Tours {
     const val TABLE = "table"
     const val BUTTON = "tour-button"
 
+    // Os passos seguem a tela de cima para baixo (e, na mesma linha, da esquerda para a direita).
     val tablesSteps = listOf(
+        TourStep(BUTTON, R.string.tour_again),
+        TourStep("tables-wifi", R.string.tour_tables_wifi),
         TourStep("coins-balance", R.string.tour_tables_balance),
         TourStep("tables-first", R.string.tour_tables_card),
-        TourStep("tables-wifi", R.string.tour_tables_wifi),
         TourStep("tables-create", R.string.tour_tables_create),
-        TourStep(BUTTON, R.string.tour_again),
     )
 
     val tableSteps = listOf(
-        TourStep("hand", R.string.tour_table_hand),
-        TourStep("stock", R.string.tour_table_stock),
-        TourStep("discard-pile", R.string.tour_table_discard),
-        TourStep("mortos", R.string.tour_table_mortos),
-        TourStep("seats", R.string.tour_table_seats),
         TourStep("score", R.string.tour_table_score),
-        TourStep("action-bar", R.string.tour_table_actions),
-        TourStep("table-options", R.string.tour_table_options),
         TourStep(BUTTON, R.string.tour_again),
+        TourStep("table-options", R.string.tour_table_options),
+        TourStep("seats", R.string.tour_table_seats),
+        TourStep("stock", R.string.tour_table_stock),
+        TourStep("mortos", R.string.tour_table_mortos),
+        TourStep("discard-pile", R.string.tour_table_discard),
+        TourStep("hand", R.string.tour_table_hand),
+        TourStep("action-bar", R.string.tour_table_actions),
     )
 
     /**
