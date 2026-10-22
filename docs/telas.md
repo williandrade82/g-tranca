@@ -135,6 +135,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 5. **Cor do baralho**: três versos de carta (azul, verde, vermelho); a escolhida leva aro dourado.
 6. Painel **Sons do jogo** (chave; toca um som ao ligar).
 6b. Chave **Ver fotos nas mesas compartilhadas** (grava na hora; ligada por padrão): na mesa multijogador, mostra as fotos dos outros jogadores; desligada, eles aparecem com a inicial. A própria foto vai à mesa de qualquer forma (§16.2). Tag `profile-shared-photos`.
+6c. Botão **Rever o tour guiado**: zera o registro dos tours; o de cada tela (3.16) volta a aparecer na próxima vez que ela abrir. Tag `profile-tour-reset`.
 6a. Painel **Wi-Fi do jogo** (chave; grava na hora): liga o multijogador por perto (§16). Ao ligar, passa pelo modal *Procurar mesas por perto* (explicação e permissões); recusar deixa a chave desligada. Tag `profile-wifi`.
 7. Painel **Velocidade das animações** (normal ou 30% mais lenta; grava na hora).
 8. Botão **Minhas regras**.
@@ -150,7 +151,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 
 ### 3.8 Mesa de jogo (`TableScreen`, dentro de `GameScreen`)
 **Objetivo:** jogar. Desenhada só a partir da `PlayerView`; controles habilitados por `legalActions`.
-**Cabeçalho:** "Partida N · alvo X", **placar (pílula)**, o botão de **som** e o ícone de **engrenagem** (Opções), que abre um menu com: **Velocidade das animações** (normal/lenta), **Símbolos das jogadas** (legenda), **Desistir** (bandeira) e, no anfitrião multijogador, as ações do menu do anfitrião (3.14). Tags: `table-options` (engrenagem) e, no menu, `speed-toggle`, `action-legend`, `action-resign`.
+**Cabeçalho:** "Partida N · alvo X", **placar (pílula)**, o ícone do **tour guiado** (3.16; à vista, ao lado do som), o botão de **som** e o ícone de **engrenagem** (Opções), que abre um menu com: **Velocidade das animações** (normal/lenta), **Símbolos das jogadas** (legenda), **Desistir** (bandeira) e, no anfitrião multijogador, as ações do menu do anfitrião (3.14). Tags: `table-options` (engrenagem) e, no menu, `speed-toggle`, `action-legend`, `action-resign`.
 **Área do meio (rola):** **pílulas dos outros assentos** (em duplas: adv. esquerdo, parceiro, adv. direito; em telas estreitas, o parceiro numa linha e os adversários na de baixo) → jogos do outro lado → **mesa** (monte, mortos, lixo com ícone de ver todo o lixo) → jogos do seu lado, com 3 vermelhos.
 **Fixos embaixo:** **barra de ações** e **mão**.
 **Pílula do assento:** medalhão com o robô — **com as cartas na mão por padrão** e a pose de **pensador** só na vez dele —, nome sem posição (o parceiro leva a legenda "Parceiro"), mão em cartas viradas, contador e símbolos da última jogada. Tocar abre o modal de detalhe.
@@ -206,6 +207,27 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 **Tags:** `mp-pause`, `mp-pause-wait`, `mp-pause-robot`, `mp-pause-recruit`, `mp-join-request`, `mp-join-accept`, `mp-join-refuse`, `mp-paused-banner`.
 
 ---
+
+### 3.16 Tour guiado
+**Objetivo:** apresentar as telas na primeira vez do jogador. Cada tela com tour mostra o seu **uma única vez** (registro por tela, guardado no aparelho); o ícone do tour (ponto de interrogação num balão, tag `tour-button`) no alto da tela o mostra de novo a qualquer momento, e **Rever o tour guiado** no Perfil (3.6) zera o registro de todas.
+**Formato:** a tela escurece e um **recorte** destaca o elemento real do passo; um **balão** com texto curto (até ~2 linhas), o **indicador de passo** ("2/6") e os botões **Voltar**, **Próximo** (no último, **Concluir**) e **Pular**. O tour **nunca joga nem executa nada**: tocar fora do balão não faz nada; só os botões do balão funcionam. O leitor de tela lê o texto do passo. Tags: `tour-overlay`, `tour-text`, `tour-step`, `tour-next`, `tour-back`, `tour-skip`.
+**Mesas disponíveis (3.2)** — aparece ao abrir a tela pela primeira vez; ícone ao lado do título (junto do Wi-Fi):
+1. Saldo: "Seu saldo de moedas. Cada mesa tem uma aposta; vencendo, você ganha as moedas da mesa."
+2. Primeira mesa: "Cada mesa mostra os robôs, o nível (estrelas), as regras, a aposta e a pontuação-alvo. Toque nela para ver as regras e começar."
+3. Botão de Wi-Fi: "Wi-Fi do jogo: ligado, aparecem também as mesas de outros celulares por perto para jogar junto."
+4. Criar mesa: "Crie a sua mesa: modo, nível dos robôs, regras, aposta e pontuação-alvo."
+5. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+**Mesa de jogo (3.8)** — aparece **só na primeira vez em que é a vez do jogador**, depois das animações iniciais (distribuição e trocas de 3 vermelho) e com a vez já liberada; vale contra robôs e no multijogador:
+1. Mão: "Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora."
+2. Monte: "O monte: no começo da vez, compre uma carta daqui."
+3. Lixo: "O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer."
+4. Mortos: "Os mortos: quem acabar primeiro com as cartas da mão pega um."
+5. Outros jogadores: "Os outros jogadores: cartas na mão e a última jogada. Toque numa pílula para ver o detalhe."
+6. Placar: "O placar: os pontos de cada lado no jogo."
+7. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
+8. Som e Opções: "Som e Opções (engrenagem): velocidade, símbolos das jogadas e desistir."
+9. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+**Multijogador:** o tour é só da tela deste aparelho e não pausa o jogo; a vez continua aberta enquanto ele está na tela (não há limite de tempo para jogar, §16).
 
 ## 4. Modais
 
