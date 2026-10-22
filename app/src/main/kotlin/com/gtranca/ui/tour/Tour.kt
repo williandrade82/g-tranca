@@ -112,7 +112,26 @@ object Tours {
 }
 
 /** Tours já vistos (`null` enquanto lê) e como marcar um como visto; fornecido pelo app todo. */
-data class TourSettings(val seen: Set<String>? = null, val markSeen: (String) -> Unit = {})
+data class TourSettings(val seen: Set<String>? = null, val auto: Boolean = true, val markSeen: (String) -> Unit = {})
+
+/**
+ * Cores do balão do tour: marfim com texto azul-marinho (contraste AA ≥ 4,5:1; o "Cream" do tema é o índigo escuro, que
+ * deixava o texto escuro sobre escuro).
+ */
+object TourColors {
+    val background = GColors.Ivory
+    val text = GColors.Midnight
+
+    /** Razão de contraste WCAG entre duas cores (1 a 21). */
+    fun contrast(a: Color, b: Color): Double {
+        fun lum(c: Color): Double {
+            fun ch(v: Float): Double = if (v <= 0.03928f) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4)
+            return 0.2126 * ch(c.red) + 0.7152 * ch(c.green) + 0.0722 * ch(c.blue)
+        }
+        val (hi, lo) = listOf(lum(a), lum(b)).sortedDescending()
+        return (hi + 0.05) / (lo + 0.05)
+    }
+}
 
 val LocalTours = staticCompositionLocalOf { TourSettings(seen = emptySet()) }
 
@@ -136,7 +155,7 @@ fun TourHost(id: String, steps: List<TourStep>, autoStart: Boolean, modifier: Mo
     val start = { state = TourState(steps.size) }
     LaunchedEffect(autoStart, tours.seen) {
         val seen = tours.seen ?: return@LaunchedEffect
-        if (autoStart && id !in seen && state == null) {
+        if (tours.auto && autoStart && id !in seen && state == null) {
             start()
             tours.markSeen(id)
         }
@@ -194,7 +213,7 @@ private fun TourOverlay(steps: List<TourStep>, state: TourState, targets: Map<St
                 .padding(horizontal = 16.dp)
                 .widthIn(max = 420.dp)
                 .fillMaxWidth()
-                .background(GColors.Cream, RoundedCornerShape(16.dp))
+                .background(TourColors.background, RoundedCornerShape(16.dp))
                 .border(2.dp, GColors.Gold, RoundedCornerShape(16.dp))
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -203,22 +222,23 @@ private fun TourOverlay(steps: List<TourStep>, state: TourState, targets: Map<St
                 stringResource(step.text),
                 Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("tour-text"),
                 style = MaterialTheme.typography.bodyLarge,
-                color = GColors.Midnight,
+                color = TourColors.text,
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     stringResource(R.string.tour_step, state.index + 1, state.size),
                     Modifier.testTag("tour-step"),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = GColors.Midnight,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TourColors.text,
                 )
                 Box(Modifier.weight(1f))
-                GButton(onClose, Modifier.heightIn(min = 48.dp).testTag("tour-skip"), kind = GButtonKind.Quiet) {
-                    Text(stringResource(R.string.tour_skip), color = GColors.Midnight)
+                androidx.compose.material3.TextButton(onClose, Modifier.heightIn(min = 48.dp).testTag("tour-skip")) {
+                    Text(stringResource(R.string.tour_skip), color = TourColors.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 }
                 if (state.index > 0) {
-                    GButton({ onChange(state.back()) }, Modifier.heightIn(min = 48.dp).testTag("tour-back"), kind = GButtonKind.Secondary) {
-                        Text(stringResource(R.string.tour_back))
+                    androidx.compose.material3.TextButton({ onChange(state.back()) }, Modifier.heightIn(min = 48.dp).testTag("tour-back")) {
+                        Text(stringResource(R.string.tour_back), color = TourColors.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                     }
                 }
                 GButton({ state.next()?.let(onChange) ?: onClose() }, Modifier.heightIn(min = 48.dp).testTag("tour-next"), kind = GButtonKind.Primary) {

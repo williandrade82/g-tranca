@@ -42,17 +42,23 @@ class ProfileViewModelTest {
         override suspend fun setSlowAnimations(slow: Boolean) = state.update { it.copy(slowAnimations = slow) }
         override suspend fun setWifiOn(on: Boolean) = state.update { it.copy(wifiOn = on) }
         override suspend fun resetTours() = state.update { it.copy(toursSeen = emptySet()) }
+        override suspend fun setTourAuto(on: Boolean) = state.update { it.copy(tourAuto = on) }
     }
 
     @Test
-    fun `Rever o tour guiado zera os tours vistos`() = runTest(dispatcher) {
+    fun `chave Tour guiado - desligar mantem os vistos e ligar os zera`() = runTest(dispatcher) {
         val settings = FakeSettings(Settings(toursSeen = setOf("tables", "table")))
         val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
         advanceUntilIdle()
-        vm.onResetTours()
+        vm.uiState.value.tourAuto shouldBe true
+        vm.onTourToggle(false)
         advanceUntilIdle()
+        settings.state.value.tourAuto shouldBe false
+        settings.state.value.toursSeen shouldBe setOf("tables", "table")
+        vm.onTourToggle(true)
+        advanceUntilIdle()
+        settings.state.value.tourAuto shouldBe true
         settings.state.value.toursSeen shouldBe emptySet()
-        vm.uiState.value.toursReset shouldBe true
     }
 
     @Test

@@ -37,6 +37,8 @@ data class Settings(
     val wifiOn: Boolean = false,
     val showSharedPhotos: Boolean = true,
     val toursSeen: Set<String> = emptySet(),
+    /** Tour guiado automático (Perfil): ligado, cada tela mostra o seu tour sozinha na primeira vez. */
+    val tourAuto: Boolean = true,
 )
 
 interface SettingsRepository {
@@ -63,6 +65,8 @@ interface SettingsRepository {
 
     /** "Rever o tour guiado": todos os tours voltam a aparecer na próxima vez. */
     suspend fun resetTours() = Unit
+
+    suspend fun setTourAuto(on: Boolean) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -82,6 +86,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             wifiOn = prefs[WIFI_ON] ?: false,
             showSharedPhotos = prefs[SHOW_SHARED_PHOTOS] ?: true,
             toursSeen = prefs[TOURS_SEEN] ?: emptySet(),
+            tourAuto = prefs[TOUR_AUTO] ?: true,
         )
     }
 
@@ -109,6 +114,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[TOURS_SEEN] = (it[TOURS_SEEN] ?: emptySet()) + id }
     }
 
+    override suspend fun setTourAuto(on: Boolean) {
+        store.edit { it[TOUR_AUTO] = on }
+    }
+
     override suspend fun resetTours() {
         store.edit { it.remove(TOURS_SEEN) }
     }
@@ -133,6 +142,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         val SOUND_ON = booleanPreferencesKey("sound_on")
         val WIFI_ON = booleanPreferencesKey("wifi_on")
         val SHOW_SHARED_PHOTOS = booleanPreferencesKey("show_shared_photos")
+        val TOUR_AUTO = booleanPreferencesKey("tour_auto")
         val TOURS_SEEN = androidx.datastore.preferences.core.stringSetPreferencesKey("tours_seen")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")

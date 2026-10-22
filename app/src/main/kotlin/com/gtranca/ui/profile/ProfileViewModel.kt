@@ -29,8 +29,8 @@ data class ProfileUiState(
     val wifiOn: Boolean = false,
     /** §16.2 ver as fotos dos outros nas mesas multijogador (grava na hora). */
     val showSharedPhotos: Boolean = true,
-    /** O jogador pediu para rever os tours (mostra a confirmação). */
-    val toursReset: Boolean = false,
+    /** Tour guiado automático (grava na hora). */
+    val tourAuto: Boolean = true,
     val photo: PhotoState = PhotoState.NONE,
     /** Lendo a foto escolhida. */
     val importingPhoto: Boolean = false,
@@ -58,10 +58,10 @@ class ProfileViewModel(
                 val saved = PlayerProfile.decode(stored.profileId)
                 _uiState.update {
                     if (touched) {
-                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos)
+                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto)
                     } else {
                         val photo = if (saved.hasPhoto && photos != null) PhotoState.SAVED else PhotoState.NONE
-                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, photo = photo)
+                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, photo = photo)
                     }
                 }
             }
@@ -92,9 +92,15 @@ class ProfileViewModel(
     }
 
     /** "Rever o tour guiado" (docs/telas.md 3.16): todos os tours voltam a aparecer na próxima vez. */
-    fun onResetTours() {
-        _uiState.update { it.copy(toursReset = true) }
-        settings?.let { repo -> writes?.enqueue { repo.resetTours() } }
+    fun onTourToggle(on: Boolean) {
+        _uiState.update { it.copy(tourAuto = on) }
+        settings?.let { repo ->
+            writes?.enqueue {
+                // Ligar zera os vistos: os tours aparecem de novo.
+                if (on) repo.resetTours()
+                repo.setTourAuto(on)
+            }
+        }
     }
 
     /** Velocidade das animações; grava na hora pela fila durável. */

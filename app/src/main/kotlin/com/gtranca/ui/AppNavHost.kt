@@ -203,10 +203,10 @@ fun AppNavHost() {
         veil.animateTo(0f, androidx.compose.animation.core.tween(450))
     }
     // Tour guiado (docs/telas.md 3.16): tours já vistos, por tela.
-    val toursSeen by remember(data) { data.settings.settings.map<com.gtranca.data.Settings, Set<String>?> { it.toursSeen }.catch { emit(null) } }
+    val tourPrefs by remember(data) { data.settings.settings.map<com.gtranca.data.Settings, Pair<Set<String>, Boolean>?> { it.toursSeen to it.tourAuto }.catch { emit(null) } }
         .collectAsStateWithLifecycle(null)
-    val tourSettings = remember(toursSeen, data) {
-        com.gtranca.ui.tour.TourSettings(toursSeen) { id -> WriteQueue.app.enqueue { data.settings.markTourSeen(id) } }
+    val tourSettings = remember(tourPrefs, data) {
+        com.gtranca.ui.tour.TourSettings(tourPrefs?.first, tourPrefs?.second ?: true) { id -> WriteQueue.app.enqueue { data.settings.markTourSeen(id) } }
     }
     CompositionLocalProvider(
         com.gtranca.ui.tour.LocalTours provides tourSettings,

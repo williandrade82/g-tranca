@@ -50,8 +50,8 @@
     <string name="tour_table_score">O placar: os pontos de cada lado no jogo.</string>
     <string name="tour_table_actions">Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar.</string>
     <string name="tour_table_options">Som e Opções (engrenagem): velocidade, símbolos das jogadas e desistir.</string>
-    <string name="profile_tour_reset">Rever o tour guiado</string>
-    <string name="profile_tour_reset_done">Pronto: o tour aparece de novo na próxima vez em cada tela.</string>
+    <string name="profile_tour">Tour guiado</string>
+    <string name="profile_tour_hint">Ligado, cada tela mostra o tour na primeira vez (ao ligar, ele volta a aparecer). O ícone "i" das telas sempre mostra o tour.</string>
     <string name="welcome_title">Boas-vindas ao TRANCA-BOT!</string>
     <string name="welcome_text">Antes de jogar, escolha como quer ser chamado na mesa. Toque no botão abaixo e preencha o seu nome no Perfil.</string>
     <string name="welcome_go_profile">Ir para o Perfil</string>

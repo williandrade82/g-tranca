@@ -144,6 +144,9 @@ class PersistenceTest {
         settings.settings.first().toursSeen shouldBe setOf("tables", "table")
         settings.resetTours()
         settings.settings.first().toursSeen shouldBe emptySet()
+        settings.settings.first().tourAuto shouldBe true
+        settings.setTourAuto(false)
+        settings.settings.first().tourAuto shouldBe false
     }
 
     @Test

@@ -6,6 +6,11 @@ import org.junit.jupiter.api.Test
 /** Tour guiado (docs/telas.md 3.16): navegação e quando a mesa o mostra sozinha. */
 class TourTest {
     @Test
+    fun `o balao do tour tem contraste AA entre texto e fundo`() {
+        (TourColors.contrast(TourColors.text, TourColors.background) >= 4.5) shouldBe true
+    }
+
+    @Test
     fun `Proximo, Voltar e o fim do tour`() {
         var state: TourState? = TourState(3)
         state!!.back() shouldBe TourState(3, 0) // no primeiro, Voltar fica nele
