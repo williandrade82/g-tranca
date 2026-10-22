@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -391,7 +393,14 @@ private fun HostMenuDialogs(
                             { closePassing(); scope.launch { table.passRole(player.id) } },
                             Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("host-pass-${player.id}"),
                             kind = GButtonKind.Secondary,
-                        ) { Text(stringResource(R.string.mp_pass_confirm) + " · " + player.name) }
+                        ) {
+                            // Foto (ou inicial) de quem recebe o cargo, como na mesa.
+                            player.seat?.let { personas.getOrNull(it.index) }?.let {
+                                com.gtranca.ui.persona.PersonaAvatar(it, 32.dp)
+                                Spacer(Modifier.width(Spacing.sm))
+                            }
+                            Text(stringResource(R.string.mp_pass_confirm) + " · " + player.name)
+                        }
                     }
                 }
             },
@@ -413,7 +422,14 @@ private fun HostMenuDialogs(
                             { closeOpening(); scope.launch { table.openRobotSeat(seat) } },
                             Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("host-open-${seat.index}"),
                             kind = GButtonKind.Secondary,
-                        ) { Text(personas.getOrNull(seat.index)?.firstName.orEmpty()) }
+                        ) {
+                            // Imagem do robô do assento, como na mesa.
+                            personas.getOrNull(seat.index)?.let {
+                                com.gtranca.ui.persona.PersonaAvatar(it, 32.dp)
+                                Spacer(Modifier.width(Spacing.sm))
+                            }
+                            Text(personas.getOrNull(seat.index)?.firstName.orEmpty())
+                        }
                     }
                 }
             },
