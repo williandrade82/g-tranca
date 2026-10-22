@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -111,6 +112,8 @@ fun SeatPickerScreen(table: MultiplayerTable, balance: Int, onStarted: () -> Uni
     val mySeat = me?.seat ?: if (isHost) Seat(0) else null
     val scope = rememberCoroutineScope()
     var name by rememberSaveable { mutableStateOf(table.name) }
+    // §16.2 "Iniciar com robôs?": assentos vagos ou convidados sem confirmar pedem confirmação antes de começar.
+    var startWarning by remember { mutableStateOf<StartWarning?>(null) }
     // O nome vai à mesa depois de uma pausa na digitação (todos veem a mudança).
     LaunchedEffect(name, current) {
         if (current == null || name == table.name) return@LaunchedEffect
@@ -188,7 +191,10 @@ fun SeatPickerScreen(table: MultiplayerTable, balance: Int, onStarted: () -> Uni
                 val r = rules
                 when {
                     isHost -> GButton(
-                        { scope.launch { table.startGame() } },
+                        {
+                            val warning = r?.let { startWarning(it.mode, roster) }
+                            if (warning == null) scope.launch { table.startGame() } else startWarning = warning
+                        },
                         Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("seat-picker-start"),
                         enabled = r != null && Coins.canJoin(balance, r.stake),
                     ) { Text(stringResource(R.string.mp_start), style = MaterialTheme.typography.titleMedium) }
@@ -207,7 +213,44 @@ fun SeatPickerScreen(table: MultiplayerTable, balance: Int, onStarted: () -> Uni
         }
     }
 
+    startWarning?.let { warning ->
+        val text = buildList {
+            if (warning.vacantSeats > 0) add(pluralStringResource(R.plurals.mp_start_vacant, warning.vacantSeats, warning.vacantSeats))
+            if (warning.unconfirmed.isNotEmpty()) add(stringResource(R.string.mp_start_unconfirmed, warning.unconfirmed.joinToString(", ")))
+        }.joinToString("\n\n")
+        GMessage(
+            modifier = Modifier.testTag("seat-picker-start-confirm"),
+            title = stringResource(R.string.mp_start_confirm_title),
+            text = text,
+            illustration = MessageIllustration.Question,
+            tone = MessageTone.Warning,
+            confirmText = stringResource(R.string.mp_start),
+            onConfirm = {
+                startWarning = null
+                scope.launch { table.startGame() }
+            },
+            confirmTag = "seat-picker-start-ok",
+            dismissText = stringResource(R.string.cancel),
+            dismissTag = "seat-picker-start-cancel",
+            onDismissRequest = { startWarning = null },
+        )
+    }
     end?.let { reason -> MpEndMessage(reason, onLeave) }
+}
+
+/** §16.2 o que avisar antes de iniciar: quantos assentos ficam com robô e quem ainda não confirmou a posição. */
+data class StartWarning(val vacantSeats: Int, val unconfirmed: List<String>)
+
+/**
+ * §16.2 aviso de "Iniciar jogo" ([StartWarning]): assentos sem jogador e convidados que não confirmaram (eles serão
+ * desconectados e o assento também fica com robô); `null` = todos os assentos com jogador confirmado.
+ */
+internal fun startWarning(mode: GameMode, roster: List<com.gtranca.net.PlayerInfo>): StartWarning? {
+    val seated = roster.filter { it.seat != null }
+    val unconfirmed = seated.filter { !it.confirmed && !it.isHost }
+    val vacant = mode.seats.count { seat -> seated.none { it.seat == seat } }
+    if (vacant == 0 && unconfirmed.isEmpty()) return null
+    return StartWarning(vacant, unconfirmed.map { it.name })
 }
 
 /** Mensagem de fim da mesa (recusa, mesa não achada, mesa encerrada) com volta. */

@@ -390,6 +390,17 @@ class MultiplayerTableTest {
     }
 
     @Test
+    fun `§16_2 iniciar com assento vago ou convidado sem confirmar pede confirmacao`() {
+        fun p(id: Int, seat: Int, confirmed: Boolean, host: Boolean = false) =
+            com.gtranca.net.PlayerInfo(id, "J$id", id, Seat(seat), isHost = host, confirmed = confirmed)
+        val full = listOf(p(0, 0, true, host = true), p(1, 1, true), p(2, 2, true), p(3, 3, true))
+        com.gtranca.ui.multiplayer.startWarning(GameMode.DUPLAS, full) shouldBe null
+        com.gtranca.ui.multiplayer.startWarning(GameMode.DUPLAS, full.take(3)) shouldBe com.gtranca.ui.multiplayer.StartWarning(1, emptyList())
+        com.gtranca.ui.multiplayer.startWarning(GameMode.DUPLAS, listOf(p(0, 0, true, host = true), p(1, 1, false))) shouldBe
+            com.gtranca.ui.multiplayer.StartWarning(2, listOf("J1"))
+    }
+
+    @Test
     fun `§16_2 girar a mesa cai sempre num assento vago`() {
         val vacant = listOf(Seat(1), Seat(3))
         com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(2), vacant, +1) shouldBe Seat(3)
