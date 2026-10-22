@@ -286,7 +286,7 @@ fun AppNavHost() {
                     wifiOn = wifiOn,
                     tables = adverts.distinctBy { it.tableId },
                     onOpen = { advert ->
-                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data).joinAsync(advert.tableId, profile?.name.orEmpty())
+                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, com.gtranca.multiplayer.SharedPhoto.encode(context, profile)).joinAsync(advert.tableId, profile?.name.orEmpty())
                         navController.navigate(SeatPickerRoute) { launchSingleTop = true }
                     },
                 ),
@@ -299,9 +299,11 @@ fun AppNavHost() {
             if (current == null) {
                 LaunchedEffect(Unit) { navController.popBackStack() }
             } else {
+                val showPhotos by remember(data) { data.settings.settings.map { it.showSharedPhotos }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
                 com.gtranca.ui.multiplayer.SeatPickerScreen(
                     current,
                     balance,
+                    showPhotos = showPhotos,
                     onStarted = {
                         navController.navigate(MultiplayerGameRoute) {
                             popUpTo(HomeRoute) { inclusive = false }
@@ -388,7 +390,7 @@ fun AppNavHost() {
                             difficulty = config.difficulty.id,
                             robots = table.players.mapNotNull { it.character?.profile?.code },
                         )
-                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data)
+                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, com.gtranca.multiplayer.SharedPhoto.encode(context, profile))
                             .hostAsync(rules, profile?.name.orEmpty(), com.gtranca.net.nearby.newTableId())
                         navController.navigate(SeatPickerRoute) { launchSingleTop = true }
                     }
@@ -437,8 +439,10 @@ class MultiplayerGameHolder(
     self: com.gtranca.game.Persona,
     vacant: String,
     disconnected: String,
+    /** §16.2 "Ver fotos nas mesas compartilhadas" (Perfil). */
+    showPhotos: kotlinx.coroutines.flow.Flow<Boolean> = kotlinx.coroutines.flow.flowOf(true),
 ) : ViewModel() {
-    val personas = table.personas(self, vacant) { name -> disconnected.format(name) }
+    val personas = table.personas(self, vacant, showPhotos) { name -> disconnected.format(name) }
     val driver = kotlinx.coroutines.flow.MutableStateFlow<com.gtranca.multiplayer.MultiplayerDriver?>(null)
 
     init {
@@ -469,7 +473,7 @@ private fun MultiplayerGameDestination(data: GameData, navController: NavHostCon
     val photoPath = com.gtranca.ui.profile.ProfilePhoto.savedPath(context)
     val vacant = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_seat_vacant)
     val disconnected = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_seat_disconnected)
-    val holder = viewModel { MultiplayerGameHolder(table, profile.persona(PlayerProfile.DEFAULT_NAME, photoPath), vacant, disconnected) }
+    val holder = viewModel { MultiplayerGameHolder(table, profile.persona(PlayerProfile.DEFAULT_NAME, photoPath), vacant, disconnected, data.settings.settings.map { it.showSharedPhotos }.catch { emit(true) }) }
     val driver by holder.driver.collectAsStateWithLifecycle()
     val personas by holder.personas.collectAsStateWithLifecycle()
     val readyDriver = driver

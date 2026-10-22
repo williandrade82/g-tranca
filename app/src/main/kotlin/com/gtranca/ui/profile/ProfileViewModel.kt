@@ -27,6 +27,8 @@ data class ProfileUiState(
     val slowAnimations: Boolean = true,
     /** §16 Wi-Fi do jogo (grava na hora). */
     val wifiOn: Boolean = false,
+    /** §16.2 ver as fotos dos outros nas mesas multijogador (grava na hora). */
+    val showSharedPhotos: Boolean = true,
     val photo: PhotoState = PhotoState.NONE,
     /** Lendo a foto escolhida. */
     val importingPhoto: Boolean = false,
@@ -54,10 +56,10 @@ class ProfileViewModel(
                 val saved = PlayerProfile.decode(stored.profileId)
                 _uiState.update {
                     if (touched) {
-                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn)
+                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos)
                     } else {
                         val photo = if (saved.hasPhoto && photos != null) PhotoState.SAVED else PhotoState.NONE
-                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, photo = photo)
+                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, photo = photo)
                     }
                 }
             }
@@ -79,6 +81,12 @@ class ProfileViewModel(
     fun onWifiToggle(on: Boolean) {
         _uiState.update { it.copy(wifiOn = on) }
         settings?.let { repo -> writes?.enqueue { repo.setWifiOn(on) } }
+    }
+
+    /** §16.2 ver as fotos dos outros jogadores nas mesas multijogador; grava na hora. */
+    fun onShowSharedPhotos(on: Boolean) {
+        _uiState.update { it.copy(showSharedPhotos = on) }
+        settings?.let { repo -> writes?.enqueue { repo.setShowSharedPhotos(on) } }
     }
 
     /** Velocidade das animações; grava na hora pela fila durável. */

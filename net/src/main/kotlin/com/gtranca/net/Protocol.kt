@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 5
+const val PROTOCOL_VERSION: Int = 6
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
@@ -186,7 +186,25 @@ data class Hello(
     val seat: Seat? = null,
     /** §16.5 última partida cujo pacote de fim (§16.11) este aparelho recebeu; o anfitrião reenvia o que faltar. */
     val roundOverSeen: Int = 0,
-) : Payload
+    /** §16.2 foto do perfil, pequena e comprimida, em Base64 (JPEG); `null` = sem foto. Vai uma vez por conexão. */
+    val photo: String? = null,
+) : Payload {
+    override fun toString(): String = "Hello(name=$name, seat=$seat, photo=${photo?.length ?: 0})" // nunca registrar o token
+}
+
+/**
+ * §16.2 foto do perfil do jogador [playerId] (Base64, JPEG pequeno), repassada pelo anfitrião **uma vez** a cada aparelho
+ * da mesa (na entrada de cada um e a quem volta ou entra no meio). Quem recebe a guarda só em memória.
+ */
+@Serializable
+@SerialName("photo")
+data class PlayerPhoto(val playerId: Int, val photo: String) : Payload {
+    override fun toString(): String = "PlayerPhoto($playerId, ${photo.length})"
+}
+
+/** Limite do texto Base64 da foto aceito na mesa (~15 KB de JPEG); maior é descartado. */
+const val MAX_PHOTO_BASE64: Int = 20_480
+
 
 /** Entrada aceita: o [token] (só deste jogador, §16.5), o id público dele, as regras da mesa (uma vez) e a sala. */
 @Serializable

@@ -155,6 +155,21 @@ fun ProfileScreen(
                     }
                     Switch(checked = state.wifiOn, onCheckedChange = null)
                 }
+                // §16.2 ver as fotos dos outros jogadores nas mesas compartilhadas (a própria vai de qualquer forma).
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .toggleable(state.showSharedPhotos, role = Role.Switch) { viewModel.onShowSharedPhotos(it) }
+                        .testTag("profile-shared-photos"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.profile_shared_photos), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.profile_shared_photos_hint), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = state.showSharedPhotos, onCheckedChange = null)
+                }
             }
             // Velocidade das animações: normal ou 30% mais lenta (grava na hora; vale também para o botão da mesa).
             GPanel(Modifier.fillMaxWidth()) {

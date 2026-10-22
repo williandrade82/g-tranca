@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.map
  * @property soundOn chave de som do jogador (ligado por padrão).
  * @property slowAnimations velocidade das animações: `true` = 30% mais lentas (padrão), `false` = normal.
  * @property wifiOn §16 Wi-Fi do jogo (Perfil): multijogador por perto ligado (desligado por padrão).
+ * @property showSharedPhotos §16.2 ver as fotos dos outros jogadores nas mesas multijogador (ligado por padrão).
  * @property customRules §14.4 regras personalizadas do jogador, ou `null` se ainda não salvou (a interface parte da Clássica).
  */
 data class Settings(
@@ -33,6 +34,7 @@ data class Settings(
     val slowAnimations: Boolean = true,
     val customRules: RuleSet? = null,
     val wifiOn: Boolean = false,
+    val showSharedPhotos: Boolean = true,
 )
 
 interface SettingsRepository {
@@ -51,6 +53,8 @@ interface SettingsRepository {
     suspend fun setCustomRules(rules: RuleSet) = Unit
 
     suspend fun setWifiOn(on: Boolean) = Unit
+
+    suspend fun setShowSharedPhotos(on: Boolean) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -68,6 +72,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             slowAnimations = prefs[SLOW_ANIMATIONS] ?: true,
             customRules = prefs[CUSTOM_RULES]?.let(::decodeRules),
             wifiOn = prefs[WIFI_ON] ?: false,
+            showSharedPhotos = prefs[SHOW_SHARED_PHOTOS] ?: true,
         )
     }
 
@@ -91,6 +96,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[SLOW_ANIMATIONS] = slow }
     }
 
+    override suspend fun setShowSharedPhotos(on: Boolean) {
+        store.edit { it[SHOW_SHARED_PHOTOS] = on }
+    }
+
     override suspend fun setWifiOn(on: Boolean) {
         store.edit { it[WIFI_ON] = on }
     }
@@ -106,6 +115,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
     private companion object {
         val SOUND_ON = booleanPreferencesKey("sound_on")
         val WIFI_ON = booleanPreferencesKey("wifi_on")
+        val SHOW_SHARED_PHOTOS = booleanPreferencesKey("show_shared_photos")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")
         val RULES_JSON = Json { ignoreUnknownKeys = true }

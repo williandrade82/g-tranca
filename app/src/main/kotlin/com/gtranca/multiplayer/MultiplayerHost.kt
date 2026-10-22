@@ -693,6 +693,8 @@ class MultiplayerHost(
             computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
             /** §16.10 [com.gtranca.net.GuestSession.takeOverRank]: 0 = passagem do cargo; 1 ou 2 = provisório pela queda. */
             provisionalRank: Int = 0,
+            /** §16.2 foto do perfil de quem assume (as dos outros chegam de novo nos reingressos). */
+            hostPhoto: String? = null,
         ): MultiplayerHost {
             val me = state.members.first { it.info.id == myId }
             val session = HostSession(
@@ -704,6 +706,7 @@ class MultiplayerHost(
                     previousHostId = state.members.firstOrNull { it.info.isHost }?.info?.id,
                     openSeats = state.openSeats.toSet(),
                 ),
+                hostPhoto = hostPhoto,
             )
             session.open(scope)
             val config = GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake)

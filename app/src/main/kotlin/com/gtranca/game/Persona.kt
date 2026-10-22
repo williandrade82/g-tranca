@@ -44,6 +44,8 @@ data class Persona(
     val color: Int = 0,
     /** §14.1 foto pessoal do jogador (caminho do arquivo no aparelho); `null` = vale o medalhão. */
     val photo: String? = null,
+    /** §16.2 foto de outro jogador da mesa multijogador (JPEG pequeno, só em memória); `null` = vale [photo] ou o medalhão. */
+    val photoBytes: ByteArray? = null,
 ) {
     init {
         require(color in 0 until COLORS) { "Cor do medalhão inválida: $color" }

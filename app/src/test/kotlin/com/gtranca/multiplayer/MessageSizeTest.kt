@@ -6,6 +6,7 @@ import com.gtranca.net.Decoded
 import com.gtranca.net.MemoryNetwork
 import com.gtranca.net.ProtocolCodec
 import io.kotest.matchers.ints.shouldBeLessThan
+import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -35,5 +36,15 @@ class MessageSizeTest {
         advanceUntilIdle()
         println("Maiores mensagens (bytes): " + largest.entries.sortedByDescending { it.value }.joinToString { "${it.key}=${it.value}" })
         largest.values.max() shouldBeLessThan 1_047_552 / 8
+    }
+
+    @Test
+    fun `§16_2 a foto do perfil no maior tamanho aceito cabe com folga numa mensagem`() {
+        val codec = ProtocolCodec()
+        val photo = "A".repeat(com.gtranca.net.MAX_PHOTO_BASE64)
+        codec.encode(1, com.gtranca.net.PlayerPhoto(3, photo)).size shouldBeLessThan 24_000
+        codec.encode(1, com.gtranca.net.Hello("Ana", photo = photo)).size shouldBeLessThan 24_000
+        // Sem foto, o Hello não leva nada a mais.
+        codec.encode(1, com.gtranca.net.Hello("Ana")).decodeToString().contains("photo") shouldBe false
     }
 }

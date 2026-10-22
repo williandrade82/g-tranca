@@ -72,6 +72,8 @@ class HostSession(
     private val codec: ProtocolCodec = ProtocolCodec(),
     private val newToken: () -> String = ::randomToken,
     resumed: ResumedTable? = null,
+    /** §16.2 foto do perfil do anfitrião (Base64), repassada a quem entrar; `null` = sem foto. */
+    hostPhoto: String? = null,
     /** §16.10, §16.15 provisório sem outro humano que possa confirmar: confirma sozinho depois deste tempo. */
     private val provisionalSoloMillis: Long = PROVISIONAL_SOLO_MILLIS,
     /** §16.10, §16.15 provisório com outros humanos e sem reingresso: oferece "Assumir mesmo assim" depois deste tempo. */
@@ -86,6 +88,9 @@ class HostSession(
     /** Uma conexão ainda sem jogador (antes do [Hello]) ou à espera de aprovação (§16.7). */
     private class Pending(val link: ReliableLink) {
         var request: JoinRequest? = null
+
+        /** §16.2 foto do pedido de entrada no meio (vai à mesa se for aprovado). */
+        var photo: String? = null
 
         /** §16.11 conexão só para entregar o resultado depois do fim: nada mais é processado nela. */
         var resultsOnly = false
@@ -199,6 +204,26 @@ class HostSession(
         }
         _roster = MutableStateFlow(rosterLocked())
         snapshotLocked()
+    }
+
+    private val _photos = MutableStateFlow<Map<Int, String>>(
+        hostPhoto?.takeIf { it.length <= MAX_PHOTO_BASE64 }?.let { mapOf(hostId to it) } ?: emptyMap(),
+    )
+
+    /** §16.2 fotos dos jogadores da mesa (id → Base64), inclusive a do anfitrião; só em memória. */
+    val photos: StateFlow<Map<Int, String>> = _photos.asStateFlow()
+
+    /**
+     * §16.2 guarda a foto do [member] (se veio no [Hello]) e a repassa aos outros, e manda a ele as fotos dos demais: uma
+     * vez por entrada (inclusive reingresso e entrada no meio), nunca a cada vista.
+     */
+    private suspend fun sharePhotosLocked(member: Member, link: ReliableLink, photo: String?) {
+        val id = member.info.id
+        if (photo != null && photo.length <= MAX_PHOTO_BASE64 && _photos.value[id] != photo) {
+            _photos.value = _photos.value + (id to photo)
+            broadcastLocked(PlayerPhoto(id, photo), except = member)
+        }
+        _photos.value.filterKeys { it != id && members.containsKey(it) }.forEach { (other, data) -> link.sendLocked(PlayerPhoto(other, data)) }
     }
 
     /** Assento do anfitrião. */
@@ -404,6 +429,7 @@ class HostSession(
             refreshSuccessorsLocked()
             publishRosterLocked(broadcast = false)
             member.link!!.sendLocked(Welcome(member.token, id, rules, _roster.value, started = true, robots = robots))
+            sharePhotosLocked(member, member.link!!, entry.value.photo)
             broadcastLocked(RosterUpdate(_roster.value), except = member)
             broadcastLocked(TableNotice(NoticeKind.JOINED, request.seat, id))
             advertiseLocked()
@@ -626,6 +652,7 @@ class HostSession(
             )
         val request = JoinRequest(nextRequest++, payload.name.trim(), seat)
         p.request = request
+        p.photo = payload.photo
         _joinRequests.value = _joinRequests.value + request
         p.link.sendLocked(JoinWaiting)
     }
@@ -657,6 +684,7 @@ class HostSession(
         refreshSuccessorsLocked()
         publishRosterLocked(broadcast = false)
         p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = started, robots = if (started) robots else emptyMap()))
+        sharePhotosLocked(member, p.link, hello.photo)
         broadcastLocked(RosterUpdate(_roster.value), except = member)
         if (hostNoticePending.remove(member.info.id)) {
             p.link.sendLocked(TableNotice(NoticeKind.HOST_CHANGED, hostSeat, hostId))
@@ -750,6 +778,7 @@ class HostSession(
         publishRosterLocked(broadcast = false)
         p.link.sendLocked(Welcome(member.token, id, rules, _roster.value))
         broadcastLocked(RosterUpdate(_roster.value), except = member)
+        sharePhotosLocked(member, p.link, hello.photo)
     }
 
     private fun isFreeLocked(seat: Seat): Boolean =
@@ -788,6 +817,7 @@ class HostSession(
 
     private suspend fun removeMemberLocked(member: Member, disconnect: Boolean) {
         members.remove(member.info.id)
+        _photos.value = _photos.value - member.info.id
         member.link?.let { link ->
             link.close()
             if (disconnect) transport.disconnect(link.endpoint)

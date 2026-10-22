@@ -65,6 +65,16 @@ fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, ani
             }
         }.value
     }
+    // §16.2 foto de outro jogador da mesa (bytes em memória).
+    val shared = persona.photoBytes?.let { bytes ->
+        androidx.compose.runtime.remember(bytes) {
+            runCatching { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }.getOrNull()
+        }
+    }
+    if (shared != null) {
+        Image(shared, null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+        return
+    }
     if (photo != null) {
         Image(photo, null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
         return

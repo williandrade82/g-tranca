@@ -65,6 +65,8 @@ class GuestSession(
     private val successorGraceMillis: Long = SUCCESSOR_GRACE_MILLIS,
     /** §16.5, §16.15 mesa ausente da busca por este tempo seguido = encerrada. */
     private val absentLimitMillis: Long = ABSENT_LIMIT_MILLIS,
+    /** §16.2 foto do perfil deste jogador (Base64, JPEG pequeno), enviada no [Hello]; `null` = sem foto. */
+    private val photo: String? = null,
 ) {
     private val mutex = Mutex()
     private lateinit var scope: CoroutineScope
@@ -117,6 +119,11 @@ class GuestSession(
      * a tela animar uma jogada por vez. A última fica para quem começar a ouvir depois.
      */
     val viewUpdates: SharedFlow<SeatView> = _viewUpdates.asSharedFlow()
+
+    private val _photos = MutableStateFlow<Map<Int, String>>(emptyMap())
+
+    /** §16.2 fotos dos outros jogadores (id → Base64), recebidas uma vez cada; só em memória. */
+    val photos: StateFlow<Map<Int, String>> = _photos.asStateFlow()
 
     private val _robots = MutableStateFlow<Map<Int, String>>(emptyMap())
 
@@ -199,7 +206,7 @@ class GuestSession(
         val endpoint = transport.connect(advert)
         mutex.withLock {
             link = ReliableLink(endpoint, transport, codec, scope, mutex)
-            link!!.sendLocked(Hello(name, token, seat, roundOverSeen))
+            link!!.sendLocked(Hello(name, token, seat, roundOverSeen, photo))
         }
     }
 
@@ -477,6 +484,7 @@ class GuestSession(
                 _notices.tryEmit(payload)
             }
             is Payout -> _payout.value = payload
+            is PlayerPhoto -> if (payload.photo.length <= MAX_PHOTO_BASE64) _photos.value = _photos.value + (payload.playerId to payload.photo)
             is StakeDebit -> _stakeDebit.value = payload.amount
             is GameFinished -> {
                 successorState = null

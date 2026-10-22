@@ -133,6 +133,10 @@ class PersistenceTest {
         settings.settings.first().wifiOn shouldBe true
         settings.setWifiOn(false)
         settings.settings.first().wifiOn shouldBe false
+        // §16.2 ver as fotos dos outros: ligado por padrão e guardado.
+        settings.settings.first().showSharedPhotos shouldBe true
+        settings.setShowSharedPhotos(false)
+        settings.settings.first().showSharedPhotos shouldBe false
     }
 
     @Test

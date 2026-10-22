@@ -29,6 +29,8 @@
     <string name="table_options">Opções</string>
     <string name="menu_speed_normal">Velocidade: normal (tocar para deixar mais lenta)</string>
     <string name="menu_speed_slow">Velocidade: lenta (tocar para voltar ao normal)</string>
+    <string name="profile_shared_photos">Ver fotos nas mesas compartilhadas</string>
+    <string name="profile_shared_photos_hint">Mostra as fotos dos outros jogadores na mesa multijogador; desligado, eles aparecem com a inicial.</string>
     <string name="welcome_title">Boas-vindas ao TRANCA-BOT!</string>
     <string name="welcome_text">Antes de jogar, escolha como quer ser chamado na mesa. Toque no botão abaixo e preencha o seu nome no Perfil.</string>
     <string name="welcome_go_profile">Ir para o Perfil</string>

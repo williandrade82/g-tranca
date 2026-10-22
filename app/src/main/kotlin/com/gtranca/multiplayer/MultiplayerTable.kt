@@ -146,6 +146,25 @@ class MultiplayerTable(
     /** Personagem de cada assento de robô, por índice (§16.8: o substituto é o anunciado). */
     private val robots = MutableStateFlow<Map<Int, String>>(emptyMap())
 
+    /** §16.2 foto do perfil deste jogador (Base64, JPEG pequeno) a enviar à mesa; `null` = sem foto. */
+    @Volatile
+    var myPhoto: String? = null
+
+    private val photoCache = MutableStateFlow<Map<Int, ByteArray>>(emptyMap())
+
+    /**
+     * §16.2 fotos dos outros jogadores (id → bytes do JPEG), recebidas uma vez cada e guardadas **só em memória** enquanto
+     * esta mesa existe (nunca em disco); sobrevivem à troca de papel (§16.10).
+     */
+    val photos: StateFlow<Map<Int, ByteArray>> = photoCache.asStateFlow()
+
+    private fun mergePhotos(received: Map<Int, String>) {
+        val fresh = received.filterKeys { it !in photoCache.value }.mapNotNull { (id, data) ->
+            runCatching { java.util.Base64.getDecoder().decode(data) }.getOrNull()?.let { id to it }
+        }
+        if (fresh.isNotEmpty()) photoCache.update { it + fresh }
+    }
+
     private var watchers: List<Job> = emptyList()
 
     /** Sala atual, do papel atual. */
@@ -176,7 +195,7 @@ class MultiplayerTable(
     /** §16.2 publica a mesa com as [rules] escolhidas; o anfitrião ocupa a posição 1. */
     suspend fun host(rules: TableRules, playerName: String, tableId: String) {
         name = playerName
-        val session = HostSession(transport, tableId, rules, playerName)
+        val session = HostSession(transport, tableId, rules, playerName, hostPhoto = myPhoto)
         session.open(scope)
         _rules.value = rules
         setRole(MpRole.Hosting(session))
@@ -185,7 +204,7 @@ class MultiplayerTable(
     /** Entra na mesa [tableId] (§16.2); falha (exceção) se ela não está na busca. */
     suspend fun join(tableId: String, playerName: String) {
         name = playerName
-        val session = GuestSession(transport, playerName)
+        val session = GuestSession(transport, playerName, photo = myPhoto)
         setRole(MpRole.Guesting(session, tableId))
         session.join(scope, tableId)
     }
@@ -327,9 +346,16 @@ class MultiplayerTable(
      * sala), humanos remotos com a inicial (sem foto), "VAGO" para quem desistiu ([vacant]), [disconnected] no nome de
      * quem caiu, e o personagem de cada robô.
      */
-    fun personas(self: Persona, vacant: String, disconnected: (String) -> String): StateFlow<List<Persona>> =
-        combine(roster, robots, _rules) { roster, robots, rules -> buildPersonas(roster, robots, rules, self, vacant, disconnected) }
-            .stateIn(scope, SharingStarted.Eagerly, buildPersonas(roster.value, robots.value, _rules.value, self, vacant, disconnected))
+    fun personas(
+        self: Persona,
+        vacant: String,
+        /** §16.2 "Ver fotos nas mesas compartilhadas" (Perfil): desligada, os outros humanos aparecem com a inicial. */
+        showPhotos: kotlinx.coroutines.flow.Flow<Boolean> = flowOf(true),
+        disconnected: (String) -> String,
+    ): StateFlow<List<Persona>> =
+        combine(roster, robots, _rules, photoCache, showPhotos) { roster, robots, rules, photos, show ->
+            buildPersonas(roster, robots, rules, self, vacant, disconnected, if (show) photos else emptyMap())
+        }.stateIn(scope, SharingStarted.Eagerly, buildPersonas(roster.value, robots.value, _rules.value, self, vacant, disconnected, emptyMap()))
 
     private fun buildPersonas(
         roster: List<PlayerInfo>,
@@ -338,6 +364,7 @@ class MultiplayerTable(
         self: Persona,
         vacant: String,
         disconnected: (String) -> String,
+        photos: Map<Int, ByteArray>,
     ): List<Persona> {
         val mode = rules?.mode ?: return emptyList()
         val level = BotLevel.of(Difficulty.fromId(rules.difficulty))
@@ -352,6 +379,7 @@ class MultiplayerTable(
                 player != null -> Persona(
                     if (player.connected) player.name else disconnected(player.name),
                     color = player.id.mod(Persona.COLORS),
+                    photoBytes = photos[player.id],
                 )
                 else -> {
                     val code = robots[seat.index] ?: fallback[seat.index]
@@ -402,6 +430,7 @@ class MultiplayerTable(
             },
             // §16.2 os robôs são sempre os escolhidos pelo anfitrião (nunca sorteados aqui), por assento.
             scope.launch { guest.robots.collect { if (it.isNotEmpty()) robots.value = it } },
+            scope.launch { guest.photos.collect(::mergePhotos) },
             scope.launch { guest.notices.collect { onNotice(it) } },
             scope.launch {
                 guest.stakeDebit.collect { amount -> if (amount != null && amount > 0) coins.debit(amount) }
@@ -440,6 +469,7 @@ class MultiplayerTable(
         val config = configOf(rules)
         val host = MultiplayerHost.takeOver(
             transport, role.tableId, rules, id, state, scope,
+            hostPhoto = myPhoto,
             botFactory = botFactory?.invoke(config),
             computeDispatcher = computeDispatcher,
             provisionalRank = rank,
@@ -450,9 +480,10 @@ class MultiplayerTable(
     }
 
     private fun watchHost(role: MpRole.Hosting): List<Job> {
-        val host = role.host ?: return listOf(scope.launch { diffRoster(role.session) })
+        val host = role.host ?: return listOf(scope.launch { diffRoster(role.session) }, scope.launch { role.session.photos.collect(::mergePhotos) })
         return listOf(
             scope.launch { host.robotPersonas.collect { robots.value = it } },
+            scope.launch { role.session.photos.collect(::mergePhotos) },
             scope.launch { diffRoster(role.session) },
             scope.launch {
                 host.payouts.collect { payouts ->
@@ -479,7 +510,7 @@ class MultiplayerTable(
 
     /** Deixa de ser anfitri�o e volta como jogador comum pelo token (�16.10). Pode ser chamado de um vigia do papel. */
     private fun stepDown(session: HostSession, host: MultiplayerHost) {
-        val guest = GuestSession(transport, name)
+        val guest = GuestSession(transport, name, photo = myPhoto)
         scope.launch {
             runCatching { guest.join(scope, session.tableId, token = session.hostToken, seat = host.hostSeat) }
                 .onFailure { _end.value = MpEnd.Closed }

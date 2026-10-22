@@ -42,9 +42,12 @@ object MultiplayerHub {
      * Uma mesa nova. A anterior, se houver, é deixada antes de a nova entrar ou publicar (um leitor por transporte); uma
      * entrega de resultado ainda aberta nela (§16.11) acaba aqui.
      */
-    fun newTable(context: Context, data: GameData): MultiplayerTable {
+    fun newTable(context: Context, data: GameData, photo: String? = null): MultiplayerTable {
         val leaving = _table.value?.let { old -> scope.launch { old.leave() } }
-        return MultiplayerTable(transport(context), scope, DataMpCoins(data), after = leaving).also { _table.value = it }
+        return MultiplayerTable(transport(context), scope, DataMpCoins(data), after = leaving).also {
+            it.myPhoto = photo
+            _table.value = it
+        }
     }
 
     /** O jogador saiu das telas da mesa: fecha o que não precisa mais ficar aberto (§16.11 o anfitrião segue entregando). */

@@ -93,8 +93,16 @@ private val Wood = Color(0xFF6B3E1F)
  * ele começa ([onStarted]); [onLeave] sai da mesa (sempre disponível).
  */
 @Composable
-fun SeatPickerScreen(table: MultiplayerTable, balance: Int, onStarted: () -> Unit, onLeave: () -> Unit) {
+fun SeatPickerScreen(
+    table: MultiplayerTable,
+    balance: Int,
+    onStarted: () -> Unit,
+    onLeave: () -> Unit,
+    /** §16.2 "Ver fotos nas mesas compartilhadas" (Perfil). */
+    showPhotos: Boolean = true,
+) {
     val role by table.role.collectAsStateWithLifecycle()
+    val photos by table.photos.collectAsStateWithLifecycle()
     val roster by table.roster.collectAsStateWithLifecycle()
     val rules by table.rules.collectAsStateWithLifecycle()
     val end by table.end.collectAsStateWithLifecycle()
@@ -155,7 +163,7 @@ fun SeatPickerScreen(table: MultiplayerTable, balance: Int, onStarted: () -> Uni
                         RotateButton(false, enabled = !isHost && vacant.isNotEmpty(), Modifier.testTag("seat-picker-rotate-left")) {
                             nextVacant(r.mode, mySeat, vacant, -1)?.let { scope.launch { table.chooseSeat(it) } }
                         }
-                        RoundTable(r.mode, mySeat, roster, myId, Modifier.weight(1f).widthIn(max = 320.dp).testTag("seat-picker-table"))
+                        RoundTable(r.mode, mySeat, roster, myId, if (showPhotos) photos else emptyMap(), Modifier.weight(1f).widthIn(max = 320.dp).testTag("seat-picker-table"))
                         RotateButton(true, enabled = !isHost && vacant.isNotEmpty(), Modifier.testTag("seat-picker-rotate-right")) {
                             nextVacant(r.mode, mySeat, vacant, +1)?.let { scope.launch { table.chooseSeat(it) } }
                         }
@@ -294,7 +302,7 @@ private fun RotateButton(clockwise: Boolean, enabled: Boolean, modifier: Modifie
  * parceiro em cima e os adversários nas laterais, cada um com o nome ou "VAGO".
  */
 @Composable
-private fun RoundTable(mode: GameMode, mySeat: Seat, roster: List<PlayerInfo>, myId: Int, modifier: Modifier) {
+private fun RoundTable(mode: GameMode, mySeat: Seat, roster: List<PlayerInfo>, myId: Int, photos: Map<Int, ByteArray>, modifier: Modifier) {
     Box(modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize().padding(36.dp)) {
             val radius = size.minDimension / 2
@@ -312,14 +320,14 @@ private fun RoundTable(mode: GameMode, mySeat: Seat, roster: List<PlayerInfo>, m
                 SeatRole.RIGHT_OPPONENT -> Alignment.CenterEnd
             }
             val player = roster.firstOrNull { it.seat == seat }
-            SeatSlot(seat, player, mine = role == SeatRole.YOU, mode, Modifier.align(align))
+            SeatSlot(seat, player, mine = role == SeatRole.YOU, mode, Modifier.align(align), player?.takeIf { it.id != myId }?.let { photos[it.id] })
         }
     }
 }
 
 /** Um assento: pílula com o nome (ou "VAGO"), a dupla e a marca de posição confirmada; o do jogador com aro azul. */
 @Composable
-private fun SeatSlot(seat: Seat, player: PlayerInfo?, mine: Boolean, mode: GameMode, modifier: Modifier) {
+private fun SeatSlot(seat: Seat, player: PlayerInfo?, mine: Boolean, mode: GameMode, modifier: Modifier, photo: ByteArray? = null) {
     val shape = RoundedCornerShape(50)
     val vacant = stringResource(R.string.mp_seat_vacant)
     Column(
@@ -332,6 +340,10 @@ private fun SeatSlot(seat: Seat, player: PlayerInfo?, mine: Boolean, mode: GameM
             .testTag("seat-slot-${seat.index}"),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // §16.2 a foto do perfil do jogador (recebida da mesa), se houver e se o jogador quer vê-las.
+        if (player != null && photo != null) {
+            com.gtranca.ui.persona.PersonaAvatar(com.gtranca.game.Persona(player.name, photoBytes = photo), 28.dp)
+        }
         Text(
             (player?.name ?: vacant) + if (player?.confirmed == true) " ✓" else "",
             color = if (player == null) GColors.Steel else GColors.Champagne,

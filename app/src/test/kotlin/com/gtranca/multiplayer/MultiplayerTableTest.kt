@@ -60,6 +60,8 @@ class MultiplayerTableTest {
         targetScore: Int = 500,
         stake: Int = 50,
         robots: List<String> = listOf("jovem", "sobrio", "atleta"),
+        hostPhoto: String? = null,
+        guestPhoto: String? = null,
     ): Setup {
         val network = MemoryNetwork()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -73,6 +75,8 @@ class MultiplayerTableTest {
         val guestTransport = network.transport()
         val host = MultiplayerTable(hostTransport, scope, hostCoins, dispatcher, bots, newSeed = { seed })
         val guest = MultiplayerTable(guestTransport, scope, guestCoins, dispatcher, bots, newSeed = { seed })
+        host.myPhoto = hostPhoto
+        guest.myPhoto = guestPhoto
         host.host(rules, "Ana", "mesa-1")
         advanceUntilIdle()
         guest.join("mesa-1", "Beto")
@@ -398,6 +402,31 @@ class MultiplayerTableTest {
         com.gtranca.ui.multiplayer.startWarning(GameMode.DUPLAS, full.take(3)) shouldBe com.gtranca.ui.multiplayer.StartWarning(1, emptyList())
         com.gtranca.ui.multiplayer.startWarning(GameMode.DUPLAS, listOf(p(0, 0, true, host = true), p(1, 1, false))) shouldBe
             com.gtranca.ui.multiplayer.StartWarning(2, listOf("J1"))
+    }
+
+    @Test
+    fun `§16_2 a foto do perfil chega uma vez aos outros aparelhos e a opcao desligada nao mostra`() = runTest {
+        val hostJpeg = byteArrayOf(1, 2, 3)
+        val guestJpeg = byteArrayOf(9, 8, 7, 6)
+        val b64 = { b: ByteArray -> java.util.Base64.getEncoder().encodeToString(b) }
+        val t = setup(51L, hostPhoto = b64(hostJpeg), guestPhoto = b64(guestJpeg))
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        // Na sala: cada um recebe a foto do outro (só em memória).
+        t.guest.photos.value[0]!!.toList() shouldBe hostJpeg.toList()
+        t.host.photos.value[t.guest.myId]!!.toList() shouldBe guestJpeg.toList()
+        t.host.startGame()
+        advanceUntilIdle()
+        val showing = t.guest.personas(Persona("Beto"), "VAGO") { it }
+        val hiding = t.guest.personas(Persona("Beto"), "VAGO", kotlinx.coroutines.flow.flowOf(false)) { it }
+        val hostSees = t.host.personas(Persona("Ana"), "VAGO") { it }
+        advanceUntilIdle()
+        showing.value[0].photoBytes!!.toList() shouldBe hostJpeg.toList()
+        hiding.value[0].photoBytes shouldBe null
+        hostSees.value[1].photoBytes!!.toList() shouldBe guestJpeg.toList()
+        // Robôs continuam com os personagens (sem foto).
+        showing.value[2].character.shouldNotBeNull()
+        showing.value[2].photoBytes shouldBe null
     }
 
     @Test
