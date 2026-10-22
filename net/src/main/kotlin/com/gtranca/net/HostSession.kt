@@ -67,7 +67,7 @@ data class ResumedTable(
 class HostSession(
     private val transport: LocalTransport,
     val tableId: String,
-    val rules: TableRules,
+    rules: TableRules,
     hostName: String,
     private val codec: ProtocolCodec = ProtocolCodec(),
     private val newToken: () -> String = ::randomToken,
@@ -161,6 +161,33 @@ class HostSession(
 
     @Volatile
     var game: HostGamePort? = null
+
+    /** Regras da mesa (§16.2); antes do início só o modo muda, na mesa reduzida (§16.3). */
+    @Volatile
+    var rules: TableRules = rules
+        private set
+
+    /**
+     * §16.3 exclui duas posições ([reduced] = mesa individual de 2 assentos, um em frente ao outro) ou restaura as 4.
+     * Só antes do início e, para excluir, com 0 ou 1 convidado: ele vai para o assento em frente ao anfitrião. Devolve se
+     * mudou.
+     */
+    suspend fun setReduced(reduced: Boolean): Boolean = mutex.withLock {
+        if (started || closed) return@withLock false
+        val mode = if (reduced) com.gtranca.engine.model.GameMode.INDIVIDUAL else com.gtranca.engine.model.GameMode.DUPLAS
+        if (rules.mode == mode) return@withLock false
+        val guests = members.values.filter { it.info.id != hostId }
+        if (reduced && guests.size > 1) return@withLock false
+        rules = rules.copy(mode = mode)
+        // O convidado vai sempre para o assento do adversário, em frente ao anfitrião (§16.3).
+        guests.forEach { member -> updateLocked(member) { it.copy(seat = Seat(1)) } }
+        // Pedidos de entrada para assentos que deixaram de existir são recusados.
+        pending.values.filter { it.request != null }.toList().forEach { refuseLocked(it, "Mesa cheia.") }
+        broadcastLocked(RulesUpdate(rules))
+        publishRosterLocked(broadcast = true)
+        advertiseLocked()
+        true
+    }
 
     /**
      * §16.2, §16.8 personagem de cada assento de robô (índice do assento → id), a única fonte: vai a todos no

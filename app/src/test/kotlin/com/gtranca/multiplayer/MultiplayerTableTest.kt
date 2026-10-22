@@ -55,6 +55,8 @@ class MultiplayerTableTest {
         val again: (host: Boolean) -> MultiplayerTable,
         /** Derruba a conexão do anfitrião (queda, §16.10). */
         val dropHost: () -> Unit = {},
+        /** Uma mesa num aparelho novo (terceiro jogador). */
+        val newDevice: () -> MultiplayerTable = { error("sem rede") },
     )
 
     private suspend fun TestScope.setup(
@@ -86,7 +88,9 @@ class MultiplayerTableTest {
         val again = { isHost: Boolean ->
             MultiplayerTable(if (isHost) hostTransport else guestTransport, scope, if (isHost) hostCoins else guestCoins, dispatcher, bots, newSeed = { seed })
         }
-        return Setup(host, guest, hostCoins, guestCoins, scope, rules, again) { network.kill(hostTransport.id) }
+        return Setup(host, guest, hostCoins, guestCoins, scope, rules, again, { network.kill(hostTransport.id) }) {
+            MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, bots, newSeed = { seed })
+        }
     }
 
     @Test
@@ -486,6 +490,61 @@ class MultiplayerTableTest {
             break
         }
         found shouldBe true
+    }
+
+    @Test
+    fun `§16_3 mesa reduzida - 1x1 entre humanos, mesa cheia, jogo igual ao local e premio do individual`() = runTest {
+        val seed = 90L
+        val t = setup(seed, targetScore = 500, stake = 50)
+        // O convidado escolhe outro assento; ao excluir as posições ele vai para o assento em frente ao anfitrião.
+        t.guest.chooseSeat(Seat(2))
+        advanceUntilIdle()
+        t.host.setReduced(true) shouldBe true
+        advanceUntilIdle()
+        t.host.rules.value!!.mode shouldBe GameMode.INDIVIDUAL
+        t.guest.rules.value!!.mode shouldBe GameMode.INDIVIDUAL
+        t.guest.mySeat shouldBe Seat(1)
+        // Mesa cheia (2 de 2): o terceiro é recusado.
+        val third = t.newDevice()
+        third.join("mesa-1", "Caio")
+        advanceUntilIdle()
+        (third.end.value as MpEnd.Refused).message shouldBe "Mesa cheia."
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        // Nada de robô: os dois assentos são humanos.
+        val host = (t.host.role.value as MpRole.Hosting).host!!
+        host.robotPersonas.value shouldBe emptyMap()
+        drive(t.scope, hostDriver, seed)
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        // §16.4 o convidado só vê a própria mão.
+        guestDriver.state.value.view.hand.size shouldBe guestDriver.state.value.view.handSizes[1]
+        // Mesmo resultado do jogo local com a mesma semente e as mesmas escolhas (dois humanos jogando como o robô do assento).
+        val config = MultiplayerTable.configOf(t.host.rules.value!!)
+        val reference = com.gtranca.game.GameController(
+            config, seed, GameMode.INDIVIDUAL.seats.map { com.gtranca.game.HumanPlayer() },
+            computeDispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), botDelayMillis = 0,
+            pacing = com.gtranca.game.PacingPolicy.FREE,
+        )
+        GameMode.INDIVIDUAL.seats.forEach { seat ->
+            backgroundScope.launch(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)) {
+                reference.stateOf(seat).collect { snap ->
+                    if (snap.stage == Stage.ROUND_OVER) reference.continueToNextRound()
+                    if (snap.humanLegal.isNotEmpty()) reference.submit(seat, testBot(seed, seat).chooseAction(snap.view, snap.humanLegal), snap.humanRequestId)
+                }
+            }
+        }
+        reference.run()
+        hostDriver.state.value.totals shouldBe reference.state.value.totals
+        guestDriver.state.value.winner shouldBe reference.state.value.winner
+        // §14.6, §16.13 no individual o vencedor recebe 2 × a aposta; o perdedor, nada.
+        val received = listOf(t.hostCoins.settled.single().second, t.guestCoins.settled.single().second).sorted()
+        received shouldBe listOf(0, 100)
     }
 
     @Test

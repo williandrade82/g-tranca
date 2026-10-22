@@ -453,6 +453,8 @@ class GuestSession(
                 successorState = null
             }
             is RosterUpdate -> _roster.value = payload.roster
+            // §16.3 mesa reduzida ou restaurada antes do início.
+            is RulesUpdate -> _rules.value = payload.rules
             is GameStarted -> {
                 _roster.value = payload.roster
                 if (payload.robots.isNotEmpty()) _robots.value = payload.robots

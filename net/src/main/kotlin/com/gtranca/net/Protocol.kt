@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 6
+const val PROTOCOL_VERSION: Int = 7
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
@@ -249,6 +249,14 @@ data class Rename(val name: String) : Payload
 @Serializable
 @SerialName("leave")
 data object Leave : Payload
+
+/**
+ * §16.3 antes do início, o anfitrião excluiu (modo individual, 2 assentos) ou restaurou (duplas, 4) as posições: as
+ * regras da mesa passam a ser [rules] (só o modo muda).
+ */
+@Serializable
+@SerialName("rulesUpdate")
+data class RulesUpdate(val rules: TableRules) : Payload
 
 /** Sala atualizada, redistribuída a todos a cada alteração (§16.2). */
 @Serializable

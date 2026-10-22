@@ -170,6 +170,20 @@ fun SeatPickerScreen(
                             nextVacant(r.mode, mySeat, vacant, +1)?.let { scope.launch { table.chooseSeat(it) } }
                         }
                     }
+                    // §16.3 anfitrião, antes do início: excluir duas posições (1×1) com 0 ou 1 convidado, ou restaurar as 4.
+                    if (isHost) {
+                        val reduced = r.mode == GameMode.INDIVIDUAL
+                        val guests = roster.count { !it.isHost }
+                        GButton(
+                            { scope.launch { table.setReduced(!reduced) } },
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("seat-picker-exclude"),
+                            enabled = reduced || guests <= 1,
+                            kind = GButtonKind.Secondary,
+                        ) { Text(stringResource(if (reduced) R.string.mp_restore_seats else R.string.mp_exclude_seats)) }
+                        if (!reduced && guests > 1) {
+                            Text(stringResource(R.string.mp_exclude_blocked), style = MaterialTheme.typography.bodySmall, color = GColors.Steel, textAlign = TextAlign.Center)
+                        }
+                    }
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it.take(NAME_MAX) },
