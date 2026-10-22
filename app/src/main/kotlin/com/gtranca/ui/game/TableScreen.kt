@@ -99,6 +99,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -867,20 +869,21 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     .padding(4.dp),
             ) {
                 if (pile.isEmpty()) {
-                    Text(stringResource(R.string.discard_pile_empty), color = OnTable, modifier = Modifier.align(Alignment.CenterStart))
+                    // Lixo vazio: o lugar de uma carta com o ícone de lixeira (a descrição falada diz "vazio").
+                    EmptyDiscardSlot(Modifier.align(Alignment.CenterStart).testTag("discard-empty"))
                 } else {
                     SqueezedCards(pile, step = 18.dp, anchorFor = { AnimAnchor.DiscardCard(it) })
                 }
             }
-            if (pile.isNotEmpty()) {
-                // Ver todo o lixo, com a quantidade de cartas.
+            run {
+                // Ver todo o lixo, com a quantidade de cartas (sempre à vista; vazio mostra 0 e não abre nada).
                 val showAll = stringResource(R.string.discard_pile_show_all)
                 Column(
                     Modifier
                         .heightIn(min = 48.dp)
                         .widthIn(min = 48.dp)
                         .clip(RoundedCornerShape(Corner.sm))
-                        .clickable(onClick = onShowDiscardPile)
+                        .clickable(enabled = pile.isNotEmpty(), onClick = onShowDiscardPile)
                         .semantics(mergeDescendants = true) { contentDescription = showAll + ", " + pile.size }
                         .testTag("show-discard-pile")
                         .padding(horizontal = 4.dp, vertical = 2.dp),
@@ -910,6 +913,36 @@ private fun SqueezedCards(cards: List<Card>, step: Dp, anchorFor: (Card) -> Anim
                 val placed = Modifier.offset(x = offsets[i].dp).anchor(anchorFor(card)).alpha(if (card in landing) 0f else 1f)
                 PlayingCard(card, placed, size = size, describe = false)
             }
+        }
+    }
+}
+
+/** Lugar de uma carta (tamanho SMALL) com borda tracejada e uma lixeira desenhada: o lixo vazio. */
+@Composable
+private fun EmptyDiscardSlot(modifier: Modifier) {
+    val size = CardSize.SMALL
+    Canvas(modifier.size(size.width, size.height)) {
+        val w = size.width.toPx()
+        val h = size.height.toPx()
+        val line = OnTable.copy(alpha = 0.55f)
+        val stroke = Stroke(width = 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f)))
+        drawRoundRect(line, cornerRadius = CornerRadius(w * 0.1f), style = stroke)
+        // Lixeira: tampa, alça e corpo levemente afunilado com três frisos.
+        val bin = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val cx = w / 2
+        val top = h * 0.34f
+        val bw = w * 0.46f
+        drawLine(line, Offset(cx - bw * 0.62f, top), Offset(cx + bw * 0.62f, top), bin.width, StrokeCap.Round)
+        drawRect(line, Offset(cx - bw * 0.18f, top - h * 0.06f), Size(bw * 0.36f, h * 0.06f), style = bin)
+        val body = Path().apply {
+            moveTo(cx - bw / 2, top + h * 0.04f)
+            lineTo(cx - bw * 0.4f, h * 0.72f)
+            lineTo(cx + bw * 0.4f, h * 0.72f)
+            lineTo(cx + bw / 2, top + h * 0.04f)
+        }
+        drawPath(body, line, style = bin)
+        for (dx in listOf(-0.16f, 0f, 0.16f)) {
+            drawLine(line, Offset(cx + bw * dx, top + h * 0.1f), Offset(cx + bw * dx * 0.85f, h * 0.66f), bin.width * 0.7f, StrokeCap.Round)
         }
     }
 }
