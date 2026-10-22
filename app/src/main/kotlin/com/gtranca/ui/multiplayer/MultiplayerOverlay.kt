@@ -356,12 +356,13 @@ private fun HostMenuItems(onPass: () -> Unit, onOpen: () -> Unit) {
         { Text(stringResource(R.string.mp_pass_role)) },
         onPass,
         Modifier.heightIn(min = 48.dp).testTag("host-pass-role"),
-        leadingIcon = { TableIcon(GColors.Gold, size = 20.dp) },
+        leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.PASS_TABLE) },
     )
     DropdownMenuItem(
         { Text(stringResource(R.string.mp_open_seat)) },
         onOpen,
         Modifier.heightIn(min = 48.dp).testTag("host-open-seat"),
+        leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.SWAP_PLAYER) },
     )
 }
 

@@ -444,18 +444,19 @@ private fun OptionsMenu(events: TableEvents, extra: (@Composable (close: () -> U
             val speed = com.gtranca.ui.speed.LocalSpeedSettings.current
             androidx.compose.material3.DropdownMenuItem(
                 text = { Text(stringResource(if (speed.slow) R.string.menu_speed_slow else R.string.menu_speed_normal)) },
-                leadingIcon = { com.gtranca.ui.speed.SpeedIcon(slow = speed.slow, color = MaterialTheme.colorScheme.onSurface) },
+                leadingIcon = { com.gtranca.ui.theme.OptionGlyph(if (speed.slow) com.gtranca.ui.theme.OptionIcon.SLOW else com.gtranca.ui.theme.OptionIcon.FAST) },
                 onClick = { speed.toggle() },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("speed-toggle"),
             )
             androidx.compose.material3.DropdownMenuItem(
                 text = { Text(stringResource(R.string.legend_button)) },
+                leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.LEGEND) },
                 onClick = { open = false; onLegend() },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("action-legend"),
             )
             androidx.compose.material3.DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_resign)) },
-                leadingIcon = { FlagIcon(Modifier.size(22.dp)) },
+                leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.RESIGN) },
                 onClick = { open = false; events.onResign() },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("action-resign"),
             )

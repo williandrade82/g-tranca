@@ -527,11 +527,11 @@
     <string name="mp_waiting_others_text">O anfitrião saiu e você assumiu a mesa. O jogo segue quando outro jogador voltar a ela.</string>
     <string name="mp_force_commit">Assumir mesmo assim</string>
     <string name="mp_host_menu">Menu do anfitrião</string>
-    <string name="mp_pass_role">Passar o cargo</string>
+    <string name="mp_pass_role">Repassar a mesa</string>
     <string name="mp_open_seat">Liberar um assento de robô</string>
     <string name="mp_pass_text">Escolha quem passa a sustentar a mesa. Você continua jogando, como jogador comum.</string>
-    <string name="mp_pass_confirm">Passar</string>
-    <string name="mp_pass_none">Não há outro jogador conectado para receber o cargo.</string>
+    <string name="mp_pass_confirm">Repassar</string>
+    <string name="mp_pass_none">Não há outro jogador conectado para receber a mesa.</string>
     <string name="mp_open_text">Quem entrar ocupa o lugar do robô, com a sua aprovação. Até lá, o robô continua jogando.</string>
     <string name="mp_open_none">Não há assento de robô para liberar.</string>
     <string name="mp_ok">Entendi</string>
