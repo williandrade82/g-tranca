@@ -336,12 +336,23 @@ fun TableScreen(
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
                     Header(state, events, headerExtra, startTour) { showLegend = true }
-                    // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).tourTarget("seats")) { SeatsPanel(state) { detailSeat = it } }
+                    // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
+                    // pelo menos o espaço livre e cresce com o conteúdo, nunca cortando cartas (telas baixas, fonte grande).
+                    var seatsHeight by remember { mutableStateOf(0) }
+                    androidx.compose.foundation.layout.BoxWithConstraints(
+                        Modifier.weight(1f).fillMaxWidth()
+                            .onGloballyPositioned { tableViewport = Rect(it.positionInRoot(), it.size.toSize()) },
+                    ) {
+                    val available = maxHeight
+                    Column(Modifier.fillMaxSize().verticalScroll(tableScroll).testTag("table-scroll")) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).tourTarget("seats")
+                            .onGloballyPositioned { seatsHeight = it.size.height },
+                    ) { SeatsPanel(state) { detailSeat = it } }
+                    val feltMin = (available - with(LocalDensity.current) { seatsHeight.toDp() } - 4.dp).coerceAtLeast(0.dp)
                     Column(
-                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
-                            .onGloballyPositioned { tableViewport = Rect(it.positionInRoot(), it.size.toSize()) }
-                            .verticalScroll(tableScroll).padding(horizontal = 12.dp, vertical = 18.dp).testTag("table-scroll"),
+                        Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
+                            .padding(horizontal = 12.dp, vertical = 18.dp).testTag("table-felt"),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         SideArea(
@@ -366,6 +377,8 @@ fun TableScreen(
                             sideTag = "own",
                         )
                         Spacer(Modifier.height(4.dp))
+                    }
+                    }
                     }
                     HandArea(state, events)
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
@@ -594,13 +607,21 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (persona == null || role == SeatRole.PARTNER) {
+                if (persona != null && role == SeatRole.PARTNER) {
+                    // Pílula estreita: o rótulo "Parceiro" diminui até caber (nunca "Parcei…").
+                    com.gtranca.ui.theme.FitText(
+                        stringResource(role.pillNameRes()),
+                        MaterialTheme.typography.labelMedium.copy(color = TableAccent),
+                        Modifier.testTag("seat-partner-label"),
+                        minFontSp = 8,
+                    )
+                } else if (persona == null) {
                     Text(
                         stringResource(role.pillNameRes()),
-                        color = if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = if (persona != null) 0.8f else 1f),
-                        fontWeight = if (persona != null) FontWeight.Normal else FontWeight.Bold,
+                        color = OnTable,
+                        fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.labelMedium,
-                        maxLines = if (persona != null) 1 else 2,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -1012,8 +1033,15 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             .padding(horizontal = 12.dp, vertical = Spacing.sm)
             .testTag("action-bar").tourTarget("action-bar"),
     ) {
-        Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        // Uma linha só: o texto da vez diminui até caber em telas estreitas ou com fonte grande.
+        com.gtranca.ui.theme.FitText(
+            status,
+            MaterialTheme.typography.bodyLarge.copy(color = TableAccent, fontWeight = FontWeight.Bold),
+            Modifier.fillMaxWidth().testTag("turn-status"),
+            minFontSp = 11,
+        )
+        // Os botões dividem a largura numa linha (o texto de cada um diminui até caber); "Limpar" é um ícone de 48 dp.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (snapshot.view.phase != Phase.PLAYING || !state.isHumanTurn) {
                 ActionButton(stringResource(R.string.action_draw), state.canDraw, events::onDraw, "action-draw", ActionKind.DRAW)
                 ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard", ActionKind.TAKE)
@@ -1022,12 +1050,14 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
                 ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard", ActionKind.DISCARD)
             }
+            val clearText = stringResource(R.string.action_clear)
             GButton(
                 onClick = events::onClearSelection,
                 enabled = state.selected.isNotEmpty(),
                 kind = GButtonKind.Secondary,
-                modifier = Modifier.heightIn(min = 48.dp).testTag("action-clear"),
-            ) { Text(stringResource(R.string.action_clear)) }
+                modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp).semantics { contentDescription = clearText }.testTag("action-clear"),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
+            ) { Text("✕", fontWeight = FontWeight.Bold) }
         }
         // Fixo durante a vez (não depende da seleção) para os botões não pularem ao tocar nas cartas.
         if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
@@ -1042,13 +1072,18 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
 
 /** Botão de ação: o mesmo [GButton] dourado das outras telas (afundar ao tocar, brilho), com ícone. */
 @Composable
-private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String, icon: ActionKind? = null) {
-    GButton(onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp).testTag(tag)) {
+private fun androidx.compose.foundation.layout.RowScope.ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String, icon: ActionKind? = null) {
+    GButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(tag),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+    ) {
         if (icon != null) {
             ActionIcon(icon, if (enabled) GColors.OnGold else GColors.OnTableDisabled, Modifier.size(18.dp))
-            Spacer(Modifier.width(Spacing.sm))
+            Spacer(Modifier.width(4.dp))
         }
-        Text(text)
+        com.gtranca.ui.theme.FitText(text, MaterialTheme.typography.labelLarge.copy(color = androidx.compose.material3.LocalContentColor.current), minFontSp = 10)
     }
 }
 

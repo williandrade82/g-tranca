@@ -98,6 +98,8 @@ fun GButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     kind: GButtonKind = GButtonKind.Primary,
+    /** Margem interna; `null` = a padrão (botões compactos da barra de ações passam uma menor). */
+    contentPadding: PaddingValues? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val shape = CircleShape
@@ -139,7 +141,7 @@ fun GButton(
                 .clip(shape)
                 .then(surface)
                 .clickable(interaction, indication = androidx.compose.material3.ripple(color = GColors.Champagne), enabled = enabled, role = Role.Button, onClick = onClick)
-                .padding(if (quiet) PaddingValues(horizontal = 12.dp, vertical = 8.dp) else PaddingValues(horizontal = 24.dp, vertical = 10.dp)),
+                .padding(contentPadding ?: if (quiet) PaddingValues(horizontal = 12.dp, vertical = 8.dp) else PaddingValues(horizontal = 24.dp, vertical = 10.dp)),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -351,7 +353,7 @@ fun GTitle(text: String, modifier: Modifier = Modifier, maxLines: Int = 2) {
  * no máximo [maxLines] linhas (com 1, nunca quebra), do tamanho do [style] até [MIN_TITLE_SP].
  */
 @Composable
-fun FitText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, maxLines: Int = 1) {
+fun FitText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, maxLines: Int = 1, minFontSp: Int = MIN_TITLE_SP) {
     val color = if (style.color != androidx.compose.ui.graphics.Color.Unspecified) style.color else androidx.compose.material3.LocalContentColor.current
     androidx.compose.foundation.text.BasicText(
         text,
@@ -360,7 +362,7 @@ fun FitText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: M
         maxLines = maxLines,
         softWrap = maxLines > 1,
         autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
-            minFontSize = MIN_TITLE_SP.sp,
+            minFontSize = minOf(minFontSp.toFloat(), if (style.fontSize.isSp) style.fontSize.value else 28f).sp,
             maxFontSize = if (style.fontSize.isSp) style.fontSize else 28.sp,
             stepSize = 1.sp,
         ),

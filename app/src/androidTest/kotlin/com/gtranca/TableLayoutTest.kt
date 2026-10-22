@@ -19,6 +19,9 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -136,8 +139,56 @@ class TableLayoutTest {
         )
     }
 
-    private fun show(state: GameUiState) = rule.setContent {
-        GTrancaTheme { Box(Modifier.width(360.dp).height(760.dp)) { TableScreen(state, noEvents) } }
+    private fun show(state: GameUiState, width: Dp = 360.dp, height: Dp = 760.dp, fontScale: Float = 1f) = rule.setContent {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale),
+        ) {
+            GTrancaTheme { Box(Modifier.width(width).height(height)) { TableScreen(state, noEvents) } }
+        }
+    }
+
+    /**
+     * Matriz de telas pequenas (larguras 320/360/411 dp, altura 640 dp, fonte 1,0/1,3/1,5): os botões da barra de ações
+     * cabem numa linha com alvo de 48 dp, o texto da vez fica numa linha, e o lixo e os jogos aparecem inteiros quando
+     * rolados para a vista (a mesa cresce com o conteúdo, nunca corta cartas).
+     */
+    @Test
+    fun telasPequenasEFonteGrandeNaoCortamCartasNemBotoes() {
+        val c = { text: String -> Card.parse(text) }
+        val own = table(listOf(c("4H"), c("5H"), c("6H"), c("7H"), c("8H"), c("9H"), c("TH")), listOf(c("QS"), c("QC"), c("QD")))
+        val other = table(listOf(c("9S"), c("9C"), c("9D")), listOf(c("JS"), c("JC"), c("JD"), c("2S")))
+        val hand = listOf("4S", "6S", "8S", "TS", "KS", "AS", "4D", "7D", "8D", "KD", "AD", "4C", "7C").map(c)
+        val ui = state(GameMode.DUPLAS, hand, listOf("5S", "6D", "7S").map(c), own, other, phase = Phase.AWAITING_DRAW)
+        // Um só setContent: o tamanho e a fonte mudam por estado.
+        var size by androidx.compose.runtime.mutableStateOf(360.dp to 1f)
+        rule.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, size.second),
+            ) {
+                GTrancaTheme { Box(Modifier.width(size.first).height(640.dp)) { TableScreen(ui, noEvents) } }
+            }
+        }
+        for (width in listOf(320.dp, 360.dp, 411.dp)) for (font in listOf(1f, 1.3f, 1.5f)) {
+            val label = "$width × 640dp, fonte $font"
+            size = width to font
+            rule.waitForIdle()
+            listOf("action-draw", "action-take-discard", "action-clear").forEach { tag ->
+                val b = rule.onNodeWithTag(tag).getBoundsInRoot()
+                check(b.right <= width + 0.5.dp) { "$tag fora da largura ($label)" }
+                check(b.bottom - b.top >= 47.5.dp) { "$tag com alvo menor que 48 dp ($label)" }
+            }
+            check(top("action-draw") == top("action-clear")) { "Limpar caiu para outra linha ($label)" }
+            listOf("discard-pile", "side-own", "side-opponent").forEach { tag ->
+                rule.onNodeWithTag(tag).performScrollTo()
+                rule.waitForIdle()
+                check(top(tag) >= top("table-scroll") - 0.5.dp && bottom(tag) <= bottom("table-scroll") + 0.5.dp) {
+                    "$tag cortado na área da mesa ($label)"
+                }
+            }
+            rule.onNodeWithTag("seat-partner-label", useUnmergedTree = true).assertExists()
+        }
     }
 
     private fun right(tag: String): Dp = rule.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot().right
@@ -190,8 +241,8 @@ class TableLayoutTest {
         // Disposição vista da mesa, na mesma linha: adversário à esquerda (assento 3), parceiro (2) e adversário à direita (1).
         check(left("seat-3") < left("seat-2") && left("seat-2") < left("seat-1")) { "ordem esquerda, parceiro, direita" }
         check(top("seat-3") == top("seat-2") && top("seat-2") == top("seat-1")) { "assentos fora da mesma linha em 360dp" }
-        // Jogadores fixos: acima da área que rola.
-        listOf(1, 2, 3).forEach { check(bottom("seat-$it") <= top("table-scroll") + 0.5.dp) { "assento $it dentro da área rolável" } }
+        // Jogadores acima do feltro (rolam junto com a mesa em telas baixas).
+        listOf(1, 2, 3).forEach { check(bottom("seat-$it") <= top("table-felt") + 0.5.dp) { "assento $it por cima do feltro" } }
         rule.onNodeWithText("Jogos da sua dupla").assertExists()
         rule.onNodeWithText("Jogos da dupla adversária").assertExists()
         rule.onNodeWithText("pego pela dupla adversária", substring = true).assertExists()
