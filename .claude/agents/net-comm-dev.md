@@ -31,7 +31,7 @@ Você é o especialista em comunicação entre dispositivos do G-Tranca. Tudo o 
 **Identidade e reconexão**
 - Cada jogador recebe um **token** ao entrar; ele o identifica (não o endpoint do transporte) e dá direito a **reingressar no mesmo assento**. Todos os participantes conhecem a **identificação** (id, nome, ordem de entrada) de todos os demais.
 - Mensagens com **número de sequência** e confirmação: jogada duplicada ou atrasada é descartada (idempotência); jogada fora da vez ou ilegal é recusada com o motivo.
-- Nome do jogador é pedido na conexão (sugerido: nome do perfil); repetições entre humanos são permitidas (a mesa diferencia). **Sem foto**; a cor do baralho **não trafega** (cada um usa a do próprio perfil).
+- Nome do jogador é pedido na conexão (sugerido: nome do perfil); repetições entre humanos são permitidas (a mesa diferencia). A **foto do perfil trafega** (pequena e comprimida, só para os aparelhos da mesa; decidido em 21/10/2026, substitui o antigo "sem foto"); cada jogador pode desligar no Perfil a opção de **ver** as fotos dos outros (padrão: ver). A cor do baralho **não trafega** (cada um usa a do próprio perfil).
 
 **Queda de conexão**
 - O jogo **pausa quando chega a vez de quem caiu** e a mesa espera o mesmo jogador. O anfitrião vê três opções, e todos são avisados de cada ação do anfitrião:

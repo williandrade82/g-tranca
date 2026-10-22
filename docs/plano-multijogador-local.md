@@ -201,3 +201,7 @@ Ao fim de cada etapa: `.\gradlew.bat test` e `:app:assembleDebug`. Da etapa 5 em
 - **Moedas adulteráveis:** aceito; `GroupBetLedger` isolado para endurecer depois.
 - **Estado dos sucessores** é a única exceção de informação oculta; endurecimento futuro registrado acima.
 - **Tamanho da refatoração do `GameController`:** por isso a etapa 2 vem sozinha, com regressão contra a versão atual.
+
+## Decisão de 21/10/2026: foto do perfil na mesa
+
+Substitui o antigo "sem foto" (§16.2). A foto do perfil vai aos aparelhos da mesa, comprimida (cerca de 96 px, JPEG, até ~15 KB), **uma vez por jogador**: o anfitrião a recebe no `Hello` e a repassa aos demais numa mensagem própria (`PlayerPhoto`), também a quem reingressa ou entra no meio. Jogador sem foto não envia nada. O convidado guarda as fotos só em memória enquanto está na mesa. A foto não entra no anúncio do Nearby. No Perfil, "Ver fotos nas mesas compartilhadas" (padrão ligada) decide se o aparelho mostra as fotos dos outros. Versão do protocolo sobe.
