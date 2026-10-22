@@ -206,7 +206,7 @@ fun roundAnnouncementRes(mode: GameMode, result: RoundResult, viewerSeat: Seat):
     is RoundResult.GoOut -> SeatRole.of(mode, result.seat, viewerSeat).wentOutRes()
 }
 
-/** Em duplas, a frase complementar do anúncio ("Sua dupla venceu a partida!"); `null` no individual ou sem vencedor. */
+/** Em duplas, a frase complementar do anúncio ("Sua dupla bateu!"); `null` no individual ou sem vencedor. */
 @StringRes
 fun roundTeamAnnouncementRes(mode: GameMode, result: RoundResult, viewerSide: Side): Int? = when {
     mode != GameMode.DUPLAS || result !is RoundResult.GoOut -> null

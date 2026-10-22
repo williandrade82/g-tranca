@@ -127,7 +127,7 @@
     <string name="profile_speed_hint">Distribuição, compra, descarte e trocas de 3 vermelho</string>
     <string name="profile_speed_normal">Normal</string>
     <string name="profile_speed_slow">30% mais lenta</string>
-    <string name="round_result_named_went_out">%1$s venceu essa partida!</string>
+    <string name="round_result_named_went_out">%1$s bateu!</string>
     <string name="game_over_named_won">%1$s venceu.</string>
     <string name="seat_left_short">Adv. esq.</string>
     <string name="seat_right_short">Adv. dir.</string>
@@ -197,7 +197,7 @@
     </plurals>
     <string name="plan_choice_hint">Ou selecione as cartas da mão antes de tocar no lixo.</string>
     <string name="decline_title">Recusar a compra?</string>
-    <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem vencedor.</string>
+    <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem batida.</string>
     <string name="decline_confirm">Recusar e encerrar</string>
     <string name="exit_title">Voltar ao início?</string>
     <string name="exit_text">O jogo fica salvo: você pode continuar depois, pela tela inicial.</string>
@@ -252,12 +252,12 @@
 
     <!-- Fim de partida (§12) -->
     <string name="round_over_title">Fim da partida %1$d</string>
-    <string name="round_result_you_went_out">Você venceu essa partida!</string>
-    <string name="round_result_opponent_went_out">O adversário venceu essa partida.</string>
-    <string name="round_result_partner_went_out">Seu parceiro venceu essa partida!</string>
-    <string name="round_result_left_went_out">O adversário à esquerda venceu essa partida.</string>
-    <string name="round_result_right_went_out">O adversário à direita venceu essa partida.</string>
-    <string name="round_result_no_winner">Partida sem vencedor.</string>
+    <string name="round_result_you_went_out">Você bateu!</string>
+    <string name="round_result_opponent_went_out">O adversário bateu.</string>
+    <string name="round_result_partner_went_out">Seu parceiro bateu!</string>
+    <string name="round_result_left_went_out">O adversário à esquerda bateu.</string>
+    <string name="round_result_right_went_out">O adversário à direita bateu.</string>
+    <string name="round_result_no_winner">Partida encerrada sem batida.</string>
     <string name="round_tie_notice">Empate na maior pontuação: joga-se nova partida para desempatar.</string>
     <string name="score_item">Item</string>
     <string name="score_red_threes">3 vermelhos na mesa (±100)</string>
@@ -298,9 +298,9 @@
     <string name="game_over_resigned_duplas">Você desistiu. A dupla adversária venceu.</string>
 
     <!-- Anúncios antes dos pontos -->
-    <string name="announce_team_won_round">Sua dupla venceu a partida!</string>
-    <string name="announce_other_team_won_round">A dupla adversária venceu a partida.</string>
-    <string name="announce_no_winner">Partida sem vencedor: o monte acabou.</string>
+    <string name="announce_team_won_round">Sua dupla bateu!</string>
+    <string name="announce_other_team_won_round">A dupla adversária bateu.</string>
+    <string name="announce_no_winner">Partida encerrada sem batida: o monte acabou.</string>
     <string name="announce_see_points">Ver pontos</string>
     <string name="announce_continue">Continuar</string>
     <string name="announce_see_result">Ver resultado</string>
@@ -383,7 +383,7 @@
     <string name="rule_dirty_points">Pontos da canastra suja</string>
     <string name="rule_stock">Quando o monte acaba</string>
     <string name="rule_stock_morto">O morto vira monte</string>
-    <string name="rule_stock_end">A partida acaba sem vencedor</string>
+    <string name="rule_stock_end">A partida acaba sem batida</string>
     <string name="rule_stock_switch">O morto vira monte quando o monte acaba</string>
     <string name="rule_go_out">Para bater</string>
     <string name="rule_go_out_any">Qualquer canastra</string>

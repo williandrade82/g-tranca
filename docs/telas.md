@@ -208,7 +208,7 @@ Todos levam o **cabeçalho de marca**.
 | Começar um novo jogo? | mensagem (perigo) | Início, "Novo jogo" com jogo salvo | explica que o jogo salvo vira desistência |
 | Voltar ao início? | mensagem (aviso) | voltar durante o jogo | confirma sair |
 | Desistir do jogo? | mensagem (perigo) | bandeira / anúncio | §13.1; cancelar volta ao estado exato |
-| Recusar a compra? | mensagem | monte acabou sem morto | encerra a partida sem vencedor |
+| Recusar a compra? | mensagem | monte acabou sem morto | encerra a partida sem batida |
 | Zerar estatísticas? | mensagem | Estatísticas | confirma zerar |
 | Símbolos das jogadas | diálogo | **?** na mesa | legenda de comprar, pegar, baixar, acrescentar, descartar, recusar |
 | **Detalhe do jogador** | diálogo | tocar na pílula | imagem de apresentação do robô, bordão, nome e a última jogada (com cartas e 3 vermelhos baixados) |

@@ -135,7 +135,7 @@ fun RoundAnnouncement(
     val record = snapshot.history.last()
     val mode = snapshot.view.mode
     val result = record.result
-    // §14.1 quem venceu a partida (bateu), pelo nome e pelo título: o próprio jogador continua "Você".
+    // §14.1 quem bateu (só o fim do jogo diz "venceu"), pelo nome e pelo título: o próprio jogador continua "Você".
     val who = (result as? RoundResult.GoOut)?.let { personas.getOrNull(it.seat.index) }
     val role = (result as? RoundResult.GoOut)?.let { SeatRole.of(mode, it.seat, snapshot.viewerSeat) }
     val named = who != null && role != SeatRole.YOU
