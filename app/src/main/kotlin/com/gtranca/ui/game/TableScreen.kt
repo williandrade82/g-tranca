@@ -5,7 +5,6 @@ package com.gtranca.ui.game
 import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.sound.SoundButton
-import com.gtranca.ui.speed.SpeedButton
 
 import com.gtranca.ui.sound.LocalSound
 import com.gtranca.ui.sound.SoundEffect
@@ -413,6 +412,49 @@ fun TableScreen(
     }
 }
 
+/** Menu de opções da mesa (docs/telas.md 3.8): velocidade, símbolos, desistir e o menu do anfitrião (multijogador). */
+@Composable
+private fun OptionsMenu(events: TableEvents, extra: (@Composable () -> Unit)?, onLegend: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val optionsText = stringResource(R.string.table_options)
+    Box {
+        Box(
+            Modifier
+                .size(48.dp)
+                .clickable(onClickLabel = optionsText, role = Role.Button) { open = true }
+                .semantics { contentDescription = optionsText }
+                .testTag("table-options"),
+            contentAlignment = Alignment.Center,
+        ) { com.gtranca.ui.theme.GearIcon(OnTable, size = 24.dp) }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            val speed = com.gtranca.ui.speed.LocalSpeedSettings.current
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(stringResource(if (speed.slow) R.string.menu_speed_slow else R.string.menu_speed_normal)) },
+                leadingIcon = { com.gtranca.ui.speed.SpeedIcon(slow = speed.slow, color = MaterialTheme.colorScheme.onSurface) },
+                onClick = { speed.toggle() },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("speed-toggle"),
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(stringResource(R.string.legend_button)) },
+                onClick = { open = false; onLegend() },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("action-legend"),
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_resign)) },
+                leadingIcon = { FlagIcon(Modifier.size(22.dp)) },
+                onClick = { open = false; events.onResign() },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("action-resign"),
+            )
+            if (extra != null) {
+                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    extra()
+                    Text(stringResource(R.string.mp_host_menu), style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable () -> Unit)?, onLegend: () -> Unit) {
     val snapshot = state.snapshot
@@ -453,32 +495,9 @@ private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable 
                     .testTag("score"),
             )
         }
-        extra?.invoke()
         SoundButton(OnTable)
-        SpeedButton(OnTable)
-        // Legenda dos símbolos das jogadas dos outros assentos.
-        val legendText = stringResource(R.string.legend_button)
-        Box(
-            Modifier
-                .size(48.dp)
-                .clickable(onClickLabel = legendText, role = Role.Button, onClick = onLegend)
-                .semantics { contentDescription = legendText }
-                .testTag("action-legend"),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(Modifier.size(22.dp).border(1.75.dp, TableAccent, CircleShape), contentAlignment = Alignment.Center) {
-                Text("?", color = TableAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
-        }
-        // §13.1 desistir: ícone de bandeira, alvo de 48dp.
-        Box(
-            Modifier
-                .size(48.dp)
-                .clickable(onClickLabel = resignText, role = Role.Button, onClick = events::onResign)
-                .semantics { contentDescription = resignText }
-                .testTag("action-resign"),
-            contentAlignment = Alignment.Center,
-        ) { FlagIcon(Modifier.size(22.dp)) }
+        // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
+        OptionsMenu(events, extra, onLegend)
     }
 }
 

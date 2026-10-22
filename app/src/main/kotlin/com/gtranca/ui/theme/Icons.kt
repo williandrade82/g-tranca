@@ -119,3 +119,20 @@ private fun DrawScope.drawRulesIcon(color: Color) {
     val d = r * 0.72f
     drawLine(color, Offset(c.x + d, c.y + d), Offset(w * 0.93f, w * 0.89f), line * 1.4f, StrokeCap.Round)
 }
+
+/** Ícone de engrenagem (Opções), desenhado no código: aro com oito dentes e furo no centro. */
+@Composable
+fun GearIcon(color: Color, modifier: Modifier = Modifier, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val center = Offset(w / 2, w / 2)
+        val tooth = w * 0.13f
+        repeat(8) { i ->
+            val a = i * PI.toFloat() / 4
+            val r = w * 0.36f
+            drawLine(color, Offset(center.x + r * 0.9f * cos(a), center.y + r * 0.9f * sin(a)), Offset(center.x + r * 1.25f * cos(a), center.y + r * 1.25f * sin(a)), strokeWidth = tooth * 1.4f, cap = StrokeCap.Butt)
+        }
+        // Aro (anel) com o furo do centro transparente.
+        drawCircle(color, w * 0.24f, center, style = Stroke(w * 0.18f))
+    }
+}

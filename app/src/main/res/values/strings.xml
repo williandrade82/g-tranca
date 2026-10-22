@@ -26,6 +26,9 @@
         <item quantity="other">%1$d assentos estão VAGOS e serão ocupados por robôs.</item>
     </plurals>
     <string name="mp_start_unconfirmed">Ainda não confirmaram a posição: %1$s. Ao iniciar, serão desconectados e o assento fica com um robô.</string>
+    <string name="table_options">Opções</string>
+    <string name="menu_speed_normal">Velocidade: normal (tocar para deixar mais lenta)</string>
+    <string name="menu_speed_slow">Velocidade: lenta (tocar para voltar ao normal)</string>
     <string name="welcome_title">Boas-vindas ao TRANCA-BOT!</string>
     <string name="welcome_text">Antes de jogar, escolha como quer ser chamado na mesa. Toque no botão abaixo e preencha o seu nome no Perfil.</string>
     <string name="welcome_go_profile">Ir para o Perfil</string>
