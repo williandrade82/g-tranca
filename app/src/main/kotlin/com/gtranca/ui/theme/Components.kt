@@ -354,11 +354,16 @@ fun GTitle(text: String, modifier: Modifier = Modifier, maxLines: Int = 2) {
  */
 @Composable
 fun FitText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, maxLines: Int = 1, minFontSp: Int = MIN_TITLE_SP) {
-    val color = if (style.color != androidx.compose.ui.graphics.Color.Unspecified) style.color else androidx.compose.material3.LocalContentColor.current
+    // Com degradê (brush), o estilo fica como está: copiar com uma cor apagaria o degradê (títulos dourados ficavam pretos).
+    val resolved = when {
+        style.brush != null -> style
+        style.color != androidx.compose.ui.graphics.Color.Unspecified -> style
+        else -> style.copy(color = androidx.compose.material3.LocalContentColor.current)
+    }
     androidx.compose.foundation.text.BasicText(
         text,
         modifier,
-        style = style.copy(color = color),
+        style = resolved,
         maxLines = maxLines,
         softWrap = maxLines > 1,
         autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
