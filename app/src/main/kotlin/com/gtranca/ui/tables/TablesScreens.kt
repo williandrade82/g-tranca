@@ -133,10 +133,9 @@ fun rulesName(rules: RuleSet): String = when (rules.id) {
 
 // ---------- Mesas disponíveis ----------
 
-/** §16 a parte multijogador de "Mesas disponíveis": o botão de Wi-Fi e as mesas achadas por perto. */
+/** §16 a parte multijogador de "Mesas disponíveis": o indicador do Wi-Fi do jogo (Perfil) e as mesas achadas por perto. */
 class TablesMultiplayer(
     val wifiOn: Boolean,
-    val onToggle: () -> Unit,
     val tables: List<com.gtranca.net.TableAdvert>,
     val onOpen: (com.gtranca.net.TableAdvert) -> Unit,
 )
@@ -159,7 +158,7 @@ fun TablesScreen(
             BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, onClick = onBack)
             BottomButton(stringResource(R.string.tables_create), "tables-create", GButtonKind.Primary, onClick = onCreate)
         },
-        titleExtra = multiplayer?.let { mp -> { WifiButton(mp.wifiOn, mp.onToggle) } },
+        titleExtra = multiplayer?.let { mp -> { WifiIndicator(mp.wifiOn) } },
     ) {
         Text(stringResource(R.string.tables_subtitle), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
         Text(stringResource(R.string.coins_balance, balance), Modifier.testTag("coins-balance"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
@@ -174,9 +173,9 @@ fun TablesScreen(
     }
 }
 
-/** §16 botão de Wi-Fi (3.2): ligado, procura mesas por perto; desligado, nada de rede. */
+/** §16 indicador do Wi-Fi do jogo (3.2; liga-se no Perfil): aceso, procurando mesas por perto; apagado, nada de rede. */
 @Composable
-private fun WifiButton(on: Boolean, onToggle: () -> Unit) {
+private fun WifiIndicator(on: Boolean) {
     val description = stringResource(if (on) R.string.mp_wifi_on_desc else R.string.mp_wifi_off_desc)
     val shape = RoundedCornerShape(Corner.sm)
     Box(
@@ -185,7 +184,6 @@ private fun WifiButton(on: Boolean, onToggle: () -> Unit) {
             .clip(shape)
             .background(if (on) GColors.RoyalBlue else androidx.compose.ui.graphics.Color.Transparent, shape)
             .border(1.dp, GColors.Gold.copy(alpha = if (on) 0.9f else 0.5f), shape)
-            .clickable(onClickLabel = description, role = Role.Switch, onClick = onToggle)
             .semantics { contentDescription = description }
             .testTag("tables-wifi"),
         contentAlignment = Alignment.Center,

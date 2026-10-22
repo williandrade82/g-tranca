@@ -25,6 +25,8 @@ data class ProfileUiState(
     val soundOn: Boolean = true,
     /** Velocidade das animações (grava na hora): `true` = 30% mais lentas. */
     val slowAnimations: Boolean = true,
+    /** §16 Wi-Fi do jogo (grava na hora). */
+    val wifiOn: Boolean = false,
     val photo: PhotoState = PhotoState.NONE,
     /** Lendo a foto escolhida. */
     val importingPhoto: Boolean = false,
@@ -52,10 +54,10 @@ class ProfileViewModel(
                 val saved = PlayerProfile.decode(stored.profileId)
                 _uiState.update {
                     if (touched) {
-                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations)
+                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn)
                     } else {
                         val photo = if (saved.hasPhoto && photos != null) PhotoState.SAVED else PhotoState.NONE
-                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, photo = photo)
+                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, photo = photo)
                     }
                 }
             }
@@ -71,6 +73,12 @@ class ProfileViewModel(
     fun onSoundToggle(on: Boolean) {
         _uiState.update { it.copy(soundOn = on) }
         settings?.let { repo -> writes?.enqueue { repo.setSoundOn(on) } }
+    }
+
+    /** §16 Wi-Fi do jogo; grava na hora. Ligar só depois da porta das permissões (a tela cuida disso). */
+    fun onWifiToggle(on: Boolean) {
+        _uiState.update { it.copy(wifiOn = on) }
+        settings?.let { repo -> writes?.enqueue { repo.setWifiOn(on) } }
     }
 
     /** Velocidade das animações; grava na hora pela fila durável. */

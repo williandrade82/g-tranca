@@ -18,6 +18,8 @@
     <string name="home_target">Pontuação-alvo</string>
     <string name="home_target_error">Informe um número inteiro positivo</string>
     <string name="home_target_too_large">Número grande demais (máximo %1$d)</string>
+    <string name="profile_wifi">Wi-Fi do jogo</string>
+    <string name="profile_wifi_hint">Ligado, o app procura mesas de outros celulares por perto e permite criar mesas multijogador.</string>
     <string name="welcome_title">Boas-vindas ao TRANCA-BOT!</string>
     <string name="welcome_text">Antes de jogar, escolha como quer ser chamado na mesa. Toque no botão abaixo e preencha o seu nome no Perfil.</string>
     <string name="welcome_go_profile">Ir para o Perfil</string>

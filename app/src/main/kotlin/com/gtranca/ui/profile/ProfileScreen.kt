@@ -35,6 +35,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -66,8 +67,19 @@ import com.gtranca.ui.theme.Spacing
 /** Perfil do jogador (§14.1): nome e avatar (foto ou medalhão com a inicial e a cor), com pré-visualização. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone: () -> Unit) {
+fun ProfileScreen(
+    viewModel: ProfileViewModel,
+    onRules: () -> Unit = {},
+    /** §16 porta das permissões do Nearby, pedida ao ligar o Wi-Fi do jogo; `null` = liga direto (testes). */
+    accessGate: (@Composable (onReady: () -> Unit, onCancel: () -> Unit) -> Unit)? = null,
+    onDone: () -> Unit,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var askingWifi by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (askingWifi && accessGate != null) {
+        // Recusar deixa a chave desligada.
+        accessGate({ askingWifi = false; viewModel.onWifiToggle(true) }, { askingWifi = false })
+    }
     val profile = state.profile
     val youName = stringResource(R.string.side_you)
     GBackground(Modifier.fillMaxSize().testTag("profile-screen")) {
@@ -121,6 +133,27 @@ fun ProfileScreen(viewModel: ProfileViewModel, onRules: () -> Unit = {}, onDone:
                         Text(stringResource(R.string.profile_sound_hint), style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = state.soundOn, onCheckedChange = null)
+                }
+            }
+            // §16 Wi-Fi do jogo: liga o multijogador por perto (grava na hora; ao ligar, explicação e permissões).
+            GPanel(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .toggleable(state.wifiOn, role = Role.Switch) { on ->
+                            if (!on) viewModel.onWifiToggle(false)
+                            else if (accessGate != null) askingWifi = true
+                            else viewModel.onWifiToggle(true)
+                        }
+                        .testTag("profile-wifi"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.profile_wifi), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.profile_wifi_hint), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = state.wifiOn, onCheckedChange = null)
                 }
             }
             // Velocidade das animações: normal ou 30% mais lenta (grava na hora; vale também para o botão da mesa).

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.map
  * @property profileId §14.1 perfil do jogador (texto da interface), ou `null` para o padrão dela.
  * @property soundOn chave de som do jogador (ligado por padrão).
  * @property slowAnimations velocidade das animações: `true` = 30% mais lentas (padrão), `false` = normal.
+ * @property wifiOn §16 Wi-Fi do jogo (Perfil): multijogador por perto ligado (desligado por padrão).
  * @property customRules §14.4 regras personalizadas do jogador, ou `null` se ainda não salvou (a interface parte da Clássica).
  */
 data class Settings(
@@ -31,6 +32,7 @@ data class Settings(
     val soundOn: Boolean = true,
     val slowAnimations: Boolean = true,
     val customRules: RuleSet? = null,
+    val wifiOn: Boolean = false,
 )
 
 interface SettingsRepository {
@@ -47,6 +49,8 @@ interface SettingsRepository {
     suspend fun setSlowAnimations(slow: Boolean) = Unit
 
     suspend fun setCustomRules(rules: RuleSet) = Unit
+
+    suspend fun setWifiOn(on: Boolean) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -63,6 +67,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             soundOn = prefs[SOUND_ON] ?: true,
             slowAnimations = prefs[SLOW_ANIMATIONS] ?: true,
             customRules = prefs[CUSTOM_RULES]?.let(::decodeRules),
+            wifiOn = prefs[WIFI_ON] ?: false,
         )
     }
 
@@ -86,6 +91,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[SLOW_ANIMATIONS] = slow }
     }
 
+    override suspend fun setWifiOn(on: Boolean) {
+        store.edit { it[WIFI_ON] = on }
+    }
+
     override suspend fun setCustomRules(rules: RuleSet) {
         store.edit { it[CUSTOM_RULES] = RULES_JSON.encodeToString(RuleSet.serializer(), rules) }
     }
@@ -96,6 +105,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
 
     private companion object {
         val SOUND_ON = booleanPreferencesKey("sound_on")
+        val WIFI_ON = booleanPreferencesKey("wifi_on")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")
         val RULES_JSON = Json { ignoreUnknownKeys = true }

@@ -246,18 +246,22 @@ fun AppNavHost() {
             ProfileScreen(
                 viewModel { ProfileViewModel(data.settings, WriteQueue.app, com.gtranca.ui.profile.ProfilePhoto(context.applicationContext)) },
                 onRules = { navController.navigate(RulesEditorRoute()) { launchSingleTop = true } },
+                accessGate = { ready, cancel -> com.gtranca.net.nearby.MultiplayerAccessGate(ready, cancel) },
             ) { navController.popBackStack() }
         }
         composable<TablesRoute> {
-            // §16 botão de Wi-Fi: desligado por padrão; ligado, pede as permissões e procura mesas por perto.
-            var wifiOn by rememberSaveable { mutableStateOf(false) }
-            var asking by remember { mutableStateOf(false) }
-            if (asking) {
+            // §16 Wi-Fi do jogo (Perfil, guardado): ligado, procura mesas por perto ao abrir, sem tocar em nada. Se as
+            // permissões foram retiradas, a explicação aparece de novo; "Agora não" desliga a configuração.
+            val wifiSetting by remember(data) { data.settings.settings.map { it.wifiOn }.catch { emit(false) } }.collectAsStateWithLifecycle(false)
+            var granted by remember { mutableStateOf(com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) }
+            val turnOff = { WriteQueue.app.enqueue { data.settings.setWifiOn(false) } }
+            if (wifiSetting && !granted) {
                 com.gtranca.net.nearby.MultiplayerAccessGate(
-                    onReady = { asking = false; wifiOn = true },
-                    onCancel = { asking = false; wifiOn = false },
+                    onReady = { granted = true },
+                    onCancel = { turnOff() },
                 )
             }
+            val wifiOn = wifiSetting && granted
             val adverts by remember(wifiOn) {
                 if (wifiOn) com.gtranca.multiplayer.MultiplayerHub.discover(context).map { list -> list.filter { it.listed } }
                     .catch { e ->
@@ -267,7 +271,7 @@ fun AppNavHost() {
                             context.getString(com.gtranca.R.string.mp_discovery_failed, e.message ?: e.javaClass.simpleName),
                             android.widget.Toast.LENGTH_LONG,
                         ).show()
-                        wifiOn = false
+                        turnOff()
                         emit(emptyList())
                     }
                 else kotlinx.coroutines.flow.flowOf(emptyList())
@@ -280,7 +284,6 @@ fun AppNavHost() {
                 onBack = { navController.popBackStack() },
                 multiplayer = com.gtranca.ui.tables.TablesMultiplayer(
                     wifiOn = wifiOn,
-                    onToggle = { if (wifiOn) wifiOn = false else asking = true },
                     tables = adverts.distinctBy { it.tableId },
                     onOpen = { advert ->
                         com.gtranca.multiplayer.MultiplayerHub.newTable(context, data).joinAsync(advert.tableId, profile?.name.orEmpty())

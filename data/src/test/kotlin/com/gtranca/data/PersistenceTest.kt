@@ -128,6 +128,11 @@ class PersistenceTest {
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false)
         settings.setSlowAnimations(false)
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false, slowAnimations = false)
+        // §16 Wi-Fi do jogo: desligado por padrão e guardado.
+        settings.setWifiOn(true)
+        settings.settings.first().wifiOn shouldBe true
+        settings.setWifiOn(false)
+        settings.settings.first().wifiOn shouldBe false
     }
 
     @Test

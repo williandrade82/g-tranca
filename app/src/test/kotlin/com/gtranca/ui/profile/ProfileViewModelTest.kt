@@ -40,6 +40,19 @@ class ProfileViewModelTest {
         override suspend fun setProfile(id: String) = state.update { it.copy(profileId = id) }
         override suspend fun setSoundOn(on: Boolean) = state.update { it.copy(soundOn = on) }
         override suspend fun setSlowAnimations(slow: Boolean) = state.update { it.copy(slowAnimations = slow) }
+        override suspend fun setWifiOn(on: Boolean) = state.update { it.copy(wifiOn = on) }
+    }
+
+    @Test
+    fun `§16 Wi-Fi do jogo le o valor gravado e grava na hora`() = runTest(dispatcher) {
+        val settings = FakeSettings(Settings(wifiOn = true))
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.uiState.value.wifiOn shouldBe true
+        vm.onWifiToggle(false)
+        advanceUntilIdle()
+        vm.uiState.value.wifiOn shouldBe false
+        settings.state.value.wifiOn shouldBe false
     }
 
     @Test
