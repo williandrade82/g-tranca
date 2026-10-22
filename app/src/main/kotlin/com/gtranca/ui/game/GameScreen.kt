@@ -48,7 +48,8 @@ val com.gtranca.engine.RuleSet.noWilds: Boolean get() = maxWildsPerMeld == 0
  * da mesa por cima, o resultado em moedas vindo do anfitrião e "Voltar à mesa" no fim de jogo.
  */
 class MultiplayerScreenHooks(
-    val headerExtra: @Composable () -> Unit,
+    /** Itens do menu do anfitrião no menu de Opções (só quando este aparelho é o anfitrião). */
+    val headerExtra: (@Composable (close: () -> Unit) -> Unit)?,
     val overlay: @Composable () -> Unit,
     /** Moedas ganhas (ou perdidas, negativo) no fim; `null` enquanto o anfitrião não envia. */
     val coinsNet: () -> Int?,

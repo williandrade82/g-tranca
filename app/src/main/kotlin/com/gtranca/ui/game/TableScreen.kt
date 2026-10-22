@@ -226,7 +226,7 @@ fun TableScreen(
     /** Revisão da mesa final: no lugar da barra de ações, só "Continuar" (não há jogada possível). */
     onReviewContinue: (() -> Unit)? = null,
     /** §16 multijogador: ícone extra no cabeçalho (menu do anfitrião, 3.14). */
-    headerExtra: (@Composable () -> Unit)? = null,
+    headerExtra: (@Composable (close: () -> Unit) -> Unit)? = null,
 ) {
     val snapshot = state.snapshot
     val view = snapshot.view
@@ -414,7 +414,7 @@ fun TableScreen(
 
 /** Menu de opções da mesa (docs/telas.md 3.8): velocidade, símbolos, desistir e o menu do anfitrião (multijogador). */
 @Composable
-private fun OptionsMenu(events: TableEvents, extra: (@Composable () -> Unit)?, onLegend: () -> Unit) {
+private fun OptionsMenu(events: TableEvents, extra: (@Composable (close: () -> Unit) -> Unit)?, onLegend: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val optionsText = stringResource(R.string.table_options)
     Box {
@@ -445,18 +445,16 @@ private fun OptionsMenu(events: TableEvents, extra: (@Composable () -> Unit)?, o
                 onClick = { open = false; events.onResign() },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("action-resign"),
             )
+            // §16 anfitrião: os itens do menu dele no mesmo menu (os diálogos ficam fora do menu).
             if (extra != null) {
-                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    extra()
-                    Text(stringResource(R.string.mp_host_menu), style = MaterialTheme.typography.bodyLarge)
-                }
+                extra { open = false }
             }
         }
     }
 }
 
 @Composable
-private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable () -> Unit)?, onLegend: () -> Unit) {
+private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable (close: () -> Unit) -> Unit)?, onLegend: () -> Unit) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val other = view.mode.sides.first { it != view.side }

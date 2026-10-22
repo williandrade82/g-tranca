@@ -74,10 +74,19 @@ fun rememberMultiplayerHooks(table: MultiplayerTable, personas: List<Persona>, o
     val role by table.role.collectAsState()
     val rules by table.rules.collectAsState()
     val stake = rules?.stake ?: 0
-    val host = (role as? MpRole.Hosting)?.host
+    // §16.10 segue o papel atual: quem recebe a mesa ganha o menu do anfitrião e quem a deixa o perde.
+    val host by table.hostControls.collectAsState()
+    var passing by remember { mutableStateOf(false) }
+    var opening by remember { mutableStateOf(false) }
+    val current = host
     return MultiplayerScreenHooks(
-        headerExtra = { if (host != null && !resigned) HostMenu(table, host, personas) },
-        overlay = { MultiplayerOverlay(table, personas, onExit) },
+        headerExtra = if (current == null) null else {
+            { close -> HostMenuItems(onPass = { close(); passing = true }, onOpen = { close(); opening = true }) }
+        },
+        overlay = {
+            MultiplayerOverlay(table, personas, onExit)
+            if (current != null) HostMenuDialogs(table, current, personas, passing, opening, { passing = false }, { opening = false })
+        },
         coinsNet = { received?.let { it - stake } },
         gameOverExtra = { if (resigned && role is MpRole.Guesting) ReturnToTableButton(table) },
     )
@@ -332,57 +341,61 @@ private fun JoinRequestRow(request: JoinRequest, seatName: String, host: Multipl
     }
 }
 
-/** §16.7, §16.10 menu do anfitrião (ícone de mesa no cabeçalho): passar o cargo e liberar um assento de robô. */
+/** §16.7, §16.10 itens do menu do anfitrião (no menu de Opções da mesa): passar o cargo e liberar um assento de robô. */
 @Composable
-private fun HostMenu(table: MultiplayerTable, host: MultiplayerHost, personas: List<Persona>) {
+private fun HostMenuItems(onPass: () -> Unit, onOpen: () -> Unit) {
+    Text(
+        stringResource(R.string.mp_host_menu),
+        Modifier.padding(horizontal = 12.dp, vertical = 4.dp).testTag("host-menu"),
+        style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+        color = GColors.Gold,
+    )
+    DropdownMenuItem(
+        { Text(stringResource(R.string.mp_pass_role)) },
+        onPass,
+        Modifier.heightIn(min = 48.dp).testTag("host-pass-role"),
+        leadingIcon = { TableIcon(GColors.Gold, size = 20.dp) },
+    )
+    DropdownMenuItem(
+        { Text(stringResource(R.string.mp_open_seat)) },
+        onOpen,
+        Modifier.heightIn(min = 48.dp).testTag("host-open-seat"),
+    )
+}
+
+/** Diálogos do menu do anfitrião (fora do menu, que fecha ao escolher). */
+@Composable
+private fun HostMenuDialogs(
+    table: MultiplayerTable,
+    host: MultiplayerHost,
+    personas: List<Persona>,
+    passing: Boolean,
+    opening: Boolean,
+    closePassing: () -> Unit,
+    closeOpening: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
-    var open by remember { mutableStateOf(false) }
-    var passing by remember { mutableStateOf(false) }
-    var opening by remember { mutableStateOf(false) }
     val roster by table.roster.collectAsState()
     val openSeats by host.hostSession.openSeats.collectAsState()
-    val label = stringResource(R.string.mp_host_menu)
-    Box {
-        Box(
-            Modifier
-                .size(48.dp)
-                .clickable(onClickLabel = label, role = Role.Button) { open = true }
-                .semantics { contentDescription = label }
-                .testTag("host-menu"),
-            contentAlignment = Alignment.Center,
-        ) { TableIcon(GColors.Champagne, size = 24.dp) }
-        DropdownMenu(open, { open = false }) {
-            DropdownMenuItem(
-                { Text(stringResource(R.string.mp_pass_role)) },
-                { open = false; passing = true },
-                Modifier.testTag("host-pass-role"),
-            )
-            DropdownMenuItem(
-                { Text(stringResource(R.string.mp_open_seat)) },
-                { open = false; opening = true },
-                Modifier.testTag("host-open-seat"),
-            )
-        }
-    }
     if (passing) {
         // §16.10 só humanos conectados, pela ordem de entrada; nunca robôs.
         val candidates = roster.filter { it.id != host.hostSession.hostId && it.connected && !it.resigned }.sortedBy { it.joinOrder }
         GDialog(
-            onDismissRequest = { passing = false },
+            onDismissRequest = closePassing,
             title = { Text(stringResource(R.string.mp_pass_role)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(stringResource(if (candidates.isEmpty()) R.string.mp_pass_none else R.string.mp_pass_text))
                     candidates.forEach { player ->
                         GButton(
-                            { passing = false; scope.launch { table.passRole(player.id) } },
+                            { closePassing(); scope.launch { table.passRole(player.id) } },
                             Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("host-pass-${player.id}"),
                             kind = GButtonKind.Secondary,
                         ) { Text(stringResource(R.string.mp_pass_confirm) + " · " + player.name) }
                     }
                 }
             },
-            confirmButton = { TextButton({ passing = false }) { Text(stringResource(R.string.cancel)) } },
+            confirmButton = { TextButton(closePassing) { Text(stringResource(R.string.cancel)) } },
         )
     }
     if (opening) {
@@ -390,21 +403,21 @@ private fun HostMenu(table: MultiplayerTable, host: MultiplayerHost, personas: L
         val mode = table.rules.collectAsState().value?.mode
         val robots = mode?.seats.orEmpty().filter { seat -> roster.none { it.seat == seat } && seat !in openSeats && seat != host.hostSeat }
         GDialog(
-            onDismissRequest = { opening = false },
+            onDismissRequest = closeOpening,
             title = { Text(stringResource(R.string.mp_open_seat)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(stringResource(if (robots.isEmpty()) R.string.mp_open_none else R.string.mp_open_text))
                     robots.forEach { seat ->
                         GButton(
-                            { opening = false; scope.launch { table.openRobotSeat(seat) } },
+                            { closeOpening(); scope.launch { table.openRobotSeat(seat) } },
                             Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("host-open-${seat.index}"),
                             kind = GButtonKind.Secondary,
                         ) { Text(personas.getOrNull(seat.index)?.firstName.orEmpty()) }
                     }
                 }
             },
-            confirmButton = { TextButton({ opening = false }) { Text(stringResource(R.string.cancel)) } },
+            confirmButton = { TextButton(closeOpening) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

@@ -53,6 +53,8 @@ class MultiplayerTableTest {
         val rules: TableRules,
         /** Nova mesa no mesmo transporte (outro jogo no mesmo celular). */
         val again: (host: Boolean) -> MultiplayerTable,
+        /** Derruba a conexão do anfitrião (queda, §16.10). */
+        val dropHost: () -> Unit = {},
     )
 
     private suspend fun TestScope.setup(
@@ -84,7 +86,7 @@ class MultiplayerTableTest {
         val again = { isHost: Boolean ->
             MultiplayerTable(if (isHost) hostTransport else guestTransport, scope, if (isHost) hostCoins else guestCoins, dispatcher, bots, newSeed = { seed })
         }
-        return Setup(host, guest, hostCoins, guestCoins, scope, rules, again)
+        return Setup(host, guest, hostCoins, guestCoins, scope, rules, again) { network.kill(hostTransport.id) }
     }
 
     @Test
@@ -293,6 +295,9 @@ class MultiplayerTableTest {
         // Os papéis trocaram sem trocar de tela (o mesmo condutor segue o papel novo).
         (t.guest.role.value is MpRole.Hosting) shouldBe true
         t.guest.tookOver.value shouldBe true
+        // O menu do anfitrião segue o papel: quem recebeu a mesa tem as ações; quem passou, não.
+        t.guest.hostControls.value.shouldNotBeNull()
+        t.host.hostControls.value shouldBe null
         (t.host.role.value is MpRole.Guesting) shouldBe true
         t.host.mySeat shouldBe Seat(0)
         drive(t.scope, hostDriver, seed)
@@ -427,6 +432,21 @@ class MultiplayerTableTest {
         // Robôs continuam com os personagens (sem foto).
         showing.value[2].character.shouldNotBeNull()
         showing.value[2].photoBytes shouldBe null
+    }
+
+    @Test
+    fun `§16_10 queda do anfitriao - o sucessor ganha as acoes de anfitriao`() = runTest {
+        val t = setup(52L, targetScore = 3000)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        t.host.hostControls.value.shouldNotBeNull()
+        t.guest.hostControls.value shouldBe null
+        t.dropHost()
+        advanceUntilIdle()
+        (t.guest.role.value is MpRole.Hosting) shouldBe true
+        t.guest.hostControls.value.shouldNotBeNull()
     }
 
     @Test

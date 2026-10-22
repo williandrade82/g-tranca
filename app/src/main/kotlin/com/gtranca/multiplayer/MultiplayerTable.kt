@@ -128,6 +128,17 @@ class MultiplayerTable(
     /** §16.9 este jogador desistiu: o jogo acabou para ele (derrota por desistência). */
     val resigned: StateFlow<Boolean> = _resigned.asStateFlow()
 
+    /**
+     * §16.7, §16.8, §16.10 as ações de anfitrião deste aparelho (passar o cargo, liberar assento de robô, decisões da
+     * pausa): o jogo do anfitrião quando este aparelho é o anfitrião com o jogo em andamento e não desistiu; `null` caso
+     * contrário. Segue o papel atual: quem recebe a mesa (passagem do cargo ou sucessão) passa a tê-las e quem a deixa as
+     * perde.
+     */
+    val hostControls: StateFlow<MultiplayerHost?> by lazy {
+        combine(_role, _resigned) { role, resigned -> (role as? MpRole.Hosting)?.host?.takeIf { !resigned } }
+            .stateIn(scope, SharingStarted.Eagerly, (_role.value as? MpRole.Hosting)?.host?.takeIf { !_resigned.value })
+    }
+
     private val _received = MutableStateFlow<Int?>(null)
 
     /** §16.13 moedas recebidas no fim do jogo (já sem a aposta); `null` antes do fim. */
