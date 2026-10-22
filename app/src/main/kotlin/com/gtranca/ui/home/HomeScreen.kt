@@ -293,7 +293,7 @@ private fun RowScope.Chip(text: String, selected: Boolean, tag: String, onClick:
 
 /** Logotipo em Cinzel com degradê dourado; um brilho percorre o texto de tempos em tempos. */
 @Composable
-private fun LogoTitle(text: String) {
+internal fun LogoTitle(text: String) {
     val motion = rememberMotionEnabled()
     val t = if (motion) {
         val v by rememberInfiniteTransition(label = "logo").animateFloat(

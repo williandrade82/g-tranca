@@ -225,13 +225,21 @@ fun AppNavHost() {
         popExitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(if (motion) 250 else 0)) },
     ) {
         composable<HomeRoute> {
-            HomeScreen(
+            // §14.1 sem nome no perfil: boas-vindas no lugar do Início (o único botão abre o Perfil).
+            val welcome by remember(data) {
+                data.settings.settings.map { com.gtranca.game.PlayerProfile.needsWelcome(it.profileId) }.catch { emit(false) }
+            }.collectAsStateWithLifecycle(null)
+            when (welcome) {
+                null -> Unit
+                true -> com.gtranca.ui.home.WelcomeScreen { navController.navigateFromHome(ProfileRoute) }
+                false -> HomeScreen(
                 viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet) },
                 onNewGame = { navController.navigateFromHome(TablesRoute) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
             )
+            }
         }
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
         composable<ProfileRoute> {

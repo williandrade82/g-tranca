@@ -28,6 +28,9 @@ data class PlayerProfile(
         /** Cores do medalhão (§14.1). */
         const val COLORS = Persona.COLORS
 
+        /** §14.1 sem nome definido no perfil (primeira abertura ou nome apagado): o app mostra as boas-vindas. */
+        fun needsWelcome(profileText: String?): Boolean = decode(profileText).name.isBlank()
+
         /** Nome do jogador quando o perfil não tem nome. */
         const val DEFAULT_NAME = "Você"
         private const val SEPARATOR = "\t"

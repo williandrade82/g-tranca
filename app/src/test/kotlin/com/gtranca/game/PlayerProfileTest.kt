@@ -85,4 +85,12 @@ class PlayerProfileTest {
         Persona("Édson").initial shouldBe "É"
         Persona("").initial shouldBe "?"
     }
+
+    @Test
+    fun `§14_1 boas-vindas so sem nome no perfil`() {
+        PlayerProfile.needsWelcome(null) shouldBe true
+        PlayerProfile.needsWelcome(PlayerProfile(name = "  ").encode()) shouldBe true
+        PlayerProfile.needsWelcome("lixo") shouldBe true
+        PlayerProfile.needsWelcome(PlayerProfile(name = "Ana").encode()) shouldBe false
+    }
 }
