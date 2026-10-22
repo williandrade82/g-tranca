@@ -2,6 +2,7 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.tour.tourTarget
 import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.sound.SoundButton
@@ -313,6 +314,15 @@ fun TableScreen(
         }
     }
 
+    // Tour guiado (docs/telas.md 3.16): sozinho só na 1ª vez em que é a vez do jogador, depois das animações iniciais.
+    val tourReady = onReviewContinue == null && com.gtranca.ui.tour.Tours.tableReady(
+        isHumanTurn = state.isHumanTurn,
+        dealPending = state.dealPending,
+        animating = state.flights.isNotEmpty(),
+        swapShowing = state.banner != null || state.reveal != null || state.ownSwapPending,
+        endScreen = state.endScreen != null,
+    )
+    com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.TABLE, com.gtranca.ui.tour.Tours.tableSteps, autoStart = tourReady) { startTour ->
     Scaffold(
         modifier = modifier
             .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
@@ -325,9 +335,9 @@ fun TableScreen(
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
-                    Header(state, events, headerExtra) { showLegend = true }
+                    Header(state, events, headerExtra, startTour) { showLegend = true }
                     // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).tourTarget("seats")) { SeatsPanel(state) { detailSeat = it } }
                     Column(
                         Modifier.weight(1f).fillMaxWidth().padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
                             .onGloballyPositioned { tableViewport = Rect(it.positionInRoot(), it.size.toSize()) }
@@ -379,6 +389,7 @@ fun TableScreen(
             }
         }
     }
+    }
 
     if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }
     detailSeat?.let { index ->
@@ -425,7 +436,8 @@ private fun OptionsMenu(events: TableEvents, extra: (@Composable (close: () -> U
                 .size(48.dp)
                 .clickable(onClickLabel = optionsText, role = Role.Button) { open = true }
                 .semantics { contentDescription = optionsText }
-                .testTag("table-options"),
+                .testTag("table-options")
+                .tourTarget("table-options"),
             contentAlignment = Alignment.Center,
         ) { com.gtranca.ui.theme.GearIcon(OnTable, size = 24.dp) }
         androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -456,7 +468,7 @@ private fun OptionsMenu(events: TableEvents, extra: (@Composable (close: () -> U
 }
 
 @Composable
-private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable (close: () -> Unit) -> Unit)?, onLegend: () -> Unit) {
+private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable (close: () -> Unit) -> Unit)?, startTour: () -> Unit, onLegend: () -> Unit) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val other = view.mode.sides.first { it != view.side }
@@ -492,9 +504,10 @@ private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable 
                     .background(GColors.Midnight.copy(alpha = 0.7f), CircleShape)
                     .border(1.dp, GColors.Gold.copy(alpha = 0.6f), CircleShape)
                     .padding(horizontal = 10.dp, vertical = 1.dp)
-                    .testTag("score"),
+                    .testTag("score").tourTarget("score"),
             )
         }
+        com.gtranca.ui.tour.TourButton(startTour, OnTable)
         SoundButton(OnTable)
         // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
         OptionsMenu(events, extra, onLegend)
@@ -803,7 +816,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(Corner.xs))
                     .clickable(enabled = state.canDraw, onClick = events::onDraw)
                     .semantics(mergeDescendants = true) { contentDescription = stockLabel }
-                    .testTag("stock")
+                    .testTag("stock").tourTarget("stock")
                     .padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -816,7 +829,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
             }
             Spacer(Modifier.width(12.dp))
             Spacer(Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("mortos")) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("mortos").tourTarget("mortos")) {
                 view.mortoStatus.forEachIndexed { i, status ->
                     val statusText = when (status) {
                         MortoStatus.Available -> countText(R.plurals.card_count, R.string.card_count_zero, view.mortoSizes[i])
@@ -865,7 +878,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     .clickable(enabled = state.awaitingDraw || state.playing, onClick = events::onDiscardPileClick)
                     .semantics(mergeDescendants = true) { contentDescription = pileLabel }
                     .anchor(AnimAnchor.DiscardPile)
-                    .testTag("discard-pile")
+                    .testTag("discard-pile").tourTarget("discard-pile")
                     .padding(4.dp),
             ) {
                 if (pile.isEmpty()) {
@@ -996,7 +1009,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = Spacing.sm)
-            .testTag("action-bar"),
+            .testTag("action-bar").tourTarget("action-bar"),
     ) {
         Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -1074,7 +1087,7 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
         Box(
             Modifier.fillMaxWidth().heightIn(max = 74.dp * 2 + HandGrowMargin * 2).anchor(AnimAnchor.OwnHand)
                 .verticalScroll(rememberScrollState()).padding(vertical = HandGrowMargin, horizontal = 3.dp)
-                .testTag("hand"),
+                .testTag("hand").tourTarget("hand"),
         ) {
             if (custom == null || custom.special.isEmpty()) {
                 CardFlow(state.hand, state, events, Modifier.fillMaxWidth())

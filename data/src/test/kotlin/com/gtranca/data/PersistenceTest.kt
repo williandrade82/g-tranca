@@ -137,6 +137,13 @@ class PersistenceTest {
         settings.settings.first().showSharedPhotos shouldBe true
         settings.setShowSharedPhotos(false)
         settings.settings.first().showSharedPhotos shouldBe false
+        // Tour guiado: cada tela uma vez; "Rever o tour guiado" zera.
+        settings.settings.first().toursSeen shouldBe emptySet()
+        settings.markTourSeen("tables")
+        settings.markTourSeen("table")
+        settings.settings.first().toursSeen shouldBe setOf("tables", "table")
+        settings.resetTours()
+        settings.settings.first().toursSeen shouldBe emptySet()
     }
 
     @Test

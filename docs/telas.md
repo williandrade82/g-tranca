@@ -209,7 +209,7 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 ---
 
 ### 3.16 Tour guiado
-**Objetivo:** apresentar as telas na primeira vez do jogador. Cada tela com tour mostra o seu **uma única vez** (registro por tela, guardado no aparelho); o ícone do tour (ponto de interrogação num balão, tag `tour-button`) no alto da tela o mostra de novo a qualquer momento, e **Rever o tour guiado** no Perfil (3.6) zera o registro de todas.
+**Objetivo:** apresentar as telas na primeira vez do jogador. Cada tela com tour mostra o seu **uma única vez** (registro por tela, guardado no aparelho); o ícone do tour (letra "i" num círculo, tag `tour-button`) no alto da tela o mostra de novo a qualquer momento, e **Rever o tour guiado** no Perfil (3.6) zera o registro de todas.
 **Formato:** a tela escurece e um **recorte** destaca o elemento real do passo; um **balão** com texto curto (até ~2 linhas), o **indicador de passo** ("2/6") e os botões **Voltar**, **Próximo** (no último, **Concluir**) e **Pular**. O tour **nunca joga nem executa nada**: tocar fora do balão não faz nada; só os botões do balão funcionam. O leitor de tela lê o texto do passo. Tags: `tour-overlay`, `tour-text`, `tour-step`, `tour-next`, `tour-back`, `tour-skip`.
 **Mesas disponíveis (3.2)** — aparece ao abrir a tela pela primeira vez; ícone ao lado do título (junto do Wi-Fi):
 1. Saldo: "Seu saldo de moedas. Cada mesa tem uma aposta; vencendo, você ganha as moedas da mesa."

@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.map
  * @property slowAnimations velocidade das animações: `true` = 30% mais lentas (padrão), `false` = normal.
  * @property wifiOn §16 Wi-Fi do jogo (Perfil): multijogador por perto ligado (desligado por padrão).
  * @property showSharedPhotos §16.2 ver as fotos dos outros jogadores nas mesas multijogador (ligado por padrão).
+ * @property toursSeen tours guiados já vistos (um id por tela; docs/telas.md 3.16).
  * @property customRules §14.4 regras personalizadas do jogador, ou `null` se ainda não salvou (a interface parte da Clássica).
  */
 data class Settings(
@@ -35,6 +36,7 @@ data class Settings(
     val customRules: RuleSet? = null,
     val wifiOn: Boolean = false,
     val showSharedPhotos: Boolean = true,
+    val toursSeen: Set<String> = emptySet(),
 )
 
 interface SettingsRepository {
@@ -55,6 +57,12 @@ interface SettingsRepository {
     suspend fun setWifiOn(on: Boolean) = Unit
 
     suspend fun setShowSharedPhotos(on: Boolean) = Unit
+
+    /** O tour [id] já foi visto (não aparece sozinho de novo). */
+    suspend fun markTourSeen(id: String) = Unit
+
+    /** "Rever o tour guiado": todos os tours voltam a aparecer na próxima vez. */
+    suspend fun resetTours() = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -73,6 +81,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             customRules = prefs[CUSTOM_RULES]?.let(::decodeRules),
             wifiOn = prefs[WIFI_ON] ?: false,
             showSharedPhotos = prefs[SHOW_SHARED_PHOTOS] ?: true,
+            toursSeen = prefs[TOURS_SEEN] ?: emptySet(),
         )
     }
 
@@ -96,6 +105,14 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[SLOW_ANIMATIONS] = slow }
     }
 
+    override suspend fun markTourSeen(id: String) {
+        store.edit { it[TOURS_SEEN] = (it[TOURS_SEEN] ?: emptySet()) + id }
+    }
+
+    override suspend fun resetTours() {
+        store.edit { it.remove(TOURS_SEEN) }
+    }
+
     override suspend fun setShowSharedPhotos(on: Boolean) {
         store.edit { it[SHOW_SHARED_PHOTOS] = on }
     }
@@ -116,6 +133,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         val SOUND_ON = booleanPreferencesKey("sound_on")
         val WIFI_ON = booleanPreferencesKey("wifi_on")
         val SHOW_SHARED_PHOTOS = booleanPreferencesKey("show_shared_photos")
+        val TOURS_SEEN = androidx.datastore.preferences.core.stringSetPreferencesKey("tours_seen")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")
         val RULES_JSON = Json { ignoreUnknownKeys = true }

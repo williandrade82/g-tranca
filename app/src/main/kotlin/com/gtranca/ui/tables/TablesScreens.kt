@@ -1,5 +1,9 @@
 package com.gtranca.ui.tables
 
+import com.gtranca.ui.tour.TourButton
+import com.gtranca.ui.tour.TourHost
+import com.gtranca.ui.tour.Tours
+import com.gtranca.ui.tour.tourTarget
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -116,7 +120,7 @@ private fun TableFrame(
 
 @Composable
 private fun RowScope.BottomButton(text: String, tag: String, kind: GButtonKind, enabled: Boolean = true, onClick: () -> Unit) {
-    GButton(onClick, Modifier.weight(1f).heightIn(min = 52.dp).testTag(tag), enabled = enabled, kind = kind) {
+    GButton(onClick, Modifier.weight(1f).heightIn(min = 52.dp).testTag(tag).tourTarget(tag), enabled = enabled, kind = kind) {
         Text(text, style = MaterialTheme.typography.titleMedium)
     }
 }
@@ -152,6 +156,8 @@ fun TablesScreen(
 ) {
     val tables by viewModel.tables.collectAsStateWithLifecycle()
     val balance by viewModel.balance.collectAsStateWithLifecycle()
+    // Tour guiado (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
+    TourHost(Tours.TABLES, Tours.tablesSteps, autoStart = true) { startTour ->
     TableFrame(
         stringResource(R.string.tables_title),
         "tables-screen",
@@ -159,10 +165,15 @@ fun TablesScreen(
             BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, onClick = onBack)
             BottomButton(stringResource(R.string.tables_create), "tables-create", GButtonKind.Primary, onClick = onCreate)
         },
-        titleExtra = multiplayer?.let { mp -> { WifiButton(mp.wifiOn, mp.onToggle) } },
+        titleExtra = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TourButton(startTour)
+                multiplayer?.let { mp -> WifiButton(mp.wifiOn, mp.onToggle) }
+            }
+        },
     ) {
         Text(stringResource(R.string.tables_subtitle), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
-        Text(stringResource(R.string.coins_balance, balance), Modifier.testTag("coins-balance"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
+        Text(stringResource(R.string.coins_balance, balance), Modifier.testTag("coins-balance").tourTarget("coins-balance"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
         if (multiplayer != null && multiplayer.wifiOn) {
             // §16.2 mesas abertas por perto, acrescentadas à lista (aparecem e somem conforme a busca).
             if (multiplayer.tables.isEmpty()) {
@@ -170,7 +181,10 @@ fun TablesScreen(
             }
             multiplayer.tables.forEach { advert -> MultiplayerTableCard(advert) { multiplayer.onOpen(advert) } }
         }
-        tables.forEach { table -> TableCard(table, balance) { onOpen(table) } }
+        tables.forEachIndexed { i, table ->
+            Box(if (i == 0) Modifier.tourTarget("tables-first") else Modifier) { TableCard(table, balance) { onOpen(table) } }
+        }
+    }
     }
 }
 
@@ -187,7 +201,8 @@ private fun WifiButton(on: Boolean, onToggle: () -> Unit) {
             .border(1.dp, GColors.Gold.copy(alpha = if (on) 0.9f else 0.5f), shape)
             .clickable(onClickLabel = description, role = Role.Switch, onClick = onToggle)
             .semantics { contentDescription = description }
-            .testTag("tables-wifi"),
+            .testTag("tables-wifi")
+            .tourTarget("tables-wifi"),
         contentAlignment = Alignment.Center,
     ) { com.gtranca.ui.theme.WifiIcon(if (on) GColors.Gold else GColors.Steel, crossed = !on, size = 28.dp) }
 }

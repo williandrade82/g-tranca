@@ -29,6 +29,8 @@ data class ProfileUiState(
     val wifiOn: Boolean = false,
     /** §16.2 ver as fotos dos outros nas mesas multijogador (grava na hora). */
     val showSharedPhotos: Boolean = true,
+    /** O jogador pediu para rever os tours (mostra a confirmação). */
+    val toursReset: Boolean = false,
     val photo: PhotoState = PhotoState.NONE,
     /** Lendo a foto escolhida. */
     val importingPhoto: Boolean = false,
@@ -87,6 +89,12 @@ class ProfileViewModel(
     fun onShowSharedPhotos(on: Boolean) {
         _uiState.update { it.copy(showSharedPhotos = on) }
         settings?.let { repo -> writes?.enqueue { repo.setShowSharedPhotos(on) } }
+    }
+
+    /** "Rever o tour guiado" (docs/telas.md 3.16): todos os tours voltam a aparecer na próxima vez. */
+    fun onResetTours() {
+        _uiState.update { it.copy(toursReset = true) }
+        settings?.let { repo -> writes?.enqueue { repo.resetTours() } }
     }
 
     /** Velocidade das animações; grava na hora pela fila durável. */

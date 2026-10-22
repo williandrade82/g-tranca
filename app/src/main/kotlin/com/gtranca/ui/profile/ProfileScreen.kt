@@ -171,6 +171,17 @@ fun ProfileScreen(
                     Switch(checked = state.showSharedPhotos, onCheckedChange = null)
                 }
             }
+            // Tour guiado (3.16): zera o registro; cada tela mostra o tour de novo na próxima vez.
+            GPanel(Modifier.fillMaxWidth()) {
+                com.gtranca.ui.theme.GButton(
+                    viewModel::onResetTours,
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("profile-tour-reset"),
+                    kind = com.gtranca.ui.theme.GButtonKind.Secondary,
+                ) { Text(stringResource(R.string.profile_tour_reset)) }
+                if (state.toursReset) {
+                    Text(stringResource(R.string.profile_tour_reset_done), style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("profile-tour-reset-done"))
+                }
+            }
             // Velocidade das animações: normal ou 30% mais lenta (grava na hora; vale também para o botão da mesa).
             GPanel(Modifier.fillMaxWidth()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
