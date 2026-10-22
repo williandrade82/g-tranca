@@ -50,7 +50,8 @@ object SoundMap {
     fun forFlight(flight: CardFlight): SoundEffect? = when (flight.to) {
         AnimAnchor.DiscardPile, is AnimAnchor.DiscardCard -> SoundEffect.TAP
         is AnimAnchor.Meld, is AnimAnchor.MeldCard, is AnimAnchor.SideArea -> SoundEffect.SLIDE
-        is AnimAnchor.RedThrees, is AnimAnchor.RedThreeCard -> SoundEffect.CHIME
+        // 3 vermelho: o som já tocou com o aviso da troca (SwapAnnouncement); a chegada à mesa fica em silêncio.
+        is AnimAnchor.RedThrees, is AnimAnchor.RedThreeCard -> null
         else -> when (flight.from) {
             AnimAnchor.Stock, is AnimAnchor.Morto, AnimAnchor.DiscardPile, is AnimAnchor.DiscardCard -> SoundEffect.FLIP
             else -> null

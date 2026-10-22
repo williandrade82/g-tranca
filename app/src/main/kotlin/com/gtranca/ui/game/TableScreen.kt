@@ -1353,6 +1353,9 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
 private fun SwapAnnouncement(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat, persona: com.gtranca.game.Persona?) {
     val text = bannerText(mode, notice, viewerSeat, persona)
     val shown = remember(notice.id) { MutableTransitionState(false).apply { targetState = true } }
+    // O som do 3 vermelho toca junto com o aviso (não na chegada da carta à mesa, que vem depois).
+    val sound = LocalSound.current
+    LaunchedEffect(notice.id) { sound.play(SoundEffect.CHIME) }
     // Véu leve sobre a mesa (não bloqueia toques) e o anúncio centralizado; some quando a troca termina.
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
         AnimatedVisibility(shown, enter = fadeIn() + scaleIn(initialScale = 0.7f)) {

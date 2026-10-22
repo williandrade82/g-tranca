@@ -63,9 +63,9 @@ class SoundTest {
         // Baixar e acrescentar a um jogo, e o topo do lixo indo ao jogo.
         SoundMap.forFlight(flight(AnimAnchor.OwnHand, AnimAnchor.Meld(0, 3))) shouldBe SoundEffect.SLIDE
         SoundMap.forFlight(flight(AnimAnchor.DiscardPile, AnimAnchor.SideArea(1))) shouldBe SoundEffect.SLIDE
-        // 3 vermelho para a mesa.
-        SoundMap.forFlight(flight(AnimAnchor.SeatHand(1), AnimAnchor.RedThrees(1))) shouldBe SoundEffect.CHIME
-        SoundMap.forFlight(flight(AnimAnchor.Morto(1), AnimAnchor.RedThrees(0))) shouldBe SoundEffect.CHIME
+        // 3 vermelho para a mesa: silêncio na chegada, o som toca junto com o aviso da troca.
+        SoundMap.forFlight(flight(AnimAnchor.SeatHand(1), AnimAnchor.RedThrees(1))) shouldBe null
+        SoundMap.forFlight(flight(AnimAnchor.Morto(1), AnimAnchor.RedThrees(0))) shouldBe null
     }
 
     @Test
