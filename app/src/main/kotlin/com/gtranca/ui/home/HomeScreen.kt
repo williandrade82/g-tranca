@@ -304,10 +304,11 @@ internal fun LogoTitle(text: String) {
         v
     } else -1f
     val base = goldTitleStyle(MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Black, textAlign = TextAlign.Center))
-    Box {
-        Text(text, style = base)
+    // Uma linha só, reduzindo a fonte até caber (nunca quebra "TRANCA-BOT" no meio).
+    Box(Modifier.fillMaxWidth().testTag("logo-title")) {
+        com.gtranca.ui.theme.FitText(text, base, Modifier.fillMaxWidth())
         if (t > -0.3f && t < 1.3f) {
-            Text(
+            com.gtranca.ui.theme.FitText(
                 text,
                 style = base.copy(
                     brush = Brush.linearGradient(
@@ -317,6 +318,7 @@ internal fun LogoTitle(text: String) {
                     ),
                     shadow = null,
                 ),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

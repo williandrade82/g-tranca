@@ -1,5 +1,6 @@
 package com.gtranca.ui.theme
 
+import androidx.compose.ui.unit.sp
 import android.provider.Settings
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.LinearEasing
@@ -341,13 +342,33 @@ fun goldTitleStyle(base: TextStyle): TextStyle = base.copy(
 
 /** Título de tela: Cinzel em ouro com degradê. */
 @Composable
-fun GTitle(text: String, modifier: Modifier = Modifier) {
-    Text(
+fun GTitle(text: String, modifier: Modifier = Modifier, maxLines: Int = 2) {
+    FitText(text, goldTitleStyle(MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold)), modifier, maxLines)
+}
+
+/**
+ * Título que **reduz a fonte até caber** (tela estreita ou fonte grande do sistema) em vez de quebrar no meio da palavra:
+ * no máximo [maxLines] linhas (com 1, nunca quebra), do tamanho do [style] até [MIN_TITLE_SP].
+ */
+@Composable
+fun FitText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, maxLines: Int = 1) {
+    val color = if (style.color != androidx.compose.ui.graphics.Color.Unspecified) style.color else androidx.compose.material3.LocalContentColor.current
+    androidx.compose.foundation.text.BasicText(
         text,
         modifier,
-        style = goldTitleStyle(MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold)),
+        style = style.copy(color = color),
+        maxLines = maxLines,
+        softWrap = maxLines > 1,
+        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+            minFontSize = MIN_TITLE_SP.sp,
+            maxFontSize = if (style.fontSize.isSp) style.fontSize else 28.sp,
+            stepSize = 1.sp,
+        ),
     )
 }
+
+/** Menor fonte de um título que se ajusta à largura. */
+const val MIN_TITLE_SP: Int = 14
 
 /** Faixa de destaque (resultado): [color] de fundo com moldura dourada, texto em [onColor]. */
 @Composable
