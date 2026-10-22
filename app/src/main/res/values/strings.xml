@@ -194,6 +194,10 @@
     <string name="action_resign">Desistir</string>
     <string name="resign_title">Desistir do jogo?</string>
     <string name="resign_text">O outro lado será declarado vencedor.</string>
+    <string name="resign_stakes">Aposta de cada jogador: %1$d moedas · total em jogo: %2$d moedas · cada vencedor recebe %3$d moedas.</string>
+    <string name="resign_you_lose">Ao desistir você perde a sua aposta de %1$d moedas e deixa de concorrer ao prêmio.</string>
+    <string name="resign_no_stake">Jogo sem aposta: nenhuma moeda em jogo.</string>
+    <string name="resign_scores">Pontos da mesa</string>
     <string name="resign_confirm">Desistir</string>
     <string name="your_hand">Sua mão (%1$d)</string>
     <string name="cancel">Cancelar</string>

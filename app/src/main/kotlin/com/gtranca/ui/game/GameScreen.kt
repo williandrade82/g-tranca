@@ -1,5 +1,7 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
 import com.gtranca.ui.theme.GMessage
 import com.gtranca.ui.theme.MessageIllustration
 import com.gtranca.ui.theme.MessageTone
@@ -113,9 +115,10 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
                 onDismiss = viewModel::onDismissResign,
                 dismissTag = "resign-cancel",
                 onDismissRequest = viewModel::onDismissResign,
+                content = { ResignSummary(snapshot, state.personas) },
             )
         } else {
-            ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign)
+            ResignDialog(viewModel::onConfirmResign, viewModel::onDismissResign) { ResignSummary(snapshot, state.personas) }
         }
     }
     multiplayer?.overlay?.invoke()
@@ -146,7 +149,7 @@ private fun FinalTableReview(state: GameUiState, events: TableEvents, onContinue
 
 /** §13.1 confirmação da desistência; cancelar volta exatamente ao estado anterior. */
 @Composable
-fun ResignDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+fun ResignDialog(onConfirm: () -> Unit, onDismiss: () -> Unit, content: (@Composable () -> Unit)? = null) {
     GMessage(
         modifier = Modifier.testTag("resign-dialog"),
         title = stringResource(R.string.resign_title),
@@ -160,7 +163,60 @@ fun ResignDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         onDismiss = onDismiss,
         dismissTag = "resign-cancel",
         onDismissRequest = onDismiss,
+        content = content,
     )
+}
+
+/**
+ * §13.1, §14.6 o que está em jogo ao desistir (docs/telas.md 4): a aposta de cada jogador, o total apostado na mesa, quanto o
+ * jogador perde (e que deixa de concorrer ao prêmio) e o placar de cada lado com os nomes de quem está nele. Só dados
+ * públicos já na tela (no multijogador, os recebidos).
+ */
+@Composable
+fun ResignSummary(snapshot: com.gtranca.game.GameSnapshot, personas: List<com.gtranca.game.Persona>) {
+    val stakes = ResignStakes.of(snapshot.config.stake, snapshot.view.mode.seatCount)
+    val view = snapshot.view
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxWidth().testTag("resign-summary"),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+    ) {
+        val style = MaterialTheme.typography.bodyMedium
+        if (stakes == null) {
+            Text(stringResource(R.string.resign_no_stake), style = style, color = com.gtranca.ui.theme.GColors.Champagne, modifier = Modifier.testTag("resign-stakes"))
+        } else {
+            Text(
+                stringResource(R.string.resign_stakes, stakes.stake, stakes.total, stakes.prize),
+                style = style,
+                color = com.gtranca.ui.theme.GColors.Gold,
+                modifier = Modifier.testTag("resign-stakes"),
+            )
+            Text(stringResource(R.string.resign_you_lose, stakes.stake), style = style, color = com.gtranca.ui.theme.GColors.Ruby)
+        }
+        Text(stringResource(R.string.resign_scores), style = MaterialTheme.typography.titleSmall, color = com.gtranca.ui.theme.GColors.Champagne)
+        val you = stringResource(R.string.side_you)
+        view.mode.sides.sortedBy { it != view.side }.forEach { side ->
+            val names = view.mode.seats.filter { view.mode.sideOf(it) == side }.joinToString(", ") { seat ->
+                if (seat == snapshot.viewerSeat) you else personas.getOrNull(seat.index)?.shortName.orEmpty()
+            }
+            Text(
+                "${shortSideName(view.mode, side, view.side)} ($names): ${plainPoints(snapshot.totals.getOrElse(side.index) { 0 })}",
+                style = style,
+                color = com.gtranca.ui.theme.GColors.White,
+                modifier = Modifier.testTag("resign-score-${side.index}"),
+            )
+        }
+    }
+}
+
+/**
+ * §14.6 apostas em jogo numa mesa em que todos apostam [stake]: o [total] apostado e o [prize] que cada vencedor recebe
+ * (a própria aposta mais a parte das perdidas: 2 × aposta, no individual e em duplas). `null` sem aposta.
+ */
+data class ResignStakes(val stake: Int, val total: Int, val prize: Int) {
+    companion object {
+        fun of(stake: Int, seatCount: Int): ResignStakes? =
+            if (stake <= 0) null else ResignStakes(stake, stake * seatCount, stake * 2)
+    }
 }
 
 /**
