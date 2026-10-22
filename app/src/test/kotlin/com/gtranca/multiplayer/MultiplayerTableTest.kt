@@ -231,6 +231,11 @@ class MultiplayerTableTest {
         hostDriver.state.value.stage shouldBe Stage.GAME_OVER
         guestDriver.state.value.stage shouldBe Stage.GAME_OVER
         guestDriver.state.value.winner shouldBe hostDriver.state.value.winner
+        // "Ver a mesa" no fim (convidado): a mesa final tem a última vez de cada assento, como no anfitrião (antes vinha
+        // sem nenhuma lista e a pílula do assento fechava o app ao indexá-la).
+        guestDriver.state.value.turnEvents.size shouldBe 4
+        guestDriver.state.value.turnRedThrees.size shouldBe 4
+        guestDriver.state.value.turnEvents.any { it.isNotEmpty() } shouldBe true
         // §16.13 cada um recebe o resultado uma vez; assentos 0 e 2 são parceiros: o mesmo resultado.
         t.hostCoins.settled shouldHaveSize 1
         t.guestCoins.settled shouldHaveSize 1

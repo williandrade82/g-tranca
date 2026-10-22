@@ -642,6 +642,7 @@ class MultiplayerHost(
     /** §16.11 pacote de fim da partida para o convidado do [seat]: só o que é visível a ele (§16.4). */
     private fun roundOver(seat: Seat, event: GameEvent.RoundScored): RoundOver? {
         val view = controller.roundEndViewOf(seat, event.roundNumber) ?: return null
+        val last = controller.stateOf(seat).value
         val history = controller.currentMatch.history.takeWhile { it.number <= event.roundNumber }
         return RoundOver(
             roundNumber = event.roundNumber,
@@ -655,8 +656,9 @@ class MultiplayerHost(
                 totals = event.totals,
                 winner = event.gameWinner,
                 history = history,
-                turnEvents = emptyList(),
-                turnRedThrees = emptyList(),
+                // A última vez de cada assento (a mesa final, revista em "Ver a mesa", mostra a última jogada nas pílulas).
+                turnEvents = last.turnEvents,
+                turnRedThrees = last.turnRedThrees,
                 thinkingSeat = null,
                 legal = emptyList(),
                 requestId = 0,

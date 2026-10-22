@@ -233,7 +233,8 @@ fun SeatView.toSnapshot(rules: TableRules, answered: Long): GameSnapshot = GameS
     winner = winner,
     humanLegal = if (requestId != 0L && requestId == answered) emptyList() else legal,
     thinkingSeat = thinkingSeat,
-    turnEvents = turnEvents,
+    // Uma lista por assento sempre (a tela indexa por assento): uma vista sem elas não pode fechar o app.
+    turnEvents = List(mode.seatCount) { turnEvents.getOrNull(it).orEmpty() },
     humanRequestId = requestId,
-    turnRedThrees = turnRedThrees,
+    turnRedThrees = List(mode.seatCount) { turnRedThrees.getOrNull(it).orEmpty() },
 )
