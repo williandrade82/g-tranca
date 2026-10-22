@@ -91,6 +91,18 @@ class ProfileViewModelTest {
     }
 
     @Test
+    fun `§14_1 salvar sem nome grava Sem nome`() = runTest(dispatcher) {
+        val settings = FakeSettings()
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.onName("   ")
+        val returned = vm.onSave("Sem nome")
+        advanceUntilIdle()
+        returned.name shouldBe "Sem nome"
+        PlayerProfile.decode(settings.state.value.profileId) shouldBe returned
+    }
+
+    @Test
     fun `§14_1 salvar grava o perfil sem espacos nas pontas`() = runTest(dispatcher) {
         val settings = FakeSettings()
         val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))

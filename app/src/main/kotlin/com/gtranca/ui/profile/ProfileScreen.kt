@@ -196,9 +196,10 @@ fun ProfileScreen(
             GButton(onRules, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("profile-rules"), kind = GButtonKind.Secondary) {
                 Text(stringResource(R.string.profile_my_rules), style = MaterialTheme.typography.titleMedium)
             }
+            val unnamed = stringResource(R.string.profile_unnamed)
             GButton(
                 onClick = {
-                    viewModel.onSave()
+                    viewModel.onSave(unnamed)
                     onDone()
                 },
                 enabled = state.loaded,

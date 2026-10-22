@@ -136,6 +136,7 @@
     <string name="sound_toggle_on">Som ligado. Toque para desligar</string>
     <string name="sound_toggle_off">Som desligado. Toque para ligar</string>
     <string name="profile_sound">Sons do jogo</string>
+    <string name="profile_unnamed">Sem nome</string>
     <string name="profile_sound_hint">Cartas, canastra, vitória e derrota</string>
     <string name="speed_toggle_normal">Velocidade normal. Toque para deixar as animações 30% mais lentas</string>
     <string name="speed_toggle_slow">Animações 30% mais lentas. Toque para voltar à velocidade normal</string>

@@ -132,10 +132,15 @@ class ProfileViewModel(
 
     fun onPhotoErrorShown() = _uiState.update { it.copy(photoError = false) }
 
-    /** Grava o rascunho (nome sem espaços nas pontas) pela fila durável e devolve o perfil gravado. */
-    fun onSave(): PlayerProfile {
+    /**
+     * Grava o rascunho (nome sem espaços nas pontas) pela fila durável e devolve o perfil gravado. Nome em branco vira
+     * [unnamed] ("Sem nome", vindo de strings.xml pela tela).
+     */
+    fun onSave(unnamed: String = ""): PlayerProfile {
         val state = _uiState.value
-        val profile = state.profile.let { it.copy(name = it.name.trim(), hasPhoto = state.photo != PhotoState.NONE) }
+        val profile = state.profile.let {
+            it.copy(name = it.name.trim().ifBlank { unnamed }, hasPhoto = state.photo != PhotoState.NONE)
+        }
         val encoded = profile.encode()
         val store = photos
         // A foto vai para o lugar definitivo antes de o perfil apontar para ela.
