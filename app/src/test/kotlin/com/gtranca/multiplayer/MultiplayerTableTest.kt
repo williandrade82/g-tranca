@@ -450,6 +450,18 @@ class MultiplayerTableTest {
     }
 
     @Test
+    fun `§16_2 sala - avatar de cada assento com a foto, a propria do perfil local`() {
+        val me = com.gtranca.net.PlayerInfo(1, "Beto", 1, Seat(1))
+        val other = com.gtranca.net.PlayerInfo(0, "Ana", 0, Seat(0), isHost = true)
+        val jpeg = byteArrayOf(1, 2)
+        val self = Persona("Você", photo = "/perfil.jpg")
+        com.gtranca.ui.multiplayer.seatAvatar(me, 1, self, mapOf(0 to jpeg)).let { it.photo shouldBe "/perfil.jpg"; it.firstName shouldBe "Beto" }
+        com.gtranca.ui.multiplayer.seatAvatar(other, 1, self, mapOf(0 to jpeg)).photoBytes!!.toList() shouldBe jpeg.toList()
+        // Opção desligada (sem fotos recebidas): a inicial.
+        com.gtranca.ui.multiplayer.seatAvatar(other, 1, self, emptyMap()).photoBytes shouldBe null
+    }
+
+    @Test
     fun `§16_2 girar a mesa cai sempre num assento vago`() {
         val vacant = listOf(Seat(1), Seat(3))
         com.gtranca.ui.multiplayer.nextVacant(GameMode.DUPLAS, Seat(2), vacant, +1) shouldBe Seat(3)

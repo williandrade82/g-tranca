@@ -100,6 +100,8 @@ fun SeatPickerScreen(
     onLeave: () -> Unit,
     /** §16.2 "Ver fotos nas mesas compartilhadas" (Perfil). */
     showPhotos: Boolean = true,
+    /** §14.1 avatar do próprio jogador (foto do perfil local ou medalhão). */
+    self: com.gtranca.game.Persona? = null,
 ) {
     val role by table.role.collectAsStateWithLifecycle()
     val photos by table.photos.collectAsStateWithLifecycle()
@@ -163,7 +165,7 @@ fun SeatPickerScreen(
                         RotateButton(false, enabled = !isHost && vacant.isNotEmpty(), Modifier.testTag("seat-picker-rotate-left")) {
                             nextVacant(r.mode, mySeat, vacant, -1)?.let { scope.launch { table.chooseSeat(it) } }
                         }
-                        RoundTable(r.mode, mySeat, roster, myId, if (showPhotos) photos else emptyMap(), Modifier.weight(1f).widthIn(max = 320.dp).testTag("seat-picker-table"))
+                        RoundTable(r.mode, mySeat, roster, myId, if (showPhotos) photos else emptyMap(), self, Modifier.weight(1f).widthIn(max = 320.dp).testTag("seat-picker-table"))
                         RotateButton(true, enabled = !isHost && vacant.isNotEmpty(), Modifier.testTag("seat-picker-rotate-right")) {
                             nextVacant(r.mode, mySeat, vacant, +1)?.let { scope.launch { table.chooseSeat(it) } }
                         }
@@ -280,6 +282,14 @@ fun MpEndMessage(reason: MpEnd, onClose: () -> Unit) {
     )
 }
 
+/**
+ * §16.2 avatar do [player] na sala: o próprio jogador com o perfil local ([self], com a foto dele); os outros com a foto
+ * recebida da mesa ([photos], já vazio se o jogador não quer vê-las) ou o medalhão com a inicial.
+ */
+internal fun seatAvatar(player: PlayerInfo, myId: Int, self: com.gtranca.game.Persona?, photos: Map<Int, ByteArray>): com.gtranca.game.Persona =
+    if (player.id == myId && self != null) self.copy(firstName = player.name, lastName = "")
+    else com.gtranca.game.Persona(player.name, color = player.id.mod(com.gtranca.game.Persona.COLORS), photoBytes = photos[player.id])
+
 /** §16.2 próximo assento vago girando para a [direction] (+1 direita, -1 esquerda); nunca o de outro jogador. */
 internal fun nextVacant(mode: GameMode, from: Seat, vacant: List<Seat>, direction: Int): Seat? =
     (1 until mode.seatCount).map { Seat(Math.floorMod(from.index + direction * it, mode.seatCount)) }.firstOrNull { it in vacant }
@@ -302,7 +312,15 @@ private fun RotateButton(clockwise: Boolean, enabled: Boolean, modifier: Modifie
  * parceiro em cima e os adversários nas laterais, cada um com o nome ou "VAGO".
  */
 @Composable
-private fun RoundTable(mode: GameMode, mySeat: Seat, roster: List<PlayerInfo>, myId: Int, photos: Map<Int, ByteArray>, modifier: Modifier) {
+private fun RoundTable(
+    mode: GameMode,
+    mySeat: Seat,
+    roster: List<PlayerInfo>,
+    myId: Int,
+    photos: Map<Int, ByteArray>,
+    self: com.gtranca.game.Persona?,
+    modifier: Modifier,
+) {
     Box(modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize().padding(36.dp)) {
             val radius = size.minDimension / 2
@@ -320,14 +338,14 @@ private fun RoundTable(mode: GameMode, mySeat: Seat, roster: List<PlayerInfo>, m
                 SeatRole.RIGHT_OPPONENT -> Alignment.CenterEnd
             }
             val player = roster.firstOrNull { it.seat == seat }
-            SeatSlot(seat, player, mine = role == SeatRole.YOU, mode, Modifier.align(align), player?.takeIf { it.id != myId }?.let { photos[it.id] })
+            SeatSlot(seat, player, mine = role == SeatRole.YOU, mode, Modifier.align(align), player?.let { seatAvatar(it, myId, self, photos) })
         }
     }
 }
 
 /** Um assento: pílula com o nome (ou "VAGO"), a dupla e a marca de posição confirmada; o do jogador com aro azul. */
 @Composable
-private fun SeatSlot(seat: Seat, player: PlayerInfo?, mine: Boolean, mode: GameMode, modifier: Modifier, photo: ByteArray? = null) {
+private fun SeatSlot(seat: Seat, player: PlayerInfo?, mine: Boolean, mode: GameMode, modifier: Modifier, avatar: com.gtranca.game.Persona? = null) {
     val shape = RoundedCornerShape(50)
     val vacant = stringResource(R.string.mp_seat_vacant)
     Column(
@@ -341,9 +359,7 @@ private fun SeatSlot(seat: Seat, player: PlayerInfo?, mine: Boolean, mode: GameM
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // §16.2 a foto do perfil do jogador (recebida da mesa), se houver e se o jogador quer vê-las.
-        if (player != null && photo != null) {
-            com.gtranca.ui.persona.PersonaAvatar(com.gtranca.game.Persona(player.name, photoBytes = photo), 28.dp)
-        }
+        if (avatar != null) com.gtranca.ui.persona.PersonaAvatar(avatar, 40.dp, Modifier.testTag("seat-avatar-${seat.index}"))
         Text(
             (player?.name ?: vacant) + if (player?.confirmed == true) " ✓" else "",
             color = if (player == null) GColors.Steel else GColors.Champagne,

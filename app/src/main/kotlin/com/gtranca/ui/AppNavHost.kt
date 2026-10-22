@@ -308,6 +308,7 @@ fun AppNavHost() {
                     current,
                     balance,
                     showPhotos = showPhotos,
+                    self = rememberProfile(data)?.persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context)),
                     onStarted = {
                         navController.navigate(MultiplayerGameRoute) {
                             popUpTo(HomeRoute) { inclusive = false }
