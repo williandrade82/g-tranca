@@ -135,7 +135,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 5. **Cor do baralho**: três versos de carta (azul, verde, vermelho); a escolhida leva aro dourado.
 6. Painel **Sons do jogo** (chave; toca um som ao ligar).
 6b. Chave **Ver fotos nas mesas compartilhadas** (grava na hora; ligada por padrão): na mesa multijogador, mostra as fotos dos outros jogadores; desligada, eles aparecem com a inicial. A própria foto vai à mesa de qualquer forma (§16.2). Tag `profile-shared-photos`.
-6c. Botão **Rever o tour guiado**: zera o registro dos tours; o de cada tela (3.16) volta a aparecer na próxima vez que ela abrir. Tag `profile-tour-reset`.
+6c. Chave **Tour guiado** (mesmo estilo das chaves de Wi-Fi e fotos; grava na hora; ligada por padrão): ligada, cada tela (3.16) mostra o seu tour sozinha na primeira vez; desligada, o tour nunca aparece sozinho (o ícone "i" das telas continua funcionando). **Ligar** a chave zera o registro dos tours vistos, para eles aparecerem de novo. Tag `profile-tour`.
 6a. Painel **Wi-Fi do jogo** (chave; grava na hora): liga o multijogador por perto (§16). Ao ligar, passa pelo modal *Procurar mesas por perto* (explicação e permissões); recusar deixa a chave desligada. Tag `profile-wifi`.
 7. Painel **Velocidade das animações** (normal ou 30% mais lenta; grava na hora).
 8. Botão **Minhas regras**.
@@ -209,8 +209,8 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 ---
 
 ### 3.16 Tour guiado
-**Objetivo:** apresentar as telas na primeira vez do jogador. Cada tela com tour mostra o seu **uma única vez** (registro por tela, guardado no aparelho); o ícone do tour (letra "i" num círculo, tag `tour-button`) no alto da tela o mostra de novo a qualquer momento, e **Rever o tour guiado** no Perfil (3.6) zera o registro de todas.
-**Formato:** a tela escurece e um **recorte** destaca o elemento real do passo; um **balão** com texto curto (até ~2 linhas), o **indicador de passo** ("2/6") e os botões **Voltar**, **Próximo** (no último, **Concluir**) e **Pular**. O tour **nunca joga nem executa nada**: tocar fora do balão não faz nada; só os botões do balão funcionam. O leitor de tela lê o texto do passo. Tags: `tour-overlay`, `tour-text`, `tour-step`, `tour-next`, `tour-back`, `tour-skip`.
+**Objetivo:** apresentar as telas na primeira vez do jogador. Cada tela com tour mostra o seu **uma única vez** (registro por tela, guardado no aparelho); o ícone do tour (letra "i" num círculo, tag `tour-button`) no alto da tela o mostra de novo a qualquer momento, e a chave **Tour guiado** do Perfil (3.6) liga ou desliga a abertura automática (ligar zera o registro de todas).
+**Formato:** a tela escurece e um **recorte** destaca o elemento real do passo; por cima do véu, um **balão** de fundo marfim com texto azul-marinho (contraste AA, ≥ 4,5:1) e borda dourada, com texto curto (até ~2 linhas), o **indicador de passo** ("2/6") e os botões **Voltar**, **Próximo** (no último, **Concluir**) e **Pular**. O tour **nunca joga nem executa nada**: tocar fora do balão não faz nada; só os botões do balão funcionam. O leitor de tela lê o texto do passo. Tags: `tour-overlay`, `tour-text`, `tour-step`, `tour-next`, `tour-back`, `tour-skip`.
 **Mesas disponíveis (3.2)** — aparece ao abrir a tela pela primeira vez; ícone ao lado do título (junto do Wi-Fi):
 1. Saldo: "Seu saldo de moedas. Cada mesa tem uma aposta; vencendo, você ganha as moedas da mesa."
 2. Primeira mesa: "Cada mesa mostra os robôs, o nível (estrelas), as regras, a aposta e a pontuação-alvo. Toque nela para ver as regras e começar."
