@@ -167,7 +167,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Tags:** `announcement`, `announcement-crown`, `announcement-cast`, `announcement-title`.
 
 ### 3.10 Pontos da partida (`RoundSummaryScreen`)
-**Objetivo:** detalhar a pontuação da partida (§12) por lado: cartas na mesa e na mão (3 vermelhos, canastras, batida, morto, cartas por valor), subtotais, total da partida e acumulado, com o rosto vencedor/perdedor/pensador por lado. Aviso de empate quando for o caso. Botão **Próxima partida** ou **Continuar** (fim do jogo). Sem desistir (decisão do usuário).
+**Objetivo:** detalhar a pontuação da partida (§12) por lado: cartas na mesa e na mão (3 vermelhos, canastras, batida, morto, cartas por valor), subtotais, total da partida e acumulado, com o rosto vencedor/perdedor/pensador por lado. **Colunas:** item | e, para cada lado, **Qtd** e **Pontos** (a quantidade de cartas numa coluna própria, sem parênteses; linhas sem quantidade — batida, morto não pego, subtotais e totais — deixam a de quantidade vazia). No título de cada lado, o avatar e, abaixo, o **ícone de 3 cartas** (na cor do baralho do perfil para o seu lado, cinza-claro para o adversário) junto do nome do lado ("Nós"/"Eles" ou o nome no individual). Números com largura fixa; cabe em 360 dp com fonte 1,3×. Tags: `count-<item>-<lado>`. Aviso de empate quando for o caso. Botão **Próxima partida** ou **Continuar** (fim do jogo). Sem desistir (decisão do usuário).
 **Tags:** `round-summary`, `next-round`, `show-final`, `tie-notice`.
 
 ### 3.11 Fim de jogo / resultado final (`GameOverScreen`)
