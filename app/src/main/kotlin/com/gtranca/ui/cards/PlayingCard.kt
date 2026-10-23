@@ -57,7 +57,7 @@ enum class CardSize(val width: Dp, val height: Dp, val cornerFont: Dp, val cente
     TINY(16.dp, 24.dp, 8.dp, 10.dp, false),
 
     /** Conjuntos na mesa e lixo. */
-    SMALL(30.dp, 44.dp, 11.dp, 15.dp, true),
+    SMALL(34.dp, 50.dp, 12.dp, 17.dp, true),
 
     /** Mão do jogador (largura mínima de 48dp para o toque). */
     MEDIUM(48.dp, 70.dp, 14.dp, 26.dp, true),

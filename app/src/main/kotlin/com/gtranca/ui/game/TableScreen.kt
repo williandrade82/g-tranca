@@ -362,14 +362,14 @@ fun TableScreen(
                     val available = maxHeight
                     Column(Modifier.fillMaxSize().verticalScroll(tableScroll).testTag("table-scroll")) {
                     Box(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).tourTarget("seats")
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).tourTarget("seats")
                             .onGloballyPositioned { seatsHeight = it.size.height },
                     ) { SeatsPanel(state) { detailSeat = it } }
                     val feltMin = (available - with(LocalDensity.current) { seatsHeight.toDp() } - 4.dp).coerceAtLeast(0.dp)
                     Column(
                         Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
-                            .padding(horizontal = 12.dp, vertical = 18.dp).testTag("table-felt"),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                            .padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-felt"),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         SideArea(
                             side = view.mode.sides.first { it != view.side }.index,
@@ -568,7 +568,7 @@ private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
     val mode = snapshot.view.mode
     val others = mode.seatsInPlayOrder(snapshot.viewerSeat).drop(1)
     if (mode != GameMode.DUPLAS) {
-        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth(), onSeatClick, minHeight = 72.dp) }
+        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth(), onSeatClick, minHeight = 64.dp) }
         return
     }
     val byRole = others.associateBy { SeatRole.of(mode, it, snapshot.viewerSeat) }
@@ -593,7 +593,7 @@ private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
 }
 
 @Composable
-private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatClick: (Int) -> Unit, minHeight: Dp = 96.dp) {
+private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatClick: (Int) -> Unit, minHeight: Dp = 84.dp) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val role = SeatRole.of(view.mode, seat, snapshot.viewerSeat)
@@ -614,7 +614,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             .clickable(enabled = events.isNotEmpty() || snapshot.turnRedThrees.getOrNull(seat.index).orEmpty().isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
             .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
-            .padding(horizontal = 8.dp, vertical = Spacing.sm)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -721,7 +721,7 @@ private fun SideArea(
             .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
             .border(1.dp, GColors.Gold.copy(alpha = 0.3f), RoundedCornerShape(Corner.sm))
             .anchor(AnimAnchor.SideArea(side))
-            .padding(Spacing.sm)
+            .padding(horizontal = Spacing.sm, vertical = 4.dp)
             .testTag("side-$sideTag"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -1059,7 +1059,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = Spacing.sm)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
             .testTag("action-bar").tourTarget("action-bar"),
     ) {
         // Uma linha só: o texto da vez diminui até caber em telas estreitas ou com fonte grande.
