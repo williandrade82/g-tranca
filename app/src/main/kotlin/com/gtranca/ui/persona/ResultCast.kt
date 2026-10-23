@@ -43,12 +43,12 @@ private const val LOSER_PULSE_MILLIS = 2_800
  * degradê vermelho (escuro embaixo, transparente em cima) que esmaece e reaparece devagar. Sem animação ([animate] falso), tudo fica parado.
  */
 @Composable
-fun ResultCast(winners: List<Persona>, losers: List<Persona>, animate: Boolean, modifier: Modifier = Modifier) {
+fun ResultCast(winners: List<Persona>, losers: List<Persona>, animate: Boolean, modifier: Modifier = Modifier, loserScale: Float = 1f) {
     if (winners.isEmpty() && losers.isEmpty()) return
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (winners.isNotEmpty()) CastRow(winners, Pose.VENCEDOR, animate, Modifier.testTag("cast-winners"))
         if (losers.isNotEmpty()) {
-            LoserBackground(animate, Modifier.testTag("cast-losers")) { CastRow(losers, Pose.PERDEDOR, animate) }
+            LoserBackground(animate, Modifier.testTag("cast-losers")) { CastRow(losers, Pose.PERDEDOR, animate, scale = loserScale) }
         }
     }
 }
@@ -80,8 +80,8 @@ private fun LoserBackground(animate: Boolean, modifier: Modifier, content: @Comp
 }
 
 @Composable
-private fun CastRow(personas: List<Persona>, pose: Pose, animate: Boolean, modifier: Modifier = Modifier) {
-    val maxWidth = if (personas.size == 1) 220.dp else 150.dp
+private fun CastRow(personas: List<Persona>, pose: Pose, animate: Boolean, modifier: Modifier = Modifier, scale: Float = 1f) {
+    val maxWidth = (if (personas.size == 1) 220.dp else 150.dp) * scale
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.Bottom) {
         personas.forEach { persona ->
             val character = persona.character

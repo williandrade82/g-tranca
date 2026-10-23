@@ -1,5 +1,8 @@
 package com.gtranca.ui.game
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -81,50 +84,48 @@ fun GameOverScreen(
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 OutcomeRibbon(stringResource(if (won) R.string.outcome_victory else R.string.outcome_defeat), won, animate, Modifier.testTag("outcome-ribbon"))
             }
-            if (won) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { VictoryCrown(96.dp, animate, Modifier.testTag("game-over-crown")) }
             // §14.1 quem venceu, com o avatar em destaque.
             snapshot.winner?.let { winner ->
                 val winners = personasOfSide(view.mode, winner, personas)
                 if (winners.isNotEmpty()) {
                     // §14.5 personagens em retrato: vencedores em festa, os do outro lado de cabeça baixa.
                     val losers = personasOfSide(view.mode, view.mode.sides.first { it != winner }, personas)
-                    ResultCast(winners, losers, animate, Modifier.testTag("game-over-cast"))
-                    // §14.5 quem venceu pelo nome completo, com a posição em duplas.
-                    Text(
-                        callNamesOfSide(view.mode, winner, snapshot.viewerSeat, personas).joinToString(" · "),
-                        Modifier.fillMaxWidth().testTag("winner-names"),
-                        color = GColors.Champagne,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                    )
+                    // Perdedores com metade do tamanho (docs/telas.md 3.11).
+                    ResultCast(winners, losers, animate, Modifier.testTag("game-over-cast"), loserScale = 0.5f)
                 }
             }
-            val opponentName = personasOfSide(view.mode, view.mode.sides.first { it != view.side }, personas).firstOrNull()
-            GBanner(
-                if (view.mode == GameMode.INDIVIDUAL && !won && !snapshot.resigned && opponentName != null) {
-                    stringResource(R.string.game_over_named_won, opponentName.fullName)
-                } else {
-                    stringResource(
-                        if (snapshot.resigned) resignedRes(view.mode) else gameResultRes(view.mode, won = snapshot.winner == view.side),
-                    )
-                },
-                if (won) GColors.RoyalEnd else GColors.Bordeaux,
-                GColors.Ivory,
-            )
             // §14.6 quanto o jogador ganhou ou perdeu em moedas (recebido menos a aposta)
             val stakeNet: Int? = when {
                 snapshot.config.stake <= 0 -> null
                 multiplayer -> multiplayerNet ?: if (snapshot.resigned) -snapshot.config.stake else null
                 else -> Coins.humanPayout(view.mode.seatCount, snapshot.config.stake, !snapshot.resigned && snapshot.winner == view.side) - snapshot.config.stake
             }
+            // O saco de moedas com o resultado: "+N" na vitória, "−N" (a aposta perdida) na derrota; sem aposta, só o texto.
             if (stakeNet != null) {
                 val net = stakeNet
+                val description = stringResource(if (net >= 0) R.string.coins_result_gain else R.string.coins_result_loss, kotlin.math.abs(net))
+                Row(
+                    Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = description }.testTag("coins-result"),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.foundation.Image(
+                        androidx.compose.ui.res.painterResource(R.drawable.coin_bag),
+                        null,
+                        Modifier.size(96.dp),
+                    )
+                    Text(
+                        if (net >= 0) "+$net" else "\u2212${-net}",
+                        color = if (net >= 0) GColors.Gold else GColors.Ruby,
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            } else if (snapshot.config.stake <= 0) {
                 Text(
-                    stringResource(if (net >= 0) R.string.coins_result_gain else R.string.coins_result_loss, kotlin.math.abs(net)),
+                    stringResource(R.string.resign_no_stake),
                     Modifier.fillMaxWidth().testTag("coins-result"),
-                    color = if (net >= 0) GColors.Gold else GColors.Ruby,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    color = GColors.Steel,
                     textAlign = TextAlign.Center,
                 )
             }

@@ -168,7 +168,8 @@ class EndScreensTest {
     fun fimDeJogoComVitoriaMostraTrofeuEConfete() {
         rule.mainClock.autoAdvance = false
         rule.setContent { GTrancaTheme { GameOverScreen(finished(Side(0)), {}) } }
-        rule.onNodeWithTag("game-over-crown").assertExists()
+        rule.onNodeWithTag("game-over-crown").assertDoesNotExist()
+        rule.onNodeWithTag("coins-result", useUnmergedTree = true).assertExists()
         rule.onNodeWithTag("end-celebration").assertExists()
     }
 
