@@ -10,6 +10,9 @@ Especificação das telas e dos modais do app, para pedir mudanças sem ambiguid
 
 ---
 
+## 0. Saldo no topo (todas as telas)
+Em todas as telas, um indicador pequeno no **centro do alto** mostra o **saco de moedas** e o **saldo** do jogador (tag `coin-balance`; leitor de tela: "Seu saldo: N moedas"), atualizado na hora (aposta debitada, prêmio recebido, ganho diário). Fica numa faixa própria acima do conteúdo, para não sobrepor títulos e botões; na **mesa de jogo** ele não ganha faixa: fica na linha do cabeçalho, entre o placar e os ícones. As linhas "Seu saldo: N moedas" de Início (junto do resgate diário), Mesas disponíveis e Regras da mesa (junto da aposta) **continuam**, porque dão o contexto da tela (resgate e aposta).
+
 ## 1. Glossário de componentes
 
 Use estes nomes nos pedidos.
@@ -177,8 +180,8 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 
 ### 3.11 Fim de jogo / resultado final (`GameOverScreen`)
 **Objetivo:** fechar o jogo (§13).
-**De cima para baixo:** título, **faixa** Vitória/Derrota, **coroa** (só na vitória), os robôs (vencedores e perdedores), nomes de quem venceu, resultado em **moedas** (§14.6), **tabela** partida a partida com o total, e **Voltar ao início**.
-**Tags:** `game-over`, `outcome-ribbon`, `game-over-crown`, `game-over-cast`, `winner-names`, `coins-result`, `game-over-table`, `back-home`.
+**De cima para baixo:** título, **faixa** Vitória/Derrota, os jogadores (vencedores no tamanho normal; **perdedores com metade do tamanho**), o **saco de moedas** com o resultado em moedas (§14.6) — na vitória **"+N"** (o que ganhou), na derrota **"−N"** (a aposta perdida) em vermelho; sem aposta, o texto "Jogo sem aposta" sem o saco —, a **tabela** partida a partida com o total, e **Voltar ao início**. Sem coroa, sem a linha dos nomes dos vencedores, sem "Sua dupla venceu!" e sem a frase de moedas (o leitor de tela lê "Você ganhou N moedas" / "Você perdeu N moedas").
+**Tags:** `game-over`, `outcome-ribbon`, `game-over-cast`, `coins-result`, `game-over-table`, `back-home`.
 
 ### 3.12 Revisão da mesa final
 A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações dá lugar a **Continuar**, que volta ao anúncio. Tag `review-continue`.
