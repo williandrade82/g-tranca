@@ -147,6 +147,9 @@ class PersistenceTest {
         settings.settings.first().tourAuto shouldBe true
         settings.setTourAuto(false)
         settings.settings.first().tourAuto shouldBe false
+        settings.settings.first().createTable shouldBe null
+        settings.setCreateTable("v1")
+        settings.settings.first().createTable shouldBe "v1"
     }
 
     @Test

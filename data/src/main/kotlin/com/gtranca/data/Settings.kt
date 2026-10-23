@@ -39,6 +39,8 @@ data class Settings(
     val toursSeen: Set<String> = emptySet(),
     /** Tour guiado automático (Perfil): ligado, cada tela mostra o seu tour sozinha na primeira vez. */
     val tourAuto: Boolean = true,
+    /** Última configuração de "Criar mesa" (texto da interface), ou `null` se ainda não criou nenhuma. */
+    val createTable: String? = null,
 )
 
 interface SettingsRepository {
@@ -67,6 +69,8 @@ interface SettingsRepository {
     suspend fun resetTours() = Unit
 
     suspend fun setTourAuto(on: Boolean) = Unit
+
+    suspend fun setCreateTable(text: String) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -87,6 +91,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             showSharedPhotos = prefs[SHOW_SHARED_PHOTOS] ?: true,
             toursSeen = prefs[TOURS_SEEN] ?: emptySet(),
             tourAuto = prefs[TOUR_AUTO] ?: true,
+            createTable = prefs[CREATE_TABLE],
         )
     }
 
@@ -112,6 +117,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
 
     override suspend fun markTourSeen(id: String) {
         store.edit { it[TOURS_SEEN] = (it[TOURS_SEEN] ?: emptySet()) + id }
+    }
+
+    override suspend fun setCreateTable(text: String) {
+        store.edit { it[CREATE_TABLE] = text }
     }
 
     override suspend fun setTourAuto(on: Boolean) {
@@ -143,6 +152,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         val WIFI_ON = booleanPreferencesKey("wifi_on")
         val SHOW_SHARED_PHOTOS = booleanPreferencesKey("show_shared_photos")
         val TOUR_AUTO = booleanPreferencesKey("tour_auto")
+        val CREATE_TABLE = stringPreferencesKey("create_table")
         val TOURS_SEEN = androidx.datastore.preferences.core.stringSetPreferencesKey("tours_seen")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")

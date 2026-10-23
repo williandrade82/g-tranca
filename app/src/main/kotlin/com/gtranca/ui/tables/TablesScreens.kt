@@ -603,6 +603,15 @@ fun CreateTableScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var asking by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    // Tipo Multijogador recarregado da última mesa: confere as permissões de novo (sem elas, volta a Contra robôs).
+    var checkedRestored by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    val restoredState = viewModel.uiState.collectAsStateWithLifecycle().value
+    androidx.compose.runtime.LaunchedEffect(restoredState.loaded, restoredState.multiplayer) {
+        if (restoredState.loaded && !checkedRestored) {
+            checkedRestored = true
+            if (restoredState.multiplayer && accessGate != null) asking = true
+        }
+    }
     if (asking && accessGate != null) {
         accessGate({ asking = false; viewModel.onTypeChange(true) }, { asking = false; viewModel.onTypeChange(false) })
     }
