@@ -24,6 +24,7 @@ object SoundSynth {
         SoundEffect.CANASTA -> canasta()
         SoundEffect.WIN -> win()
         SoundEffect.LOSE -> lose()
+        SoundEffect.TURN -> turn()
     }
 
     /** Duração do efeito, em milissegundos. */
@@ -89,6 +90,11 @@ object SoundSynth {
 
     private fun chime(): ShortArray = buffer(480) { _, t ->
         0.5 * envelope(t, 0.003, 7.0) * (tone(880.0, t) + 0.5 * tone(1320.0, t) + 0.25 * tone(1760.0, t)) / 1.75 * 1.6
+    }
+
+    /** Vez do jogador: dois tons suaves e curtos (~250 ms), subindo. */
+    private fun turn(): ShortArray = buffer(260) { _, t ->
+        note(659.25, 0.0, t, 14.0, 0.35) + note(987.77, 0.09, t, 14.0, 0.3)
     }
 
     private fun canasta(): ShortArray = buffer(620) { _, t ->

@@ -177,6 +177,16 @@ class MultiplayerTableTest {
             ui.isHumanTurn shouldBe true
             ui.turnHeld shouldBe false
             ui.canDraw shouldBe true
+            // Esconder cartas (só no multijogador): viradas, sem seleção, aviso ao tocar; Comprar continua valendo.
+            ui.canHideHand shouldBe true
+            vm.onToggleHideHand()
+            advanceUntilIdle()
+            vm.uiState.value.handHidden shouldBe true
+            vm.onCardClick(vm.uiState.value.hand.first())
+            advanceUntilIdle()
+            vm.uiState.value.selected shouldBe emptyList()
+            vm.uiState.value.message shouldBe com.gtranca.ui.game.UiMessage.ShowCardsToPlay
+            vm.uiState.value.canDraw shouldBe true
             vm.onDraw()
             advanceUntilIdle()
             // O anfitrião aplicou a compra: a vista volta com a fase de jogar.

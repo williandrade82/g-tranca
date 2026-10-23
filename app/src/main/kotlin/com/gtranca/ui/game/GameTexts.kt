@@ -60,6 +60,7 @@ fun RuleError?.messageRes(): Int = when (this) {
 fun UiMessage.messageRes(): Int = when (this) {
     is UiMessage.Rejected -> error.messageRes()
     UiMessage.SelectOneCardToDiscard -> R.string.msg_select_one_to_discard
+    UiMessage.ShowCardsToPlay -> R.string.msg_show_cards_to_play
 }
 
 /** Nome do lado do ponto de vista do humano. */

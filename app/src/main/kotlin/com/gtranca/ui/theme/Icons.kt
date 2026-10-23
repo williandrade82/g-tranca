@@ -136,3 +136,22 @@ fun GearIcon(color: Color, modifier: Modifier = Modifier, size: Dp = 24.dp) {
         drawCircle(color, w * 0.24f, center, style = Stroke(w * 0.18f))
     }
 }
+
+/** Ícone de olho (mostrar) ou olho riscado (escondido), desenhado no código: "Esconder cartas". */
+@Composable
+fun EyeIcon(color: Color, crossed: Boolean, modifier: Modifier = Modifier, size: Dp = 24.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = w * 0.09f
+        val eye = Path().apply {
+            moveTo(w * 0.06f, h * 0.5f)
+            quadraticTo(w * 0.5f, h * 0.05f, w * 0.94f, h * 0.5f)
+            quadraticTo(w * 0.5f, h * 0.95f, w * 0.06f, h * 0.5f)
+            close()
+        }
+        drawPath(eye, color, style = Stroke(stroke))
+        drawCircle(color, w * 0.14f, Offset(w / 2, h / 2))
+        if (crossed) drawLine(color, Offset(w * 0.12f, h * 0.88f), Offset(w * 0.88f, h * 0.12f), stroke, cap = StrokeCap.Round)
+    }
+}

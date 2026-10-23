@@ -73,6 +73,10 @@
     <string name="match_info_no_go_out">sem batida</string>
     <string name="match_info_close">Fechar</string>
     <string name="match_info_open">Informações do jogo</string>
+    <string name="hand_hide">Esconder cartas</string>
+    <string name="hand_show">Mostrar cartas</string>
+    <string name="card_hidden">Carta escondida</string>
+    <string name="msg_show_cards_to_play">Mostre suas cartas para jogar</string>
     <string name="welcome_title">Boas-vindas ao TRANCA-BOT!</string>
     <string name="welcome_text">Antes de jogar, escolha como quer ser chamado na mesa. Toque no botão abaixo e preencha o seu nome no Perfil.</string>
     <string name="welcome_go_profile">Ir para o Perfil</string>

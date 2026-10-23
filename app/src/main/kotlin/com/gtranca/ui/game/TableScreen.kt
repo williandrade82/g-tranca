@@ -185,6 +185,9 @@ interface TableEvents {
     /** §3.5 o último voo da distribuição pousou: o aviso e a troca de 3 vermelho podem começar. */
     fun onDealAnimationFinished() = Unit
     fun onCardClick(card: Card)
+
+    /** Mesa multijogador: esconder ou mostrar as cartas da mão. */
+    fun onToggleHideHand() = Unit
     fun onClearSelection()
     fun onSortChange(sort: HandSort)
     fun onSpecialColumnToggle()
@@ -234,6 +237,15 @@ fun TableScreen(
     hostSeat: Seat? = null,
 ) {
     var showMatchInfo by rememberSaveable { mutableStateOf(false) }
+    // Som da vez: uma vez quando a vez passa a ser deste jogador (nunca na revisão da mesa final).
+    val turnSound = LocalSound.current
+    val turnGate = remember { com.gtranca.ui.sound.TurnSoundGate() }
+    val turnNumber = state.snapshot.view.turnsBegun
+    LaunchedEffect(state.isHumanTurn, state.snapshot.roundNumber, turnNumber) {
+        if (onReviewContinue == null && turnGate.shouldPlay(state.isHumanTurn, state.snapshot.roundNumber, turnNumber)) {
+            turnSound.play(com.gtranca.ui.sound.SoundEffect.TURN)
+        }
+    }
     if (showMatchInfo) MatchInfoDialog(state.snapshot, state.personas, hostSeat) { showMatchInfo = false }
     val snapshot = state.snapshot
     val view = snapshot.view
@@ -1132,6 +1144,7 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f),
             )
+            if (state.canHideHand) HideHandButton(state.handHidden, events::onToggleHideHand)
             SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
         // 7 cartas de 48dp por linha em 360dp; 2 linhas à vista (sobra mesa para os jogos), o resto rola. A margem
@@ -1193,6 +1206,18 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
                 CardEmphasis.DIMMED -> notWithSelectionText
                 CardEmphasis.NONE -> ""
             }
+            if (state.handHidden) {
+                // Mão escondida: só o verso (nada revelado); tocar avisa para mostrar as cartas.
+                val hiddenText = stringResource(R.string.card_hidden)
+                Box(
+                    Modifier
+                        .anchor(AnimAnchor.HandCard(card))
+                        .clickable(onClickLabel = hiddenText) { events.onCardClick(card) }
+                        .semantics { contentDescription = hiddenText }
+                        .testTag("hand-card-hidden"),
+                ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
+                return@forEach
+            }
             PlayingCard(
                 card,
                 Modifier
@@ -1215,6 +1240,20 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
  * "Ordem:" e três botões de ícone: Valor e Naipe (um dos dois sempre escolhido) e, à parte, a chave de separar os
  * 3 pretos e coringas numa coluna à esquerda (ligada: o resto segue o critério escolhido; desligada: não interfere).
  */
+/** Mesa multijogador: olho (mostrando) ou olho riscado (escondida); alvo de 48 dp. */
+@Composable
+private fun HideHandButton(hidden: Boolean, onToggle: () -> Unit) {
+    val description = stringResource(if (hidden) R.string.hand_show else R.string.hand_hide)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clickable(onClickLabel = description, role = Role.Switch, onClick = onToggle)
+            .semantics { contentDescription = description }
+            .testTag("hand-hide"),
+        contentAlignment = Alignment.Center,
+    ) { com.gtranca.ui.theme.EyeIcon(OnTable, crossed = hidden, size = 24.dp) }
+}
+
 @Composable
 private fun SortSelector(current: HandSort, separate: Boolean, onChange: (HandSort) -> Unit, onToggleSpecial: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {

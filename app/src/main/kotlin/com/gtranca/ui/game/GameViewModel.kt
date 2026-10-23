@@ -67,6 +67,9 @@ sealed interface UiMessage {
 
     /** Para descartar, selecione exatamente uma carta. */
     data object SelectOneCardToDiscard : UiMessage
+
+    /** Mesa multijogador com as cartas escondidas: mostre-as para selecionar. */
+    data object ShowCardsToPlay : UiMessage
 }
 
 /**
@@ -132,6 +135,10 @@ data class GameUiState(
     val turnHeld: Boolean = false,
     /** §16.6 multijogador: a vez de um humano remoto também aparece (não há robô "pensando" nela). */
     val remoteTurns: Boolean = false,
+    /** Mesa multijogador: o botão "Esconder cartas" aparece. */
+    val canHideHand: Boolean = false,
+    /** As cartas da mão estão viradas (só neste aparelho). */
+    val handHidden: Boolean = false,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
     private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
@@ -258,6 +265,8 @@ class GameViewModel(
         val planRequestId: Long = 0,
         val confirmDecline: Boolean = false,
         val confirmResign: Boolean = false,
+        /** Mesa multijogador: cartas da mão viradas (só local, até o fim do jogo). */
+        val handHidden: Boolean = false,
         val message: UiMessage? = null,
         val endStep: Int = 0,
     )
@@ -592,6 +601,8 @@ class GameViewModel(
             personas = externalPersonas?.value ?: personas,
             turnHeld = held,
             remoteTurns = multiplayer,
+            canHideHand = multiplayer,
+            handHidden = multiplayer && state.handHidden,
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
         )
@@ -610,7 +621,15 @@ class GameViewModel(
 
     // ---------- gestos ----------
 
+    /** Mesa multijogador: esconde ou mostra as cartas da mão (a seleção é limpa ao esconder). */
+    override fun onToggleHideHand() {
+        if (!multiplayer) return
+        local.update { it.copy(handHidden = !it.handHidden, selected = if (!it.handHidden) emptyList() else it.selected) }
+    }
+
     override fun onCardClick(card: Card) = local.update { state ->
+        // Cartas escondidas não se selecionam: um aviso curto lembra de mostrá-las.
+        if (multiplayer && state.handHidden) return@update state.copy(message = UiMessage.ShowCardsToPlay)
         val selected = state.selected.filter { it in state.snapshot.view.hand }
         state.copy(selected = if (card in selected) selected - card else selected + card, message = null)
     }
