@@ -75,6 +75,7 @@ fun rememberMultiplayerHooks(table: MultiplayerTable, personas: List<Persona>, o
     val resigned by table.resigned.collectAsState()
     val role by table.role.collectAsState()
     val rules by table.rules.collectAsState()
+    val roster by table.roster.collectAsState()
     val stake = rules?.stake ?: 0
     // §16.10 segue o papel atual: quem recebe a mesa ganha o menu do anfitrião e quem a deixa o perde.
     val host by table.hostControls.collectAsState()
@@ -91,6 +92,7 @@ fun rememberMultiplayerHooks(table: MultiplayerTable, personas: List<Persona>, o
         },
         coinsNet = { received?.let { it - stake } },
         gameOverExtra = { if (resigned && role is MpRole.Guesting) ReturnToTableButton(table) },
+        hostSeat = { roster.firstOrNull { it.isHost }?.seat },
     )
 }
 

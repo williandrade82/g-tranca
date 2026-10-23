@@ -230,7 +230,11 @@ fun TableScreen(
     onReviewContinue: (() -> Unit)? = null,
     /** §16 multijogador: ícone extra no cabeçalho (menu do anfitrião, 3.14). */
     headerExtra: (@Composable (close: () -> Unit) -> Unit)? = null,
+    /** §16 assento do anfitrião (para as Informações do jogo); `null` fora do multijogador. */
+    hostSeat: Seat? = null,
 ) {
+    var showMatchInfo by rememberSaveable { mutableStateOf(false) }
+    if (showMatchInfo) MatchInfoDialog(state.snapshot, state.personas, hostSeat) { showMatchInfo = false }
     val snapshot = state.snapshot
     val view = snapshot.view
     val snackbar = remember { SnackbarHostState() }
@@ -335,7 +339,7 @@ fun TableScreen(
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
-                    Header(state, events, headerExtra, startTour) { showLegend = true }
+                    Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
                     // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
                     // pelo menos o espaço livre e cresce com o conteúdo, nunca cortando cartas (telas baixas, fonte grande).
                     var seatsHeight by remember { mutableStateOf(0) }
@@ -482,7 +486,14 @@ private fun OptionsMenu(events: TableEvents, extra: (@Composable (close: () -> U
 }
 
 @Composable
-private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable (close: () -> Unit) -> Unit)?, startTour: () -> Unit, onLegend: () -> Unit) {
+private fun Header(
+    state: GameUiState,
+    events: TableEvents,
+    extra: (@Composable (close: () -> Unit) -> Unit)?,
+    startTour: () -> Unit,
+    onMatchInfo: () -> Unit,
+    onLegend: () -> Unit,
+) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val other = view.mode.sides.first { it != view.side }
@@ -492,7 +503,13 @@ private fun Header(state: GameUiState, events: TableEvents, extra: (@Composable 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Esquerda: "Partida 1 · alvo 3000" e, embaixo, o placar (cabe ao lado dos três botões, sem cortar o texto).
-        Column(Modifier.weight(1f)) {
+        // Tocar em "Partida N · alvo X" ou no placar abre as Informações do jogo.
+        val matchInfoText = stringResource(R.string.match_info_open)
+        Column(
+            Modifier.weight(1f)
+                .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo)
+                .testTag("match-info-open"),
+        ) {
             Text(
                 stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
                 color = OnTable.copy(alpha = 0.85f),

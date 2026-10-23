@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
@@ -265,6 +266,16 @@ class TableLayoutTest {
         // §5.3 sem plano de pegar o lixo em legalActions, "Pegar lixo" fica desabilitado, mas visível.
         rule.onNodeWithTag("action-take-discard").assertIsDisplayed().assertIsNotEnabled()
         rule.onNodeWithTag("action-draw").assertIsDisplayed()
+    }
+
+    @Test
+    fun tocarNoPlacarAbreAsInformacoesDoJogo() {
+        show(state(GameMode.DUPLAS, deck.take(11), emptyList(), SideTable(), SideTable()), fontScale = 1.3f)
+        rule.onNodeWithTag("match-info-open").performClick()
+        rule.onNodeWithTag("match-info").assertIsDisplayed()
+        rule.onNodeWithText("Nenhuma partida terminou ainda.").assertExists()
+        rule.onNodeWithTag("match-info-close").performClick()
+        rule.onAllNodes(androidx.compose.ui.test.hasTestTag("match-info")).assertCountEquals(0)
     }
 
     @Test
