@@ -248,7 +248,9 @@ private fun HostPanels(table: MultiplayerTable, host: MultiplayerHost, personas:
     } else if (d != null) {
         // §16.8, §16.9 a vez é de quem não está: o anfitrião decide (e vê os pedidos para esse assento).
         val name = personas.getOrNull(d.seat.index)?.firstName.orEmpty()
-        val forSeat = requests.filter { it.seat == d.seat }
+        // Todos os pedidos de entrada aparecem aqui (não só os do assento da pausa): um pedido para outra vaga aberta
+        // (ex.: assento de robô liberado) ficava escondido atrás deste modal e o candidato esperava para sempre.
+        val forSeat = requests.sortedBy { if (it.seat == d.seat) 0 else 1 }
         GDialog(
             onDismissRequest = {},
             modifier = Modifier.testTag("mp-pause"),

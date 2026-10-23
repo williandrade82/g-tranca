@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
@@ -55,6 +56,10 @@ class MultiplayerTableTest {
         val again: (host: Boolean) -> MultiplayerTable,
         /** Derruba a conexão do anfitrião (queda, §16.10). */
         val dropHost: () -> Unit = {},
+        /** Derruba a conexão do convidado (queda curta: ele volta sozinho pelo token). */
+        val dropGuest: () -> Unit = {},
+        /** Põe o convidado fora do alcance ([on]) ou o traz de volta. */
+        val guestOutOfRange: (Boolean) -> Unit = {},
         /** Uma mesa num aparelho novo (terceiro jogador). */
         val newDevice: () -> MultiplayerTable = { error("sem rede") },
     )
@@ -88,7 +93,7 @@ class MultiplayerTableTest {
         val again = { isHost: Boolean ->
             MultiplayerTable(if (isHost) hostTransport else guestTransport, scope, if (isHost) hostCoins else guestCoins, dispatcher, bots, newSeed = { seed })
         }
-        return Setup(host, guest, hostCoins, guestCoins, scope, rules, again, { network.kill(hostTransport.id) }) {
+        return Setup(host, guest, hostCoins, guestCoins, scope, rules, again, { network.kill(hostTransport.id) }, { network.drop(guestTransport.id) }, { on -> if (on) { network.block(guestTransport.id); network.drop(guestTransport.id) } else network.unblock(guestTransport.id) }) {
             MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, bots, newSeed = { seed })
         }
     }
@@ -558,6 +563,131 @@ class MultiplayerTableTest {
         // §14.6, §16.13 no individual o vencedor recebe 2 × a aposta; o perdedor, nada.
         val received = listOf(t.hostCoins.settled.single().second, t.guestCoins.settled.single().second).sorted()
         received shouldBe listOf(0, 100)
+    }
+
+    @Test
+    fun `§16_7 §16_9 vaga de humano que desistiu - outro aparelho entra, e aprovado e joga ate o fim`() = runTest {
+        val seed = 95L
+        val t = setup(seed, targetScore = 500)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        t.guest.resign()
+        advanceUntilIdle()
+        val host = (t.host.role.value as MpRole.Hosting).host!!
+        host.decision.value.shouldNotBeNull().seat shouldBe Seat(1)
+        // Um terceiro aparelho pede para entrar no assento VAGO (o anfitrião abre a vaga ao aprovar).
+        val third = t.newDevice()
+        third.join("mesa-1", "Caio")
+        advanceUntilIdle()
+        val request = host.hostSession.joinRequests.value.single()
+        host.approveJoin(request.requestId) shouldBe true
+        advanceUntilIdle()
+        third.mySeat shouldBe Seat(1)
+        // Como no app: ritmo de 700 ms e a tela (ViewModel) que avisa o fim das encenações.
+        val thirdDriver = MultiplayerDriver.create(third, t.scope) { 700 }
+        kotlinx.coroutines.Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        try {
+            val vm = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(t.rules), animationMillis = 0, swapAnimationMillis = 0,
+                externalDriver = thirdDriver, externalPersonas = third.personas(Persona("Caio"), "VAGO") { it }, multiplayer = true,
+            )
+            drive(t.scope, thirdDriver, seed)
+            advanceUntilIdle()
+            vm.uiState.value.snapshot.stage shouldBe Stage.GAME_OVER
+        } finally {
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        thirdDriver.state.value.stage shouldBe Stage.GAME_OVER
+    }
+
+    @Test
+    fun `§16_8 §16_10 convidado fora do alcance na vez dele - ao voltar fica um so anfitriao e o jogo segue`() = runTest {
+        val seed = 97L
+        val t = setup(seed, targetScore = 500)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        t.guestOutOfRange(true)
+        advanceTimeBy(20_000)
+        val host = (t.host.role.value as MpRole.Hosting).host!!
+        host.decision.value.shouldNotBeNull().seat shouldBe Seat(1)
+        host.waitForPlayer()
+        t.guestOutOfRange(false)
+        advanceTimeBy(120_000)
+        // §16.10 fora do alcance, o convidado (1º sucessor) não via a mesa e assumiu; de volta, só um anfitrião fica e o
+        // outro reingressa pelo token. O jogo segue até o fim nos dois aparelhos.
+        (listOf(t.host.role.value, t.guest.role.value).count { it is MpRole.Hosting }) shouldBe 1
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        guestDriver.state.value.stage shouldBe Stage.GAME_OVER
+    }
+
+    @Test
+    fun `§16_9 quem desistiu volta a mesa pelo token - a tela sai do fim de jogo e ele joga ate o fim`() = runTest {
+        val seed = 98L
+        val t = setup(seed, targetScore = 500)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 700 }
+        kotlinx.coroutines.Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        try {
+            val vm = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(t.rules), animationMillis = 0, swapAnimationMillis = 0,
+                externalDriver = guestDriver, externalPersonas = t.guest.personas(Persona("Beto"), "VAGO") { it }, multiplayer = true,
+            )
+            drive(t.scope, hostDriver, seed)
+            t.guest.resign()
+            advanceUntilIdle()
+            vm.uiState.value.snapshot.stage shouldBe Stage.GAME_OVER
+            val host = (t.host.role.value as MpRole.Hosting).host!!
+            host.decision.value.shouldNotBeNull()
+            host.waitForPlayer()
+            advanceUntilIdle()
+            t.guest.returnToTable() shouldBe true
+            advanceUntilIdle()
+            t.guest.resigned.value shouldBe false
+            drive(t.scope, guestDriver, seed)
+            advanceUntilIdle()
+            hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+            vm.uiState.value.snapshot.resigned shouldBe false
+            vm.uiState.value.snapshot.stage shouldBe Stage.GAME_OVER
+        } finally {
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `§16_5 convidado cai no meio do jogo e volta pelo token - a tela segue recebendo e a vez anda`() = runTest {
+        val seed = 96L
+        val t = setup(seed, targetScore = 500)
+        t.guest.confirmSeat()
+        advanceUntilIdle()
+        t.host.startGame()
+        advanceUntilIdle()
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        advanceUntilIdle()
+        t.dropGuest()
+        advanceTimeBy(3_000)
+        advanceUntilIdle()
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        hostDriver.state.value.stage shouldBe Stage.GAME_OVER
+        guestDriver.state.value.stage shouldBe Stage.GAME_OVER
     }
 
     @Test
