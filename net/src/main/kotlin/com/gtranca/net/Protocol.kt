@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 7
+const val PROTOCOL_VERSION: Int = 8
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão. */
 const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
@@ -320,6 +320,11 @@ data class ProposeAction(val requestId: Long, val action: Action) : Payload
 @Serializable
 @SerialName("actionRejected")
 data class ActionRejected(val requestId: Long, val reason: RejectReason, val ruleError: String? = null) : Payload
+
+/** §16.15 mensagem curta de teste do convidado (sem nada a enviar por 5 s), para medir a conexão; o anfitrião só confirma. */
+@Serializable
+@SerialName("ping")
+data object Ping : Payload
 
 /** Controle (fora da sequência): só confirma o recebido ([Envelope.ack]). */
 @Serializable

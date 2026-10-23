@@ -155,3 +155,22 @@ fun EyeIcon(color: Color, crossed: Boolean, modifier: Modifier = Modifier, size:
         if (crossed) drawLine(color, Offset(w * 0.12f, h * 0.88f), Offset(w * 0.88f, h * 0.12f), stroke, cap = StrokeCap.Round)
     }
 }
+
+/** §16.15 sinal da conexão: 3 barras crescentes, acesas até [bars] (1 a 3); as outras apagadas. */
+@Composable
+fun SignalIcon(bars: Int, color: Color, modifier: Modifier = Modifier, size: Dp = 16.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val barW = w * 0.24f
+        val gap = (w - barW * 3) / 2
+        repeat(3) { i ->
+            val barH = h * (0.4f + 0.3f * i)
+            drawRect(
+                if (i < bars) color else color.copy(alpha = 0.25f),
+                topLeft = Offset(i * (barW + gap), h - barH),
+                size = Size(barW, barH),
+            )
+        }
+    }
+}

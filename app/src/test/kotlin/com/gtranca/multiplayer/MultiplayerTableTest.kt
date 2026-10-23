@@ -251,6 +251,9 @@ class MultiplayerTableTest {
         hostDriver.state.value.stage shouldBe Stage.GAME_OVER
         guestDriver.state.value.stage shouldBe Stage.GAME_OVER
         guestDriver.state.value.winner shouldBe hostDriver.state.value.winner
+        // §16.15 o convidado mede a conexão com o anfitrião (1 a 3); no anfitrião não há medida.
+        (t.guest.hostLinkQuality.value in 1..3) shouldBe true
+        t.host.hostLinkQuality.value shouldBe null
         // "Ver a mesa" no fim (convidado): a mesa final tem a última vez de cada assento, como no anfitrião (antes vinha
         // sem nenhuma lista e a pílula do assento fechava o app ao indexá-la).
         guestDriver.state.value.turnEvents.size shouldBe 4

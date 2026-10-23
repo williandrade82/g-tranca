@@ -125,6 +125,36 @@ class GuestSession(
     /** §16.2 fotos dos outros jogadores (id → Base64), recebidas uma vez cada; só em memória. */
     val photos: StateFlow<Map<Int, String>> = _photos.asStateFlow()
 
+    private val meter = LinkQualityMeter()
+    private val _linkQuality = MutableStateFlow(LinkQuality.GOOD)
+
+    /** §16.15 qualidade da conexão com o anfitrião, de 1 (ruim) a 3 (boa); 1 enquanto reconecta. */
+    val linkQuality: StateFlow<Int> = _linkQuality.asStateFlow()
+
+    private var pingJob: Job? = null
+
+    /**
+     * §16.15 depois de receber uma mensagem do jogo: se o convidado não enviar nada em 5 s, manda uma mensagem curta de
+     * teste ([Ping]) para medir a conexão. Só se arma com o jogo trazendo mensagens (nada de temporizador parado).
+     */
+    private fun armPingLocked() {
+        if (pingJob?.isActive == true) return
+        pingJob = scope.launch {
+            delay(LinkQuality.PING_IDLE_MILLIS)
+            mutex.withLock {
+                pingJob = null
+                val current = link ?: return@withLock
+                if (_status.value == GuestStatus.Playing && current.now() - current.lastSentAt >= LinkQuality.PING_IDLE_MILLIS) {
+                    current.sendLocked(Ping)
+                }
+            }
+        }
+    }
+
+    private fun refreshQualityLocked() {
+        _linkQuality.value = if (_status.value == GuestStatus.Reconnecting) LinkQuality.POOR else meter.level()
+    }
+
     private val _robots = MutableStateFlow<Map<Int, String>>(emptyMap())
 
     /** §16.2, §16.8 personagem de cada assento de robô (índice → id), como o anfitrião escolheu; vazio antes do início. */
@@ -205,7 +235,7 @@ class GuestSession(
     private suspend fun connectAndHello(advert: TableAdvert, seat: Seat?) {
         val endpoint = transport.connect(advert)
         mutex.withLock {
-            link = ReliableLink(endpoint, transport, codec, scope, mutex)
+            link = ReliableLink(endpoint, transport, codec, scope, mutex, meter = meter)
             link!!.sendLocked(Hello(name, token, seat, roundOverSeen, photo))
         }
     }
@@ -387,7 +417,10 @@ class GuestSession(
                 transport.disconnect(current.endpoint)
             }
             Decoded.Malformed -> Unit
-            is Decoded.Ok -> current.receiveLocked(decoded.envelope).forEach { payload ->
+            is Decoded.Ok -> current.receiveLocked(decoded.envelope).also { payloads ->
+                refreshQualityLocked()
+                if (payloads.any { it !is AckOnly }) armPingLocked()
+            }.forEach { payload ->
                 when (payload) {
                     is SuccessorState -> {
                         successorState = payload

@@ -25,7 +25,20 @@ class ReliableLink(
     private val ackDelayMillis: Long = ACK_DELAY_MILLIS,
     private val resendAfterMillis: Long = RESEND_AFTER_MILLIS,
     private val maxResends: Int = MAX_RESENDS,
+    /** §16.15 mede a qualidade da conexão (ida e volta e reenvios); `null` = não mede. */
+    private val meter: LinkQualityMeter? = null,
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
+    /** Quando cada mensagem ainda sem confirmação foi enviada (ms), para medir a ida e volta. */
+    private val sentAt = HashMap<Long, Long>()
+
+    /** Última mensagem enviada na sequência (ms do [clock]). */
+    @Volatile
+    var lastSentAt: Long = 0
+        private set
+
+    /** Agora, no relógio do enlace (ms). */
+    fun now(): Long = clock()
     private val link = SequencedLink()
     private val unacked = ArrayDeque<Pair<Long, Payload>>()
     private var ackSent = 0L
@@ -40,6 +53,9 @@ class ReliableLink(
         if (closed) return
         val seq = link.nextSeq()
         unacked.addLast(seq to payload)
+        val now = clock()
+        sentAt[seq] = now
+        lastSentAt = now
         transmit(seq, payload)
         armResend()
     }
@@ -85,7 +101,8 @@ class ReliableLink(
         if (ack <= 0) return
         var progressed = false
         while (unacked.isNotEmpty() && unacked.first().first <= ack) {
-            unacked.removeFirst()
+            val seq = unacked.removeFirst().first
+            sentAt.remove(seq)?.let { meter?.onRtt(clock() - it) }
             progressed = true
         }
         if (progressed) resends = 0
@@ -127,6 +144,7 @@ class ReliableLink(
                         return@withLock false
                     }
                     resends++
+                    meter?.onResend()
                     unacked.toList().forEach { transmit(it.first, it.second) }
                     true
                 }

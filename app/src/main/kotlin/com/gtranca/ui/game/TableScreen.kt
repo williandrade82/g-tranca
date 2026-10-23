@@ -235,6 +235,25 @@ fun TableScreen(
     headerExtra: (@Composable (close: () -> Unit) -> Unit)? = null,
     /** §16 assento do anfitrião (para as Informações do jogo); `null` fora do multijogador. */
     hostSeat: Seat? = null,
+    /** §16.15 qualidade da conexão com o anfitrião (1 a 3), na pílula dele; só no convidado. */
+    hostLinkQuality: Int? = null,
+) {
+    CompositionLocalProvider(LocalHostSignal provides hostSeat?.takeIf { hostLinkQuality != null }?.let { it to hostLinkQuality!! }) {
+    TableScreenContent(state, events, modifier, onReviewContinue, headerExtra, hostSeat)
+    }
+}
+
+/** §16.15 assento do anfitrião e a qualidade da conexão com ele (só no convidado). */
+private val LocalHostSignal = androidx.compose.runtime.compositionLocalOf<Pair<Seat, Int>?> { null }
+
+@Composable
+private fun TableScreenContent(
+    state: GameUiState,
+    events: TableEvents,
+    modifier: Modifier,
+    onReviewContinue: (() -> Unit)?,
+    headerExtra: (@Composable (close: () -> Unit) -> Unit)?,
+    hostSeat: Seat?,
 ) {
     var showMatchInfo by rememberSaveable { mutableStateOf(false) }
     // Som da vez: uma vez quando a vez passa a ser deste jogador (nunca na revisão da mesa final).
@@ -660,6 +679,12 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+            }
+            LocalHostSignal.current?.takeIf { it.first == seat }?.let { (_, bars) ->
+                val signalText = androidx.compose.ui.res.pluralStringResource(R.plurals.host_signal, bars, bars)
+                Box(Modifier.semantics { contentDescription = signalText }.testTag("host-signal")) {
+                    com.gtranca.ui.theme.SignalIcon(bars, TableAccent, size = 16.dp)
                 }
             }
             if (thinking) {

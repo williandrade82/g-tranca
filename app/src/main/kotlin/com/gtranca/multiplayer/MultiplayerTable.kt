@@ -197,6 +197,17 @@ class MultiplayerTable(
         }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
+    /**
+     * §16.15 qualidade da conexão deste convidado com o anfitrião (1 a 3 barras); `null` quando este aparelho é o
+     * anfitrião ou está fora da mesa.
+     */
+    val hostLinkQuality: StateFlow<Int?> = _role.flatMapLatest { role ->
+        when (role) {
+            is MpRole.Guesting -> role.session.linkQuality
+            else -> flowOf(null)
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, null)
+
     /** Id público deste jogador (0 enquanto não entrou; o anfitrião original é 0). */
     val myId: Int
         get() = when (val role = _role.value) {

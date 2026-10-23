@@ -80,6 +80,10 @@
     <string name="own_last_play">Ver a sua última jogada</string>
     <string name="own_last_play_title">Sua última jogada</string>
     <string name="own_last_play_none">Você ainda não jogou nesta partida.</string>
+    <plurals name="host_signal">
+        <item quantity="one">Conexão com o anfitrião: %1$d barra de 3</item>
+        <item quantity="other">Conexão com o anfitrião: %1$d barras de 3</item>
+    </plurals>
     <string name="welcome_title">Boas-vindas ao TRANCA-BOT!</string>
     <string name="welcome_text">Antes de jogar, escolha como quer ser chamado na mesa. Toque no botão abaixo e preencha o seu nome no Perfil.</string>
     <string name="welcome_go_profile">Ir para o Perfil</string>

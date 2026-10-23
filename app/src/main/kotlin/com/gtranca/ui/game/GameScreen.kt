@@ -56,6 +56,8 @@ class MultiplayerScreenHooks(
     val gameOverExtra: @Composable () -> Unit,
     /** Assento do anfitrião (Informações do jogo). */
     val hostSeat: () -> com.gtranca.engine.model.Seat? = { null },
+    /** §16.15 qualidade da conexão com o anfitrião (1 a 3), só no convidado. */
+    val hostLinkQuality: () -> Int? = { null },
 )
 
 /** Tela do jogo: mesa, fim de partida (§12) ou fim de jogo (§13), conforme o estado. */
@@ -87,7 +89,7 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
     androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules) {
     if (reviewingTable) FinalTableReview(state, viewModel) { reviewingTable = false }
     else when (state.endScreen) {
-        null -> TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke())
+        null -> TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
         EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign }, state.personas, state.animationMillis > 0, review)
         EndScreen.ROUND_POINTS ->
             RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
