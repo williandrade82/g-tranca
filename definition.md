@@ -619,3 +619,6 @@ Modo opcional, **sem internet**: até 4 pessoas, cada uma no seu celular, na mes
 | Mesa ausente da busca até ser dada como encerrada (§16.5) | 60 s seguidos |
 | Reenvio de mensagem sem confirmação (§16.5) | 1 s, até 5 vezes |
 | Confirmação de recebimento sem outra mensagem a enviar | 200 ms |
+| Mensagem de teste da qualidade da conexão (convidado sem enviar nada) | a cada 5 s |
+
+- **Qualidade da conexão (sinal na tela do convidado):** medida no convidado pelo tempo entre enviar uma mensagem ao anfitrião e receber a confirmação (média móvel), sem tráfego extra frequente: só quando o convidado passou **5 s** sem enviar nada, ele manda uma mensagem curta de teste. **3 barras** (boa): média até **500 ms** e nenhum reenvio recente; **2 barras** (média): média até **1.500 ms** e até **2** reenvios recentes; **1 barra** (ruim): acima disso, ou reconectando. É só informação na tela; não muda o jogo.
