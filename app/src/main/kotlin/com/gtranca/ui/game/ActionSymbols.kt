@@ -71,7 +71,7 @@ private val RedOnDark = Color(0xFFFF8A80)
 /** Última jogada resumida em símbolos; o leitor de tela recebe a frase completa. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier, redThrees: List<Card> = emptyList()) {
+fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier, redThrees: List<Card> = emptyList(), redThreeAfter: List<Int> = emptyList()) {
     // §3.5, §6.5 os 3 vermelhos baixados na vez vêm primeiro (a troca acontece no início da vez ou antes das baixas).
     val redText = if (redThrees.isEmpty()) "" else pluralStringResource(R.plurals.seat_detail_red_threes, redThrees.size) + ". "
     val description = redText + stringResource(R.string.opponent_last_turn, turnText(events))
@@ -80,20 +80,23 @@ fun LastTurnSymbols(events: List<PublicEvent>, modifier: Modifier = Modifier, re
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        if (redThrees.isNotEmpty()) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("last-turn-red-threes")) {
-                Text("♥", color = RedOnDark, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    redThrees.joinToString(" ") { it.shortLabel },
-                    Modifier.padding(start = 2.dp),
-                    color = RedOnDark,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                )
+        // Na ordem real da vez (a das animações): 3 vermelhos onde foram baixados, entre as ações.
+        turnTimeline(events, redThrees, redThreeAfter).forEach { item ->
+            when (item) {
+                is TurnItem.RedThrees -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("last-turn-red-threes")) {
+                    Text("♥", color = RedOnDark, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        item.cards.joinToString(" ") { it.shortLabel },
+                        Modifier.padding(start = 2.dp),
+                        color = RedOnDark,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
+                is TurnItem.Entry -> SymbolWithDetail(item.entry.symbol())
             }
         }
-        events.record().forEach { SymbolWithDetail(it.symbol()) }
     }
 }
 
@@ -208,7 +211,14 @@ fun LegendDialog(rules: com.gtranca.engine.RuleSet, targetScore: Int, onDismiss:
 /** Detalhe da última jogada de um assento: cada ação com o símbolo, a frase completa e as cartas desenhadas. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>, redThrees: List<Card> = emptyList(), onDismiss: () -> Unit) {
+fun SeatDetailDialog(
+    persona: Persona?,
+    name: String,
+    events: List<PublicEvent>,
+    redThrees: List<Card> = emptyList(),
+    redThreeAfter: List<Int> = emptyList(),
+    onDismiss: () -> Unit,
+) {
     GDialog(
         modifier = Modifier.testTag("seat-detail-dialog"),
         onDismissRequest = onDismiss,
@@ -232,32 +242,32 @@ fun SeatDetailDialog(persona: Persona?, name: String, events: List<PublicEvent>,
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                // §3.5, §6.5 os 3 vermelhos baixados nesta vez (no início dela ou durante a jogada)
-                if (redThrees.isNotEmpty()) {
-                    Row(Modifier.testTag("seat-detail-red-threes"), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        Text("♥", Modifier.padding(top = 2.dp).size(22.dp), color = GColors.Ruby, fontWeight = FontWeight.Bold)
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            Text(pluralStringResource(R.plurals.seat_detail_red_threes, redThrees.size))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                                redThrees.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                // §3.5, §6.5 a vez na ordem real (a das animações): 3 vermelhos onde foram baixados, entre as ações.
+                turnTimeline(events, redThrees, redThreeAfter).forEach { item ->
+                    when (item) {
+                        is TurnItem.RedThrees -> Row(Modifier.testTag("seat-detail-red-threes"), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                            Text("♥", Modifier.padding(top = 2.dp).size(22.dp), color = GColors.Ruby, fontWeight = FontWeight.Bold)
+                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                Text(pluralStringResource(R.plurals.seat_detail_red_threes, item.cards.size))
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                    item.cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                                }
                             }
                         }
-                    }
-                }
-                events.forEach { event ->
-                    // Cada ação pode render mais de uma linha (pegar o lixo: o que foi à mão e o que foi ao jogo).
-                    val full = eventText(event)
-                    event.record().forEach { entry ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                            ActionIcon(entry.kind, GColors.Gold, Modifier.padding(top = 2.dp).size(22.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                                Text(
-                                    entryText(entry).replaceFirstChar { it.uppercase() },
-                                    Modifier.semantics { contentDescription = full },
-                                )
-                                if (entry.cards.isNotEmpty() && entry.kind != ActionKind.DRAW) {
-                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                                        entry.cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                        is TurnItem.Entry -> {
+                            val entry = item.entry
+                            val full = eventText(item.event)
+                            Row(Modifier.testTag("seat-detail-entry"), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                                ActionIcon(entry.kind, GColors.Gold, Modifier.padding(top = 2.dp).size(22.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                    Text(
+                                        entryText(entry).replaceFirstChar { it.uppercase() },
+                                        Modifier.semantics { contentDescription = full },
+                                    )
+                                    if (entry.cards.isNotEmpty() && entry.kind != ActionKind.DRAW) {
+                                        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                            entry.cards.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
+                                        }
                                     }
                                 }
                             }

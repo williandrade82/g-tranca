@@ -226,4 +226,5 @@ fun SeatView.toSnapshot(rules: TableRules, answered: Long): GameSnapshot = GameS
     turnEvents = List(mode.seatCount) { turnEvents.getOrNull(it).orEmpty() },
     humanRequestId = requestId,
     turnRedThrees = List(mode.seatCount) { turnRedThrees.getOrNull(it).orEmpty() },
+    turnRedThreeAfter = List(mode.seatCount) { turnRedThreeAfter.getOrNull(it).orEmpty() },
 )

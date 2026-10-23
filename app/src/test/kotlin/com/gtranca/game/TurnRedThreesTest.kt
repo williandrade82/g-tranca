@@ -80,4 +80,15 @@ class TurnRedThreesTest {
         reds.reset(emptyList())
         reds.current shouldBe List(2) { emptyList() }
     }
+
+    @Test
+    fun `§6_5 cada 3 vermelho guarda em que ponto da vez foi baixado`() {
+        val reds = TurnRedThrees(2)
+        reds.reset(emptyList())
+        reds.record(Seat(1), startsTurn = false, newEntries = listOf(laid(0, "3H", true)), eventsInTurn = 3)
+        reds.beginTurn(Seat(0))
+        reds.record(Seat(0), startsTurn = draw, newEntries = listOf(laid(0, "3D", false)), eventsInTurn = 1)
+        reds.current[0] shouldBe listOf(c("3H"), c("3D"))
+        reds.currentAfter[0] shouldBe listOf(0, 1)
+    }
 }

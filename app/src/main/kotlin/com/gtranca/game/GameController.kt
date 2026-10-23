@@ -86,6 +86,8 @@ data class GameSnapshot(
     val resigned: Boolean = false,
     /** §3.5, §6.5 por assento, os 3 vermelhos que ele baixou na vez mais recente (ou atual) dele. */
     val turnRedThrees: List<List<Card>> = emptyList(),
+    /** Por assento, depois de quantas ações da vez cada 3 vermelho de [turnRedThrees] foi baixado (ordem real da vez). */
+    val turnRedThreeAfter: List<List<Int>> = emptyList(),
 ) {
     val viewerSide: Side get() = view.side
 
@@ -401,7 +403,7 @@ class GameController(
                     match = match.play(seat, action)
                     recordEvent(event)
                     val laid = match.currentRound.redThreeLog.drop(round.redThreeLog.size)
-                    turnReds.record(seat, startsTurn(event), laid)
+                    turnReds.record(seat, startsTurn(event), laid, eventsInTurn = turnEvents[seat.index].size)
                     // §3.5 a vez passou: a do próximo começa já (com as trocas de 3 vermelho do início dela), antes da compra.
                     match.currentRound.let { next ->
                         if (next.phase != Phase.FINISHED && next.currentSeat != seat) {
@@ -672,6 +674,7 @@ class GameController(
             thinkingSeat = thinkingSeat?.takeIf { it != seat },
             turnEvents = turnEvents,
             turnRedThrees = turnReds.current,
+            turnRedThreeAfter = turnReds.currentAfter,
             humanRequestId = requestId,
             resigned = resignedWinner != null,
         )

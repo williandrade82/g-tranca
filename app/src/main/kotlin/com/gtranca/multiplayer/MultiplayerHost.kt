@@ -659,6 +659,7 @@ class MultiplayerHost(
                 // A última vez de cada assento (a mesa final, revista em "Ver a mesa", mostra a última jogada nas pílulas).
                 turnEvents = last.turnEvents,
                 turnRedThrees = last.turnRedThrees,
+                turnRedThreeAfter = last.turnRedThreeAfter,
                 thinkingSeat = null,
                 legal = emptyList(),
                 requestId = 0,
@@ -737,6 +738,7 @@ internal fun GameSnapshot.toSeatView(history: List<RoundRecord>?): SeatView = Se
     history = history,
     turnEvents = turnEvents,
     turnRedThrees = turnRedThrees,
+    turnRedThreeAfter = turnRedThreeAfter,
     thinkingSeat = thinkingSeat,
     legal = humanLegal,
     requestId = humanRequestId,

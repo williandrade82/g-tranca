@@ -396,7 +396,7 @@ fun TableScreen(
                     }
                     }
                     }
-                    HandArea(state, events)
+                    HandArea(state, events) { detailSeat = snapshot.viewerSeat.index }
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
                     if (onReviewContinue != null) ReviewContinueBar(onReviewContinue) else StatusAndActions(state, events)
                 }
@@ -422,17 +422,24 @@ fun TableScreen(
 
     if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }
     detailSeat?.let { index ->
-        val events = snapshot.shownTurnEvents(index)
-        if (events.isEmpty() && snapshot.turnRedThrees.getOrNull(index).isNullOrEmpty()) {
-            detailSeat = null
+        val shown = snapshot.shownTurnEvents(index)
+        var reds = snapshot.turnRedThrees.getOrNull(index).orEmpty()
+        var after = snapshot.turnRedThreeAfter.getOrNull(index).orEmpty()
+        // A própria vez que acabou de começar (sem jogada nem troca): mostra a vez anterior do jogador.
+        val events = if (shown.isEmpty() && reds.isEmpty() && index == snapshot.viewerSeat.index) snapshot.turnEvents.getOrNull(index).orEmpty() else shown
+        if (shown.isEmpty() && events.isNotEmpty()) { reds = emptyList(); after = emptyList() }
+        if (events.isEmpty() && reds.isEmpty()) {
+            if (index == snapshot.viewerSeat.index) NoOwnPlayDialog { detailSeat = null } else detailSeat = null
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
             val detailPersona = state.personas.getOrNull(index)
             SeatDetailDialog(
                 detailPersona,
-                detailPersona?.callName(view.mode, role) ?: stringResource(role.nameRes()),
+                if (index == snapshot.viewerSeat.index) stringResource(R.string.own_last_play_title)
+                else detailPersona?.callName(view.mode, role) ?: stringResource(role.nameRes()),
                 events,
-                snapshot.turnRedThrees.getOrNull(index).orEmpty(),
+                reds,
+                after,
             ) { detailSeat = null }
         }
     }
@@ -679,7 +686,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
         val turnReds = snapshot.turnRedThrees.getOrNull(seat.index).orEmpty()
         // §3.5 a troca de 3 vermelho do início da vez já aparece antes da compra.
         if (events.isNotEmpty() || turnReds.isNotEmpty()) {
-            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), turnReds)
+            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), turnReds, snapshot.turnRedThreeAfter.getOrNull(seat.index).orEmpty())
         }
     }
 }
@@ -1131,7 +1138,7 @@ internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection:
     }
 
 @Composable
-private fun HandArea(state: GameUiState, events: TableEvents) {
+private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // §14.1 seu avatar, bem discreto, junto do título da mão.
@@ -1144,6 +1151,16 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f),
             )
+            // A própria última jogada, no mesmo formato do detalhe dos outros jogadores.
+            val ownLastText = stringResource(R.string.own_last_play)
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clickable(onClickLabel = ownLastText, role = Role.Button, onClick = onOwnLastPlay)
+                    .semantics { contentDescription = ownLastText }
+                    .testTag("own-last-play"),
+                contentAlignment = Alignment.Center,
+            ) { ActionIcon(ActionKind.MELD, OnTable, Modifier.size(20.dp)) }
             if (state.canHideHand) HideHandButton(state.handHidden, events::onToggleHideHand)
             SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
@@ -1240,6 +1257,18 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
  * "Ordem:" e três botões de ícone: Valor e Naipe (um dos dois sempre escolhido) e, à parte, a chave de separar os
  * 3 pretos e coringas numa coluna à esquerda (ligada: o resto segue o critério escolhido; desligada: não interfere).
  */
+/** Ainda não houve jogada do próprio jogador nesta partida. */
+@Composable
+private fun NoOwnPlayDialog(onDismiss: () -> Unit) {
+    GDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("seat-detail-dialog"),
+        title = { Text(stringResource(R.string.own_last_play_title)) },
+        text = { Text(stringResource(R.string.own_last_play_none)) },
+        confirmButton = { androidx.compose.material3.TextButton(onDismiss, Modifier.testTag("seat-detail-close")) { Text(stringResource(R.string.close)) } },
+    )
+}
+
 /** Mesa multijogador: olho (mostrando) ou olho riscado (escondida); alvo de 48 dp. */
 @Composable
 private fun HideHandButton(hidden: Boolean, onToggle: () -> Unit) {

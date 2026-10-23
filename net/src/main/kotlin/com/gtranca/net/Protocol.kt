@@ -132,6 +132,8 @@ data class SeatView(
     val unsettledMortoSeats: List<Seat> = emptyList(),
     val turnEvents: List<List<PublicEvent>> = emptyList(),
     val turnRedThrees: List<List<Card>> = emptyList(),
+    /** Depois de quantas ações da vez cada 3 vermelho de [turnRedThrees] foi baixado (ordem real da vez). */
+    val turnRedThreeAfter: List<List<Int>> = emptyList(),
     val thinkingSeat: Seat? = null,
     val legal: List<Action> = emptyList(),
     val requestId: Long = 0,
@@ -155,6 +157,7 @@ data class SeatView(
             history: List<RoundRecord>?,
             turnEvents: List<List<PublicEvent>>,
             turnRedThrees: List<List<Card>>,
+            turnRedThreeAfter: List<List<Int>> = emptyList(),
             thinkingSeat: Seat?,
             legal: List<Action>,
             requestId: Long,
@@ -165,7 +168,7 @@ data class SeatView(
             discardPile = view.discardPile, stockSize = view.stockSize, mortoStatus = view.mortoStatus,
             mortoSizes = view.mortoSizes, redThrees = view.redThrees, tables = view.tables, redThreeLog = view.redThreeLog,
             turnsBegun = view.turnsBegun, unsettledMortoSeats = view.unsettledMortoSeats, turnEvents = turnEvents,
-            turnRedThrees = turnRedThrees, thinkingSeat = thinkingSeat, legal = legal, requestId = requestId,
+            turnRedThrees = turnRedThrees, turnRedThreeAfter = turnRedThreeAfter, thinkingSeat = thinkingSeat, legal = legal, requestId = requestId,
         )
     }
 }
