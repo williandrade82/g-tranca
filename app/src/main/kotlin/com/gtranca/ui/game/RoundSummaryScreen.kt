@@ -22,6 +22,9 @@ import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.GSubPanel
 import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.Spacing
+import com.gtranca.ui.cards.frameColor
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.drawscope.rotate
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -98,13 +101,30 @@ fun RoundSummaryScreen(
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = Spacing.sm)) {
             GPanel(Modifier.fillMaxWidth()) {
             // Cabeçalho com o avatar de cada lado (§14.1) e o nome: no individual o da persona; em duplas, "Nós" e "Eles".
+            // Cada lado ocupa duas colunas (quantidade e pontos); o título leva o avatar, o ícone de 3 cartas (cor do baralho
+            // do jogador no seu lado, cinza-claro no adversário) e o nome do lado.
+            val ownDeck = com.gtranca.ui.cards.LocalDeckColor.current
             Row(Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.score_item), Modifier.weight(1.4f).align(Alignment.Bottom), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom), fontWeight = FontWeight.Bold)
                 sides.forEach { side ->
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Column(Modifier.weight(COUNT_WEIGHT + POINTS_WEIGHT), horizontalAlignment = Alignment.End) {
                         AvatarRow(personasOfSide(view.mode, side, personas), 26.dp, pose = poses.getValue(side))
-                        Text(sideLabel(view.mode, side, view.side, personas), fontWeight = FontWeight.Bold, textAlign = TextAlign.End, color = GColors.Champagne)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            ThreeCardsIcon(if (side == view.side) ownDeck.frameColor() else OpponentCards, Modifier.testTag("score-cards-icon-${side.index}"))
+                            com.gtranca.ui.theme.FitText(
+                                sideLabel(view.mode, side, view.side, personas),
+                                MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = GColors.Champagne, textAlign = TextAlign.End),
+                                minFontSp = 10,
+                            )
+                        }
                     }
+                }
+            }
+            Row(Modifier.fillMaxWidth()) {
+                Box(Modifier.weight(LABEL_WEIGHT))
+                sides.forEach { _ ->
+                    Text(stringResource(R.string.score_col_count), Modifier.weight(COUNT_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
+                    Text(stringResource(R.string.score_col_points), Modifier.weight(POINTS_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
                 }
             }
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
@@ -115,10 +135,10 @@ fun RoundSummaryScreen(
                 val noCanasta = stringResource(R.string.score_red_threes_no_canasta)
                 ScoreRow(
                     stringResource(item.labelRes()),
-                    lines.map { side ->
+                    lines.mapIndexed { i, side ->
                         val line = side.getValue(item)
                         // §12.1 sem canastra na mesa, 3 vermelho vale −100: a célula diz o motivo.
-                        line.text() + if (item == ScoreItem.RED_THREES && line.points < 0) "\n$noCanasta" else ""
+                        line.cell(item, sides[i].index, note = noCanasta.takeIf { item == ScoreItem.RED_THREES && line.points < 0 })
                     },
                     tag = if (item == ScoreItem.RED_THREES) "red-threes-row" else null,
                 )
@@ -130,10 +150,10 @@ fun RoundSummaryScreen(
             ScoreSectionBox(ScoreSection.TABLE, scores, lines)
             ScoreSectionBox(ScoreSection.HAND, scores, lines)
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
-            ScoreRow(stringResource(R.string.score_round_total), scores.map { signed(it.total) }, bold = true, pill = true)
+            ScoreRow(stringResource(R.string.score_round_total), scores.map { ScoreCell(null, signed(it.total)) }, bold = true, pill = true)
             ScoreRow(
                 stringResource(R.string.score_cumulative),
-                sides.map { plainPoints(snapshot.totals[it.index]) },
+                sides.map { ScoreCell(null, plainPoints(snapshot.totals[it.index])) },
                 bold = true,
                 tag = "cumulative",
                 pill = true,
@@ -157,11 +177,36 @@ fun RoundSummaryScreen(
     }
 }
 
+/** Uma célula de um lado: quantidade de cartas (coluna própria, sem parênteses; `null` = vazia), pontos e nota. */
+private data class ScoreCell(val count: String?, val points: String, val note: String? = null, val countTag: String? = null)
+
+private fun ScoreBreakdown.Line.cell(item: ScoreItem, side: Int, note: String? = null): ScoreCell =
+    ScoreCell(count?.toString(), if (count == 0) "0" else signed(points), note, "count-${item.name}-$side")
+
+private const val LABEL_WEIGHT = 1.25f
+private const val COUNT_WEIGHT = 0.42f
+private const val POINTS_WEIGHT = 0.78f
+
+/** Cinza-claro das cartas do adversário no título. */
+private val OpponentCards = Color(0xFFD5D8DE)
+
+/** Ícone de 3 cartas em leque, desenhado no código. */
 @Composable
-private fun ScoreBreakdown.Line.text(): String = when {
-    count == null -> signed(points)
-    count == 0 -> "0"
-    else -> stringResource(R.string.score_points_with_count, signed(points), count)
+private fun ThreeCardsIcon(color: Color, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier.padding(end = 2.dp).size(width = 22.dp, height = 18.dp)) {
+        val w = size.width
+        val h = size.height
+        val cw = w * 0.5f
+        listOf(-14f, 0f, 14f).forEach { angle ->
+            rotate(angle, pivot = androidx.compose.ui.geometry.Offset(w / 2, h)) {
+                val left = w / 2 - cw / 2
+                val topLeft = androidx.compose.ui.geometry.Offset(left, h * 0.05f)
+                val cardSize = androidx.compose.ui.geometry.Size(cw, h * 0.9f)
+                drawRoundRect(color, topLeft, cardSize, androidx.compose.ui.geometry.CornerRadius(3f))
+                drawRoundRect(GColors.Ivory, topLeft, cardSize, androidx.compose.ui.geometry.CornerRadius(3f), style = androidx.compose.ui.graphics.drawscope.Stroke(1.2f))
+            }
+        }
+    }
 }
 
 @Composable
@@ -179,12 +224,12 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
         val hidden = if (noWilds) setOf(ScoreItem.DIRTY_CANASTAS, ScoreItem.TABLE_WILDS, ScoreItem.HAND_WILDS) else emptySet()
         ScoreItem.entries.filter { it.section == section && it !in hidden }.forEach { item ->
             val label = if (noWilds && item == ScoreItem.CLEAN_CANASTAS) R.string.score_canastas else item.labelRes()
-            ScoreRow(stringResource(label), lines.map { it.getValue(item).text() })
+            ScoreRow(stringResource(label), lines.mapIndexed { i, side -> side.getValue(item).cell(item, scores[i].side.index) })
         }
         HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
         ScoreRow(
             stringResource(if (section == ScoreSection.TABLE) R.string.score_table_subtotal else R.string.score_hand_subtotal),
-            scores.map { signed(ScoreBreakdown.subtotal(it, section)) },
+            scores.map { ScoreCell(null, signed(ScoreBreakdown.subtotal(it, section))) },
             bold = true,
             tag = if (section == ScoreSection.TABLE) "table-subtotal" else "hand-subtotal",
         )
@@ -210,25 +255,35 @@ private fun ScoreItem.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun ScoreRow(label: String, values: List<String>, bold: Boolean = false, tag: String? = null, pill: Boolean = false) {
+private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = false, tag: String? = null, pill: Boolean = false) {
     val weight = if (bold) FontWeight.Bold else FontWeight.Normal
-    val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums)
+    val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums, fontWeight = weight, textAlign = TextAlign.End)
     Row(Modifier.fillMaxWidth().then(if (tag != null) Modifier.testTag(tag) else Modifier), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1.4f), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
-        values.forEach {
-            if (pill) {
-                // Totais em cápsula dourada, alinhados à direita.
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                    Text(
-                        it,
-                        Modifier.padding(vertical = 2.dp).background(GoldBrush, CircleShape).padding(horizontal = 10.dp, vertical = 2.dp),
-                        style = numbers,
-                        fontWeight = FontWeight.Bold,
-                        color = GColors.OnGold,
+        Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
+        values.forEach { cell ->
+            // Quantidade de cartas: coluna própria, sem parênteses (vazia quando a linha não tem quantidade).
+            Box(Modifier.weight(COUNT_WEIGHT), contentAlignment = Alignment.CenterEnd) {
+                cell.count?.let { count ->
+                    com.gtranca.ui.theme.FitText(
+                        count,
+                        numbers.copy(color = GColors.Steel),
+                        if (cell.countTag != null) Modifier.testTag(cell.countTag) else Modifier,
+                        minFontSp = 9,
                     )
                 }
+            }
+            if (pill) {
+                // Totais em cápsula dourada, alinhados à direita.
+                Box(Modifier.weight(POINTS_WEIGHT), contentAlignment = Alignment.CenterEnd) {
+                    Box(Modifier.padding(vertical = 2.dp).background(GoldBrush, CircleShape).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                        com.gtranca.ui.theme.FitText(cell.points, numbers.copy(fontWeight = FontWeight.Bold, color = GColors.OnGold), minFontSp = 9)
+                    }
+                }
             } else {
-                Text(it, Modifier.weight(1f), style = numbers, fontWeight = weight, textAlign = TextAlign.End)
+                Column(Modifier.weight(POINTS_WEIGHT), horizontalAlignment = Alignment.End) {
+                    com.gtranca.ui.theme.FitText(cell.points, numbers.copy(color = androidx.compose.material3.LocalContentColor.current), minFontSp = 9)
+                    cell.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End) }
+                }
             }
         }
     }

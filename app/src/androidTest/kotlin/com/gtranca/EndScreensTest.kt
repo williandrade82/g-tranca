@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -107,7 +109,9 @@ class EndScreensTest {
     fun pontosMostram3VermelhoSemCanastraESecaoDaMaoComSubtotal() {
         rule.setContent { GTrancaTheme { RoundSummaryScreen(snapshot(), {}, {}) } }
         // §12.1 sem canastra, 3 vermelho vale −100 cada: a célula diz o motivo e a nota explica.
-        rule.onNodeWithText("\u2212200 (2)\nsem canastra").assertExists()
+        rule.onNodeWithText("\u2212200").assertExists()
+        rule.onNodeWithTag("count-RED_THREES-0", useUnmergedTree = true).assertTextEquals("2")
+        rule.onNodeWithText("sem canastra").assertExists()
         rule.onNodeWithText("Sem canastra na mesa, cada 3 vermelho vale −100 aqui e +5 em “Cartas na mesa”: −95 no total.").assertExists()
         // §12.1 seção "Cartas na mesa" com subtotal, depois dos pontos especiais.
         rule.onNodeWithTag("table-section").assertExists()
@@ -126,6 +130,28 @@ class EndScreensTest {
         rule.onNodeWithText("\u221259").assertExists()
         // A tela de pontos não oferece desistir (decisão do usuário; §13.1 fica na mesa e no anúncio).
         rule.onNodeWithTag("action-resign").assertDoesNotExist()
+    }
+
+    @Test
+    fun pontosTemColunasDeQuantidadeSemParentesesECabemEm360dpComFonteGrande() {
+        rule.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, 1.3f),
+            ) { GTrancaTheme { Box(Modifier.width(360.dp).height(800.dp)) { RoundSummaryScreen(snapshot(), {}, {}) } } }
+        }
+        // Quantidade numa coluna própria, sem parênteses.
+        rule.onNodeWithTag("count-RED_THREES-0", useUnmergedTree = true).assertTextEquals("2")
+        rule.onNodeWithTag("count-CLEAN_CANASTAS-1", useUnmergedTree = true).assertTextEquals("1")
+        rule.onNodeWithTag("count-TABLE_FOUR_TO_TEN-1", useUnmergedTree = true).assertTextEquals("6")
+        rule.onAllNodes(hasText("(", substring = true), useUnmergedTree = true).assertCountEquals(0)
+        // Ícone de 3 cartas no título de cada lado e nada passando de 360 dp.
+        rule.onNodeWithTag("score-cards-icon-0", useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag("score-cards-icon-1", useUnmergedTree = true).assertExists()
+        listOf("count-RED_THREES-0", "count-TABLE_FOUR_TO_TEN-1").forEach { tag ->
+            val b = rule.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot()
+            check(b.right <= 360.dp + 0.5.dp) { "$tag passa de 360 dp" }
+        }
     }
 
     /** Fim de jogo (§13) com o lado [winner] vencedor. */
