@@ -63,7 +63,8 @@ class SessionTest {
         val guest = GuestSession(network.transport(), "Bia", codec = ProtocolCodec(version = PROTOCOL_VERSION + 1))
         guest.join(sessionScope, "m")
         advanceUntilIdle()
-        guest.status.value shouldBe GuestStatus.Refused(VERSION_MISMATCH_MESSAGE)
+        // A resposta do anfitrião vem na versão dele: o convidado mostra as duas versões.
+        guest.status.value shouldBe GuestStatus.Refused(versionMismatchMessage(PROTOCOL_VERSION, PROTOCOL_VERSION + 1))
         host.roster.value.size shouldBe 1
     }
 
@@ -75,7 +76,7 @@ class SessionTest {
         val guest = GuestSession(network.transport(), "Bia")
         guest.join(sessionScope, "m")
         advanceUntilIdle()
-        guest.status.value shouldBe GuestStatus.Refused(VERSION_MISMATCH_MESSAGE)
+        guest.status.value shouldBe GuestStatus.Refused(versionMismatchMessage(PROTOCOL_VERSION + 1, PROTOCOL_VERSION))
         guest.rules.value shouldBe null
     }
 

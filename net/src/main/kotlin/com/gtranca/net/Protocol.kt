@@ -26,8 +26,17 @@ import kotlinx.serialization.Serializable
  */
 const val PROTOCOL_VERSION: Int = 8
 
-/** §16.1 texto mostrado a quem tenta jogar com outra versão. */
-const val VERSION_MISMATCH_MESSAGE: String = "Versão do jogo diferente: atualize o app nos dois celulares"
+/** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
+const val VERSION_MISMATCH_MESSAGE: String =
+    "O anfitrião está com outra versão do jogo. Atualizem todos os celulares para a mesma versão e criem uma mesa nova."
+
+/**
+ * §16.1 o mesmo aviso com as versões de comunicação dos dois lados (a do anfitrião, quando conhecida, e a deste
+ * aparelho), para quem atualiza saber qual celular está atrasado.
+ */
+fun versionMismatchMessage(hostVersion: Int?, mine: Int): String =
+    "O anfitrião está com outra versão do jogo (anfitrião: versão ${hostVersion ?: "?"}; você: versão $mine). " +
+        "Atualizem todos os celulares para a mesma versão e criem uma mesa nova."
 
 /** §16.5 sessão duplicada: o mesmo jogador entrou por outra conexão, que assumiu o assento. */
 const val REPLACED_MESSAGE: String = "Você voltou à mesa por outra conexão; esta foi encerrada."

@@ -646,7 +646,7 @@ class HostSession(
         val link = member?.link ?: waiting!!.link
         when (val decoded = codec.decode(event.bytes)) {
             is Decoded.VersionMismatch -> {
-                link.sendLocked(Rejected(VERSION_MISMATCH_MESSAGE))
+                link.sendLocked(Rejected(versionMismatchMessage(codec.version, decoded.remoteVersion ?: 0)))
                 if (waiting != null) closePendingLocked(waiting)
             }
             Decoded.Malformed -> Unit

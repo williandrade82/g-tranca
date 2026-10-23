@@ -254,7 +254,7 @@ Todos levam o **cabeçalho de marca**.
 | **Detalhe do jogador** | diálogo | tocar na pílula | imagem de apresentação do robô, bordão, nome e a última jogada (com cartas e 3 vermelhos baixados) |
 | Lixo completo | diálogo | ícone na linha do lixo | todas as cartas do lixo |
 | **Procurar mesas por perto** | mensagem | ligar o Wi-Fi do jogo no Perfil ou no botão de Wi-Fi de Mesas disponíveis, abrir Mesas disponíveis com ele ligado e sem permissão, ou criar mesa multijogador | explica, em linguagem simples, as permissões pedidas (Bluetooth, dispositivos próximos ou localização, conforme o Android) e que **nada sai do aparelho e não usa internet**; **Permitir** / **Agora não** (o modo fica desligado) |
-| **Versão do jogo diferente** | mensagem (aviso) | entrar em mesa de outra versão | "Atualize o app nos dois celulares"; recusa a entrada |
+| **Versão do jogo diferente** | mensagem (aviso) | entrar em mesa de outra versão | "O anfitrião está com outra versão do jogo (anfitrião: versão N; você: versão M). Atualizem todos os celulares para a mesma versão e criem uma mesa nova."; recusa a entrada |
 | **Pedido de entrada** | mensagem | anfitrião, quando alguém pede para entrar no meio do jogo (§16.7) | nome de quem pede e o assento (robô ou o da vez); **Aceitar** / **Recusar** |
 | **Jogo pausado** | mensagem | convidados, quando o jogo pausa por queda ou recrutamento (§16.8) | quem caiu e o que o anfitrião está fazendo; fecha sozinho quando o jogo segue |
 | **Aguardando <nome>** | diálogo (anfitrião) | chega a vez de quem caiu | três ações: **Aguardar o reingresso**, **Substituir por um robô** e **Recrutar outro jogador** (desativa o que não vale; com o recrutamento ativo vira "Aguardando recrutamento", ainda com **Substituir por robô**) |

@@ -411,7 +411,7 @@ class GuestSession(
     private suspend fun receiveLocked(current: ReliableLink, bytes: ByteArray) {
         when (val decoded = codec.decode(bytes)) {
             is Decoded.VersionMismatch -> {
-                _status.value = GuestStatus.Refused(VERSION_MISMATCH_MESSAGE)
+                _status.value = GuestStatus.Refused(versionMismatchMessage(decoded.remoteVersion, codec.version))
                 current.close()
                 link = null
                 transport.disconnect(current.endpoint)
