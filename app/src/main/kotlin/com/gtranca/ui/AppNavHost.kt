@@ -11,6 +11,9 @@ import com.gtranca.ui.sound.LocalSound
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.drawWithContent
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -208,7 +211,13 @@ fun AppNavHost() {
     val tourSettings = remember(tourPrefs, data) {
         com.gtranca.ui.tour.TourSettings(tourPrefs?.first, tourPrefs?.second ?: true) { id -> WriteQueue.app.enqueue { data.settings.markTourSeen(id) } }
     }
+    // Saldo no topo de todas as telas (docs/telas.md 0), ao vivo pela carteira.
+    val coinBalance by remember(data) { data.wallet.wallet.map { it.balance as Int? }.catch { emit(null) } }
+        .collectAsStateWithLifecycle(null)
+    // Na mesa de jogo o saldo vai na linha do cabeçalho (não ganha faixa).
+    val onGame = entry?.destination?.let { it.hasRoute<GameRoute>() || it.hasRoute<MultiplayerGameRoute>() } == true
     CompositionLocalProvider(
+        com.gtranca.ui.theme.LocalCoinBalance provides coinBalance,
         com.gtranca.ui.tour.LocalTours provides tourSettings,
         LocalSoundSettings provides soundSettings,
         LocalSpeedSettings provides speedSettings,
@@ -222,10 +231,14 @@ fun AppNavHost() {
                 if (veil.value > 0f) drawRect(com.gtranca.ui.theme.GColors.Champagne.copy(alpha = veil.value))
             },
     ) {
+    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()) {
+    if (!onGame) com.gtranca.ui.theme.CoinBalanceBar(androidx.compose.ui.Modifier.background(com.gtranca.ui.theme.GColors.Midnight).statusBarsPadding())
     NavHost(
         navController,
         startDestination = HomeRoute,
-        modifier = androidx.compose.ui.Modifier.background(com.gtranca.ui.theme.GColors.Midnight),
+        modifier = androidx.compose.ui.Modifier.weight(1f)
+            .then(if (!onGame) androidx.compose.ui.Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.Companion.statusBars) else androidx.compose.ui.Modifier)
+            .background(com.gtranca.ui.theme.GColors.Midnight),
         enterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(if (motion) 300 else 0)) },
         exitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(if (motion) 250 else 0)) },
         popEnterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(if (motion) 300 else 0)) },
@@ -428,6 +441,7 @@ fun AppNavHost() {
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats, data.wallet) }) { navController.popBackStack() }
         }
+    }
     }
     }
     }

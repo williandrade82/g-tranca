@@ -548,13 +548,16 @@ private fun Header(
                 .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo)
                 .testTag("match-info-open"),
         ) {
-            Text(
-                stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
-                color = OnTable.copy(alpha = 0.85f),
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // "Partida N · alvo X" e, ao lado, o saldo (sem ganhar faixa própria na mesa; docs/telas.md 0).
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                com.gtranca.ui.theme.FitText(
+                    stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
+                    MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
+                    Modifier.weight(1f, fill = false),
+                    minFontSp = 9,
+                )
+                com.gtranca.ui.theme.LocalCoinBalance.current?.let { com.gtranca.ui.theme.CoinBalanceChip(it) }
+            }
             Text(
                 stringResource(
                     R.string.score_line,

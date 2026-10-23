@@ -1,5 +1,8 @@
 package com.gtranca.ui.game
 
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import com.gtranca.ui.theme.GMessage
@@ -88,19 +91,16 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
     // §14.4 regras da mesa para os textos (sem coringa, §1: só "Canastra", sem limpa/suja).
     androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules) {
     if (reviewingTable) FinalTableReview(state, viewModel) { reviewingTable = false }
-    else when (state.endScreen) {
-        null -> TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
-        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign }, state.personas, state.animationMillis > 0, review)
-        EndScreen.ROUND_POINTS ->
-            RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
-        EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext, state.personas, state.animationMillis > 0, review)
-        EndScreen.FINAL -> GameOverScreen(
-            snapshot, onExit, state.personas, state.animationMillis > 0,
-            multiplayer = multiplayer != null,
-            multiplayerNet = multiplayer?.coinsNet?.invoke(),
-            extra = multiplayer?.gameOverExtra,
-        )
+    else if (state.endScreen != null) {
+        // Telas de resultado: a faixa do saldo no topo (docs/telas.md 0), como fora do jogo.
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+            com.gtranca.ui.theme.CoinBalanceBar(Modifier.statusBarsPadding())
+            androidx.compose.foundation.layout.Box(Modifier.weight(1f).consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.Companion.statusBars)) {
+                EndScreens(state, viewModel, snapshot, canResign, review, multiplayer, onExit)
+            }
+        }
     }
+    else TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
     }
 
     // §13.1 desistência: disponível na mesa, na encenação e na tela de anúncio (não na de pontos, decisão do usuário).
@@ -241,5 +241,31 @@ private fun ObserveAnimationScale(onChange: (Float) -> Unit) {
         }
         resolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, observer)
         onDispose { resolver.unregisterContentObserver(observer) }
+    }
+}
+
+/** Telas de resultado (anúncio, pontos, fim de jogo), conforme a etapa. */
+@Composable
+private fun EndScreens(
+    state: GameUiState,
+    viewModel: GameViewModel,
+    snapshot: com.gtranca.game.GameSnapshot,
+    canResign: Boolean,
+    review: () -> Unit,
+    multiplayer: MultiplayerScreenHooks?,
+    onExit: () -> Unit,
+) {
+    when (state.endScreen) {
+        null -> Unit
+        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign }, state.personas, state.animationMillis > 0, review)
+        EndScreen.ROUND_POINTS ->
+            RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
+        EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext, state.personas, state.animationMillis > 0, review)
+        EndScreen.FINAL -> GameOverScreen(
+            snapshot, onExit, state.personas, state.animationMillis > 0,
+            multiplayer = multiplayer != null,
+            multiplayerNet = multiplayer?.coinsNet?.invoke(),
+            extra = multiplayer?.gameOverExtra,
+        )
     }
 }
