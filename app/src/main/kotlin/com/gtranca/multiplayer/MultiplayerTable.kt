@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -289,8 +290,11 @@ class MultiplayerTable(
         snapshot: com.gtranca.game.SaveSnapshot,
         robots: Map<Int, String>,
         hostSeat: Seat = Seat(0),
+        ledger: com.gtranca.engine.GroupBetLedger? = null,
     ) {
         name = playerName
+        // §16.7 o jogo continua de onde estava: a tela não refaz nenhuma animação (como no reingresso).
+        continuing = true
         val session = HostSession.forRobotGame(transport, tableId, rules, playerName, hostSeat, robots, hostPhoto = myPhoto)
         _rules.value = rules
         val config = configOf(rules)
@@ -302,6 +306,7 @@ class MultiplayerTable(
             members = session.membersForSuccessor(),
             nextPlayerId = session.nextPlayerId(),
             robotPersonas = robots,
+            ledger = ledger,
         )
         val host = MultiplayerHost(
             session, config, gameSeed, emptySet(),
@@ -311,7 +316,7 @@ class MultiplayerTable(
         )
         session.open(scope)
         setRole(MpRole.Hosting(session, host))
-        scope.launch { runHost(host) }
+        hostJob = scope.launch { runHost(host) }
     }
 
     /** [hostRobotGame] sem esperar. */
@@ -415,6 +420,36 @@ class MultiplayerTable(
         (_role.value as? MpRole.Hosting)?.session?.refuseJoin(requestId)
     }
 
+    /** Laço do jogo do anfitrião neste aparelho (parado para reabrir a mesa, §16.7). */
+    @Volatile
+    private var hostJob: Job? = null
+
+    /**
+     * §16.7 este aparelho continua um jogo que já estava na tela (o local só com robôs que virou online): a primeira vista
+     * é a atual, sem distribuição nem replay.
+     */
+    @Volatile
+    var continuing: Boolean = false
+        private set
+
+    /**
+     * §16.7 Wi-Fi ligado de novo depois de desligado (jogo hospedado fora da rede): reabre a mesa com
+     * [HostSession.forRobotGame] a partir do estado atual (mesma mão, vez, placar, personagens e apostas retidas; nada
+     * é debitado nem gravado, §16.12). Pode repetir quantas vezes o jogador quiser.
+     */
+    suspend fun goOnline() {
+        val hosting = _role.value as? MpRole.Hosting ?: return
+        val old = hosting.host ?: return
+        if (!_offline.value) return
+        hostJob?.cancelAndJoin()
+        val snapshot = old.controller.saveSnapshot()
+        hostRobotGame(
+            _rules.value ?: return, name, com.gtranca.net.nearby.newTableId(), old.gameSeed, snapshot,
+            old.robotPersonas.value, old.hostSeat, old.ledger.value,
+        )
+        _offline.value = false
+    }
+
     private val _offline = MutableStateFlow(false)
 
     /** §16.7 o anfitrião desligou o Wi-Fi do jogo: a mesa saiu da rede e o jogo segue só neste aparelho. */
@@ -445,7 +480,7 @@ class MultiplayerTable(
             computeDispatcher = computeDispatcher,
         )
         setRole(MpRole.Hosting(hosting.session, host))
-        scope.launch { runHost(host) }
+        hostJob = scope.launch { runHost(host) }
     }
 
     /**
@@ -675,7 +710,7 @@ class MultiplayerTable(
         )
         _tookOver.value = true
         setRole(MpRole.Hosting(host.hostSession, host))
-        scope.launch { runHost(host) }
+        hostJob = scope.launch { runHost(host) }
     }
 
     private fun watchHost(role: MpRole.Hosting): List<Job> {

@@ -740,6 +740,31 @@ class MultiplayerTableTest {
             advanceTimeBy(1)
             network.adverts().single().let { it.listed shouldBe true; it.inProgress shouldBe true }
             saves.size shouldBe savesAtHandOff
+            // §16.7 sem replay: a tela começa na vista atual (sem distribuição nem voos), como no reingresso.
+            table.continuing shouldBe true
+            val driver = MultiplayerDriver.create(table, scope) { 0 }
+            driver.state.value.view.hand shouldBe before.view.hand
+            driver.state.value.turnEvents shouldBe before.turnEvents
+            val screen = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(rules), animationMillis = 400, swapAnimationMillis = 0,
+                externalDriver = driver, multiplayer = true, continuing = true,
+            )
+            screen.uiState.value.flights shouldBe emptyList()
+            // §16.7 ligar → desligar → ligar quantas vezes quiser: o jogo segue o mesmo, sem novo débito nem gravação.
+            repeat(2) {
+                table.goOffline()
+                advanceTimeBy(10_000)
+                table.offline.value shouldBe true
+                val match = (table.role.value as MpRole.Hosting).host!!.controller.currentMatch
+                table.goOnline()
+                advanceTimeBy(1)
+                table.offline.value shouldBe false
+                val again = (table.role.value as MpRole.Hosting).host.shouldNotBeNull()
+                again.controller.currentMatch.currentRound shouldBe match.currentRound
+                again.robotPersonas.value shouldBe robots
+                table.hostControls.value.shouldNotBeNull()
+            }
+            saves.size shouldBe savesAtHandOff
             table.leave()
             advanceTimeBy(1)
         } finally {

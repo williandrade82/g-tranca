@@ -101,8 +101,11 @@ fun rememberMultiplayerHooks(
     val hostName = roster.firstOrNull { it.isHost }?.name.orEmpty()
     val wifi = com.gtranca.ui.game.TableWifi(connected) {
         when {
-            // Ligar de novo depois de sair da rede: só a configuração (o jogo segue neste aparelho).
-            !connected -> setWifi(!wifiOn)
+            // §16.7 ligar de novo depois de sair da rede: a mesa reabre com o jogo como está (vira anfitrião outra vez).
+            !connected -> {
+                setWifi(true)
+                if (offline) scope.launch { table.goOnline() }
+            }
             role is MpRole.Guesting -> {
                 wifiOffOnResign = true
                 onResign()

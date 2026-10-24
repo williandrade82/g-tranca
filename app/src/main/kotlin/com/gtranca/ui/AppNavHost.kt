@@ -530,6 +530,7 @@ private fun MultiplayerGameDestination(data: GameData, navController: NavHostCon
             externalDriver = readyDriver,
             externalPersonas = holder.personas,
             multiplayer = true,
+            continuing = table.continuing,
         )
     }
     val wifiOn by remember(data) { data.settings.settings.map { it.wifiOn }.catch { emit(false) } }.collectAsStateWithLifecycle(true)

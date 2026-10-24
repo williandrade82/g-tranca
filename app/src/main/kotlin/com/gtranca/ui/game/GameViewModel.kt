@@ -215,6 +215,8 @@ class GameViewModel(
      * sorteados, na posição escolhida); vazio = sorteio pela semente do jogo (jogos salvos antes da mesa montada).
      */
     private val robots: Map<Int, String> = emptyMap(),
+    /** §16.7 o jogo continua de onde estava na tela (virou online no meio): a primeira vista não refaz animação. */
+    private val continuing: Boolean = false,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -338,9 +340,9 @@ class GameViewModel(
                 separateSpecial = initialHand.separateSpecial,
                 speed = speedFor(slowAnimations),
                 animationScale = speedFor(slowAnimations),
-                endStep = if (restored != null && initial.stage == Stage.ROUND_OVER) 1 else 0,
+                endStep = if ((restored != null || continuing) && initial.stage == Stage.ROUND_OVER) 1 else 0,
             )
-            absorb(base, initial, previous = if (restored != null) initial else null)
+            absorb(base, initial, previous = if (restored != null || continuing) initial else null)
         },
     )
 
