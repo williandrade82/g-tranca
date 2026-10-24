@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 9
+const val PROTOCOL_VERSION: Int = 10
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -216,6 +216,21 @@ data class Hello(
 @SerialName("photo")
 data class PlayerPhoto(val playerId: Int, val photo: String) : Payload {
     override fun toString(): String = "PlayerPhoto($playerId, ${photo.length})"
+}
+
+/**
+ * §16.2 pedido da foto a um jogador próximo (fora de mesa), por uma conexão curta: só isso é aceito nela, e a resposta
+ * leva só a foto ([PhotoReply]).
+ */
+@Serializable
+@SerialName("photoReq")
+data object PhotoRequest : Payload
+
+/** §16.2 a foto do perfil (Base64, JPEG pequeno) de quem anunciou a presença; `null` = sem foto (vale a inicial). */
+@Serializable
+@SerialName("photoRep")
+data class PhotoReply(val photo: String? = null) : Payload {
+    override fun toString(): String = "PhotoReply(${photo?.length ?: 0})"
 }
 
 /** Limite do texto Base64 da foto aceito na mesa (~15 KB de JPEG); maior é descartado. */

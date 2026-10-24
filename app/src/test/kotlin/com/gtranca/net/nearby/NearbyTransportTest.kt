@@ -195,4 +195,53 @@ class NearbyTransportTest {
         host.roster.value.map { it.name } shouldContainExactly listOf("Ana", "Bia")
         scope.cancel()
     }
+
+    @Test
+    fun `§16_2 §16_15 quem para de anunciar sem onLost some da lista em ate 11 s e quem continua nao pisca`() = runTest {
+        network.silentStop = true
+        val (_, gone) = node()
+        val (_, stays) = node()
+        val (api, me) = node()
+        val bia = com.gtranca.net.PresenceAdvert("kbia", "Bia")
+        val caio = com.gtranca.net.PresenceAdvert("kcaio", "Caio")
+        gone.advertisePresence(bia)
+        stays.advertisePresence(caio)
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        lists.last().toSet() shouldBe setOf(bia, caio)
+        gone.stopPresence()
+        runCurrent()
+        lists.last().toSet() shouldBe setOf(bia, caio) // o Nearby não avisou
+        advanceTimeBy(NearbyTransport.PRESENCE_REFRESH_MILLIS + NearbyTransport.PRESENCE_SWEEP_GRACE_MILLIS + 1)
+        runCurrent()
+        lists.last() shouldBe listOf(caio)
+        // Caio nunca saiu de nenhuma lista emitida depois de aparecer.
+        lists.dropWhile { caio !in it }.all { caio in it } shouldBe true
+        api.discoveryStarts shouldBe 2
+        // Mesas não são varridas (a "mesa sumida" do sucessor, §16.10, depende só do onLost).
+        val (_, host) = node()
+        host.advertise(advert)
+        host.stopAdvertising()
+        advanceTimeBy((NearbyTransport.PRESENCE_REFRESH_MILLIS + NearbyTransport.PRESENCE_SWEEP_GRACE_MILLIS) * 2)
+        runCurrent()
+        me.discover().first().map { it.tableId } shouldBe listOf(advert.tableId)
+    }
+
+    @Test
+    fun `§16_2 foto do jogador proximo pelo Nearby - conexao curta com a presenca`() = runTest {
+        val (_, ana) = node()
+        val (_, bia) = node()
+        ana.advertisePresence(com.gtranca.net.PresenceAdvert("kana", "Ana"))
+        bia.advertisePresence(com.gtranca.net.PresenceAdvert("kbia", "Bia"))
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job())
+        val anaPhotos = com.gtranca.net.PresencePhotos(ana, "FOTO")
+        val biaPhotos = com.gtranca.net.PresencePhotos(bia, null)
+        scope.launch { anaPhotos.serve() }
+        scope.launch { biaPhotos.serve() }
+        scope.launch { biaPhotos.fetchAll(bia.discoverPresence()) }
+        runCurrent()
+        biaPhotos.photos.value shouldBe mapOf("kana" to "FOTO")
+        scope.cancel()
+    }
 }

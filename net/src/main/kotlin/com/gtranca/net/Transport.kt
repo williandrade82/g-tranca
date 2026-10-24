@@ -106,6 +106,9 @@ interface LocalTransport {
     /** §16.2 deixa de anunciar a presença (entrou num jogo ou desligou o Wi-Fi do jogo). */
     suspend fun stopPresence() {}
 
+    /** §16.2 conecta-se ao jogador próximo que anuncia [presence] (só para pedir a foto, [PresencePhotos]). */
+    suspend fun connectPresence(presence: PresenceAdvert): EndpointId = error("Presença não encontrada")
+
     /** §16.2 jogadores próximos que anunciam presença agora (sem este aparelho). */
     fun discoverPresence(): Flow<List<PresenceAdvert>> = kotlinx.coroutines.flow.flowOf(emptyList())
 }
@@ -190,6 +193,17 @@ class MemoryNetwork {
 
     internal fun stopPresence(from: EndpointId) = presences.update { it - from }
 
+    @Synchronized
+    internal fun connectPresence(from: EndpointId, presence: PresenceAdvert): EndpointId {
+        val target = presences.value.entries.firstOrNull { it.value.key == presence.key }?.key ?: error("Presença não encontrada")
+        val out = blocked.value
+        check(from !in out && target !in out && from !in dead && target !in dead && from !in jammed) { "Fora do alcance" }
+        links += key(from, target)
+        node(target).push(TransportEvent.Connected(from))
+        node(from).push(TransportEvent.Connected(target))
+        return target
+    }
+
     internal fun presencesVisibleTo(viewer: EndpointId): Flow<List<PresenceAdvert>> = combine(presences, blocked) { map, out ->
         if (viewer in out) emptyList() else map.filterKeys { it !in out && it != viewer }.values.toList()
     }.distinctUntilChanged()
@@ -272,4 +286,6 @@ class MemoryTransport internal constructor(private val network: MemoryNetwork, v
     override suspend fun stopPresence() = network.stopPresence(id)
 
     override fun discoverPresence(): Flow<List<PresenceAdvert>> = network.presencesVisibleTo(id)
+
+    override suspend fun connectPresence(presence: PresenceAdvert): EndpointId = network.connectPresence(id, presence)
 }

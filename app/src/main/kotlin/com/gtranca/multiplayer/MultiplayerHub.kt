@@ -51,9 +51,15 @@ object MultiplayerHub {
     @Volatile
     private var presenceKey: String? = null
 
-    /** §16.2 o Wi-Fi do jogo desligou: a próxima presença leva uma chave nova. */
+    private val _presencePhotos = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** §16.2 fotos dos jogadores próximos por chave de presença (Base64; "" = sem foto). Só em memória. */
+    val presencePhotos: StateFlow<Map<String, String>> = _presencePhotos.asStateFlow()
+
+    /** §16.2 o Wi-Fi do jogo desligou: a próxima presença leva uma chave nova e as fotos recebidas são descartadas. */
     fun resetPresence() {
         presenceKey = null
+        _presencePhotos.value = emptyMap()
     }
 
     /**
@@ -67,8 +73,20 @@ object MultiplayerHub {
         val key = presenceKey ?: com.gtranca.net.newPresenceKey().also { presenceKey = it }
         try {
             t.advertisePresence(PresenceAdvert(key, name))
-            val advert = t.discover().catch { emit(emptyList()) }.first { list -> list.invitationFor(key) != null && _table.value == null }
-                .invitationFor(key) ?: return
+            // §16.2 enquanto fora de mesa: atende os pedidos de foto e pede a dos jogadores próximos novos.
+            val advert = kotlinx.coroutines.coroutineScope {
+                val photos = com.gtranca.net.PresencePhotos(t, photo, _presencePhotos)
+                val serving = launch { runCatching { photos.serve() } }
+                val fetching = launch { runCatching { photos.fetchAll(t.discoverPresence().catch { emit(emptyList()) }) } }
+                try {
+                    t.discover().catch { emit(emptyList()) }.first { list -> list.invitationFor(key) != null && _table.value == null }
+                        .invitationFor(key)
+                } finally {
+                    // Pára de ler os eventos antes de a sessão da mesa começar a ler.
+                    serving.cancel()
+                    fetching.cancel()
+                }
+            } ?: return
             newTable(context, data, photo).joinAsync(advert.tableId, name, inviteKey = key)
         } finally {
             withContext(NonCancellable) { runCatching { t.stopPresence() } }

@@ -9,6 +9,9 @@ class FakeNearbyNetwork {
     private var counter = 0
     val nodes = mutableMapOf<String, FakeNearbyApi>()
 
+    /** Como o Nearby real: parar de anunciar não avisa `onLost` a quem procura (ou avisa muito depois). */
+    var silentStop = false
+
     fun api(): FakeNearbyApi = FakeNearbyApi(this, "n${++counter}").also { nodes[it.id] = it }
 
     internal fun advertisers() = nodes.values.filter { it.advertInfo != null }
@@ -59,7 +62,7 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
         if (advertInfo == null) return
         advertiseStops++
         advertInfo = null
-        network.withdraw(this)
+        if (!network.silentStop) network.withdraw(this)
     }
 
     override suspend fun startDiscovery(callback: DiscoveryCallback) {

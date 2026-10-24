@@ -70,8 +70,16 @@ sealed interface Pick {
     data class Bot(val profile: BotProfile) : Pick
 }
 
-/** §16.2 jogador próximo achado (presença: chave e nome). */
-data class NearbyPlayer(val key: String, val name: String)
+/**
+ * §16.2 jogador próximo achado (presença: chave e nome) e a foto dele, se já chegou e se o jogador quer ver as fotos
+ * ("Ver fotos nas mesas compartilhadas"); `null` = inicial. Só em memória.
+ */
+data class NearbyPlayer(val key: String, val name: String, val photo: ByteArray? = null) {
+    override fun equals(other: Any?): Boolean =
+        other is NearbyPlayer && key == other.key && name == other.name && photo.contentEquals(other.photo)
+
+    override fun hashCode(): Int = 31 * (31 * key.hashCode() + name.hashCode()) + photo.contentHashCode()
+}
 
 /**
  * Estado da montagem da mesa (§14.4, docs/telas.md 3.2): participantes marcados (na ordem da escolha), modo, dificuldade

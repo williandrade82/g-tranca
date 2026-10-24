@@ -42,6 +42,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * - **Tamanho:** payload BYTES tem teto de [NearbyApi.maxBytes] (1 MB no AAR 19.5.1); as mensagens do protocolo ficam
  *   muito abaixo (ver o teste de tamanho), então não há fragmentação; acima do teto, o envio é recusado.
  * - Envio a uma ponta que caiu é descartado em silêncio (como no transporte em memória): o reenvio é do protocolo.
+ * - **Presença sempre atualizada (§16.2, §16.15):** o Nearby avisa `onLost` com atraso grande (ou nunca) quando o
+ *   anunciante só para. Enquanto alguém observa [discoverPresence], a busca recomeça a cada [refreshMillis] (o Nearby
+ *   reporta de novo quem continua no ar) e a presença não revista em [sweepGraceMillis] sai da lista. As listas não são
+ *   apagadas no recomeço (quem continua não pisca), as **mesas** não são varridas (a "mesa sumida" do sucessor, §16.10,
+ *   continua dependendo só do `onLost`) e as conexões não são afetadas.
  * - Nada é logado (nem bytes, nem nomes).
  */
 class NearbyTransport(
@@ -52,7 +57,14 @@ class NearbyTransport(
     private val connectTimeoutMillis: Long = CONNECT_TIMEOUT_MILLIS,
     /** Relógio do aquecimento da busca (o virtual nos testes). */
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val refreshMillis: Long = PRESENCE_REFRESH_MILLIS,
+    private val sweepGraceMillis: Long = PRESENCE_SWEEP_GRACE_MILLIS,
 ) : LocalTransport {
+
+    /** §16.2 quando cada presença foi vista (achada) pela última vez, por endpoint. */
+    private val presenceSeen = mutableMapOf<String, Long>()
+    private var presenceSubscribers = 0
+    private var refresher: Job? = null
 
     private val inbox = Channel<TransportEvent>(Channel.UNLIMITED)
     override val events: Flow<TransportEvent> = inbox.receiveAsFlow()
@@ -102,6 +114,7 @@ class NearbyTransport(
             // O primeiro byte distingue a presença (§16.2) do anúncio de mesa.
             if (endpointInfo.firstOrNull()?.toInt() == AdvertCodec.PRESENCE_FORMAT) {
                 val presence = AdvertCodec.decodePresence(endpointInfo) ?: return
+                synchronized(presenceSeen) { presenceSeen[endpointId] = now() }
                 found.update { it - endpointId }
                 foundPresence.update { it + (endpointId to presence) }
                 return
@@ -179,10 +192,42 @@ class NearbyTransport(
     /** §16.2 jogadores próximos achados (a mesma busca das mesas, sem o aquecimento: a lista vazia vale como "Recrutando"). */
     override fun discoverPresence(): Flow<List<PresenceAdvert>> = flow {
         acquireDiscovery()
+        control.withLock {
+            if (presenceSubscribers++ == 0) refresher = scope.launch { refreshPresence() }
+        }
         try {
             emitAll(foundPresence.map { it.values.toList() }.distinctUntilChanged())
         } finally {
+            scope.launch { control.withLock { if (--presenceSubscribers == 0) { refresher?.cancel(); refresher = null } } }
             releaseDiscovery()
+        }
+    }
+
+    /** §16.2, §16.15 recomeça a busca periodicamente e tira da lista as presenças que não reapareceram. */
+    private suspend fun refreshPresence() {
+        while (true) {
+            delay(refreshMillis)
+            val restartedAt = control.withLock {
+                if (!discovering) return@withLock null
+                val at = now()
+                runCatching { api.stopDiscovery() }
+                try {
+                    api.startDiscovery(discoveryCallback)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Sem busca agora: a próxima volta tenta de novo; a lista fica como estava.
+                    discovering = false
+                    return@withLock null
+                }
+                at
+            } ?: continue
+            delay(sweepGraceMillis)
+            val stale = synchronized(presenceSeen) { presenceSeen.filterValues { it < restartedAt }.keys.toSet() }
+            if (stale.isNotEmpty()) {
+                synchronized(presenceSeen) { stale.forEach { presenceSeen.remove(it) } }
+                foundPresence.update { it - stale }
+            }
         }
     }
 
@@ -228,9 +273,17 @@ class NearbyTransport(
 
     // ---- conexão e bytes -------------------------------------------------------------------------------------------
 
-    override suspend fun connect(advert: TableAdvert): EndpointId {
-        val endpointId = found.value.entries.lastOrNull { it.value.tableId == advert.tableId && it.value.hostId == advert.hostId }?.key
-            ?: error("Mesa não encontrada")
+    override suspend fun connect(advert: TableAdvert): EndpointId = connectTo(
+        found.value.entries.lastOrNull { it.value.tableId == advert.tableId && it.value.hostId == advert.hostId }?.key
+            ?: error("Mesa não encontrada"),
+    )
+
+    /** §16.2 conexão curta com um jogador próximo (pedido da foto). */
+    override suspend fun connectPresence(presence: PresenceAdvert): EndpointId = connectTo(
+        foundPresence.value.entries.lastOrNull { it.value.key == presence.key }?.key ?: error("Presença não encontrada"),
+    )
+
+    private suspend fun connectTo(endpointId: String): EndpointId {
         val waiting = synchronized(lock) {
             if (endpointId in connected) return EndpointId(endpointId)
             pending.getOrPut(endpointId) { CompletableDeferred() }
@@ -280,6 +333,12 @@ class NearbyTransport(
         const val WARM_UP_MILLIS: Long = 3_000
         const val LINGER_MILLIS: Long = 10_000
         const val CONNECT_TIMEOUT_MILLIS: Long = 20_000
+
+        /** §16.15 a busca recomeça a cada 8 s enquanto alguém observa os jogadores próximos. */
+        const val PRESENCE_REFRESH_MILLIS: Long = 8_000
+
+        /** §16.15 presença não revista 3 s depois do recomeço sai da lista (some em até 11 s). */
+        const val PRESENCE_SWEEP_GRACE_MILLIS: Long = 3_000
 
         /** Nome local na conexão: neutro (nada privado; a identidade vem no `Hello` do protocolo). */
         private val LOCAL_INFO = byteArrayOf(1)

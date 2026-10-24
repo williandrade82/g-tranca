@@ -227,7 +227,7 @@ private fun ParticipantsPill(state: TableSetupUiState, self: Persona, wifiOn: Bo
                 val pick = Pick.Near(player.key)
                 add {
                     ParticipantTile(
-                        Persona(player.name, color = player.key.hashCode().mod(Persona.COLORS)),
+                        Persona(player.name, color = player.key.hashCode().mod(Persona.COLORS), photoBytes = player.photo),
                         player.name,
                         checked = state.isPicked(pick),
                         enabled = true,

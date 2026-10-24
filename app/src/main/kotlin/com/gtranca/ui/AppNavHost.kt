@@ -313,7 +313,15 @@ fun AppNavHost() {
                 if (wifiOn) com.gtranca.multiplayer.MultiplayerHub.discoverPresence(context).catch { emit(emptyList()) }
                 else kotlinx.coroutines.flow.flowOf(emptyList())
             }.collectAsStateWithLifecycle(emptyList())
-            LaunchedEffect(presences) { tablesVm.onNearby(presences.map { com.gtranca.ui.tables.NearbyPlayer(it.key, it.name) }) }
+            // §16.2 a foto de cada um (pedida uma vez, só em memória), se "Ver fotos nas mesas compartilhadas" está ligada.
+            val nearbyPhotos by com.gtranca.multiplayer.MultiplayerHub.presencePhotos.collectAsStateWithLifecycle()
+            val seePhotos by remember(data) { data.settings.settings.map { it.showSharedPhotos }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
+            val decoded = remember(nearbyPhotos) {
+                nearbyPhotos.mapNotNull { (k, v) -> v.takeIf { it.isNotEmpty() }?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }?.let { k to it } }.toMap()
+            }
+            LaunchedEffect(presences, decoded, seePhotos) {
+                tablesVm.onNearby(presences.map { com.gtranca.ui.tables.NearbyPlayer(it.key, it.name, if (seePhotos) decoded[it.key] else null) })
+            }
             val profile = rememberProfile(data)
             val selfName = profile?.name?.takeIf { it.isNotBlank() } ?: PlayerProfile.DEFAULT_NAME
             val self = (profile ?: PlayerProfile()).persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context))
