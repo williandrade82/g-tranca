@@ -1116,7 +1116,7 @@ private fun ReviewContinueBar(onContinue: () -> Unit) {
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = Spacing.sm),
     ) {
-        GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("review-continue")) {
+        GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("final-table-continue")) {
             Text(stringResource(R.string.table_review_continue))
         }
     }

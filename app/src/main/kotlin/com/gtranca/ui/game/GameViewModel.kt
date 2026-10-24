@@ -84,7 +84,8 @@ sealed interface UiMessage {
 data class RedThreeReveal(val notice: RedThreeNotice, val hiddenHandCards: Set<Card>)
 
 /** Telas depois de uma partida: anúncio do resultado, pontos (§12), anúncio do fim do jogo e tela final (§13). */
-enum class EndScreen { ANNOUNCE_ROUND, ROUND_POINTS, ANNOUNCE_GAME, FINAL }
+/** Etapas do fim da partida (docs/telas.md 3.9–3.12): mesa final com "Seguir", pontos da partida e, no fim do jogo, o resultado. */
+enum class EndScreen { FINAL_TABLE, ROUND_POINTS, FINAL }
 
 /**
  * Estado da tela de jogo. Derivado do [GameSnapshot] (vista do humano) e do estado local da tela; os
@@ -648,7 +649,7 @@ class GameViewModel(
     private fun endScreen(snapshot: GameSnapshot, step: Int): EndScreen? = when {
         snapshot.stage == Stage.PLAYING -> null
         snapshot.resigned -> EndScreen.FINAL
-        snapshot.stage == Stage.ROUND_OVER -> if (step == 0) EndScreen.ANNOUNCE_ROUND else EndScreen.ROUND_POINTS
+        snapshot.stage == Stage.ROUND_OVER -> if (step == 0) EndScreen.FINAL_TABLE else EndScreen.ROUND_POINTS
         else -> EndScreen.entries[step.coerceAtMost(EndScreen.entries.lastIndex)]
     }
 

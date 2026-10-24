@@ -41,7 +41,8 @@ import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.Stage
 import com.gtranca.ui.game.GameOverScreen
 import com.gtranca.ui.game.GameUiState
-import com.gtranca.ui.game.RoundAnnouncement
+import com.gtranca.ui.game.GoOutOverlay
+import com.gtranca.ui.game.goOutBy
 import com.gtranca.ui.game.RoundSummaryScreen
 import com.gtranca.ui.game.TableEvents
 import com.gtranca.ui.game.TableScreen
@@ -189,23 +190,25 @@ class EndScreensTest {
     }
 
     @Test
-    fun anuncioDaPartidaPerdidaTemAnimacaoCurta() {
-        rule.mainClock.autoAdvance = false
-        rule.setContent { GTrancaTheme { RoundAnnouncement(snapshot(), {}, onResign = {}) } }
-        rule.onNodeWithTag("end-celebration").assertExists()
-        rule.onNodeWithTag("announcement-crown").assertDoesNotExist()
+    fun batidaDoAdversarioMostraSuaDuplaPerdeuESomeComUmToque() {
+        // §11.1 o assento 1 (adversário à direita) bateu: borda vermelha e "Sua dupla perdeu" (docs/telas.md 3.9).
+        val snap = snapshot()
+        var done = false
+        rule.setContent { GTrancaTheme { GoOutOverlay(goOutBy(snap)!!, snap.view.mode, animate = true) { done = true } } }
+        rule.onNodeWithTag("go-out-message").assertIsDisplayed()
+        rule.onNodeWithText("Sua dupla perdeu").assertIsDisplayed()
+        rule.onNodeWithTag("go-out-overlay").performClick()
+        check(done) { "o toque não retirou a animação" }
     }
 
     @Test
-    fun anuncioMostraQuemBateuEOResultadoDaDuplaAntesDosPontos() {
-        var seePoints = false
-        rule.setContent { GTrancaTheme { RoundAnnouncement(snapshot(), { seePoints = true }, onResign = {}) } }
-        // §4.2 o assento 1 é o adversário à direita; §11.1 ele bateu.
-        rule.onNodeWithText("O adversário à direita bateu.").assertIsDisplayed()
-        rule.onNodeWithText("A dupla adversária bateu.").assertIsDisplayed()
-        rule.onNodeWithTag("action-resign").assertIsDisplayed()
-        rule.onNodeWithText("Ver pontos").performClick()
-        check(seePoints) { "Ver pontos não chamou a ação" }
+    fun batidaSomeSozinhaEm2s() {
+        val snap = snapshot()
+        var done = false
+        rule.mainClock.autoAdvance = false
+        rule.setContent { GTrancaTheme { GoOutOverlay(goOutBy(snap)!!, snap.view.mode, animate = false) { done = true } } }
+        rule.mainClock.advanceTimeBy(2_100)
+        check(done) { "a animação não sumiu em 2 s" }
     }
 
     private val noEvents = object : TableEvents {

@@ -611,8 +611,8 @@ class GameViewModelTest {
         }
         val ended = vm.uiState.value
         ended.snapshot.history.size shouldBe 1
-        // §11 primeiro o anúncio do resultado, depois os pontos (§12).
-        ended.endScreen shouldBe EndScreen.ANNOUNCE_ROUND
+        // §11 primeiro a mesa final (com "Seguir"), depois os pontos (§12); docs/telas.md 3.9–3.12.
+        ended.endScreen shouldBe EndScreen.FINAL_TABLE
         vm.onEndNext()
         advanceUntilIdle()
         vm.uiState.value.endScreen shouldBe EndScreen.ROUND_POINTS
@@ -625,9 +625,7 @@ class GameViewModelTest {
             }
             else -> {
                 ended.snapshot.stage shouldBe Stage.GAME_OVER
-                vm.onEndNext()
-                advanceUntilIdle()
-                vm.uiState.value.endScreen shouldBe EndScreen.ANNOUNCE_GAME
+                // Sem anúncio do jogo: dos pontos direto ao fim de jogo.
                 vm.onEndNext()
                 advanceUntilIdle()
                 vm.uiState.value.endScreen shouldBe EndScreen.FINAL
