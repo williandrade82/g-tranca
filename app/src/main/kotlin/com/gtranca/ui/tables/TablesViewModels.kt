@@ -74,12 +74,30 @@ sealed interface Pick {
  * §16.2 jogador próximo achado (presença: chave e nome) e a foto dele, se já chegou e se o jogador quer ver as fotos
  * ("Ver fotos nas mesas compartilhadas"); `null` = inicial. Só em memória.
  */
-data class NearbyPlayer(val key: String, val name: String, val photo: ByteArray? = null) {
+data class NearbyPlayer(
+    val key: String,
+    val name: String,
+    val photo: ByteArray? = null,
+    /** §16.2 recrutado por **outro** anfitrião: "Recrutado", não selecionável. */
+    val recruitedElsewhere: Boolean = false,
+) {
     override fun equals(other: Any?): Boolean =
-        other is NearbyPlayer && key == other.key && name == other.name && photo.contentEquals(other.photo)
+        other is NearbyPlayer && key == other.key && name == other.name && photo.contentEquals(other.photo) &&
+            recruitedElsewhere == other.recruitedElsewhere
 
-    override fun hashCode(): Int = 31 * (31 * key.hashCode() + name.hashCode()) + photo.contentHashCode()
+    override fun hashCode(): Int = 31 * (31 * key.hashCode() + name.hashCode()) + photo.contentHashCode() + recruitedElsewhere.hashCode()
 }
+
+/** §16.2 o recrutamento imediato visto pela montagem: marcar envia o convite na hora; desmarcar cancela ou tira da mesa. */
+interface Recruiter {
+    /** `false` = não deu para marcar (recrutado por outro, limite, este aparelho recrutado). */
+    suspend fun mark(player: NearbyPlayer): Boolean
+
+    suspend fun unmark(key: String)
+}
+
+/** Avisos breves da montagem (§16.2). */
+enum class TablesNotice { RECRUITED_ELSEWHERE, MARK_FAILED }
 
 /**
  * Estado da montagem da mesa (§14.4, docs/telas.md 3.2): participantes marcados (na ordem da escolha), modo, dificuldade
@@ -101,6 +119,8 @@ data class TableSetupUiState(
     val picks: List<Pick> = emptyList(),
     /** §16.2 jogadores próximos achados agora (só com o Wi-Fi do jogo ligado). */
     val nearby: List<NearbyPlayer> = emptyList(),
+    /** §16.2 jogadores próximos marcados que já aceitaram o convite (os outros marcados aparecem "aguardando"). */
+    val accepted: Set<String> = emptySet(),
 ) {
     /** §14.4 participantes contando o jogador (sempre marcado). */
     val participants: Int get() = 1 + picks.size
@@ -151,6 +171,27 @@ class TablesViewModel(
     private val writes: WriteQueue? = null,
     wallet: WalletRepository? = null,
 ) : ViewModel() {
+    /** §16.2 recrutamento imediato (com o Wi-Fi do jogo ligado); `null` = sem rede. */
+    @Volatile
+    var recruiter: Recruiter? = null
+
+    private val _notices = kotlinx.coroutines.flow.MutableSharedFlow<TablesNotice>(extraBufferCapacity = 8)
+
+    /** Avisos breves (não deu para marcar o jogador próximo). */
+    val notices: kotlinx.coroutines.flow.SharedFlow<TablesNotice> = _notices
+
+    /**
+     * §16.2 os marcados do recrutamento (pendentes e aceitos): quem recusou, saiu ou foi por saldo sai da marcação; os
+     * aceitos ficam marcados como tal.
+     */
+    fun onRecruits(recruits: List<com.gtranca.net.Recruit>) = _uiState.update { state ->
+        val keys = recruits.map { it.key }.toSet()
+        state.copy(
+            picks = state.picks.filter { it !is Pick.Near || it.key in keys },
+            accepted = recruits.filter { it.accepted }.map { it.key }.toSet(),
+        )
+    }
+
     /** §16 Wi-Fi do jogo: a mesma configuração do Perfil (uma só fonte, guardada). */
     val wifiOn: StateFlow<Boolean> = (settings?.settings?.map { it.wifiOn }?.catch { emit(false) } ?: kotlinx.coroutines.flow.flowOf(false))
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
@@ -209,7 +250,32 @@ class TablesViewModel(
     }
 
     /** §14.4 marca ou desmarca um participante; o 4º além do jogador não marca. */
-    fun onToggle(pick: Pick) = edit { state ->
+    fun onToggle(pick: Pick) {
+        val state = _uiState.value
+        val near = pick as? Pick.Near
+        val rec = recruiter
+        if (near == null || rec == null) return toggleLocal(pick)
+        if (pick in state.picks) {
+            // §16.2 desmarcar cancela o convite (ou tira da mesa quem já aceitou).
+            edit { s -> s.copy(picks = s.picks - pick) }
+            viewModelScope.launch { safely { rec.unmark(near.key) } }
+            return
+        }
+        val player = state.nearby.firstOrNull { it.key == near.key } ?: return
+        if (state.picks.size >= TableSetupUiState.MAX_PICKS) return
+        if (player.recruitedElsewhere) {
+            _notices.tryEmit(TablesNotice.RECRUITED_ELSEWHERE)
+            return
+        }
+        // §16.2 marcar envia o convite na hora; recusado pelo recrutamento, não marca (com o motivo).
+        viewModelScope.launch {
+            val ok = safely { rec.mark(player) } ?: false
+            if (ok) edit { s -> if (pick in s.picks || s.picks.size >= TableSetupUiState.MAX_PICKS) s else s.copy(picks = s.picks + pick) }
+            else _notices.tryEmit(TablesNotice.MARK_FAILED)
+        }
+    }
+
+    private fun toggleLocal(pick: Pick) = edit { state ->
         when {
             pick in state.picks -> state.copy(picks = state.picks - pick)
             state.picks.size >= TableSetupUiState.MAX_PICKS -> state
@@ -219,9 +285,12 @@ class TablesViewModel(
     }
 
     /** §16.2 jogadores próximos achados agora; quem sumiu deixa de estar marcado. */
-    fun onNearby(players: List<NearbyPlayer>) = _uiState.update { state ->
+    fun onNearby(players: List<NearbyPlayer>) {
         val keys = players.map { it.key }.toSet()
-        state.copy(nearby = players, picks = state.picks.filter { it !is Pick.Near || it.key in keys })
+        val gone = _uiState.value.picks.filterIsInstance<Pick.Near>().filter { it.key !in keys }
+        _uiState.update { state -> state.copy(nearby = players, picks = state.picks.filter { it !is Pick.Near || it.key in keys }) }
+        // §16.2 quem sumiu da busca deixa de estar marcado (o convite dele é cancelado).
+        recruiter?.let { rec -> gone.forEach { p -> viewModelScope.launch { safely { rec.unmark(p.key) } } } }
     }
 
     fun onModeChange(mode: GameMode) = edit { if (it.modeLocked) it else it.copy(mode = mode) }

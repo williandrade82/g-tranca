@@ -365,11 +365,6 @@ class MultiplayerTable(
         }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
-    /** §16.2 convite recebido e ainda sem resposta (só no convidado). */
-    val invite: StateFlow<com.gtranca.net.Invite?> = _role.flatMapLatest { role ->
-        (role as? MpRole.Guesting)?.session?.invite ?: flowOf(null)
-    }.stateIn(scope, SharingStarted.Eagerly, null)
-
     /** §16.2 situação do convidado (`null` no anfitrião). */
     val guestStatus: StateFlow<GuestStatus?> = _role.flatMapLatest { role ->
         (role as? MpRole.Guesting)?.session?.status ?: flowOf(null)
@@ -379,16 +374,6 @@ class MultiplayerTable(
     val joinRequests: StateFlow<List<com.gtranca.net.JoinRequest>> = _role.flatMapLatest { role ->
         (role as? MpRole.Hosting)?.session?.joinRequests ?: flowOf(emptyList())
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
-
-    /** §16.2 aceita o convite (vai à escolha de posições). */
-    suspend fun acceptInvite() {
-        (_role.value as? MpRole.Guesting)?.session?.acceptInvite()
-    }
-
-    /** §16.2 recusa o convite (um robô assume o lugar). */
-    suspend fun refuseInvite() {
-        (_role.value as? MpRole.Guesting)?.session?.refuseInvite()
-    }
 
     /** §16.2 rotaciona a mesa (troca com o próximo ocupante não confirmado na [direction]). */
     suspend fun rotate(direction: com.gtranca.net.RotateDirection) {

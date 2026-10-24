@@ -7,7 +7,6 @@ import com.gtranca.net.LocalTransport
 import com.gtranca.net.PresenceAdvert
 import com.gtranca.net.TableAdvert
 import com.gtranca.net.TableRules
-import com.gtranca.net.invitationFor
 import com.gtranca.net.nearby.MultiplayerAccess
 import com.gtranca.net.nearby.NearbyTransport
 import kotlinx.coroutines.CoroutineScope
@@ -62,32 +61,66 @@ object MultiplayerHub {
         _presencePhotos.value = emptyMap()
     }
 
+    private val _recruitment = MutableStateFlow<com.gtranca.net.Recruitment?>(null)
+
+    /** §16.2 o recrutamento imediato deste aparelho (anfitrião montando a mesa e/ou recrutado), enquanto fora de mesa. */
+    val recruitment: StateFlow<com.gtranca.net.Recruitment?> = _recruitment.asStateFlow()
+
+    private val _recruitEvents = kotlinx.coroutines.flow.MutableSharedFlow<com.gtranca.net.RecruitEvent>(extraBufferCapacity = 16)
+
+    /** §16.2 avisos ao recrutado (tirado da mesa, mesa encerrada, saldo insuficiente); o início vai direto à mesa. */
+    val recruitEvents: kotlinx.coroutines.flow.SharedFlow<com.gtranca.net.RecruitEvent> = _recruitEvents
+
+    /** Leitura dos eventos do transporte pelo recrutamento (parada antes de uma mesa ler, um leitor por transporte). */
+    @Volatile
+    private var recruiting: kotlinx.coroutines.Job? = null
+
+    /** §16.2 para o recrutamento (o anfitrião tocou em Escolher posições) antes de a mesa começar a ler o transporte. */
+    suspend fun stopRecruiting() {
+        recruiting?.let { it.cancel(); it.join() }
+    }
+
+    /** Chave de presença atual deste aparelho (`null` com o Wi-Fi do jogo desligado). */
+    val myPresenceKey: String? get() = presenceKey
+
     /**
-     * §16.2 com o Wi-Fi do jogo ligado e fora de uma mesa: anuncia a presença ([name]) e procura convites com a própria
-     * chave; achado um, entra na mesa com a chave (o convite chega pela sessão e a tela mostra o modal *Convite*). Roda até
-     * ser cancelado (Wi-Fi desligado, mesa aberta ou jogo); a presença para ao sair.
+     * §16.2 com o Wi-Fi do jogo ligado e fora de uma mesa: anuncia a presença ([name]), troca fotos e atende o
+     * recrutamento imediato ([com.gtranca.net.Recruitment]); recrutado que recebe o início entra na mesa com a própria
+     * chave. Roda até ser cancelado (Wi-Fi desligado, mesa aberta ou jogo); a presença para ao sair.
      */
     suspend fun runPresence(context: Context, data: GameData, name: String, photo: String?) {
         if (_table.value != null) return
         val t = transport(context)
         val key = presenceKey ?: com.gtranca.net.newPresenceKey().also { presenceKey = it }
         try {
-            t.advertisePresence(PresenceAdvert(key, name))
-            // §16.2 enquanto fora de mesa: atende os pedidos de foto e pede a dos jogadores próximos novos.
-            val advert = kotlinx.coroutines.coroutineScope {
+            val start = kotlinx.coroutines.coroutineScope {
                 val photos = com.gtranca.net.PresencePhotos(t, key, photo, _presencePhotos)
-                val serving = launch { runCatching { photos.serve() } }
+                val rec = com.gtranca.net.Recruitment(
+                    t, this, key, name, photos,
+                    canAfford = { stake -> runCatching { com.gtranca.engine.Coins.canJoin(data.wallet.wallet.first().balance, stake) }.getOrDefault(true) },
+                )
+                val running = launch { runCatching { rec.run() } }
+                recruiting = running
                 val fetching = launch { runCatching { photos.fetchAll(t.discoverPresence().catch { emit(emptyList()) }) } }
+                _recruitment.value = rec
                 try {
-                    t.discover().catch { emit(emptyList()) }.first { list -> list.invitationFor(key) != null && _table.value == null }
-                        .invitationFor(key)
+                    val events = launch {
+                        rec.events.collect { if (it !is com.gtranca.net.RecruitEvent.Start) _recruitEvents.emit(it) }
+                    }
+                    val start = rec.events.first { it is com.gtranca.net.RecruitEvent.Start } as com.gtranca.net.RecruitEvent.Start
+                    events.cancel()
+                    start
                 } finally {
+                    _recruitment.value = null
                     // Pára de ler os eventos antes de a sessão da mesa começar a ler.
-                    serving.cancel()
+                    running.cancel()
                     fetching.cancel()
+                    running.join()
+                    recruiting = null
                 }
-            } ?: return
-            newTable(context, data, photo).joinAsync(advert.tableId, name, inviteKey = key)
+            }
+            // §16.2 o anfitrião tocou em Escolher posições: entra direto, com a própria chave (sem novo convite).
+            newTable(context, data, photo).joinAsync(start.tableId, name, inviteKey = start.inviteKey)
         } finally {
             withContext(NonCancellable) { runCatching { t.stopPresence() } }
         }

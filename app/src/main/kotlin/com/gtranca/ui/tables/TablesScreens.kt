@@ -159,7 +159,12 @@ fun TablesScreen(
     onCustomize: () -> Unit,
     onBack: () -> Unit,
     multiplayer: TablesMultiplayer? = null,
+    /** §16.2 recrutado que aceitou: a montagem do anfitrião, só para leitura (`null` = a própria). */
+    joined: com.gtranca.net.RecruitStatus.Joined? = null,
+    /** §16.2 "Sair da mesa" do recrutado. */
+    onLeaveTable: () -> Unit = {},
 ) {
+    if (joined != null) return JoinedTableScreen(joined, onLeaveTable)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Tour guiado (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
     TourHost(Tours.TABLES, Tours.tablesSteps, autoStart = true) { startTour ->
@@ -225,13 +230,20 @@ private fun ParticipantsPill(state: TableSetupUiState, self: Persona, wifiOn: Bo
             if (state.nearby.isEmpty()) add { RecruitingTile() }
             state.nearby.forEach { player ->
                 val pick = Pick.Near(player.key)
+                val picked = state.isPicked(pick)
                 add {
                     ParticipantTile(
                         Persona(player.name, color = player.key.hashCode().mod(Persona.COLORS), photoBytes = player.photo),
                         player.name,
-                        checked = state.isPicked(pick),
-                        enabled = true,
+                        checked = picked,
+                        // §16.2 recrutado por outro anfitrião: não selecionável.
+                        enabled = !player.recruitedElsewhere || picked,
                         tag = "participant-near-${player.key}",
+                        badge = when {
+                            player.recruitedElsewhere && !picked -> stringResource(R.string.recruit_recruited)
+                            picked && player.key !in state.accepted -> stringResource(R.string.recruit_waiting)
+                            else -> null
+                        },
                     ) { onToggle(pick) }
                 }
             }
@@ -275,7 +287,7 @@ private fun ParticipantsPill(state: TableSetupUiState, self: Persona, wifiOn: Bo
  * no canto; desmarcado: aro fino e a imagem um pouco apagada.
  */
 @Composable
-private fun RowScope.ParticipantTile(avatar: Persona, name: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
+private fun RowScope.ParticipantTile(avatar: Persona, name: String, checked: Boolean, enabled: Boolean, tag: String, badge: String? = null, onClick: () -> Unit) {
     Column(
         Modifier
             .weight(1f)
@@ -317,6 +329,68 @@ private fun RowScope.ParticipantTile(avatar: Persona, name: String, checked: Boo
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // §16.2 selo "Recrutado" (por outro anfitrião) ou "aguardando" (convite ainda sem resposta).
+        badge?.let {
+            Text(
+                it,
+                Modifier
+                    .background(GColors.Bordeaux, RoundedCornerShape(Corner.sm))
+                    .padding(horizontal = 4.dp)
+                    .testTag("$tag-badge"),
+                color = GColors.Ivory,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * §16.2 recrutado que aceitou o convite (docs/telas.md 3.2): a pílula e as opções **do anfitrião**, sincronizadas ao vivo
+ * e só para leitura; "Escolher posições" vira "Aguardando..." (desabilitado) e "Voltar" vira "Sair da mesa".
+ */
+@Composable
+private fun JoinedTableScreen(joined: com.gtranca.net.RecruitStatus.Joined, onLeave: () -> Unit) {
+    androidx.activity.compose.BackHandler(onBack = onLeave)
+    TableFrame(
+        stringResource(R.string.tables_title),
+        "tables-screen",
+        bottom = {
+            BottomButton(stringResource(R.string.recruit_leave), "tables-leave", GButtonKind.Secondary, onClick = onLeave)
+            BottomButton(stringResource(R.string.recruit_waiting_host), "choose-seats", GButtonKind.Primary, enabled = false) {}
+        },
+    ) {
+        Text(stringResource(R.string.tables_host, joined.hostName), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
+        val config = joined.config
+        if (config == null) {
+            androidx.compose.material3.CircularProgressIndicator(color = GColors.Gold)
+            return@TableFrame
+        }
+        val level = BotLevel.of(Difficulty.fromId(config.difficulty))
+        val shape = RoundedCornerShape(Corner.md)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(GColors.Indigo, shape)
+                .border(1.dp, GColors.Gold.copy(alpha = 0.6f), shape)
+                .padding(Spacing.sm)
+                .testTag("participants"),
+        ) {
+            config.participants.forEachIndexed { i, p ->
+                val profile = p.persona?.let { code -> BotProfile.entries.firstOrNull { it.code == code } }
+                val persona = if (profile != null) Persona(profile.botName, "", BotCharacter(profile, level)) else Persona(p.name, color = i.mod(Persona.COLORS))
+                ParticipantTile(
+                    persona, p.name, checked = true, enabled = false, tag = "participant-joined-$i",
+                    badge = if (!p.accepted) stringResource(R.string.recruit_waiting) else null,
+                ) {}
+            }
+        }
+        GPanel(Modifier.fillMaxWidth()) {
+            Text("${modeLabel(config.mode)} · ${stringResource(R.string.tables_difficulty)}: ${stringResource(level.labelRes())}", color = GColors.Champagne)
+            Text(stringResource(R.string.stake_line, config.stake), color = GColors.Gold)
+        }
+        RulesSummary(config.rules, config.targetScore)
     }
 }
 

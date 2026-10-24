@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -232,6 +233,48 @@ class TablesViewModelsTest {
         val one = TablesViewModel(FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup(GameMode.INDIVIDUAL, robots = listOf("jovem")))))
         advanceUntilIdle()
         one.uiState.value.mode shouldBe GameMode.INDIVIDUAL
+    }
+
+    @Test
+    fun `§16_2 recrutamento - marcar convida na hora, recusado nao marca, Recrutado por outro nao seleciona e quem sai deixa de estar marcado`() = withMain {
+        val vm = TablesViewModel()
+        val marked = mutableListOf<String>()
+        val unmarked = mutableListOf<String>()
+        var accept = true
+        vm.recruiter = object : Recruiter {
+            override suspend fun mark(player: NearbyPlayer): Boolean { marked += player.key; return accept }
+            override suspend fun unmark(key: String) { unmarked += key }
+        }
+        val notices = mutableListOf<TablesNotice>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) { vm.notices.collect { notices += it } }
+        vm.onNearby(listOf(NearbyPlayer("aaa222", "Bia"), NearbyPlayer("bbb333", "Caio"), NearbyPlayer("ccc444", "Duda", recruitedElsewhere = true)))
+        vm.onToggle(Pick.Near("aaa222"))
+        advanceUntilIdle()
+        marked shouldBe listOf("aaa222")
+        vm.uiState.value.picks shouldBe listOf(Pick.Near("aaa222"))
+        // Convite não aceito pelo recrutamento: não marca, com aviso.
+        accept = false
+        vm.onToggle(Pick.Near("bbb333"))
+        advanceUntilIdle()
+        vm.uiState.value.picks shouldBe listOf(Pick.Near("aaa222"))
+        notices shouldBe listOf(TablesNotice.MARK_FAILED)
+        // Recrutado por outro anfitrião: nem tenta.
+        vm.onToggle(Pick.Near("ccc444"))
+        advanceUntilIdle()
+        marked shouldBe listOf("aaa222", "bbb333")
+        notices.last() shouldBe TablesNotice.RECRUITED_ELSEWHERE
+        // Aceitou, e depois saiu (sumiu dos marcados do recrutamento): deixa de estar marcado.
+        vm.onRecruits(listOf(com.gtranca.net.Recruit("aaa222", "Bia", accepted = true)))
+        vm.uiState.value.accepted shouldBe setOf("aaa222")
+        vm.onRecruits(emptyList())
+        vm.uiState.value.picks shouldBe emptyList()
+        // Desmarcar cancela o convite.
+        accept = true
+        vm.onToggle(Pick.Near("bbb333"))
+        advanceUntilIdle()
+        vm.onToggle(Pick.Near("bbb333"))
+        advanceUntilIdle()
+        unmarked shouldBe listOf("bbb333")
     }
 
     @Test

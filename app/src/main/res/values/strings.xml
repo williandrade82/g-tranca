@@ -553,4 +553,13 @@
     <string name="round_end_stock_out">Fim das cartas do monte</string>
     <string name="tour_table_pot">Total em jogo: a soma das apostas de todos na mesa; quem vence leva.</string>
     <string name="tour_table_balance">Seu saldo de moedas.</string>
+    <string name="recruit_recruited">Recrutado</string>
+    <string name="recruit_waiting">aguardando</string>
+    <string name="recruit_leave">Sair da mesa</string>
+    <string name="recruit_waiting_host">Aguardando...</string>
+    <string name="recruit_removed">%1$s tirou você da mesa</string>
+    <string name="recruit_mark_failed">Não deu para convidar: o jogador já está numa mesa ou a mesa está cheia.</string>
+    <string name="recruit_refused">%1$s recusou o convite</string>
+    <string name="recruit_left">%1$s saiu da mesa</string>
+    <string name="recruit_balance">%1$s: saldo insuficiente</string>
 </resources>
