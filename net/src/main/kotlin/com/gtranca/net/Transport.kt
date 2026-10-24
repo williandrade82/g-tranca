@@ -30,6 +30,12 @@ data class TableAdvert(
     val epoch: Int = 0,
     /** §16.10 posição do sucessor que assumiu por queda e ainda não foi confirmado (1 ou 2); 0 = confirmado. */
     val provisionalRank: Int = 0,
+    /**
+     * §16.2 chaves de presença ([PresenceAdvert.key]) dos jogadores próximos convidados e ainda sem resposta: quem acha a
+     * própria chave aqui conecta-se ao anfitrião e recebe o [Invite] (no `P2P_STAR` quem anuncia é o centro, então o
+     * convite não pode ir ao aparelho sem que ele se conecte).
+     */
+    val invited: List<String> = emptyList(),
 ) {
     /**
      * §16.10 este anúncio prevalece sobre [other] (da mesma mesa): o anfitrião confirmado mais recente, depois o original,
@@ -39,6 +45,22 @@ data class TableAdvert(
     fun outranks(other: TableAdvert): Boolean =
         compareValuesBy(this, other, { if (it.provisionalRank == 0) 1 else 0 }, { it.epoch }, { -it.provisionalRank }, { -it.hostId }) > 0
 }
+
+/**
+ * §16.2 presença de um **jogador próximo** (Wi-Fi do jogo ligado, fora de um jogo): só a [key] (curta, aleatória, gerada
+ * por [newPresenceKey] a cada vez que o Wi-Fi do jogo liga) e o [name]. Distinto do anúncio de mesa ([TableAdvert]). A foto
+ * não vai aqui: vai pela conexão, depois do convite.
+ */
+data class PresenceAdvert(val key: String, val name: String)
+
+/** §16.2 chave de presença nova (6 caracteres, cabe no anúncio). Não identifica o jogador fora desta sessão de busca. */
+fun newPresenceKey(random: java.util.Random = java.security.SecureRandom()): String {
+    val alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
+    return String(CharArray(6) { alphabet[random.nextInt(alphabet.length)] })
+}
+
+/** §16.2 a mesa que convidou a presença [key] (para o convidado conectar e receber o [Invite]), ou `null`. */
+fun List<TableAdvert>.invitationFor(key: String): TableAdvert? = firstOrNull { key in it.invited }
 
 /** §16.10 o anúncio preferido da mesa [tableId] entre os encontrados (ou `null` se ela não está na busca). */
 fun List<TableAdvert>.preferred(tableId: String): TableAdvert? =
@@ -74,6 +96,15 @@ interface LocalTransport {
     suspend fun send(endpoint: EndpointId, bytes: ByteArray)
 
     suspend fun disconnect(endpoint: EndpointId)
+
+    /** §16.2 anuncia a presença deste jogador (substitui o anúncio de presença anterior). */
+    suspend fun advertisePresence(presence: PresenceAdvert) {}
+
+    /** §16.2 deixa de anunciar a presença (entrou num jogo ou desligou o Wi-Fi do jogo). */
+    suspend fun stopPresence() {}
+
+    /** §16.2 jogadores próximos que anunciam presença agora (sem este aparelho). */
+    fun discoverPresence(): Flow<List<PresenceAdvert>> = kotlinx.coroutines.flow.flowOf(emptyList())
 }
 
 /** Uma entrega na [MemoryNetwork] (de [from] para [to]). */
@@ -147,6 +178,19 @@ class MemoryNetwork {
 
     internal fun stopAdvertising(host: EndpointId) = tables.update { it - host }
 
+    private val presences = MutableStateFlow<Map<EndpointId, PresenceAdvert>>(emptyMap())
+
+    internal fun advertisePresence(presence: PresenceAdvert, from: EndpointId) {
+        if (synchronized(this) { from in dead }) return
+        presences.update { it + (from to presence) }
+    }
+
+    internal fun stopPresence(from: EndpointId) = presences.update { it - from }
+
+    internal fun presencesVisibleTo(viewer: EndpointId): Flow<List<PresenceAdvert>> = combine(presences, blocked) { map, out ->
+        if (viewer in out) emptyList() else map.filterKeys { it !in out && it != viewer }.values.toList()
+    }.distinctUntilChanged()
+
     @Synchronized
     internal fun connect(guest: EndpointId, advert: TableAdvert): EndpointId {
         val host = tables.value.entries.firstOrNull { it.value.tableId == advert.tableId && it.value.hostId == advert.hostId }?.key
@@ -219,4 +263,10 @@ class MemoryTransport internal constructor(private val network: MemoryNetwork, v
     override suspend fun send(endpoint: EndpointId, bytes: ByteArray) = network.send(id, endpoint, bytes)
 
     override suspend fun disconnect(endpoint: EndpointId) = network.disconnect(id, endpoint)
+
+    override suspend fun advertisePresence(presence: PresenceAdvert) = network.advertisePresence(presence, id)
+
+    override suspend fun stopPresence() = network.stopPresence(id)
+
+    override fun discoverPresence(): Flow<List<PresenceAdvert>> = network.presencesVisibleTo(id)
 }

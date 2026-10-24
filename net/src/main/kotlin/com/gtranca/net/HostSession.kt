@@ -4,7 +4,10 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.model.Seat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -38,6 +41,21 @@ interface HostGamePort {
 
 /** §16.7 pedido de entrada no meio do jogo, à espera da aprovação do anfitrião. */
 data class JoinRequest(val requestId: Int, val name: String, val seat: Seat)
+
+/** §14.4 outro participante escolhido na montagem da mesa, além do anfitrião (que é sempre o primeiro). */
+sealed interface Participant {
+    /** §16.2 jogador próximo convidado (presença achada na busca). */
+    data class Nearby(val presence: PresenceAdvert) : Participant
+
+    /** §14.5 personagem escolhido. */
+    data class Robot(val persona: String) : Participant
+}
+
+/**
+ * §14.4, §16.2 mesa montada pelo anfitrião: os outros participantes ([others], na ordem escolhida), os personagens
+ * possíveis ([personaPool], para sortear os que sobram) e a semente da mesa (só no anfitrião; nunca trafega).
+ */
+data class LobbySetup(val others: List<Participant>, val personaPool: List<String>, val seed: Long)
 
 /** Para um sucessor que assume (§16.10): a sala que ele herda. */
 data class ResumedTable(
@@ -80,9 +98,18 @@ class HostSession(
     private val provisionalForceMillis: Long = PROVISIONAL_FORCE_MILLIS,
     /** §16.11, §16.15 depois do fim do jogo, a mesa fecha quando todos receberam ou depois deste tempo. */
     private val finishedOpenMillis: Long = FINISHED_OPEN_MILLIS,
+    /**
+     * §14.4, §16.2 mesa montada (toda mesa nova): convite aos jogadores próximos e escolha de posições com rotação e
+     * confirmação; o jogo começa sozinho 2 s depois que todos confirmam. `null` = mesa antiga (assento vago, anfitrião na
+     * posição 1 e início manual por [startGame]; a fase 2 remove).
+     */
+    lobby: LobbySetup? = null,
 ) {
     private class Member(val token: String, var info: PlayerInfo) {
         var link: ReliableLink? = null
+
+        /** §16.2 chave de presença do convidado enquanto o convite não foi respondido. */
+        var inviteKey: String? = null
     }
 
     /** Uma conexão ainda sem jogador (antes do [Hello]) ou à espera de aprovação (§16.7). */
@@ -162,32 +189,29 @@ class HostSession(
     @Volatile
     var game: HostGamePort? = null
 
-    /** Regras da mesa (§16.2); antes do início só o modo muda, na mesa reduzida (§16.3). */
-    @Volatile
-    var rules: TableRules = rules
-        private set
+    /** Regras da mesa (§16.2): não mudam depois da montagem (§16.3). */
+    val rules: TableRules = rules
+
+    /** §16.2 sala da escolha de posições (só na mesa montada, antes do início). */
+    private var seatingRoom: SeatingRoom? = null
+
+    private val _seating = MutableStateFlow<SeatingState?>(null)
+
+    /** §16.2 escolha de posições (ocupantes, confirmações, trava); `null` na mesa antiga. */
+    val seating: StateFlow<SeatingState?> = _seating.asStateFlow()
+
+    private val _gameStart = MutableStateFlow<Map<Seat, Int>?>(null)
 
     /**
-     * §16.3 exclui duas posições ([reduced] = mesa individual de 2 assentos, um em frente ao outro) ou restaura as 4.
-     * Só antes do início e, para excluir, com 0 ou 1 convidado: ele vai para o assento em frente ao anfitrião. Devolve se
-     * mudou.
+     * §16.2 o jogo começou sozinho (2 s depois de todos confirmarem): os assentos dos convidados humanos (como o retorno
+     * de [startGame]). Os personagens dos robôs estão em [robots].
      */
-    suspend fun setReduced(reduced: Boolean): Boolean = mutex.withLock {
-        if (started || closed) return@withLock false
-        val mode = if (reduced) com.gtranca.engine.model.GameMode.INDIVIDUAL else com.gtranca.engine.model.GameMode.DUPLAS
-        if (rules.mode == mode) return@withLock false
-        val guests = members.values.filter { it.info.id != hostId }
-        if (reduced && guests.size > 1) return@withLock false
-        rules = rules.copy(mode = mode)
-        // O convidado vai sempre para o assento do adversário, em frente ao anfitrião (§16.3).
-        guests.forEach { member -> updateLocked(member) { it.copy(seat = Seat(1)) } }
-        // Pedidos de entrada para assentos que deixaram de existir são recusados.
-        pending.values.filter { it.request != null }.toList().forEach { refuseLocked(it, "Mesa cheia.") }
-        broadcastLocked(RulesUpdate(rules))
-        publishRosterLocked(broadcast = true)
-        advertiseLocked()
-        true
-    }
+    val gameStart: StateFlow<Map<Seat, Int>?> = _gameStart.asStateFlow()
+
+    private val _lobbyNotices = MutableSharedFlow<TableNotice>(extraBufferCapacity = 64)
+
+    /** §16.2 avisos ao anfitrião na escolha de posições ("<nome> saiu; <robô> assume o lugar", com o motivo). */
+    val lobbyNotices: SharedFlow<TableNotice> = _lobbyNotices.asSharedFlow()
 
     /**
      * §16.2, §16.8 personagem de cada assento de robô (índice do assento → id), a única fonte: vai a todos no
@@ -211,7 +235,30 @@ class HostSession(
     }
 
     init {
-        if (resumed == null) {
+        if (resumed == null && lobby != null) {
+            hostId = 0
+            hostToken = newToken()
+            var id = 0
+            val occupants = mutableListOf<SeatOccupant>(SeatOccupant.Human(0))
+            val invitees = mutableListOf<Member>()
+            lobby.others.forEach { p ->
+                when (p) {
+                    is Participant.Robot -> occupants += SeatOccupant.Robot(p.persona)
+                    is Participant.Nearby -> {
+                        id++
+                        occupants += SeatOccupant.Human(id)
+                        val name = p.presence.name.trim().ifBlank { "Jogador $id" }
+                        invitees += Member(newToken(), PlayerInfo(id = id, name = name, joinOrder = id, connected = false, invited = true))
+                            .also { it.inviteKey = p.presence.key }
+                    }
+                }
+            }
+            seatingRoom = SeatingRoom.create(rules.mode, occupants, lobby.personaPool, lobby.seed)
+            members[0] = Member(hostToken, PlayerInfo(id = 0, name = hostName, joinOrder = 0, isHost = true))
+            invitees.forEach { members[it.info.id] = it }
+            nextId = id + 1
+            syncSeatsLocked()
+        } else if (resumed == null) {
             hostId = 0
             hostToken = newToken()
             members[0] = Member(hostToken, PlayerInfo(id = 0, name = hostName, joinOrder = 0, seat = HOST_SEAT, isHost = true, confirmed = true))
@@ -254,7 +301,7 @@ class HostSession(
     }
 
     /** Assento do anfitrião. */
-    val hostSeat: Seat get() = members.getValue(hostId).info.seat ?: HOST_SEAT
+    val hostSeat: Seat get() = members[hostId]?.info?.seat ?: HOST_SEAT
 
     private val _droppedAtStart = MutableStateFlow<List<PlayerInfo>>(emptyList())
 
@@ -285,6 +332,13 @@ class HostSession(
     /** Publica a mesa e passa a atender os convidados em [scope]. */
     suspend fun open(scope: CoroutineScope) {
         this.scope = scope
+        // §16.2, §16.15 convidado que não se conecta no prazo do convite não está mais ao alcance: um robô assume.
+        members.values.filter { it.inviteKey != null }.forEach { invitee ->
+            scope.launch {
+                delay(INVITE_TIMEOUT_MILLIS)
+                mutex.withLock { if (invitee.inviteKey != null && invitee.link == null) refuseInviteeLocked(invitee, RefusalReason.OUT_OF_RANGE) }
+            }
+        }
         collector = scope.launch { transport.events.collect { handle(it) } }
         // §16.10 outro anfitrião da mesma mesa que prevaleça (só com o jogo em andamento).
         watcher = scope.launch {
@@ -351,6 +405,7 @@ class HostSession(
     suspend fun startGame(): Map<Seat, Int> {
         mutex.withLock {
             check(!started) { "O jogo já começou" }
+            check(seatingRoom == null) { "Na mesa montada o jogo começa sozinho quando todos confirmam (§16.2)" }
             started = true
             val unconfirmed = members.values.filter { !it.info.confirmed }.toList()
             _droppedAtStart.value = unconfirmed.map { it.info }
@@ -439,6 +494,7 @@ class HostSession(
      * assento; se devolver `false`, nada muda (a aprovação é atômica).
      */
     suspend fun approveJoin(requestId: Int, attach: (Seat) -> Boolean = { true }): PlayerInfo? {
+        if (mutex.withLock { seatingRoom != null && !started }) return approveLobbyJoin(requestId)
         val info = mutex.withLock {
             val entry = pending.entries.firstOrNull { it.value.request?.requestId == requestId } ?: return null
             val request = entry.value.request!!
@@ -467,11 +523,192 @@ class HostSession(
         return info
     }
 
-    /** §16.7 recusa o pedido [requestId]. */
+    /** §16.2, §16.7 recusa o pedido [requestId] (o candidato vê o motivo: o anfitrião recusou). */
     suspend fun refuseJoin(requestId: Int) {
         mutex.withLock {
-            pending.values.firstOrNull { it.request?.requestId == requestId }?.let { refuseLocked(it, "O anfitrião não aprovou a entrada.") }
+            pending.values.firstOrNull { it.request?.requestId == requestId }
+                ?.let { refuseLocked(it, refusalMessage(RefusalReason.HOST_REFUSED), RefusalReason.HOST_REFUSED) }
         }
+    }
+
+    /**
+     * §16.2 pedido de entrada aceito na escolha de posições: o novo jogador entra no lugar do **primeiro robô** na ordem
+     * dos assentos e passa a escolher a posição. Sem robô (ou já travado): recusa com "mesa cheia".
+     */
+    private suspend fun approveLobbyJoin(requestId: Int): PlayerInfo? = mutex.withLock {
+        val entry = pending.entries.firstOrNull { it.value.request?.requestId == requestId } ?: return@withLock null
+        val room = seatingRoom ?: return@withLock null
+        val id = nextId
+        val next = room.admit(id)
+        if (next == null) {
+            refuseLocked(entry.value, refusalMessage(RefusalReason.TABLE_FULL), RefusalReason.TABLE_FULL)
+            return@withLock null
+        }
+        nextId++
+        pending.remove(entry.key)
+        _joinRequests.value = _joinRequests.value.filter { it.requestId != requestId }
+        val member = Member(newToken(), PlayerInfo(id = id, name = nameOrDefault(entry.value.request!!.name, id), joinOrder = id))
+            .also { it.link = entry.value.link }
+        members[id] = member
+        seatingRoom = next
+        syncSeatsLocked()
+        publishRosterLocked(broadcast = false)
+        member.link!!.sendLocked(Welcome(member.token, id, rules, _roster.value, seating = next.state))
+        sharePhotosLocked(member, member.link!!, entry.value.photo)
+        broadcastLocked(RosterUpdate(_roster.value), except = member)
+        broadcastLocked(SeatingUpdate(next.state), except = member)
+        broadcastLocked(TableNotice(NoticeKind.JOINED, member.info.seat, id))
+        if (!next.state.listed) refuseAllRequestsLocked()
+        advertiseLocked()
+        member.info
+    }
+
+    /** §16.2 o anfitrião rotaciona a própria posição; devolve se trocou. */
+    suspend fun rotate(direction: RotateDirection): Boolean = mutex.withLock { rotateLocked(hostId, direction) }
+
+    /** §16.2 o anfitrião confirma a própria posição; devolve se confirmou. */
+    suspend fun confirmPosition(): Boolean = mutex.withLock { confirmLocked(hostId) }
+
+    /** §16.2 "Sair" do anfitrião na escolha de posições: desfaz a mesa e avisa os convidados. */
+    suspend fun disband() {
+        mutex.withLock { if (!started) broadcastLocked(TableClosed(CloseReason.HOST_LEFT)) }
+        close()
+    }
+
+    /**
+     * §16.7 o anfitrião desliga o Wi-Fi do jogo no meio de um jogo com humanos: avisa os convidados (que não tentam voltar
+     * nem assumir, §16.10), descarta o estado dos sucessores e encerra a sessão. Devolve, por assento, o id de cada humano
+     * remoto (conectado ou não) que agora deve ser **substituído por um robô** pelo jogo do anfitrião, com as regras de
+     * aposta da opção 2 de §16.8 (aplicadas fora do `:net`). Mesa só com robôs: vazio.
+     */
+    suspend fun goOffline(): Map<Seat, Int> {
+        val remote = mutex.withLock {
+            val seats = members.values.filter { it.info.id != hostId && it.info.seat != null }.associate { it.info.seat!! to it.info.id }
+            successorIds.forEach { members[it]?.link?.sendLocked(SuccessorDrop) }
+            broadcastLocked(TableClosed(CloseReason.HOST_OFFLINE))
+            seats
+        }
+        close()
+        return remote
+    }
+
+    private suspend fun applySeatingLocked(next: SeatingRoom) {
+        seatingRoom = next
+        syncSeatsLocked()
+        publishRosterLocked(broadcast = true)
+        broadcastLocked(SeatingUpdate(next.state))
+        if (next.state.locked) lockLocked() else advertiseLocked()
+    }
+
+    private suspend fun rotateLocked(playerId: Int, direction: RotateDirection): Boolean {
+        if (started || closed || members[playerId]?.inviteKey != null) return false
+        val next = seatingRoom?.rotate(playerId, direction) ?: return false
+        applySeatingLocked(next)
+        return true
+    }
+
+    private suspend fun confirmLocked(playerId: Int): Boolean {
+        if (started || closed || members[playerId]?.inviteKey != null) return false
+        val next = seatingRoom?.confirm(playerId) ?: return false
+        applySeatingLocked(next)
+        return true
+    }
+
+    /** §16.2 o jogador [member] sai da escolha de posições: um robô sorteado assume, e todos veem a troca e o motivo. */
+    private suspend fun replaceInLobbyLocked(member: Member, refusal: RefusalReason?) {
+        val room = seatingRoom ?: return
+        val seat = member.info.seat
+        val next = room.replaceWithRobot(member.info.id) ?: return
+        member.inviteKey = null
+        removeMemberLocked(member, disconnect = true)
+        val persona = seat?.let { (next.state.occupants[it.index] as? SeatOccupant.Robot)?.persona }
+        val notice = TableNotice(NoticeKind.REPLACED_BY_ROBOT, seat, member.info.id, persona, refusal)
+        broadcastLocked(notice)
+        _lobbyNotices.tryEmit(notice)
+        applySeatingLocked(next)
+    }
+
+    /** §16.2 o convidado recusou ou não estava ao alcance: o anfitrião informa o motivo a ele e um robô assume. */
+    private suspend fun refuseInviteeLocked(member: Member, reason: RefusalReason) {
+        member.link?.sendLocked(Rejected(refusalMessage(reason), reason))
+        replaceInLobbyLocked(member, reason)
+    }
+
+    /** §16.2 todos confirmaram: posições travadas, a mesa sai da lista e o jogo começa 2 s depois. */
+    private suspend fun lockLocked() {
+        refuseAllRequestsLocked()
+        broadcastLocked(SeatsLocked(_seating.value!!))
+        advertiseLocked()
+        scope.launch {
+            delay(START_DELAY_MILLIS)
+            val seats = mutex.withLock {
+                if (started || closed) return@launch
+                started = true
+                robots = seatingRoom!!.state.robots
+                seatingRoom = null
+                refreshSuccessorsLocked()
+                publishRosterLocked(broadcast = false)
+                advertiseLocked()
+                broadcastLocked(GameStarted(_roster.value, robots))
+                guestSeats()
+            }
+            _gameStart.value = seats
+        }
+    }
+
+    private suspend fun refuseAllRequestsLocked() {
+        pending.values.filter { it.request != null }.toList()
+            .forEach { refuseLocked(it, refusalMessage(RefusalReason.TABLE_FULL), RefusalReason.TABLE_FULL) }
+    }
+
+    /** §16.2 assento e confirmação de cada humano conforme a escolha de posições. */
+    private fun syncSeatsLocked() {
+        val state = seatingRoom?.state ?: return
+        _seating.value = state
+        members.values.forEach { m ->
+            val seat = state.seatOf(m.info.id)
+            m.info = m.info.copy(seat = seat, confirmed = seat != null && state.isConfirmed(seat), invited = m.inviteKey != null)
+        }
+    }
+
+    /** §16.2 o convidado se conectou com a chave de presença: recebe o convite (anfitrião, participantes, regras). */
+    private suspend fun inviteHelloLocked(p: Pending, hello: Hello, key: String) {
+        val member = members.values.firstOrNull { it.inviteKey == key && it.link == null }
+            ?: return refuseLocked(p, refusalMessage(RefusalReason.OUT_OF_RANGE), RefusalReason.OUT_OF_RANGE)
+        pending.remove(p.link.endpoint)
+        member.link = p.link
+        updateLocked(member) { it.copy(connected = true) }
+        publishRosterLocked(broadcast = true)
+        p.link.sendLocked(Invite(hostId, member.info.id, rules, _roster.value, _seating.value!!))
+        sharePhotosLocked(member, p.link, hello.photo)
+        advertiseLocked()
+        // §16.2, §16.15 sem resposta, o convite é aceito sozinho (o convidado aceita no prazo; aqui, a folga da rede).
+        scope.launch {
+            delay(INVITE_TIMEOUT_MILLIS + INVITE_REPLY_GRACE_MILLIS)
+            mutex.withLock { if (member.inviteKey != null && member.link != null && members.containsKey(member.info.id)) acceptInviteLocked(member) }
+        }
+    }
+
+    private suspend fun acceptInviteLocked(member: Member) {
+        if (member.inviteKey == null) return
+        member.inviteKey = null
+        syncSeatsLocked()
+        publishRosterLocked(broadcast = false)
+        member.link?.sendLocked(Welcome(member.token, member.info.id, null, _roster.value, seating = _seating.value))
+        broadcastLocked(RosterUpdate(_roster.value), except = member)
+        advertiseLocked()
+    }
+
+    /** §16.2 pedido de entrada na escolha de posições (sem convite): fica à espera do anfitrião. */
+    private suspend fun lobbyRequestLocked(p: Pending, hello: Hello) {
+        val state = _seating.value!!
+        val seat = state.occupants.indexOfFirst { it is SeatOccupant.Robot }.takeIf { it >= 0 && !state.locked }
+            ?: return refuseLocked(p, refusalMessage(RefusalReason.TABLE_FULL), RefusalReason.TABLE_FULL)
+        val request = JoinRequest(nextRequest++, hello.name.trim(), Seat(seat))
+        p.request = request
+        p.photo = hello.photo
+        _joinRequests.value = _joinRequests.value + request
+        p.link.sendLocked(JoinWaiting)
     }
 
     /**
@@ -623,6 +860,11 @@ class HostSession(
         val member = memberByEndpoint(endpoint) ?: return false
         member.link?.close()
         member.link = null
+        if (!started && seatingRoom != null) {
+            // §16.2 quem não está mais ao alcance antes do início vira robô.
+            replaceInLobbyLocked(member, RefusalReason.OUT_OF_RANGE)
+            return false
+        }
         if (!started) {
             removeMemberLocked(member, disconnect = false)
             return false
@@ -664,6 +906,10 @@ class HostSession(
         if (p.request != null) return
         val token = payload.token
         if (token != null) return rejoinLocked(p, payload, token)
+        if (!started && seatingRoom != null) {
+            val key = payload.inviteKey
+            return if (key != null) inviteHelloLocked(p, payload, key) else lobbyRequestLocked(p, payload)
+        }
         if (!started) return welcomeLocked(p, payload)
         // §16.7 durante o jogo só se entra no assento que o anfitrião abriu (o pedido diz qual, se houver mais de um) ou,
         // enquanto ele decide a pausa, no assento da vez (aprovar = abrir a vaga e aprovar).
@@ -749,16 +995,32 @@ class HostSession(
                 }
                 publishRosterLocked(broadcast = true)
             }
-            ConfirmSeat -> if (!started && player.seat != null) {
+            ConfirmSeat -> if (seatingRoom != null) {
+                confirmLocked(player.id)
+            } else if (!started && player.seat != null) {
                 updateLocked(member) { it.copy(confirmed = true) }
                 publishRosterLocked(broadcast = true)
+            }
+            is RotateSeat -> rotateLocked(player.id, payload.direction)
+            is InviteReply -> if (member.inviteKey != null && !started) {
+                if (payload.accepted) {
+                    acceptInviteLocked(member)
+                } else {
+                    val reason = payload.reason?.takeIf { it == RefusalReason.INSUFFICIENT_BALANCE } ?: RefusalReason.INVITE_REFUSED
+                    refuseInviteeLocked(member, reason)
+                }
             }
             is Rename -> {
                 updateLocked(member) { it.copy(name = nameOrDefault(payload.name, player.id)) }
                 publishRosterLocked(broadcast = true)
             }
             // §16.9 sair durante o jogo vale como desistência.
-            Leave -> if (!started) removeMemberLocked(member, disconnect = true) else resignLocked(member)
+            Leave -> when {
+                // §16.2 abandonar a escolha de posições: um robô sorteado assume.
+                !started && seatingRoom != null -> replaceInLobbyLocked(member, null)
+                !started -> removeMemberLocked(member, disconnect = true)
+                else -> resignLocked(member)
+            }
             Resign -> resignLocked(member)
             is ProposeAction -> {
                 val seat = player.seat
@@ -855,8 +1117,8 @@ class HostSession(
         if (started) advertiseLocked()
     }
 
-    private suspend fun refuseLocked(p: Pending, message: String) {
-        p.link.sendLocked(Rejected(message))
+    private suspend fun refuseLocked(p: Pending, message: String, reason: RefusalReason? = null) {
+        p.link.sendLocked(Rejected(message, reason))
         closePendingLocked(p)
     }
 
@@ -870,10 +1132,14 @@ class HostSession(
 
     private fun advertLocked(): TableAdvert {
         val open = !finished && _openSeats.value.isNotEmpty()
+        val lobby = _seating.value?.takeIf { !started && seatingRoom != null }
         return TableAdvert(
             tableId, rules.tableName, members.getValue(hostId).info.name,
-            inProgress = started && open, listed = !started || open,
+            inProgress = started && open,
+            listed = if (lobby != null) lobby.listed else !started || open,
             hostId = hostId, epoch = epoch, provisionalRank = provisionalRank,
+            // §16.2 convidados ainda não conectados acham aqui a própria chave.
+            invited = members.values.filter { it.inviteKey != null && it.link == null }.mapNotNull { it.inviteKey },
         )
     }
 
@@ -887,7 +1153,7 @@ class HostSession(
         _resultsPending.value = outside
         val want = !closed && (!finished || outside)
         if (want) {
-            if (!advertising || force || started) transport.advertise(advertLocked())
+            if (!advertising || force || started || seatingRoom != null) transport.advertise(advertLocked())
             advertising = true
         } else if (advertising) {
             transport.stopAdvertising()
@@ -935,8 +1201,34 @@ class HostSession(
     private fun nameOrDefault(name: String, id: Int): String = name.trim().ifBlank { "Jogador $id" }
 
     companion object {
-        /** §16.2 o anfitrião ocupa sempre a posição 1. */
+        /** Mesa antiga: o anfitrião ocupa a posição 1 (na mesa montada ele escolhe, §16.2). */
         val HOST_SEAT = Seat(0)
+
+        /** Folga da rede depois do prazo do convite antes de o anfitrião dar o convite como aceito (§16.2, sem resposta). */
+        const val INVITE_REPLY_GRACE_MILLIS: Long = 2_000
+
+        /**
+         * §16.7 "Wi-Fi ligado no meio de um jogo só com robôs": o jogador vira anfitrião da mesa (o jogo não muda) e pode
+         * liberar assentos de robô para entrada ([openSeat]). A mesa fica fora da lista até abrir um assento.
+         */
+        fun forRobotGame(
+            transport: LocalTransport,
+            tableId: String,
+            rules: TableRules,
+            hostName: String,
+            hostSeat: Seat,
+            robots: Map<Int, String>,
+            codec: ProtocolCodec = ProtocolCodec(),
+            newToken: () -> String = ::randomToken,
+            hostPhoto: String? = null,
+        ): HostSession {
+            val host = PlayerInfo(id = 0, name = hostName, joinOrder = 0, seat = hostSeat, isHost = true, confirmed = true)
+            return HostSession(
+                transport, tableId, rules, hostName, codec, newToken,
+                resumed = ResumedTable(hostId = 0, members = listOf(MemberRecord(host, newToken())), nextPlayerId = 1, epoch = 0),
+                hostPhoto = hostPhoto,
+            ).also { it.robots = robots }
+        }
 
         /** §16.15 provisório sem outro humano que possa confirmar. */
         const val PROVISIONAL_SOLO_MILLIS: Long = 15_000

@@ -1,5 +1,6 @@
 package com.gtranca.net.nearby
 
+import com.gtranca.net.PresenceAdvert
 import com.gtranca.net.TableAdvert
 import java.io.ByteArrayOutputStream
 
@@ -9,12 +10,22 @@ import java.io.ByteArrayOutputStream
  * caractere acentuado) para caber em [MAX_BYTES]. O corte só afeta o que a lista mostra: a mesa é identificada por
  * `tableId` + `hostId`, que nunca são cortados. Nada privado vai aqui (sem token, sem regras, sem cartas).
  *
- * Formato 1: `[formato][flags][hostId varint][epoch varint][provisionalRank][tableId][hostName][tableName]`, cada texto
- * com 1 byte de tamanho. Formato desconhecido → `null` (mesa de outra versão do app fica fora da lista; a recusa clara de
- * versão vem no `Hello`, §16.2).
+ * Mesa (formato 2): `[2][flags][hostId varint][epoch varint][provisionalRank][tableId][hostName][n][n chaves][tableName]`,
+ * cada texto com 1 byte de tamanho; as chaves são as presenças convidadas ([TableAdvert.invited], §16.2).
+ * Presença (formato 3, §16.2): `[3][key][name]`. O primeiro byte distingue os dois anúncios. Formato desconhecido →
+ * `null` (aparelho de outra versão do app fica fora da lista; a recusa clara de versão vem no `Hello`, §16.1).
  */
 object AdvertCodec {
-    const val FORMAT: Int = 1
+    const val FORMAT: Int = 2
+
+    /** §16.2 formato do anúncio de presença de um jogador próximo. */
+    const val PRESENCE_FORMAT: Int = 3
+
+    /** §16.2 no máximo 3 convidados (4 participantes com o anfitrião). */
+    const val MAX_INVITED: Int = 3
+
+    /** Teto de cada chave de presença ([com.gtranca.net.newPresenceKey] gera 6 caracteres). */
+    const val MAX_PRESENCE_KEY_BYTES: Int = 8
 
     /** Teto conservador do `endpointInfo` (a documentação não fixa um número estável; o BLE é o limitante). */
     const val MAX_BYTES: Int = 100
@@ -40,6 +51,13 @@ object AdvertCodec {
         out.write(advert.provisionalRank)
         out.writeText(id)
         out.writeText(truncateUtf8(advert.hostName, MAX_HOST_NAME_BYTES))
+        require(advert.invited.size <= MAX_INVITED) { "Convidados demais" }
+        out.write(advert.invited.size)
+        advert.invited.forEach { key ->
+            val bytes = key.toByteArray(Charsets.UTF_8)
+            require(bytes.size in 1..MAX_PRESENCE_KEY_BYTES) { "Chave de presença com tamanho inválido" }
+            out.writeText(bytes)
+        }
         val left = MAX_BYTES - out.size() - 1
         out.writeText(truncateUtf8(advert.tableName, left.coerceAtLeast(0)))
         return out.toByteArray().also { check(it.size <= MAX_BYTES) }
@@ -55,13 +73,37 @@ object AdvertCodec {
         val rank = r.byte()
         val tableId = r.text()
         val hostName = r.text()
+        val count = r.byte()
+        if (count > MAX_INVITED) return null
+        val invited = List(count) { r.text() }
         val tableName = r.text()
-        if (tableId.isEmpty()) return null
+        if (tableId.isEmpty() || !r.atEnd) return null
         TableAdvert(
             tableId = tableId, tableName = tableName, hostName = hostName,
             inProgress = flags and FLAG_IN_PROGRESS != 0, listed = flags and FLAG_LISTED != 0,
-            hostId = hostId, epoch = epoch, provisionalRank = rank,
+            hostId = hostId, epoch = epoch, provisionalRank = rank, invited = invited,
         )
+    }.getOrNull()
+
+    /** §16.2 anúncio de presença (chave e nome, o nome cortado por caractere para caber em [MAX_BYTES]). */
+    fun encodePresence(presence: PresenceAdvert): ByteArray {
+        val key = presence.key.toByteArray(Charsets.UTF_8)
+        require(key.size in 1..MAX_PRESENCE_KEY_BYTES) { "Chave de presença com tamanho inválido" }
+        val out = ByteArrayOutputStream()
+        out.write(PRESENCE_FORMAT)
+        out.writeText(key)
+        out.writeText(truncateUtf8(presence.name, MAX_BYTES - out.size() - 1))
+        return out.toByteArray().also { check(it.size <= MAX_BYTES) }
+    }
+
+    /** `null` se os bytes não são um anúncio de presença desta versão (ex.: é o de uma mesa). */
+    fun decodePresence(bytes: ByteArray): PresenceAdvert? = runCatching {
+        val r = Reader(bytes)
+        if (r.byte() != PRESENCE_FORMAT) return null
+        val key = r.text()
+        val name = r.text()
+        if (key.isEmpty() || !r.atEnd) return null
+        PresenceAdvert(key, name)
     }.getOrNull()
 
     /** Maior prefixo de [text] (por caractere, sem partir pares substitutos) que cabe em [maxBytes] em UTF-8. */
@@ -96,6 +138,7 @@ object AdvertCodec {
 
     private class Reader(private val bytes: ByteArray) {
         private var pos = 0
+        val atEnd: Boolean get() = pos == bytes.size
         fun byte(): Int = bytes[pos++].toInt() and 0xFF
         fun varint(): Int {
             var shift = 0

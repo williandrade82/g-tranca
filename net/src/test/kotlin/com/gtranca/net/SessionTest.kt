@@ -36,7 +36,8 @@ class SessionTest {
         val bytes = ProtocolCodec(version = PROTOCOL_VERSION + 1).encode(1, Hello("Ana"))
         ProtocolCodec().decode(bytes) shouldBe Decoded.VersionMismatch(PROTOCOL_VERSION + 1)
         // Mesmo com um tipo de mensagem que esta versão não conhece.
-        ProtocolCodec().decode("""{"v":9,"seq":1,"p":{"t":"novidade"}}""".encodeToByteArray()) shouldBe Decoded.VersionMismatch(9)
+        val other = PROTOCOL_VERSION + 1
+        ProtocolCodec().decode("""{"v":$other,"seq":1,"p":{"t":"novidade"}}""".encodeToByteArray()) shouldBe Decoded.VersionMismatch(other)
         ProtocolCodec().decode("lixo".encodeToByteArray()) shouldBe Decoded.Malformed
         val ok = ProtocolCodec().decode(ProtocolCodec().encode(3, ProposeAction(7, Action.DrawFromStock)))
         (ok as Decoded.Ok).envelope shouldBe Envelope(PROTOCOL_VERSION, 3, ProposeAction(7, Action.DrawFromStock))

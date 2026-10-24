@@ -282,18 +282,6 @@ class MultiplayerTable(
 
     suspend fun confirmSeat() = (_role.value as? MpRole.Guesting)?.session?.confirmSeat()
 
-    /**
-     * §16.3 o anfitrião exclui duas posições (mesa individual 1×1, contra outro humano ou um robô) ou restaura as 4, antes
-     * do início. Devolve se mudou.
-     */
-    suspend fun setReduced(reduced: Boolean): Boolean {
-        val hosting = _role.value as? MpRole.Hosting ?: return false
-        if (hosting.host != null) return false
-        val changed = hosting.session.setReduced(reduced)
-        if (changed) _rules.value = hosting.session.rules
-        return changed
-    }
-
     /** §16.2 o anfitrião inicia: assentos vagos com robôs, quem não confirmou sai; o jogo roda neste aparelho. */
     suspend fun startGame() {
         val hosting = _role.value as? MpRole.Hosting ?: return

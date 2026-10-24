@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 8
+const val PROTOCOL_VERSION: Int = 9
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -68,6 +68,8 @@ data class PlayerInfo(
     val resigned: Boolean = false,
     /** §16.10 posição na sucessão (1 ou 2); 0 = não é sucessor. */
     val successorRank: Int = 0,
+    /** §16.2 convidado que ainda não respondeu ao convite (aceito sozinho em 10 s). */
+    val invited: Boolean = false,
 )
 
 /**
@@ -200,6 +202,8 @@ data class Hello(
     val roundOverSeen: Int = 0,
     /** §16.2 foto do perfil, pequena e comprimida, em Base64 (JPEG); `null` = sem foto. Vai uma vez por conexão. */
     val photo: String? = null,
+    /** §16.2 chave de presença de quem foi convidado (achou-a em [TableAdvert.invited]): o anfitrião responde com o [Invite]. */
+    val inviteKey: String? = null,
 ) : Payload {
     override fun toString(): String = "Hello(name=$name, seat=$seat, photo=${photo?.length ?: 0})" // nunca registrar o token
 }
@@ -218,26 +222,119 @@ data class PlayerPhoto(val playerId: Int, val photo: String) : Payload {
 const val MAX_PHOTO_BASE64: Int = 20_480
 
 
-/** Entrada aceita: o [token] (só deste jogador, §16.5), o id público dele, as regras da mesa (uma vez) e a sala. */
+/**
+ * Entrada aceita: o [token] (só deste jogador, §16.5), o id público dele, as regras da mesa (uma vez: `null` quando já
+ * foram no [Invite]) e a sala.
+ */
 @Serializable
 @SerialName("welcome")
 data class Welcome(
     val token: String,
     val you: Int,
-    val rules: TableRules,
+    val rules: TableRules? = null,
     val roster: List<PlayerInfo>,
     /** O jogo já está em andamento (reingresso ou entrada no meio, §16.5, §16.7): o convidado vai direto à mesa. */
     val started: Boolean = false,
     /** Com o jogo em andamento: o personagem de cada assento de robô (índice do assento → id), escolhido pelo anfitrião. */
     val robots: Map<Int, String> = emptyMap(),
-) : Payload
+    /** §16.2 escolha de posições em andamento (mesa montada, §14.4); `null` nas mesas antigas ou com o jogo começado. */
+    val seating: SeatingState? = null,
+) : Payload {
+    override fun toString(): String = "Welcome(you=$you)" // nunca registrar o token
+}
 
-/** Entrada ou mensagem recusada, com o motivo em pt-BR (ex.: [VERSION_MISMATCH_MESSAGE]). */
+/** §16.2 motivo de uma recusa do convite ou do pedido de entrada, informado aos dois lados. */
+@Serializable
+enum class RefusalReason {
+    /** O convidado recusou o convite. */
+    INVITE_REFUSED,
+
+    /** Saldo menor que a aposta (§14.6): recusa automática. */
+    INSUFFICIENT_BALANCE,
+
+    /** O convidado não estava mais ao alcance. */
+    OUT_OF_RANGE,
+
+    /** O anfitrião recusou o pedido de entrada. */
+    HOST_REFUSED,
+
+    /** Não há robô no lugar de quem entrar (ou as posições já travaram). */
+    TABLE_FULL,
+}
+
+/** §16.2 texto em pt-BR do motivo (o mesmo nos dois lados). */
+fun refusalMessage(reason: RefusalReason): String = when (reason) {
+    RefusalReason.INVITE_REFUSED -> "Recusou o convite."
+    RefusalReason.INSUFFICIENT_BALANCE -> "Saldo insuficiente."
+    RefusalReason.OUT_OF_RANGE -> "Fora do alcance."
+    RefusalReason.HOST_REFUSED -> "O anfitrião recusou."
+    RefusalReason.TABLE_FULL -> "Mesa cheia."
+}
+
+/** Entrada ou mensagem recusada, com o motivo em pt-BR (ex.: [VERSION_MISMATCH_MESSAGE]) e, se for o caso, o de §16.2. */
 @Serializable
 @SerialName("rejected")
-data class Rejected(val message: String) : Payload
+data class Rejected(val message: String, val reason: RefusalReason? = null) : Payload
 
-/** Convidado troca para um assento **vago** (§16.2); ao entrar ele já ocupa o primeiro livre. */
+/**
+ * §16.2 convite (anfitrião → jogador próximo convidado, depois que ele se conecta): o anfitrião, os participantes
+ * (humanos em [roster], robôs em [seating]) e as regras da mesa (vão uma única vez, aqui). Aberto por [timeoutMillis]: sem
+ * resposta, é aceito sozinho.
+ */
+@Serializable
+@SerialName("invite")
+data class Invite(
+    val hostId: Int,
+    /** Id público do convidado nesta mesa. */
+    val you: Int,
+    val rules: TableRules,
+    val roster: List<PlayerInfo>,
+    val seating: SeatingState,
+    val timeoutMillis: Long = INVITE_TIMEOUT_MILLIS,
+) : Payload
+
+/** §16.15 convite sem resposta até ser aceito automaticamente. */
+const val INVITE_TIMEOUT_MILLIS: Long = 10_000
+
+/** §16.15 espera depois de todos confirmarem as posições até o início do jogo. */
+const val START_DELAY_MILLIS: Long = 2_000
+
+/** §16.2 resposta ao convite: aceito, ou recusado com o [reason] (recusou ou saldo insuficiente). */
+@Serializable
+@SerialName("inviteReply")
+data class InviteReply(val accepted: Boolean, val reason: RefusalReason? = null) : Payload
+
+/** §16.2 rotaciona a mesa: troca com o próximo ocupante não confirmado na [direction]. */
+@Serializable
+@SerialName("rotate")
+data class RotateSeat(val direction: RotateDirection) : Payload
+
+/** §16.2 escolha de posições atualizada (troca, confirmação, entrada, saída), redistribuída a todos. */
+@Serializable
+@SerialName("seating")
+data class SeatingUpdate(val seating: SeatingState) : Payload
+
+/** §16.2 todos confirmaram: posições travadas; o jogo começa [startsInMillis] depois em todos os aparelhos. */
+@Serializable
+@SerialName("locked")
+data class SeatsLocked(val seating: SeatingState, val startsInMillis: Long = START_DELAY_MILLIS) : Payload
+
+/** Por que a mesa foi encerrada pelo anfitrião. */
+@Serializable
+enum class CloseReason {
+    /** §16.2 o anfitrião saiu da escolha de posições: a mesa foi desfeita. */
+    HOST_LEFT,
+
+    /** §16.7 o anfitrião desligou o Wi-Fi do jogo: robôs assumem os humanos remotos e o jogo segue só no aparelho dele. */
+    HOST_OFFLINE,
+}
+
+/** A mesa foi encerrada pelo anfitrião: não há o que reingressar nem assumir (§16.10 não se aplica). */
+@Serializable
+@SerialName("closed")
+data class TableClosed(val reason: CloseReason) : Payload
+
+/** Mesa antiga (sem escolha de posições, fase 2 remove): convidado troca para um assento **vago**. */
 @Serializable
 @SerialName("chooseSeat")
 data class ChooseSeat(val seat: Seat) : Payload
@@ -261,14 +358,6 @@ data class Rename(val name: String) : Payload
 @Serializable
 @SerialName("leave")
 data object Leave : Payload
-
-/**
- * §16.3 antes do início, o anfitrião excluiu (modo individual, 2 assentos) ou restaurou (duplas, 4) as posições: as
- * regras da mesa passam a ser [rules] (só o modo muda).
- */
-@Serializable
-@SerialName("rulesUpdate")
-data class RulesUpdate(val rules: TableRules) : Payload
 
 /** Sala atualizada, redistribuída a todos a cada alteração (§16.2). */
 @Serializable
@@ -387,6 +476,11 @@ data class TableNotice(
     val playerId: Int? = null,
     /** §16.8 personagem do robô que assumiu ([NoticeKind.REPLACED_BY_ROBOT]); sempre um que não estava na mesa. */
     val persona: String? = null,
+    /**
+     * §16.2 na escolha de posições, por que o robô assumiu ([NoticeKind.REPLACED_BY_ROBOT]): recusa do convite, saldo,
+     * fora do alcance; `null` = o jogador saiu (abandono).
+     */
+    val refusal: RefusalReason? = null,
 ) : Payload
 
 /** Por que o jogo está pausado (§16.8, §16.9). */
