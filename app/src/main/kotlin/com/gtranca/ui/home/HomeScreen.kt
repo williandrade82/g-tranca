@@ -1,6 +1,16 @@
 package com.gtranca.ui.home
 
 import com.gtranca.ui.theme.Corner
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
@@ -88,9 +98,6 @@ import androidx.compose.material3.OutlinedButton
 import com.gtranca.ui.theme.GDialog
 import com.gtranca.ai.Difficulty
 import com.gtranca.game.GameConfig
-import com.gtranca.ui.cards.CardBack
-import com.gtranca.ui.cards.CardSize
-import com.gtranca.ui.cards.PlayingCard
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
 
@@ -115,22 +122,42 @@ fun HomeScreen(
     }
     GBackground(Modifier.fillMaxSize(), royal = true, rays = true) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+        // Conteúdo centralizado na vertical; se a tela for baixa, rola (a altura mínima é a da área disponível).
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.xl, vertical = Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = maxHeight)
+                .padding(horizontal = Spacing.xl, vertical = Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Topo enxuto (leque menor, sem a coroa e sem a descrição): a ação chega mais cedo.
-            Row(horizontalArrangement = Arrangement.spacedBy(-Spacing.sm)) {
-                Fan(Card.parse("AS"), -12f)
-                Fan(Card.parse("KH"), 0f)
-                Fan(null, 12f)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Acima de tudo: os quatro robôs (WebP reduzido; as bordas de baixo, cortadas na arte, esmaecem).
+            Image(
+                painterResource(R.drawable.home_all_bots),
+                contentDescription = stringResource(R.string.home_bots_description),
+                modifier = Modifier
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth()
+                    .aspectRatio(900f / 508f)
+                    .testTag("home-bots")
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            Brush.verticalGradient(0.7f to Color.Black, 1f to Color.Transparent),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    },
+                contentScale = ContentScale.Fit,
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 LogoTitle(stringResource(R.string.home_title))
                 Text(
                     stringResource(R.string.home_title_tagline),
-                    style = goldTitleStyle(MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp)),
+                    textAlign = TextAlign.Center,
+                    style = goldTitleStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp)),
                 )
             }
 
@@ -175,6 +202,7 @@ fun HomeScreen(
             ) {
                 Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
             }
+        }
         }
             // Barra inferior fixa (fora da rolagem): Perfil e Estatísticas; a versão, discreta, logo abaixo.
             Row(
@@ -226,15 +254,6 @@ fun HomeScreen(
     }
 }
 
-/** Carta do leque do topo: levemente inclinada, com sombra. `null` = verso. */
-@Composable
-private fun Fan(card: Card?, angle: Float) {
-    Box(Modifier.rotate(angle).shadow(Elevation.dialog, MaterialTheme.shapes.small)) {
-        if (card != null) PlayingCard(card, size = CardSize.MEDIUM, describe = false)
-        else CardBack(size = CardSize.MEDIUM, describe = false)
-    }
-}
-
 /** "Duplas · Médio · partida 2 · Nós 214 × 700 Eles" (individual: "Você … Adversário"). */
 @Composable
 private fun savedDescription(saved: SavedSummary): String {
@@ -274,7 +293,7 @@ private fun RowScope.Chip(text: String, selected: Boolean, tag: String, onClick:
 
 /** Logotipo em Cinzel com degradê dourado; um brilho percorre o texto de tempos em tempos. */
 @Composable
-private fun LogoTitle(text: String) {
+internal fun LogoTitle(text: String) {
     val motion = rememberMotionEnabled()
     val t = if (motion) {
         val v by rememberInfiniteTransition(label = "logo").animateFloat(
@@ -285,10 +304,11 @@ private fun LogoTitle(text: String) {
         v
     } else -1f
     val base = goldTitleStyle(MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Black, textAlign = TextAlign.Center))
-    Box {
-        Text(text, style = base)
+    // Uma linha só, reduzindo a fonte até caber (nunca quebra "TRANCA-BOT" no meio).
+    Box(Modifier.fillMaxWidth().testTag("logo-title")) {
+        com.gtranca.ui.theme.FitText(text, base, Modifier.fillMaxWidth())
         if (t > -0.3f && t < 1.3f) {
-            Text(
+            com.gtranca.ui.theme.FitText(
                 text,
                 style = base.copy(
                     brush = Brush.linearGradient(
@@ -298,6 +318,7 @@ private fun LogoTitle(text: String) {
                     ),
                     shadow = null,
                 ),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -339,11 +360,11 @@ internal fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag:
             .heightIn(min = 96.dp)
             .clip(shape)
             .background(
-                if (selected) Brush.verticalGradient(listOf(GColors.Amethyst, GColors.RoyalEnd))
+                if (selected) Brush.verticalGradient(listOf(GColors.RoyalBlue, GColors.RoyalEnd))
                 else Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)),
                 shape,
             )
-            .border(if (selected) 2.dp else 1.dp, if (selected) GColors.Gold else GColors.Lavender.copy(alpha = 0.4f), shape)
+            .border(if (selected) 2.dp else 1.dp, if (selected) GColors.Gold else GColors.Steel.copy(alpha = 0.4f), shape)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(Spacing.sm)
             .testTag(tag),
@@ -352,7 +373,7 @@ internal fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag:
     ) {
         Canvas(Modifier.width(88.dp).height(36.dp)) {
             val r = size.height * if (seats == 2) 0.2f else 0.26f
-            val ring = if (selected) GColors.Gold else GColors.Lavender
+            val ring = if (selected) GColors.Gold else GColors.Steel
             fun seat(x: Float, y: Float, own: Boolean) {
                 drawCircle(if (own) GColors.Gold.copy(alpha = 0.85f) else GColors.Midnight, r, Offset(x, y))
                 drawCircle(ring, r, Offset(x, y), style = Stroke(2.dp.toPx()))
@@ -372,11 +393,11 @@ internal fun RowScope.ModeCard(text: String, seats: Int, selected: Boolean, tag:
         Text(
             text,
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected) GColors.Ivory else GColors.Lavender,
+            color = if (selected) GColors.Ivory else GColors.Steel,
             textAlign = TextAlign.Center,
         )
         hint?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = if (selected) GColors.Champagne else GColors.Lavender, textAlign = TextAlign.Center)
+            Text(it, style = MaterialTheme.typography.labelSmall, color = if (selected) GColors.Champagne else GColors.Steel, textAlign = TextAlign.Center)
         }
     }
 }

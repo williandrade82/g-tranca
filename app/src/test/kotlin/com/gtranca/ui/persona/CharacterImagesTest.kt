@@ -27,4 +27,11 @@ class CharacterImagesTest {
             }
         }
     }
+
+    @Test
+    fun `§14_5 cada perfil tem a imagem com as cartas na mao, diferente das demais`() {
+        CARDS.keys shouldBe BotProfile.entries.toSet()
+        (IMAGES.values + FACES.values + CARDS.values).shouldBeUnique()
+        BotProfile.entries.forEach { cardsRes(it) }
+    }
 }

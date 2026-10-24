@@ -128,6 +128,28 @@ class PersistenceTest {
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false)
         settings.setSlowAnimations(false)
         settings.settings.first() shouldBe Settings(GameMode.DUPLAS, "CUSTOM", "perfil", soundOn = false, slowAnimations = false)
+        // §16 Wi-Fi do jogo: desligado por padrão e guardado.
+        settings.setWifiOn(true)
+        settings.settings.first().wifiOn shouldBe true
+        settings.setWifiOn(false)
+        settings.settings.first().wifiOn shouldBe false
+        // §16.2 ver as fotos dos outros: ligado por padrão e guardado.
+        settings.settings.first().showSharedPhotos shouldBe true
+        settings.setShowSharedPhotos(false)
+        settings.settings.first().showSharedPhotos shouldBe false
+        // Tour guiado: cada tela uma vez; "Rever o tour guiado" zera.
+        settings.settings.first().toursSeen shouldBe emptySet()
+        settings.markTourSeen("tables")
+        settings.markTourSeen("table")
+        settings.settings.first().toursSeen shouldBe setOf("tables", "table")
+        settings.resetTours()
+        settings.settings.first().toursSeen shouldBe emptySet()
+        settings.settings.first().tourAuto shouldBe true
+        settings.setTourAuto(false)
+        settings.settings.first().tourAuto shouldBe false
+        settings.settings.first().createTable shouldBe null
+        settings.setCreateTable("v1")
+        settings.settings.first().createTable shouldBe "v1"
     }
 
     @Test

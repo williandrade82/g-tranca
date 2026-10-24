@@ -12,6 +12,7 @@ import com.gtranca.game.Tables
 import com.gtranca.game.parseTargetScore
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -34,6 +35,72 @@ class TablesViewModelsTest {
         override suspend fun setLastMode(mode: GameMode) = state.update { it.copy(lastMode = mode) }
         override suspend fun setHandSort(id: String) = state.update { it.copy(handSortId = id) }
         override suspend fun setCustomRules(rules: RuleSet) = state.update { it.copy(customRules = rules) }
+        override suspend fun setWifiOn(on: Boolean) = state.update { it.copy(wifiOn = on) }
+        override suspend fun setCreateTable(text: String) = state.update { it.copy(createTable = text) }
+    }
+
+    private class FakeWallet(balance: Int) : com.gtranca.data.WalletRepository {
+        override val wallet: Flow<com.gtranca.engine.Wallet> = MutableStateFlow(com.gtranca.engine.Wallet(balance = balance))
+        override val lifetimeNet: Flow<Int> = MutableStateFlow(0)
+        override suspend fun debit(stake: Int): Boolean = true
+        override suspend fun claimDaily(today: Long): Boolean = false
+    }
+
+    @Test
+    fun `Criar mesa grava a configuracao ao criar e a recarrega ao reabrir`() = withMain {
+        val settings = FakeSettings()
+        val vm = CreateTableViewModel(settings)
+        advanceUntilIdle()
+        vm.onModeChange(GameMode.DUPLAS)
+        vm.onDifficultyChange(Difficulty.DIFICIL)
+        vm.onRulesChange(RulesChoice.PAULISTA)
+        vm.onStakeChange(250)
+        vm.onTargetChange("2000")
+        vm.onCreate().shouldNotBeNull()
+        advanceUntilIdle()
+        val again = CreateTableViewModel(settings)
+        advanceUntilIdle()
+        again.uiState.value.let {
+            it.mode shouldBe GameMode.DUPLAS
+            it.difficulty shouldBe Difficulty.DIFICIL
+            it.rulesChoice shouldBe RulesChoice.PAULISTA
+            it.stake shouldBe 250
+            it.targetText shouldBe "2000"
+            it.multiplayer shouldBe false
+        }
+    }
+
+    @Test
+    fun `Criar mesa ajusta ao carregar - aposta acima do saldo, Personalizada sem regras e texto ilegivel`() = withMain {
+        val saved = listOf("1", "false", "", "DUPLAS", "facil", "CUSTOM", "500", "abc").joinToString("	")
+        val vm = CreateTableViewModel(FakeSettings(Settings(createTable = saved)), wallet = FakeWallet(120))
+        advanceUntilIdle()
+        vm.uiState.value.let {
+            it.stake shouldBe 100
+            it.rulesChoice shouldBe RulesChoice.CLASSICA
+            it.targetText shouldBe "3000"
+            it.mode shouldBe GameMode.DUPLAS
+        }
+        val broken = CreateTableViewModel(FakeSettings(Settings(createTable = "lixo")))
+        advanceUntilIdle()
+        broken.uiState.value.rulesChoice shouldBe RulesChoice.CLASSICA
+    }
+
+    @Test
+    fun `§16 o botao de Wi-Fi reflete e grava a configuracao do Perfil`() = withMain {
+        val settings = FakeSettings(Settings(wifiOn = true))
+        val vm = TablesViewModel(seed = 1, settings = settings)
+        advanceUntilIdle()
+        vm.wifiOn.value shouldBe true
+        // Tocar no botão grava no Perfil.
+        vm.setWifi(false)
+        advanceUntilIdle()
+        settings.state.value.wifiOn shouldBe false
+        vm.wifiOn.value shouldBe false
+        // Mudar no Perfil reflete no botão.
+        settings.setWifiOn(true)
+        advanceUntilIdle()
+        vm.wifiOn.value shouldBe true
     }
 
     private fun <T> withMain(block: suspend kotlinx.coroutines.test.TestScope.() -> T) = runTest {
@@ -43,6 +110,20 @@ class TablesViewModelsTest {
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun `§16_2 criar mesa multijogador e sempre de 4 posicoes, com nome curto, sem mudar o ultimo modo`() = withMain {
+        val settings = FakeSettings(Settings(lastMode = GameMode.INDIVIDUAL))
+        val vm = CreateTableViewModel(settings)
+        advanceUntilIdle()
+        vm.onTypeChange(true)
+        vm.onTableNameChange("Mesa da família no domingo à tarde com todos")
+        vm.uiState.value.tableName.length shouldBe TABLE_NAME_MAX
+        val config = vm.onCreate()!!
+        config.mode shouldBe GameMode.DUPLAS
+        advanceUntilIdle()
+        settings.state.value.lastMode shouldBe GameMode.INDIVIDUAL
     }
 
     @Test

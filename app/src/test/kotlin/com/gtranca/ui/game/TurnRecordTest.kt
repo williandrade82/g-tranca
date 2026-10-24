@@ -1,7 +1,7 @@
 package com.gtranca.ui.game
 
 import com.gtranca.ai.Difficulty
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
@@ -62,8 +62,8 @@ class TurnRecordTest {
             takenFromDiscard = cards("3C 3S 7S"), takenTop = c("4C"),
         )
         event.record() shouldBe listOf(
-            RecordEntry(ActionKind.TAKE, cards("3C 3S 7S")),
             RecordEntry(ActionKind.ADD, cards("4C")),
+            RecordEntry(ActionKind.TAKE, cards("3C 3S 7S")),
         )
     }
 
@@ -72,17 +72,17 @@ class TurnRecordTest {
         val newMeld = PublicEvent(
             seat, Action.TakeDiscardPile(DiscardPlan.NewMeld(cards("8C 8D"))), takenFromDiscard = cards("5S"), takenTop = c("8H"),
         )
-        newMeld.record() shouldBe listOf(RecordEntry(ActionKind.TAKE, cards("5S")), RecordEntry(ActionKind.MELD, cards("8C 8D 8H")))
+        newMeld.record() shouldBe listOf(RecordEntry(ActionKind.MELD, cards("8C 8D 8H")), RecordEntry(ActionKind.TAKE, cards("5S")))
         val add = PublicEvent(
             seat, Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1), cards("5H"))), takenFromDiscard = emptyList(), takenTop = c("6H"),
         )
-        add.record() shouldBe listOf(RecordEntry(ActionKind.TAKE, emptyList()), RecordEntry(ActionKind.ADD, cards("5H 6H")))
+        add.record() shouldBe listOf(RecordEntry(ActionKind.ADD, cards("5H 6H")), RecordEntry(ActionKind.TAKE, emptyList()))
     }
 
     @Test
     fun `§5_1 jogo salvo antigo sem o topo do lixo ainda registra o que se sabe`() {
         val event = PublicEvent(seat, Action.TakeDiscardPile(DiscardPlan.NewMeld(cards("8C 8D"))), takenFromDiscard = cards("5S"))
-        event.record() shouldBe listOf(RecordEntry(ActionKind.TAKE, cards("5S")), RecordEntry(ActionKind.MELD, cards("8C 8D")))
+        event.record() shouldBe listOf(RecordEntry(ActionKind.MELD, cards("8C 8D")), RecordEntry(ActionKind.TAKE, cards("5S")))
     }
 
     @Test
@@ -119,8 +119,9 @@ class TurnRecordTest {
                                 is DiscardPlan.NewMeld -> plan.handCards
                                 is DiscardPlan.AddToMeld -> plan.handCards
                             }
-                            entries.first().kind shouldBe ActionKind.TAKE
-                            entries.first().cards shouldBe event.takenFromDiscard
+                            // Na ordem das animações: o jogo primeiro, depois o resto do lixo à mão.
+                            entries.last().kind shouldBe ActionKind.TAKE
+                            entries.last().cards shouldBe event.takenFromDiscard
                             val laid = entries.last { it.kind == ActionKind.MELD || it.kind == ActionKind.ADD }
                             laid.cards shouldContainAll (handCards + listOfNotNull(event.takenTop))
                             (event.takenTop != null) shouldBe true
@@ -132,5 +133,29 @@ class TurnRecordTest {
         }
         (takes > 0) shouldBe true
         kinds shouldContainAll setOf(ActionKind.DRAW, ActionKind.TAKE, ActionKind.MELD, ActionKind.ADD, ActionKind.DISCARD)
+    }
+
+    @Test
+    fun `§3_5 §6_5 o detalhe da vez segue a ordem das animacoes - troca do inicio, compra, troca da compra, baixas, acrescimo e descarte`() {
+        val events = listOf(
+            PublicEvent(seat, Action.DrawFromStock),
+            PublicEvent(seat, Action.CreateMeld(cards("8C 8D 8H"))),
+            PublicEvent(seat, Action.CreateMeld(cards("4S 5S 6S"))),
+            PublicEvent(seat, Action.AddToMeld(MeldId(1), cards("8S"))),
+            PublicEvent(seat, Action.Discard(c("KC"))),
+        )
+        // 3♥ trocado no início da vez (antes da compra) e 3♦ que veio na compra (trocado logo depois dela).
+        val timeline = turnTimeline(events, cards("3H 3D"), listOf(0, 1))
+        timeline shouldBe listOf(
+            TurnItem.RedThrees(cards("3H")),
+            TurnItem.Entry(events[0], RecordEntry(ActionKind.DRAW)),
+            TurnItem.RedThrees(cards("3D")),
+            TurnItem.Entry(events[1], RecordEntry(ActionKind.MELD, cards("8C 8D 8H"))),
+            TurnItem.Entry(events[2], RecordEntry(ActionKind.MELD, cards("4S 5S 6S"))),
+            TurnItem.Entry(events[3], RecordEntry(ActionKind.ADD, cards("8S"))),
+            TurnItem.Entry(events[4], RecordEntry(ActionKind.DISCARD, cards("KC"))),
+        )
+        // As ações aparecem na mesma ordem em que os voos as animam (TableAnimations.newEvents).
+        timeline.filterIsInstance<TurnItem.Entry>().map { it.event }.distinct() shouldBe events
     }
 }

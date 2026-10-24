@@ -1,6 +1,6 @@
 # G-Tranca
 
-Nome público do app: **Mestre da Canastra** (`app_name`), subtítulo **Buraco & Biriba** (`home_title_tagline`). `applicationId` = `br.com.funnyandplay.mestredacanastra` (definitivo); o código continua no pacote `com.gtranca` e "G-Tranca" é o nome interno.
+Nome público do app: **Tranca-Bot** (`app_name`; no logotipo e nos modais, "TRANCA-BOT" em caixa alta), descrição **Um jogo de tranca robotizado pra jogar entre família** (`home_title_tagline`). `applicationId` = `br.com.funnyandplay.trancabot`; o código continua no pacote `com.gtranca` e "G-Tranca" é o nome interno. Identidade visual: paleta do robô (azul royal, azul-pele, ouro, creme) e a coroa dourada como símbolo; feltro verde só na mesa.
 
 Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a máquina (individual) ou humano + parceiro virtual contra dupla virtual (duplas).
 
@@ -9,6 +9,7 @@ Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a m
 - **[definition.md](definition.md)** é a especificação das regras. Nunca invente regra: se algo não estiver lá, pare e pergunte ao usuário.
 - Toda regra implementada tem teste que cita a seção, ex.: `// §5.3 3 preto no topo trava o lixo`.
 - Se uma regra mudar, atualize `definition.md` **antes** do código.
+- **[docs/telas.md](docs/telas.md)** descreve as telas, os modais e o glossário de componentes (pílula do assento, modal de detalhe do jogador...). Use os nomes dele nos pedidos e, se uma tela mudar, atualize-o **antes** do código.
 
 ## Stack
 
@@ -25,10 +26,11 @@ Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a m
 | `:core-engine` | Kotlin/JVM puro | Modelos, `RuleSet`, máquina de estados, validação, pontuação. **Sem dependência de Android.** |
 | `:ai` | Kotlin/JVM puro | Jogadores virtuais (`BotPlayer`) por dificuldade. Depende só de `:core-engine`. |
 | `:sim` | Kotlin/JVM (CLI) | Simulação headless bot × bot para achar estados ilegais e medir força dos bots. |
+| `:net` | Kotlin/JVM puro | Multijogador local: protocolo versionado, sessão (anfitrião/convidado), interface `LocalTransport` e transporte em memória. Depende só de `:core-engine`. |
 | `:data` | Android library | DataStore (configurações), persistência da partida salva e estatísticas. |
 | `:app` | Android app | Telas Compose, ViewModels, `GameController`. |
 
-Regra de dependência: `app → data, ai, core-engine`; `ai → core-engine`; `sim → ai, core-engine`. O `core-engine` não depende de nada do projeto.
+Regra de dependência: `app → data, ai, net, core-engine`; `ai → core-engine`; `net → core-engine`; `sim → ai, core-engine`. O `core-engine` não depende de nada do projeto.
 
 ## Princípios do motor
 
@@ -72,4 +74,5 @@ Identificadores em inglês; textos da interface em português (pt-BR) em `string
 - `rules-engine-dev`: implementa o `:core-engine` com TDD.
 - `bot-ai-dev`: implementa os jogadores virtuais no `:ai`.
 - `android-ui-dev`: telas Compose, ViewModels e `:data`.
+- `net-comm-dev`: comunicação entre dispositivos (multijogador local): protocolo, transporte, sessão e reconexão.
 - `rules-auditor`: revisão somente leitura do código contra `definition.md`.

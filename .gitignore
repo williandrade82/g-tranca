@@ -28,3 +28,4 @@ Thumbs.db
 
 # Claude Code: configurações locais do usuário
 .claude/settings.local.json
+apk-out/

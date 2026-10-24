@@ -137,6 +137,7 @@ class HomeToTableTest {
         waitFor(30_000) { canDraw() }
 
         // §13.1 cancelar: o jogo continua exatamente como estava.
+        rule.onNodeWithTag("table-options").performClick()
         rule.onNodeWithTag("action-resign").performClick()
         rule.onNodeWithText("Desistir do jogo?").assertExists()
         rule.onNodeWithTag("resign-cancel").performClick()
@@ -145,6 +146,7 @@ class HomeToTableTest {
         canDraw() shouldBe true
 
         // Confirmar: fim de jogo com o outro lado vencedor.
+        rule.onNodeWithTag("table-options").performClick()
         rule.onNodeWithTag("action-resign").performClick()
         rule.onNodeWithTag("resign-confirm").performClick()
         rule.waitUntil(timeoutMillis = 5_000) { exists("game-over") }

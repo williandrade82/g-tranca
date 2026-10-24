@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Arte do ícone (Tranca Bots) a 70% da tela de 108 dp; fundo verde do feltro. O monocromático (ícones temáticos)
+     continua com a coroa, que é só um contorno. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/ic_launcher_bg" />
+    <foreground android:drawable="@drawable/ic_launcher_art" />
     <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>

@@ -1,7 +1,7 @@
 package com.gtranca.sim
 
 import com.gtranca.ai.BotPlayer
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.ai.hard.HardBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.RoundEngine

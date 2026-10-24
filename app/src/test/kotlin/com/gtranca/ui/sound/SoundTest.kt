@@ -25,6 +25,21 @@ class SoundTest {
     }
 
     @Test
+    fun `som da vez - curto e suave, uma vez por vez do jogador`() {
+        (SoundSynth.durationMillis(SoundEffect.TURN) in 200..300) shouldBe true
+        (SoundEffect.TURN.gain <= 0.5f) shouldBe true
+        val gate = TurnSoundGate()
+        gate.shouldPlay(isHumanTurn = false, round = 1, turn = 1) shouldBe false
+        gate.shouldPlay(isHumanTurn = true, round = 1, turn = 1) shouldBe true
+        // A vez continua com o jogador (compra, baixa): não repete.
+        gate.shouldPlay(isHumanTurn = false, round = 1, turn = 1) shouldBe false
+        gate.shouldPlay(isHumanTurn = true, round = 1, turn = 1) shouldBe false
+        // Próxima vez dele (ou outra partida): toca de novo.
+        gate.shouldPlay(isHumanTurn = true, round = 1, turn = 5) shouldBe true
+        gate.shouldPlay(isHumanTurn = true, round = 2, turn = 1) shouldBe true
+    }
+
+    @Test
     fun `duracoes combinam com o tipo de som`() {
         // Efeitos de carta são curtos; canastra e 3 vermelho, médios; vitória e derrota, longos.
         listOf(SoundEffect.FLIP, SoundEffect.TAP, SoundEffect.SLIDE).forEach { (SoundSynth.durationMillis(it) in 50..250) shouldBe true }
@@ -63,9 +78,9 @@ class SoundTest {
         // Baixar e acrescentar a um jogo, e o topo do lixo indo ao jogo.
         SoundMap.forFlight(flight(AnimAnchor.OwnHand, AnimAnchor.Meld(0, 3))) shouldBe SoundEffect.SLIDE
         SoundMap.forFlight(flight(AnimAnchor.DiscardPile, AnimAnchor.SideArea(1))) shouldBe SoundEffect.SLIDE
-        // 3 vermelho para a mesa.
-        SoundMap.forFlight(flight(AnimAnchor.SeatHand(1), AnimAnchor.RedThrees(1))) shouldBe SoundEffect.CHIME
-        SoundMap.forFlight(flight(AnimAnchor.Morto(1), AnimAnchor.RedThrees(0))) shouldBe SoundEffect.CHIME
+        // 3 vermelho para a mesa: silêncio na chegada, o som toca junto com o aviso da troca.
+        SoundMap.forFlight(flight(AnimAnchor.SeatHand(1), AnimAnchor.RedThrees(1))) shouldBe null
+        SoundMap.forFlight(flight(AnimAnchor.Morto(1), AnimAnchor.RedThrees(0))) shouldBe null
     }
 
     @Test

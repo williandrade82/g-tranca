@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -59,7 +61,22 @@ private suspend fun <T> safely(block: suspend () -> T): T? = try {
 }
 
 /** Lista de mesas abertas pelos jogadores virtuais (§14.4): sorteada a cada vez que a tela é aberta. */
-class TablesViewModel(seed: Long = System.nanoTime(), settings: SettingsRepository? = null, wallet: WalletRepository? = null) : ViewModel() {
+class TablesViewModel(
+    seed: Long = System.nanoTime(),
+    private val settings: SettingsRepository? = null,
+    wallet: WalletRepository? = null,
+    private val writes: com.gtranca.game.WriteQueue? = null,
+) : ViewModel() {
+    /** §16 Wi-Fi do jogo: a mesma configuração do Perfil (uma só fonte, guardada). */
+    val wifiOn: StateFlow<Boolean> = (settings?.settings?.map { it.wifiOn }?.catch { emit(false) } ?: kotlinx.coroutines.flow.flowOf(false))
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
+
+    /** §16 o botão de Wi-Fi grava a configuração do Perfil (ligar só depois da porta das permissões; a tela cuida disso). */
+    fun setWifi(on: Boolean) {
+        val repo = settings ?: return
+        writes?.enqueue { repo.setWifiOn(on) } ?: viewModelScope.launch { repo.setWifiOn(on) }
+    }
+
     private val _tables = MutableStateFlow(Tables.botTables(seed))
     val tables: StateFlow<List<TableOffer>> = _tables.asStateFlow()
 
@@ -144,6 +161,9 @@ data class CreateTableUiState(
     /** §14.6 aposta escolhida e saldo da carteira. */
     val stake: Int = Coins.DEFAULT_STAKE,
     val balance: Int = Coins.INITIAL_BALANCE,
+    /** §16.2 tipo Multijogador: mesa sempre de 4 posições (o modo some da tela) e com [tableName]. */
+    val multiplayer: Boolean = false,
+    val tableName: String = "",
 ) {
     val targetScore: Int? get() = parseTargetScore(targetText)
 
@@ -161,7 +181,7 @@ data class CreateTableUiState(
 
     val canCreate: Boolean get() = targetScore != null && loaded && canAfford
 
-    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(mode, difficulty, it, rules, stake) }
+    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(if (multiplayer) GameMode.DUPLAS else mode, difficulty, it, rules, stake) }
 
     companion object {
         const val MAX_TARGET: Int = Int.MAX_VALUE
@@ -189,12 +209,15 @@ class CreateTableViewModel(
         settings?.let { repo ->
             viewModelScope.launch {
                 val stored = repo.settings.catch { emit(Settings()) }.first()
+                val balance = wallet?.let { w -> safely { w.wallet.first().balance } }
                 _uiState.update {
-                    it.copy(
+                    val base = it.copy(
                         mode = if (modeTouched) it.mode else stored.lastMode,
                         customRules = stored.customRules ?: it.customRules,
                         loaded = true,
                     )
+                    // A última mesa criada, ajustada ao que vale agora (saldo, regras salvas).
+                    if (modeTouched) base else CreateTablePrefs.apply(base, stored.createTable, stored.customRules != null, balance)
                 }
             }
         }
@@ -221,6 +244,12 @@ class CreateTableViewModel(
 
     fun onDifficultyChange(difficulty: Difficulty) = _uiState.update { it.copy(difficulty = difficulty) }
 
+    /** §16.2 tipo da mesa: contra robôs ou multijogador. */
+    fun onTypeChange(multiplayer: Boolean) = _uiState.update { it.copy(multiplayer = multiplayer) }
+
+    /** §16.2 nome da mesa multijogador (até [TABLE_NAME_MAX] caracteres). */
+    fun onTableNameChange(name: String) = _uiState.update { it.copy(tableName = name.take(TABLE_NAME_MAX)) }
+
     fun onRulesChange(choice: RulesChoice) = _uiState.update { it.copy(rulesChoice = choice) }
 
     fun onTargetChange(text: String) = _uiState.update { it.copy(targetText = text) }
@@ -233,13 +262,62 @@ class CreateTableViewModel(
         val state = _uiState.value
         if (!state.canCreate) return null
         val config = state.toConfig() ?: return null
+        val text = CreateTablePrefs.encode(state)
         settings?.let { repo ->
-            if (writes != null) writes.enqueue { repo.setLastMode(config.mode) }
-            else viewModelScope.launch { safely { repo.setLastMode(config.mode) } }
+            // Grava a configuração toda; a mesa multijogador não muda o último modo escolhido contra robôs.
+            val save: suspend () -> Unit = {
+                repo.setCreateTable(text)
+                if (!state.multiplayer) repo.setLastMode(config.mode)
+            }
+            if (writes != null) writes.enqueue { save() } else viewModelScope.launch { safely { save() } }
         }
         return config
     }
 }
+
+/**
+ * Última configuração de "Criar mesa" gravada (docs/telas.md 3.4): tipo, nome, modo, nível, regras, aposta e alvo, num
+ * texto com campos separados por tabulação. Ao carregar, o que ficou inválido é ajustado (nunca falha).
+ */
+object CreateTablePrefs {
+    private const val SEP = "\t"
+    private const val VERSION = "1"
+
+    fun encode(state: CreateTableUiState): String = listOf(
+        VERSION, state.multiplayer.toString(), state.tableName.replace(SEP, " "), state.mode.name, state.difficulty.id,
+        state.rulesChoice.name, state.stake.toString(), state.targetText.replace(SEP, ""),
+    ).joinToString(SEP)
+
+    /** [state] com a configuração [text] aplicada e ajustada: aposta que o [balance] cobre, "Personalizada" só com regras salvas. */
+    fun apply(state: CreateTableUiState, text: String?, hasCustomRules: Boolean, balance: Int?): CreateTableUiState {
+        val parts = text?.split(SEP) ?: return state.copy(stake = fitStake(state.stake, balance))
+        if (parts.size < 8 || parts[0] != VERSION) return state.copy(stake = fitStake(state.stake, balance))
+        val mode = GameMode.entries.firstOrNull { it.name == parts[3] } ?: state.mode
+        val difficulty = Difficulty.entries.firstOrNull { it.id == parts[4] } ?: state.difficulty
+        val rules = RulesChoice.entries.firstOrNull { it.name == parts[5] }
+            ?.takeIf { it != RulesChoice.CUSTOM || hasCustomRules } ?: RulesChoice.CLASSICA
+        val stake = parts[6].toIntOrNull()?.takeIf { it in Coins.STAKES } ?: state.stake
+        val target = parts[7].takeIf { parseTargetScore(it) != null } ?: state.targetText
+        return state.copy(
+            multiplayer = parts[1].toBooleanStrictOrNull() ?: state.multiplayer,
+            tableName = parts[2].take(TABLE_NAME_MAX),
+            mode = mode,
+            difficulty = difficulty,
+            rulesChoice = rules,
+            stake = fitStake(stake, balance),
+            targetText = target,
+        )
+    }
+
+    /** A aposta [stake] se o saldo a cobre; senão a maior que ele cobre (ou a menor, sem saldo). */
+    fun fitStake(stake: Int, balance: Int?): Int {
+        if (balance == null || stake <= balance) return stake
+        return Coins.STAKES.filter { it <= balance }.maxOrNull() ?: Coins.STAKES.min()
+    }
+}
+
+/** §16.2 tamanho máximo do nome da mesa multijogador (o anúncio corta o que não couber, AdvertCodec). */
+const val TABLE_NAME_MAX: Int = 24
 
 /** Estado do editor das regras personalizadas (§14.2, §14.4). */
 data class RulesEditorUiState(

@@ -97,10 +97,10 @@ fun AnnouncementScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (outcome == EndOutcome.WIN && !brief) Trophy(96.dp, animate, Modifier.testTag("announcement-trophy"))
+            if (outcome == EndOutcome.WIN && !brief) VictoryCrown(96.dp, animate, Modifier.testTag("announcement-crown"))
             if (avatars.isEmpty() && illustration != null) MessageBadge(illustration, MessageTone.Warning, 96.dp)
             if (avatars.isNotEmpty()) {
-                // §14.5 os dois vencedores com confete e os dois perdedores sobre o fundo vermelho que pulsa
+                // §14.5 os dois vencedores com confete e os dois perdedores sobre o degradê vermelho que esmaece e reaparece
                 ResultCast(avatars, losers, animate, Modifier.testTag("announcement-cast"))
                 caption?.let { Text(it, color = OnTable, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
             }
@@ -135,7 +135,7 @@ fun RoundAnnouncement(
     val record = snapshot.history.last()
     val mode = snapshot.view.mode
     val result = record.result
-    // §14.1 quem venceu a partida (bateu), pelo nome e pelo título: o próprio jogador continua "Você".
+    // §14.1 quem bateu (só o fim do jogo diz "venceu"), pelo nome e pelo título: o próprio jogador continua "Você".
     val who = (result as? RoundResult.GoOut)?.let { personas.getOrNull(it.seat.index) }
     val role = (result as? RoundResult.GoOut)?.let { SeatRole.of(mode, it.seat, snapshot.viewerSeat) }
     val named = who != null && role != SeatRole.YOU

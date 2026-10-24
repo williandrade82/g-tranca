@@ -25,6 +25,12 @@ data class ProfileUiState(
     val soundOn: Boolean = true,
     /** Velocidade das animações (grava na hora): `true` = 30% mais lentas. */
     val slowAnimations: Boolean = true,
+    /** §16 Wi-Fi do jogo (grava na hora). */
+    val wifiOn: Boolean = false,
+    /** §16.2 ver as fotos dos outros nas mesas multijogador (grava na hora). */
+    val showSharedPhotos: Boolean = true,
+    /** Tour guiado automático (grava na hora). */
+    val tourAuto: Boolean = true,
     val photo: PhotoState = PhotoState.NONE,
     /** Lendo a foto escolhida. */
     val importingPhoto: Boolean = false,
@@ -52,10 +58,10 @@ class ProfileViewModel(
                 val saved = PlayerProfile.decode(stored.profileId)
                 _uiState.update {
                     if (touched) {
-                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations)
+                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto)
                     } else {
                         val photo = if (saved.hasPhoto && photos != null) PhotoState.SAVED else PhotoState.NONE
-                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, photo = photo)
+                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, photo = photo)
                     }
                 }
             }
@@ -73,6 +79,30 @@ class ProfileViewModel(
         settings?.let { repo -> writes?.enqueue { repo.setSoundOn(on) } }
     }
 
+    /** §16 Wi-Fi do jogo; grava na hora. Ligar só depois da porta das permissões (a tela cuida disso). */
+    fun onWifiToggle(on: Boolean) {
+        _uiState.update { it.copy(wifiOn = on) }
+        settings?.let { repo -> writes?.enqueue { repo.setWifiOn(on) } }
+    }
+
+    /** §16.2 ver as fotos dos outros jogadores nas mesas multijogador; grava na hora. */
+    fun onShowSharedPhotos(on: Boolean) {
+        _uiState.update { it.copy(showSharedPhotos = on) }
+        settings?.let { repo -> writes?.enqueue { repo.setShowSharedPhotos(on) } }
+    }
+
+    /** "Rever o tour guiado" (docs/telas.md 3.16): todos os tours voltam a aparecer na próxima vez. */
+    fun onTourToggle(on: Boolean) {
+        _uiState.update { it.copy(tourAuto = on) }
+        settings?.let { repo ->
+            writes?.enqueue {
+                // Ligar zera os vistos: os tours aparecem de novo.
+                if (on) repo.resetTours()
+                repo.setTourAuto(on)
+            }
+        }
+    }
+
     /** Velocidade das animações; grava na hora pela fila durável. */
     fun onSpeedChange(slow: Boolean) {
         _uiState.update { it.copy(slowAnimations = slow) }
@@ -83,6 +113,9 @@ class ProfileViewModel(
 
     /** §14.1 cor do medalhão (índice da paleta); índice fora dela é ignorado. */
     fun onColor(index: Int) = edit { if (index in 0 until PlayerProfile.COLORS) it.copy(color = index) else it }
+
+    /** §14.1 cor do baralho (verso das cartas); grava ao salvar, como o resto do perfil. */
+    fun onDeck(deck: com.gtranca.game.DeckColor) = edit { it.copy(deck = deck) }
 
     /** Caminho da foto a mostrar na prévia (rascunho ou gravada), ou `null`. */
     val previewPhoto: String?
@@ -113,10 +146,15 @@ class ProfileViewModel(
 
     fun onPhotoErrorShown() = _uiState.update { it.copy(photoError = false) }
 
-    /** Grava o rascunho (nome sem espaços nas pontas) pela fila durável e devolve o perfil gravado. */
-    fun onSave(): PlayerProfile {
+    /**
+     * Grava o rascunho (nome sem espaços nas pontas) pela fila durável e devolve o perfil gravado. Nome em branco vira
+     * [unnamed] ("Sem nome", vindo de strings.xml pela tela).
+     */
+    fun onSave(unnamed: String = ""): PlayerProfile {
         val state = _uiState.value
-        val profile = state.profile.let { it.copy(name = it.name.trim(), hasPhoto = state.photo != PhotoState.NONE) }
+        val profile = state.profile.let {
+            it.copy(name = it.name.trim().ifBlank { unnamed }, hasPhoto = state.photo != PhotoState.NONE)
+        }
         val encoded = profile.encode()
         val store = photos
         // A foto vai para o lugar definitivo antes de o perfil apontar para ela.

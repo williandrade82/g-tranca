@@ -14,6 +14,7 @@ datastore = "1.2.1"
 navigation = "2.10.2"
 coroutines = "1.11.0"
 serialization = "1.11.0"
+playServicesNearby = "19.5.1"
 
 junit = "6.1.3"
 kotest = "6.2.5"
@@ -34,6 +35,9 @@ androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+
+# Multijogador local (Nearby Connections, P2P_STAR; §16)
+play-services-nearby = { module = "com.google.android.gms:play-services-nearby", version.ref = "playServicesNearby" }
 
 # Compose (versões vindas do BOM)
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }

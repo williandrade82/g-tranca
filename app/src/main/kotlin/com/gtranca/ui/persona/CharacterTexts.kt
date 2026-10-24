@@ -14,6 +14,15 @@ fun BotProfile.tagRes(): Int = when (this) {
     BotProfile.ATLETA -> R.string.char_atleta_tag
 }
 
+/** §14.5 bordão do robô, texto decorativo sob o seu retrato. */
+@StringRes
+fun BotProfile.mottoRes(): Int = when (this) {
+    BotProfile.JOVEM -> R.string.char_jovem_motto
+    BotProfile.SOBRIO -> R.string.char_sobrio_motto
+    BotProfile.ALTERNATIVO -> R.string.char_alternativo_motto
+    BotProfile.ATLETA -> R.string.char_atleta_motto
+}
+
 /** §14.5 texto de apresentação do perfil, no painel de seleção de mesas. */
 @StringRes
 fun BotProfile.pitchRes(): Int = when (this) {

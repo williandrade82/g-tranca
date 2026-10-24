@@ -110,3 +110,18 @@ internal val FACES: Map<Triple<BotProfile, BotLevel, Pose>, Int> = mapOf(
         Triple(BotProfile.ATLETA, BotLevel.SENIOR, Pose.VENCEDOR) to R.drawable.char_atleta_senior_vencedor_av,
         Triple(BotProfile.ATLETA, BotLevel.SENIOR, Pose.PERDEDOR) to R.drawable.char_atleta_senior_perdedor_av,
 )
+
+/**
+ * §14.5 imagem do robô com as cartas na mão (256x256): a padrão dele na mesa de jogo; só na vez dele se usa o pensador.
+ * Uma por perfil, igual em todos os níveis.
+ */
+@DrawableRes
+fun cardsRes(profile: BotProfile): Int = CARDS.getValue(profile)
+
+/** Imagens com as cartas na mão (4), uma por perfil, para os testes conferirem a cobertura. */
+internal val CARDS: Map<BotProfile, Int> = mapOf(
+    BotProfile.JOVEM to R.drawable.char_jovem_cartas,
+    BotProfile.SOBRIO to R.drawable.char_sobrio_cartas,
+    BotProfile.ALTERNATIVO to R.drawable.char_alternativo_cartas,
+    BotProfile.ATLETA to R.drawable.char_atleta_cartas,
+)

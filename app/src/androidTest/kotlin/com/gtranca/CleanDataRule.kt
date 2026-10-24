@@ -19,6 +19,11 @@ class CleanDataRule : ExternalResource() {
             WriteQueue.app.run {
                 data.savedGames.clear()
                 data.settings.setLastMode(GameMode.INDIVIDUAL)
+                // §14.1 com nome no perfil (sem nome, a abertura mostra as boas-vindas no lugar do Início).
+                data.settings.setProfile(com.gtranca.game.PlayerProfile(name = "Ana").encode())
+                // Tours guiados já vistos (não cobrem as telas nos testes).
+                data.settings.markTourSeen("tables")
+                data.settings.markTourSeen("table")
             }
         }
     }

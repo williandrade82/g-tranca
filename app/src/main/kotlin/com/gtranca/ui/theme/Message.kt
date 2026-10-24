@@ -141,6 +141,8 @@ fun GMessage(
     confirmTag: String? = null,
     dismissTag: String? = null,
     properties: DialogProperties = DialogProperties(),
+    /** Conteúdo extra entre o texto e os botões (ex.: apostas e pontos no Desistir). */
+    content: (@Composable () -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
         Surface(
@@ -154,6 +156,7 @@ fun GMessage(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
+                BrandHeader()
                 MessageBadge(illustration, tone)
                 Text(
                     title,
@@ -163,6 +166,7 @@ fun GMessage(
                     textAlign = TextAlign.Center,
                 )
                 text?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = GColors.White, textAlign = TextAlign.Center) }
+                content?.invoke()
                 GButton(
                     onConfirm,
                     Modifier.fillMaxWidth().heightIn(min = 52.dp).let { if (confirmTag != null) it.testTag(confirmTag) else it },

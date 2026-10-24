@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.map
  * @property profileId §14.1 perfil do jogador (texto da interface), ou `null` para o padrão dela.
  * @property soundOn chave de som do jogador (ligado por padrão).
  * @property slowAnimations velocidade das animações: `true` = 30% mais lentas (padrão), `false` = normal.
+ * @property wifiOn §16 Wi-Fi do jogo (Perfil): multijogador por perto ligado (desligado por padrão).
+ * @property showSharedPhotos §16.2 ver as fotos dos outros jogadores nas mesas multijogador (ligado por padrão).
+ * @property toursSeen tours guiados já vistos (um id por tela; docs/telas.md 3.16).
  * @property customRules §14.4 regras personalizadas do jogador, ou `null` se ainda não salvou (a interface parte da Clássica).
  */
 data class Settings(
@@ -31,6 +34,13 @@ data class Settings(
     val soundOn: Boolean = true,
     val slowAnimations: Boolean = true,
     val customRules: RuleSet? = null,
+    val wifiOn: Boolean = false,
+    val showSharedPhotos: Boolean = true,
+    val toursSeen: Set<String> = emptySet(),
+    /** Tour guiado automático (Perfil): ligado, cada tela mostra o seu tour sozinha na primeira vez. */
+    val tourAuto: Boolean = true,
+    /** Última configuração de "Criar mesa" (texto da interface), ou `null` se ainda não criou nenhuma. */
+    val createTable: String? = null,
 )
 
 interface SettingsRepository {
@@ -47,6 +57,20 @@ interface SettingsRepository {
     suspend fun setSlowAnimations(slow: Boolean) = Unit
 
     suspend fun setCustomRules(rules: RuleSet) = Unit
+
+    suspend fun setWifiOn(on: Boolean) = Unit
+
+    suspend fun setShowSharedPhotos(on: Boolean) = Unit
+
+    /** O tour [id] já foi visto (não aparece sozinho de novo). */
+    suspend fun markTourSeen(id: String) = Unit
+
+    /** "Rever o tour guiado": todos os tours voltam a aparecer na próxima vez. */
+    suspend fun resetTours() = Unit
+
+    suspend fun setTourAuto(on: Boolean) = Unit
+
+    suspend fun setCreateTable(text: String) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -63,6 +87,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             soundOn = prefs[SOUND_ON] ?: true,
             slowAnimations = prefs[SLOW_ANIMATIONS] ?: true,
             customRules = prefs[CUSTOM_RULES]?.let(::decodeRules),
+            wifiOn = prefs[WIFI_ON] ?: false,
+            showSharedPhotos = prefs[SHOW_SHARED_PHOTOS] ?: true,
+            toursSeen = prefs[TOURS_SEEN] ?: emptySet(),
+            tourAuto = prefs[TOUR_AUTO] ?: true,
+            createTable = prefs[CREATE_TABLE],
         )
     }
 
@@ -86,6 +115,30 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[SLOW_ANIMATIONS] = slow }
     }
 
+    override suspend fun markTourSeen(id: String) {
+        store.edit { it[TOURS_SEEN] = (it[TOURS_SEEN] ?: emptySet()) + id }
+    }
+
+    override suspend fun setCreateTable(text: String) {
+        store.edit { it[CREATE_TABLE] = text }
+    }
+
+    override suspend fun setTourAuto(on: Boolean) {
+        store.edit { it[TOUR_AUTO] = on }
+    }
+
+    override suspend fun resetTours() {
+        store.edit { it.remove(TOURS_SEEN) }
+    }
+
+    override suspend fun setShowSharedPhotos(on: Boolean) {
+        store.edit { it[SHOW_SHARED_PHOTOS] = on }
+    }
+
+    override suspend fun setWifiOn(on: Boolean) {
+        store.edit { it[WIFI_ON] = on }
+    }
+
     override suspend fun setCustomRules(rules: RuleSet) {
         store.edit { it[CUSTOM_RULES] = RULES_JSON.encodeToString(RuleSet.serializer(), rules) }
     }
@@ -96,6 +149,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
 
     private companion object {
         val SOUND_ON = booleanPreferencesKey("sound_on")
+        val WIFI_ON = booleanPreferencesKey("wifi_on")
+        val SHOW_SHARED_PHOTOS = booleanPreferencesKey("show_shared_photos")
+        val TOUR_AUTO = booleanPreferencesKey("tour_auto")
+        val CREATE_TABLE = stringPreferencesKey("create_table")
+        val TOURS_SEEN = androidx.datastore.preferences.core.stringSetPreferencesKey("tours_seen")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")
         val RULES_JSON = Json { ignoreUnknownKeys = true }

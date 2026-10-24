@@ -1,5 +1,6 @@
 package com.gtranca.ui.theme
 
+import androidx.compose.ui.unit.sp
 import android.provider.Settings
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.LinearEasing
@@ -89,7 +90,7 @@ val GoldBrush: Brush = Brush.verticalGradient(listOf(GColors.Champagne, GColors.
 
 /**
  * Botão do app em cápsula. Primary = ouro biselado com brilho periódico; Secondary = índigo com borda
- * ametista; Danger = rubi. Ao tocar, afunda 3%.
+ * azul royal; Danger = rubi. Ao tocar, afunda 3%.
  */
 @Composable
 fun GButton(
@@ -97,6 +98,8 @@ fun GButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     kind: GButtonKind = GButtonKind.Primary,
+    /** Margem interna; `null` = a padrão (botões compactos da barra de ações passam uma menor). */
+    contentPadding: PaddingValues? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val shape = CircleShape
@@ -120,7 +123,7 @@ fun GButton(
         GButtonKind.Secondary -> Modifier
             .shadow(Elevation.button, shape)
             .background(GColors.Indigo, shape)
-            .border(1.5.dp, GColors.Amethyst, shape)
+            .border(1.5.dp, GColors.RoyalBlue, shape)
         GButtonKind.Danger -> Modifier
             .shadow(Elevation.button, shape)
             .background(Brush.verticalGradient(listOf(GColors.Ruby, GColors.Bordeaux)), shape)
@@ -138,7 +141,7 @@ fun GButton(
                 .clip(shape)
                 .then(surface)
                 .clickable(interaction, indication = androidx.compose.material3.ripple(color = GColors.Champagne), enabled = enabled, role = Role.Button, onClick = onClick)
-                .padding(if (quiet) PaddingValues(horizontal = 12.dp, vertical = 8.dp) else PaddingValues(horizontal = 24.dp, vertical = 10.dp)),
+                .padding(contentPadding ?: if (quiet) PaddingValues(horizontal = 12.dp, vertical = 8.dp) else PaddingValues(horizontal = 24.dp, vertical = 10.dp)),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -257,7 +260,7 @@ fun Modifier.goldFrame(corner: Dp = 20.dp, width: Dp = 3.dp, lights: Boolean = t
     }
 }
 
-/** Ficha selecionável (substitui o botão de opção): cápsula índigo; selecionada = ametista com borda ouro. */
+/** Ficha selecionável (substitui o botão de opção): cápsula índigo; selecionada = azul royal com borda ouro. */
 @Composable
 fun GChoiceChip(
     text: String,
@@ -267,8 +270,8 @@ fun GChoiceChip(
     enabled: Boolean = true,
 ) {
     val shape = CircleShape
-    val fill = if (selected) GColors.Amethyst else GColors.Indigo
-    val border = if (selected) GColors.Gold else GColors.Lavender.copy(alpha = 0.5f)
+    val fill = if (selected) GColors.RoyalBlue else GColors.Indigo
+    val border = if (selected) GColors.Gold else GColors.Steel.copy(alpha = 0.5f)
     Box(
         modifier
             .heightIn(min = 48.dp)
@@ -283,14 +286,14 @@ fun GChoiceChip(
     ) {
         Text(
             text,
-            color = if (selected) GColors.Ivory else GColors.Lavender,
+            color = if (selected) GColors.Ivory else GColors.Steel,
             style = MaterialTheme.typography.labelLarge,
             textAlign = TextAlign.Center,
         )
     }
 }
 
-/** Diálogo padrão do app (painel índigo arredondado). */
+/** Diálogo padrão do app (painel azul arredondado), sempre com o cabeçalho de marca [BrandHeader] acima do título. */
 @Composable
 fun GDialog(
     onDismissRequest: () -> Unit,
@@ -306,7 +309,7 @@ fun GDialog(
         confirmButton = confirmButton,
         modifier = modifier.border(1.dp, GColors.Gold.copy(alpha = 0.5f), MaterialTheme.shapes.extraLarge),
         dismissButton = dismissButton,
-        title = title,
+        title = { Column { BrandHeader(); title?.invoke() } },
         text = text,
         properties = properties,
         shape = MaterialTheme.shapes.extraLarge,
@@ -341,13 +344,38 @@ fun goldTitleStyle(base: TextStyle): TextStyle = base.copy(
 
 /** Título de tela: Cinzel em ouro com degradê. */
 @Composable
-fun GTitle(text: String, modifier: Modifier = Modifier) {
-    Text(
+fun GTitle(text: String, modifier: Modifier = Modifier, maxLines: Int = 2) {
+    FitText(text, goldTitleStyle(MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold)), modifier, maxLines)
+}
+
+/**
+ * Título que **reduz a fonte até caber** (tela estreita ou fonte grande do sistema) em vez de quebrar no meio da palavra:
+ * no máximo [maxLines] linhas (com 1, nunca quebra), do tamanho do [style] até [MIN_TITLE_SP].
+ */
+@Composable
+fun FitText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, maxLines: Int = 1, minFontSp: Int = MIN_TITLE_SP) {
+    // Com degradê (brush), o estilo fica como está: copiar com uma cor apagaria o degradê (títulos dourados ficavam pretos).
+    val resolved = when {
+        style.brush != null -> style
+        style.color != androidx.compose.ui.graphics.Color.Unspecified -> style
+        else -> style.copy(color = androidx.compose.material3.LocalContentColor.current)
+    }
+    androidx.compose.foundation.text.BasicText(
         text,
         modifier,
-        style = goldTitleStyle(MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold)),
+        style = resolved,
+        maxLines = maxLines,
+        softWrap = maxLines > 1,
+        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+            minFontSize = minOf(minFontSp.toFloat(), if (style.fontSize.isSp) style.fontSize.value else 28f).sp,
+            maxFontSize = if (style.fontSize.isSp) style.fontSize else 28.sp,
+            stepSize = 1.sp,
+        ),
     )
 }
+
+/** Menor fonte de um título que se ajusta à largura. */
+const val MIN_TITLE_SP: Int = 14
 
 /** Faixa de destaque (resultado): [color] de fundo com moldura dourada, texto em [onColor]. */
 @Composable

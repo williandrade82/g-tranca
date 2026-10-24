@@ -1,5 +1,8 @@
 package com.gtranca.ui.game
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -55,7 +58,17 @@ import com.gtranca.game.GameSnapshot
 
 /** Fim de jogo (§13): vencedor, totais e o resultado de cada partida. */
 @Composable
-fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: List<Persona> = emptyList(), animate: Boolean = true) {
+fun GameOverScreen(
+    snapshot: GameSnapshot,
+    onBackToHome: () -> Unit,
+    personas: List<Persona> = emptyList(),
+    animate: Boolean = true,
+    /** §16.13 multijogador: o resultado em moedas vem do anfitrião ([multiplayerNet], `null` enquanto não chega). */
+    multiplayer: Boolean = false,
+    multiplayerNet: Int? = null,
+    /** §16.9 multijogador: botões a mais ("Voltar à mesa"). */
+    extra: (@Composable () -> Unit)? = null,
+) {
     val view = snapshot.view
     val sides = listOf(view.side) + view.mode.sides.filter { it != view.side }
     val won = !snapshot.resigned && snapshot.winner == view.side
@@ -71,53 +84,55 @@ fun GameOverScreen(snapshot: GameSnapshot, onBackToHome: () -> Unit, personas: L
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 OutcomeRibbon(stringResource(if (won) R.string.outcome_victory else R.string.outcome_defeat), won, animate, Modifier.testTag("outcome-ribbon"))
             }
-            if (won) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Trophy(96.dp, animate, Modifier.testTag("game-over-trophy")) }
             // §14.1 quem venceu, com o avatar em destaque.
             snapshot.winner?.let { winner ->
                 val winners = personasOfSide(view.mode, winner, personas)
                 if (winners.isNotEmpty()) {
                     // §14.5 personagens em retrato: vencedores em festa, os do outro lado de cabeça baixa.
                     val losers = personasOfSide(view.mode, view.mode.sides.first { it != winner }, personas)
-                    ResultCast(winners, losers, animate, Modifier.testTag("game-over-cast"))
-                    // §14.5 quem venceu pelo nome completo, com a posição em duplas.
-                    Text(
-                        callNamesOfSide(view.mode, winner, snapshot.viewerSeat, personas).joinToString(" · "),
-                        Modifier.fillMaxWidth().testTag("winner-names"),
-                        color = GColors.Champagne,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                    )
+                    // Perdedores com metade do tamanho (docs/telas.md 3.11).
+                    ResultCast(winners, losers, animate, Modifier.testTag("game-over-cast"), loserScale = 0.5f)
                 }
             }
-            val opponentName = personasOfSide(view.mode, view.mode.sides.first { it != view.side }, personas).firstOrNull()
-            GBanner(
-                if (view.mode == GameMode.INDIVIDUAL && !won && !snapshot.resigned && opponentName != null) {
-                    stringResource(R.string.game_over_named_won, opponentName.fullName)
-                } else {
-                    stringResource(
-                        if (snapshot.resigned) resignedRes(view.mode) else gameResultRes(view.mode, won = snapshot.winner == view.side),
-                    )
-                },
-                if (won) GColors.RoyalEnd else GColors.Bordeaux,
-                GColors.Ivory,
-            )
             // §14.6 quanto o jogador ganhou ou perdeu em moedas (recebido menos a aposta)
-            if (snapshot.config.stake > 0) {
-                val stake = snapshot.config.stake
-                val won = !snapshot.resigned && snapshot.winner == view.side
-                val net = Coins.humanPayout(view.mode.seatCount, stake, won) - stake
+            val stakeNet: Int? = when {
+                snapshot.config.stake <= 0 -> null
+                multiplayer -> multiplayerNet ?: if (snapshot.resigned) -snapshot.config.stake else null
+                else -> Coins.humanPayout(view.mode.seatCount, snapshot.config.stake, !snapshot.resigned && snapshot.winner == view.side) - snapshot.config.stake
+            }
+            // O saco de moedas com o resultado: "+N" na vitória, "−N" (a aposta perdida) na derrota; sem aposta, só o texto.
+            if (stakeNet != null) {
+                val net = stakeNet
+                val description = stringResource(if (net >= 0) R.string.coins_result_gain else R.string.coins_result_loss, kotlin.math.abs(net))
+                Row(
+                    Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = description }.testTag("coins-result"),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.foundation.Image(
+                        androidx.compose.ui.res.painterResource(R.drawable.coin_bag),
+                        null,
+                        Modifier.size(96.dp),
+                    )
+                    Text(
+                        if (net >= 0) "+$net" else "\u2212${-net}",
+                        color = if (net >= 0) GColors.Gold else GColors.Ruby,
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            } else if (snapshot.config.stake <= 0) {
                 Text(
-                    stringResource(if (net >= 0) R.string.coins_result_gain else R.string.coins_result_loss, kotlin.math.abs(net)),
+                    stringResource(R.string.resign_no_stake),
                     Modifier.fillMaxWidth().testTag("coins-result"),
-                    color = if (net >= 0) GColors.Gold else GColors.Ruby,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    color = GColors.Steel,
                     textAlign = TextAlign.Center,
                 )
             }
             GPanel(Modifier.fillMaxWidth().testTag("game-over-table")) {
                 ResultsTable(snapshot, sides, view.mode, view.side, personas)
             }
+            extra?.invoke()
             GButton(onBackToHome, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("back-home")) {
                 Text(stringResource(R.string.back_to_home))
             }
@@ -145,7 +160,7 @@ private fun ResultsTable(
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         // Cabeçalho.
         Row(Modifier.fillMaxWidth().padding(bottom = Spacing.xs), verticalAlignment = Alignment.Bottom) {
-            Text(stringResource(R.string.game_over_col_round), Modifier.weight(0.9f), style = MaterialTheme.typography.labelLarge, color = GColors.Lavender)
+            Text(stringResource(R.string.game_over_col_round), Modifier.weight(0.9f), style = MaterialTheme.typography.labelLarge, color = GColors.Steel)
             sides.forEach { side ->
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     AvatarRow(personasOfSide(mode, side, personas), 26.dp, pose = poses.getValue(side))
@@ -172,7 +187,7 @@ private fun ResultsTable(
                     .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(record.number.toString(), Modifier.weight(0.9f), style = numbers, color = GColors.Lavender)
+                Text(record.number.toString(), Modifier.weight(0.9f), style = numbers, color = GColors.Steel)
                 values.forEach { v ->
                     val top = v == best && values.count { it == best } == 1
                     Text(
@@ -201,7 +216,7 @@ private fun ResultsTable(
                         plainPoints(snapshot.totals[side.index]),
                         Modifier
                             .background(if (winner) GoldBrush else androidx.compose.ui.graphics.SolidColor(GColors.IndigoLight), CircleShape)
-                            .border(1.dp, if (winner) GColors.Champagne else GColors.Lavender.copy(alpha = 0.5f), CircleShape)
+                            .border(1.dp, if (winner) GColors.Champagne else GColors.Steel.copy(alpha = 0.5f), CircleShape)
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                         style = numbers,
                         fontWeight = FontWeight.Bold,

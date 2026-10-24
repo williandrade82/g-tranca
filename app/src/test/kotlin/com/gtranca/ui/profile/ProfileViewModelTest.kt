@@ -40,6 +40,37 @@ class ProfileViewModelTest {
         override suspend fun setProfile(id: String) = state.update { it.copy(profileId = id) }
         override suspend fun setSoundOn(on: Boolean) = state.update { it.copy(soundOn = on) }
         override suspend fun setSlowAnimations(slow: Boolean) = state.update { it.copy(slowAnimations = slow) }
+        override suspend fun setWifiOn(on: Boolean) = state.update { it.copy(wifiOn = on) }
+        override suspend fun resetTours() = state.update { it.copy(toursSeen = emptySet()) }
+        override suspend fun setTourAuto(on: Boolean) = state.update { it.copy(tourAuto = on) }
+    }
+
+    @Test
+    fun `chave Tour guiado - desligar mantem os vistos e ligar os zera`() = runTest(dispatcher) {
+        val settings = FakeSettings(Settings(toursSeen = setOf("tables", "table")))
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.uiState.value.tourAuto shouldBe true
+        vm.onTourToggle(false)
+        advanceUntilIdle()
+        settings.state.value.tourAuto shouldBe false
+        settings.state.value.toursSeen shouldBe setOf("tables", "table")
+        vm.onTourToggle(true)
+        advanceUntilIdle()
+        settings.state.value.tourAuto shouldBe true
+        settings.state.value.toursSeen shouldBe emptySet()
+    }
+
+    @Test
+    fun `§16 Wi-Fi do jogo le o valor gravado e grava na hora`() = runTest(dispatcher) {
+        val settings = FakeSettings(Settings(wifiOn = true))
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.uiState.value.wifiOn shouldBe true
+        vm.onWifiToggle(false)
+        advanceUntilIdle()
+        vm.uiState.value.wifiOn shouldBe false
+        settings.state.value.wifiOn shouldBe false
     }
 
     @Test
@@ -75,6 +106,18 @@ class ProfileViewModelTest {
         val vm = ProfileViewModel()
         vm.onName("x".repeat(30))
         vm.uiState.value.profile.name.length shouldBe PlayerProfile.MAX_NAME
+    }
+
+    @Test
+    fun `§14_1 salvar sem nome grava Sem nome`() = runTest(dispatcher) {
+        val settings = FakeSettings()
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.onName("   ")
+        val returned = vm.onSave("Sem nome")
+        advanceUntilIdle()
+        returned.name shouldBe "Sem nome"
+        PlayerProfile.decode(settings.state.value.profileId) shouldBe returned
     }
 
     @Test

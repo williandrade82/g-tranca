@@ -2,10 +2,10 @@
 
 package com.gtranca.ui.game
 
+import com.gtranca.ui.tour.tourTarget
 import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.sound.SoundButton
-import com.gtranca.ui.speed.SpeedButton
 
 import com.gtranca.ui.sound.LocalSound
 import com.gtranca.ui.sound.SoundEffect
@@ -100,6 +100,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -183,6 +185,9 @@ interface TableEvents {
     /** §3.5 o último voo da distribuição pousou: o aviso e a troca de 3 vermelho podem começar. */
     fun onDealAnimationFinished() = Unit
     fun onCardClick(card: Card)
+
+    /** Mesa multijogador: esconder ou mostrar as cartas da mão. */
+    fun onToggleHideHand() = Unit
     fun onClearSelection()
     fun onSortChange(sort: HandSort)
     fun onSpecialColumnToggle()
@@ -226,7 +231,41 @@ fun TableScreen(
     modifier: Modifier = Modifier,
     /** Revisão da mesa final: no lugar da barra de ações, só "Continuar" (não há jogada possível). */
     onReviewContinue: (() -> Unit)? = null,
+    /** §16 multijogador: ícone extra no cabeçalho (menu do anfitrião, 3.14). */
+    headerExtra: (@Composable (close: () -> Unit) -> Unit)? = null,
+    /** §16 assento do anfitrião (para as Informações do jogo); `null` fora do multijogador. */
+    hostSeat: Seat? = null,
+    /** §16.15 qualidade da conexão com o anfitrião (1 a 3), na pílula dele; só no convidado. */
+    hostLinkQuality: Int? = null,
 ) {
+    CompositionLocalProvider(LocalHostSignal provides hostSeat?.takeIf { hostLinkQuality != null }?.let { it to hostLinkQuality!! }) {
+    TableScreenContent(state, events, modifier, onReviewContinue, headerExtra, hostSeat)
+    }
+}
+
+/** §16.15 assento do anfitrião e a qualidade da conexão com ele (só no convidado). */
+private val LocalHostSignal = androidx.compose.runtime.compositionLocalOf<Pair<Seat, Int>?> { null }
+
+@Composable
+private fun TableScreenContent(
+    state: GameUiState,
+    events: TableEvents,
+    modifier: Modifier,
+    onReviewContinue: (() -> Unit)?,
+    headerExtra: (@Composable (close: () -> Unit) -> Unit)?,
+    hostSeat: Seat?,
+) {
+    var showMatchInfo by rememberSaveable { mutableStateOf(false) }
+    // Som da vez: uma vez quando a vez passa a ser deste jogador (nunca na revisão da mesa final).
+    val turnSound = LocalSound.current
+    val turnGate = remember { com.gtranca.ui.sound.TurnSoundGate() }
+    val turnNumber = state.snapshot.view.turnsBegun
+    LaunchedEffect(state.isHumanTurn, state.snapshot.roundNumber, turnNumber) {
+        if (onReviewContinue == null && turnGate.shouldPlay(state.isHumanTurn, state.snapshot.roundNumber, turnNumber)) {
+            turnSound.play(com.gtranca.ui.sound.SoundEffect.TURN)
+        }
+    }
+    if (showMatchInfo) MatchInfoDialog(state.snapshot, state.personas, hostSeat) { showMatchInfo = false }
     val snapshot = state.snapshot
     val view = snapshot.view
     val snackbar = remember { SnackbarHostState() }
@@ -310,6 +349,15 @@ fun TableScreen(
         }
     }
 
+    // Tour guiado (docs/telas.md 3.16): sozinho só na 1ª vez em que é a vez do jogador, depois das animações iniciais.
+    val tourReady = onReviewContinue == null && com.gtranca.ui.tour.Tours.tableReady(
+        isHumanTurn = state.isHumanTurn,
+        dealPending = state.dealPending,
+        animating = state.flights.isNotEmpty(),
+        swapShowing = state.banner != null || state.reveal != null || state.ownSwapPending,
+        endScreen = state.endScreen != null,
+    )
+    com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.TABLE, com.gtranca.ui.tour.Tours.tableSteps, autoStart = tourReady) { startTour ->
     Scaffold(
         modifier = modifier
             .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
@@ -322,14 +370,25 @@ fun TableScreen(
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
-                    Header(state, events) { showLegend = true }
-                    // Jogadores fixos no alto; rola só a mesa (monte, mortos, lixo e os jogos dos dois lados).
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { SeatsPanel(state) { detailSeat = it } }
+                    Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                    // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
+                    // pelo menos o espaço livre e cresce com o conteúdo, nunca cortando cartas (telas baixas, fonte grande).
+                    var seatsHeight by remember { mutableStateOf(0) }
+                    androidx.compose.foundation.layout.BoxWithConstraints(
+                        Modifier.weight(1f).fillMaxWidth()
+                            .onGloballyPositioned { tableViewport = Rect(it.positionInRoot(), it.size.toSize()) },
+                    ) {
+                    val available = maxHeight
+                    Column(Modifier.fillMaxSize().verticalScroll(tableScroll).testTag("table-scroll")) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).tourTarget("seats")
+                            .onGloballyPositioned { seatsHeight = it.size.height },
+                    ) { SeatsPanel(state) { detailSeat = it } }
+                    val feltMin = (available - with(LocalDensity.current) { seatsHeight.toDp() } - 4.dp).coerceAtLeast(0.dp)
                     Column(
-                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
-                            .onGloballyPositioned { tableViewport = Rect(it.positionInRoot(), it.size.toSize()) }
-                            .verticalScroll(tableScroll).padding(horizontal = 12.dp, vertical = 18.dp).testTag("table-scroll"),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
+                            .padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-felt"),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         SideArea(
                             side = view.mode.sides.first { it != view.side }.index,
@@ -354,7 +413,9 @@ fun TableScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                     }
-                    HandArea(state, events)
+                    }
+                    }
+                    HandArea(state, events) { detailSeat = snapshot.viewerSeat.index }
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
                     if (onReviewContinue != null) ReviewContinueBar(onReviewContinue) else StatusAndActions(state, events)
                 }
@@ -376,20 +437,28 @@ fun TableScreen(
             }
         }
     }
+    }
 
     if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }
     detailSeat?.let { index ->
-        val events = snapshot.turnEvents.getOrNull(index).orEmpty()
-        if (events.isEmpty()) {
-            detailSeat = null
+        val shown = snapshot.shownTurnEvents(index)
+        var reds = snapshot.turnRedThrees.getOrNull(index).orEmpty()
+        var after = snapshot.turnRedThreeAfter.getOrNull(index).orEmpty()
+        // A própria vez que acabou de começar (sem jogada nem troca): mostra a vez anterior do jogador.
+        val events = if (shown.isEmpty() && reds.isEmpty() && index == snapshot.viewerSeat.index) snapshot.turnEvents.getOrNull(index).orEmpty() else shown
+        if (shown.isEmpty() && events.isNotEmpty()) { reds = emptyList(); after = emptyList() }
+        if (events.isEmpty() && reds.isEmpty()) {
+            if (index == snapshot.viewerSeat.index) NoOwnPlayDialog { detailSeat = null } else detailSeat = null
         } else {
             val role = SeatRole.of(view.mode, Seat(index), snapshot.viewerSeat)
             val detailPersona = state.personas.getOrNull(index)
             SeatDetailDialog(
                 detailPersona,
-                detailPersona?.callName(view.mode, role) ?: stringResource(role.nameRes()),
+                if (index == snapshot.viewerSeat.index) stringResource(R.string.own_last_play_title)
+                else detailPersona?.callName(view.mode, role) ?: stringResource(role.nameRes()),
                 events,
-                snapshot.turnRedThrees.getOrNull(index).orEmpty(),
+                reds,
+                after,
             ) { detailSeat = null }
         }
     }
@@ -411,8 +480,58 @@ fun TableScreen(
     }
 }
 
+/** Menu de opções da mesa (docs/telas.md 3.8): velocidade, símbolos, desistir e o menu do anfitrião (multijogador). */
 @Composable
-private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit) {
+private fun OptionsMenu(events: TableEvents, extra: (@Composable (close: () -> Unit) -> Unit)?, onLegend: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val optionsText = stringResource(R.string.table_options)
+    Box {
+        Box(
+            Modifier
+                .size(48.dp)
+                .clickable(onClickLabel = optionsText, role = Role.Button) { open = true }
+                .semantics { contentDescription = optionsText }
+                .testTag("table-options")
+                .tourTarget("table-options"),
+            contentAlignment = Alignment.Center,
+        ) { com.gtranca.ui.theme.GearIcon(OnTable, size = 24.dp) }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            val speed = com.gtranca.ui.speed.LocalSpeedSettings.current
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(stringResource(if (speed.slow) R.string.menu_speed_slow else R.string.menu_speed_normal)) },
+                leadingIcon = { com.gtranca.ui.theme.OptionGlyph(if (speed.slow) com.gtranca.ui.theme.OptionIcon.SLOW else com.gtranca.ui.theme.OptionIcon.FAST) },
+                onClick = { speed.toggle() },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("speed-toggle"),
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(stringResource(R.string.legend_button)) },
+                leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.LEGEND) },
+                onClick = { open = false; onLegend() },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("action-legend"),
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_resign)) },
+                leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.RESIGN) },
+                onClick = { open = false; events.onResign() },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("action-resign"),
+            )
+            // §16 anfitrião: os itens do menu dele no mesmo menu (os diálogos ficam fora do menu).
+            if (extra != null) {
+                extra { open = false }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Header(
+    state: GameUiState,
+    events: TableEvents,
+    extra: (@Composable (close: () -> Unit) -> Unit)?,
+    startTour: () -> Unit,
+    onMatchInfo: () -> Unit,
+    onLegend: () -> Unit,
+) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val other = view.mode.sides.first { it != view.side }
@@ -422,14 +541,23 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Esquerda: "Partida 1 · alvo 3000" e, embaixo, o placar (cabe ao lado dos três botões, sem cortar o texto).
-        Column(Modifier.weight(1f)) {
-            Text(
-                stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
-                color = OnTable.copy(alpha = 0.85f),
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        // Tocar em "Partida N · alvo X" ou no placar abre as Informações do jogo.
+        val matchInfoText = stringResource(R.string.match_info_open)
+        Column(
+            Modifier.weight(1f)
+                .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo)
+                .testTag("match-info-open"),
+        ) {
+            // "Partida N · alvo X" e, ao lado, o saldo (sem ganhar faixa própria na mesa; docs/telas.md 0).
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                com.gtranca.ui.theme.FitText(
+                    stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
+                    MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
+                    Modifier.weight(1f, fill = false),
+                    minFontSp = 9,
+                )
+                com.gtranca.ui.theme.LocalCoinBalance.current?.let { com.gtranca.ui.theme.CoinBalanceChip(it) }
+            }
             Text(
                 stringResource(
                     R.string.score_line,
@@ -448,34 +576,13 @@ private fun Header(state: GameUiState, events: TableEvents, onLegend: () -> Unit
                     .background(GColors.Midnight.copy(alpha = 0.7f), CircleShape)
                     .border(1.dp, GColors.Gold.copy(alpha = 0.6f), CircleShape)
                     .padding(horizontal = 10.dp, vertical = 1.dp)
-                    .testTag("score"),
+                    .testTag("score").tourTarget("score"),
             )
         }
+        com.gtranca.ui.tour.TourButton(startTour, OnTable)
         SoundButton(OnTable)
-        SpeedButton(OnTable)
-        // Legenda dos símbolos das jogadas dos outros assentos.
-        val legendText = stringResource(R.string.legend_button)
-        Box(
-            Modifier
-                .size(48.dp)
-                .clickable(onClickLabel = legendText, role = Role.Button, onClick = onLegend)
-                .semantics { contentDescription = legendText }
-                .testTag("action-legend"),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(Modifier.size(22.dp).border(1.75.dp, TableAccent, CircleShape), contentAlignment = Alignment.Center) {
-                Text("?", color = TableAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
-        }
-        // §13.1 desistir: ícone de bandeira, alvo de 48dp.
-        Box(
-            Modifier
-                .size(48.dp)
-                .clickable(onClickLabel = resignText, role = Role.Button, onClick = events::onResign)
-                .semantics { contentDescription = resignText }
-                .testTag("action-resign"),
-            contentAlignment = Alignment.Center,
-        ) { FlagIcon(Modifier.size(22.dp)) }
+        // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
+        OptionsMenu(events, extra, onLegend)
     }
 }
 
@@ -490,7 +597,7 @@ private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
     val mode = snapshot.view.mode
     val others = mode.seatsInPlayOrder(snapshot.viewerSeat).drop(1)
     if (mode != GameMode.DUPLAS) {
-        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth(), onSeatClick, minHeight = 72.dp) }
+        others.forEach { SeatPill(state, it, Modifier.fillMaxWidth(), onSeatClick, minHeight = 64.dp) }
         return
     }
     val byRole = others.associateBy { SeatRole.of(mode, it, snapshot.viewerSeat) }
@@ -515,26 +622,28 @@ private fun SeatsPanel(state: GameUiState, onSeatClick: (Int) -> Unit) {
 }
 
 @Composable
-private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatClick: (Int) -> Unit, minHeight: Dp = 96.dp) {
+private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatClick: (Int) -> Unit, minHeight: Dp = 84.dp) {
     val snapshot = state.snapshot
     val view = snapshot.view
     val role = SeatRole.of(view.mode, seat, snapshot.viewerSeat)
-    val thinking = snapshot.thinkingSeat == seat
+    // §16.6 no multijogador a vez de um humano remoto também é destacada.
+    val thinking = snapshot.thinkingSeat == seat ||
+        (state.remoteTurns && snapshot.thinkingSeat == null && view.phase != Phase.FINISHED && view.currentSeat == seat)
     val handSize = view.handSizes[seat.index]
     val handText = countText(R.plurals.opponent_hand, R.string.opponent_hand_zero, handSize)
     val countText = countText(R.plurals.card_count, R.string.card_count_zero, handSize)
     val thinkingText = stringResource(R.string.seat_thinking)
-    val events = snapshot.turnEvents[seat.index]
+    val events = snapshot.shownTurnEvents(seat.index)
     val shape = RoundedCornerShape(Corner.sm)
     val detailHint = stringResource(R.string.seat_detail_hint)
     Column(
         modifier
             .heightIn(min = minHeight)
             .clip(shape)
-            .clickable(enabled = events.isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
+            .clickable(enabled = events.isNotEmpty() || snapshot.turnRedThrees.getOrNull(seat.index).orEmpty().isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
             .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
-            .padding(horizontal = 8.dp, vertical = Spacing.sm)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -543,7 +652,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             // leva legenda (sem personagem, o papel de sempre).
             val persona = state.personas.getOrNull(seat.index)
             if (persona != null) {
-                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp, animate = state.animationMillis > 0) }
+                GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp, animate = state.animationMillis > 0, holdingCards = !thinking) }
             }
             Column(Modifier.weight(1f)) {
                 if (persona != null) {
@@ -556,15 +665,29 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (persona == null || role == SeatRole.PARTNER) {
+                if (persona != null && role == SeatRole.PARTNER) {
+                    // Pílula estreita: o rótulo "Parceiro" diminui até caber (nunca "Parcei…").
+                    com.gtranca.ui.theme.FitText(
+                        stringResource(role.pillNameRes()),
+                        MaterialTheme.typography.labelMedium.copy(color = TableAccent),
+                        Modifier.testTag("seat-partner-label"),
+                        minFontSp = 8,
+                    )
+                } else if (persona == null) {
                     Text(
                         stringResource(role.pillNameRes()),
-                        color = if (role == SeatRole.PARTNER) TableAccent else OnTable.copy(alpha = if (persona != null) 0.8f else 1f),
-                        fontWeight = if (persona != null) FontWeight.Normal else FontWeight.Bold,
+                        color = OnTable,
+                        fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.labelMedium,
-                        maxLines = if (persona != null) 1 else 2,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+            }
+            LocalHostSignal.current?.takeIf { it.first == seat }?.let { (_, bars) ->
+                val signalText = androidx.compose.ui.res.pluralStringResource(R.plurals.host_signal, bars, bars)
+                Box(Modifier.semantics { contentDescription = signalText }.testTag("host-signal")) {
+                    com.gtranca.ui.theme.SignalIcon(bars, TableAccent, size = 16.dp)
                 }
             }
             if (thinking) {
@@ -588,8 +711,10 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
                 icon = { CardsGlyph(TableAccent) },
             )
         }
-        if (events.isNotEmpty()) {
-            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), snapshot.turnRedThrees.getOrNull(seat.index).orEmpty())
+        val turnReds = snapshot.turnRedThrees.getOrNull(seat.index).orEmpty()
+        // §3.5 a troca de 3 vermelho do início da vez já aparece antes da compra.
+        if (events.isNotEmpty() || turnReds.isNotEmpty()) {
+            LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), turnReds, snapshot.turnRedThreeAfter.getOrNull(seat.index).orEmpty())
         }
     }
 }
@@ -631,7 +756,7 @@ private fun SideArea(
             .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
             .border(1.dp, GColors.Gold.copy(alpha = 0.3f), RoundedCornerShape(Corner.sm))
             .anchor(AnimAnchor.SideArea(side))
-            .padding(Spacing.sm)
+            .padding(horizontal = Spacing.sm, vertical = 4.dp)
             .testTag("side-$sideTag"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -777,7 +902,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     .border(2.dp, if (state.canDraw) TableAccent else Color.Transparent, RoundedCornerShape(Corner.xs))
                     .clickable(enabled = state.canDraw, onClick = events::onDraw)
                     .semantics(mergeDescendants = true) { contentDescription = stockLabel }
-                    .testTag("stock")
+                    .testTag("stock").tourTarget("stock")
                     .padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -790,7 +915,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
             }
             Spacer(Modifier.width(12.dp))
             Spacer(Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("mortos")) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("mortos").tourTarget("mortos")) {
                 view.mortoStatus.forEachIndexed { i, status ->
                     val statusText = when (status) {
                         MortoStatus.Available -> countText(R.plurals.card_count, R.string.card_count_zero, view.mortoSizes[i])
@@ -816,7 +941,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                                     PersonGlyph(if (status.side == view.side) GColors.Emerald else GColors.Ruby)
                                     Text(mortoTakerName(state, status)!!, color = OnTable, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                            } else Text(statusText, color = GColors.Lavender, style = MaterialTheme.typography.labelMedium, maxLines = 2)
+                            } else Text(statusText, color = GColors.Steel, style = MaterialTheme.typography.labelMedium, maxLines = 2)
                         }
                     }
                 }
@@ -839,24 +964,25 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                     .clickable(enabled = state.awaitingDraw || state.playing, onClick = events::onDiscardPileClick)
                     .semantics(mergeDescendants = true) { contentDescription = pileLabel }
                     .anchor(AnimAnchor.DiscardPile)
-                    .testTag("discard-pile")
+                    .testTag("discard-pile").tourTarget("discard-pile")
                     .padding(4.dp),
             ) {
                 if (pile.isEmpty()) {
-                    Text(stringResource(R.string.discard_pile_empty), color = OnTable, modifier = Modifier.align(Alignment.CenterStart))
+                    // Lixo vazio: o lugar de uma carta com o ícone de lixeira (a descrição falada diz "vazio").
+                    EmptyDiscardSlot(Modifier.align(Alignment.CenterStart).testTag("discard-empty"))
                 } else {
                     SqueezedCards(pile, step = 18.dp, anchorFor = { AnimAnchor.DiscardCard(it) })
                 }
             }
-            if (pile.isNotEmpty()) {
-                // Ver todo o lixo, com a quantidade de cartas.
+            run {
+                // Ver todo o lixo, com a quantidade de cartas (sempre à vista; vazio mostra 0 e não abre nada).
                 val showAll = stringResource(R.string.discard_pile_show_all)
                 Column(
                     Modifier
                         .heightIn(min = 48.dp)
                         .widthIn(min = 48.dp)
                         .clip(RoundedCornerShape(Corner.sm))
-                        .clickable(onClick = onShowDiscardPile)
+                        .clickable(enabled = pile.isNotEmpty(), onClick = onShowDiscardPile)
                         .semantics(mergeDescendants = true) { contentDescription = showAll + ", " + pile.size }
                         .testTag("show-discard-pile")
                         .padding(horizontal = 4.dp, vertical = 2.dp),
@@ -890,6 +1016,36 @@ private fun SqueezedCards(cards: List<Card>, step: Dp, anchorFor: (Card) -> Anim
     }
 }
 
+/** Lugar de uma carta (tamanho SMALL) com borda tracejada e uma lixeira desenhada: o lixo vazio. */
+@Composable
+private fun EmptyDiscardSlot(modifier: Modifier) {
+    val size = CardSize.SMALL
+    Canvas(modifier.size(size.width, size.height)) {
+        val w = size.width.toPx()
+        val h = size.height.toPx()
+        val line = OnTable.copy(alpha = 0.55f)
+        val stroke = Stroke(width = 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f)))
+        drawRoundRect(line, cornerRadius = CornerRadius(w * 0.1f), style = stroke)
+        // Lixeira: tampa, alça e corpo levemente afunilado com três frisos.
+        val bin = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val cx = w / 2
+        val top = h * 0.34f
+        val bw = w * 0.46f
+        drawLine(line, Offset(cx - bw * 0.62f, top), Offset(cx + bw * 0.62f, top), bin.width, StrokeCap.Round)
+        drawRect(line, Offset(cx - bw * 0.18f, top - h * 0.06f), Size(bw * 0.36f, h * 0.06f), style = bin)
+        val body = Path().apply {
+            moveTo(cx - bw / 2, top + h * 0.04f)
+            lineTo(cx - bw * 0.4f, h * 0.72f)
+            lineTo(cx + bw * 0.4f, h * 0.72f)
+            lineTo(cx + bw / 2, top + h * 0.04f)
+        }
+        drawPath(body, line, style = bin)
+        for (dx in listOf(-0.16f, 0f, 0.16f)) {
+            drawLine(line, Offset(cx + bw * dx, top + h * 0.1f), Offset(cx + bw * dx * 0.85f, h * 0.66f), bin.width * 0.7f, StrokeCap.Round)
+        }
+    }
+}
+
 private val MortoWidth = 96.dp
 
 /** Espaço acima e abaixo da mão para a carta marcada crescer (10%) sem ser cortada. */
@@ -917,7 +1073,9 @@ private fun ReviewContinueBar(onContinue: () -> Unit) {
 @Composable
 private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     val snapshot = state.snapshot
+    // §16.6 no multijogador, a vez de um humano remoto aparece como a dos robôs ("Vez de <nome>").
     val thinking = snapshot.thinkingSeat
+        ?: snapshot.view.currentSeat.takeIf { state.remoteTurns && it != snapshot.viewerSeat && snapshot.view.phase != Phase.FINISHED }
     val status = when {
         state.awaitingDraw -> stringResource(R.string.turn_draw)
         state.playing -> stringResource(R.string.turn_play)
@@ -936,11 +1094,18 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = Spacing.sm)
-            .testTag("action-bar"),
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .testTag("action-bar").tourTarget("action-bar"),
     ) {
-        Text(status, color = TableAccent, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("turn-status"))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        // Uma linha só: o texto da vez diminui até caber em telas estreitas ou com fonte grande.
+        com.gtranca.ui.theme.FitText(
+            status,
+            MaterialTheme.typography.bodyLarge.copy(color = TableAccent, fontWeight = FontWeight.Bold),
+            Modifier.fillMaxWidth().testTag("turn-status"),
+            minFontSp = 11,
+        )
+        // Os botões dividem a largura numa linha (o texto de cada um diminui até caber); "Limpar" é um ícone de 48 dp.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (snapshot.view.phase != Phase.PLAYING || !state.isHumanTurn) {
                 ActionButton(stringResource(R.string.action_draw), state.canDraw, events::onDraw, "action-draw", ActionKind.DRAW)
                 ActionButton(stringResource(R.string.action_take_discard), state.canTakeDiscardPile, events::onTakeDiscardPile, "action-take-discard", ActionKind.TAKE)
@@ -949,18 +1114,20 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 ActionButton(stringResource(R.string.action_meld), state.canMeld, events::onCreateMeld, "action-meld", ActionKind.MELD)
                 ActionButton(stringResource(R.string.action_discard), state.canDiscard, events::onDiscard, "action-discard", ActionKind.DISCARD)
             }
+            val clearText = stringResource(R.string.action_clear)
             GButton(
                 onClick = events::onClearSelection,
                 enabled = state.selected.isNotEmpty(),
                 kind = GButtonKind.Secondary,
-                modifier = Modifier.heightIn(min = 48.dp).testTag("action-clear"),
-            ) { Text(stringResource(R.string.action_clear)) }
+                modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp).semantics { contentDescription = clearText }.testTag("action-clear"),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
+            ) { Text("✕", fontWeight = FontWeight.Bold) }
         }
         // Fixo durante a vez (não depende da seleção) para os botões não pularem ao tocar nas cartas.
         if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
             Text(
                 stringResource(if (snapshot.view.mode == GameMode.DUPLAS) R.string.add_to_meld_hint_team else R.string.add_to_meld_hint),
-                color = GColors.Lavender,
+                color = GColors.Steel,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -969,13 +1136,18 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
 
 /** Botão de ação: o mesmo [GButton] dourado das outras telas (afundar ao tocar, brilho), com ícone. */
 @Composable
-private fun ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String, icon: ActionKind? = null) {
-    GButton(onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp).testTag(tag)) {
+private fun androidx.compose.foundation.layout.RowScope.ActionButton(text: String, enabled: Boolean, onClick: () -> Unit, tag: String, icon: ActionKind? = null) {
+    GButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(tag),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+    ) {
         if (icon != null) {
             ActionIcon(icon, if (enabled) GColors.OnGold else GColors.OnTableDisabled, Modifier.size(18.dp))
-            Spacer(Modifier.width(Spacing.sm))
+            Spacer(Modifier.width(4.dp))
         }
-        Text(text)
+        com.gtranca.ui.theme.FitText(text, MaterialTheme.typography.labelLarge.copy(color = androidx.compose.material3.LocalContentColor.current), minFontSp = 10)
     }
 }
 
@@ -994,7 +1166,7 @@ internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection:
     }
 
 @Composable
-private fun HandArea(state: GameUiState, events: TableEvents) {
+private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // §14.1 seu avatar, bem discreto, junto do título da mão.
@@ -1007,6 +1179,17 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f),
             )
+            // A própria última jogada, no mesmo formato do detalhe dos outros jogadores.
+            val ownLastText = stringResource(R.string.own_last_play)
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clickable(onClickLabel = ownLastText, role = Role.Button, onClick = onOwnLastPlay)
+                    .semantics { contentDescription = ownLastText }
+                    .testTag("own-last-play"),
+                contentAlignment = Alignment.Center,
+            ) { ActionIcon(ActionKind.MELD, OnTable, Modifier.size(20.dp)) }
+            if (state.canHideHand) HideHandButton(state.handHidden, events::onToggleHideHand)
             SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
         // 7 cartas de 48dp por linha em 360dp; 2 linhas à vista (sobra mesa para os jogos), o resto rola. A margem
@@ -1015,7 +1198,7 @@ private fun HandArea(state: GameUiState, events: TableEvents) {
         Box(
             Modifier.fillMaxWidth().heightIn(max = 74.dp * 2 + HandGrowMargin * 2).anchor(AnimAnchor.OwnHand)
                 .verticalScroll(rememberScrollState()).padding(vertical = HandGrowMargin, horizontal = 3.dp)
-                .testTag("hand"),
+                .testTag("hand").tourTarget("hand"),
         ) {
             if (custom == null || custom.special.isEmpty()) {
                 CardFlow(state.hand, state, events, Modifier.fillMaxWidth())
@@ -1068,6 +1251,18 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
                 CardEmphasis.DIMMED -> notWithSelectionText
                 CardEmphasis.NONE -> ""
             }
+            if (state.handHidden) {
+                // Mão escondida: só o verso (nada revelado); tocar avisa para mostrar as cartas.
+                val hiddenText = stringResource(R.string.card_hidden)
+                Box(
+                    Modifier
+                        .anchor(AnimAnchor.HandCard(card))
+                        .clickable(onClickLabel = hiddenText) { events.onCardClick(card) }
+                        .semantics { contentDescription = hiddenText }
+                        .testTag("hand-card-hidden"),
+                ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
+                return@forEach
+            }
             PlayingCard(
                 card,
                 Modifier
@@ -1090,6 +1285,32 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
  * "Ordem:" e três botões de ícone: Valor e Naipe (um dos dois sempre escolhido) e, à parte, a chave de separar os
  * 3 pretos e coringas numa coluna à esquerda (ligada: o resto segue o critério escolhido; desligada: não interfere).
  */
+/** Ainda não houve jogada do próprio jogador nesta partida. */
+@Composable
+private fun NoOwnPlayDialog(onDismiss: () -> Unit) {
+    GDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("seat-detail-dialog"),
+        title = { Text(stringResource(R.string.own_last_play_title)) },
+        text = { Text(stringResource(R.string.own_last_play_none)) },
+        confirmButton = { androidx.compose.material3.TextButton(onDismiss, Modifier.testTag("seat-detail-close")) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+/** Mesa multijogador: olho (mostrando) ou olho riscado (escondida); alvo de 48 dp. */
+@Composable
+private fun HideHandButton(hidden: Boolean, onToggle: () -> Unit) {
+    val description = stringResource(if (hidden) R.string.hand_show else R.string.hand_hide)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clickable(onClickLabel = description, role = Role.Switch, onClick = onToggle)
+            .semantics { contentDescription = description }
+            .testTag("hand-hide"),
+        contentAlignment = Alignment.Center,
+    ) { com.gtranca.ui.theme.EyeIcon(OnTable, crossed = hidden, size = 24.dp) }
+}
+
 @Composable
 private fun SortSelector(current: HandSort, separate: Boolean, onChange: (HandSort) -> Unit, onToggleSpecial: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1130,7 +1351,7 @@ private fun SortButton(selected: Boolean, modifier: Modifier, content: @Composab
             Modifier
                 .size(36.dp)
                 .then(if (selected) Modifier.background(GoldBrush, CircleShape) else Modifier)
-                .border(1.dp, if (selected) GColors.Champagne else GColors.Lavender.copy(alpha = 0.6f), CircleShape),
+                .border(1.dp, if (selected) GColors.Champagne else GColors.Steel.copy(alpha = 0.6f), CircleShape),
             contentAlignment = Alignment.Center,
         ) { content(if (selected) GColors.OnGold else OnTable) }
     }
@@ -1327,6 +1548,9 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
 private fun SwapAnnouncement(notice: RedThreeNotice, mode: GameMode, viewerSeat: Seat, persona: com.gtranca.game.Persona?) {
     val text = bannerText(mode, notice, viewerSeat, persona)
     val shown = remember(notice.id) { MutableTransitionState(false).apply { targetState = true } }
+    // O som do 3 vermelho toca junto com o aviso (não na chegada da carta à mesa, que vem depois).
+    val sound = LocalSound.current
+    LaunchedEffect(notice.id) { sound.play(SoundEffect.CHIME) }
     // Véu leve sobre a mesa (não bloqueia toques) e o anúncio centralizado; some quando a troca termina.
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
         AnimatedVisibility(shown, enter = fadeIn() + scaleIn(initialScale = 0.7f)) {
@@ -1609,3 +1833,11 @@ private fun CanastaSeal(clean: Boolean, color: Color, flash: Float, modifier: Mo
         if (clean) drawPath(star, color) else drawPath(star, color, style = Stroke(width = outer * 0.25f))
     }
 }
+
+/**
+ * §3.5 jogadas da vez do assento [index] para a pílula e o detalhe: a vez dele que começou e ainda não teve jogada (antes
+ * da compra) não mostra mais a vez anterior; só a troca de 3 vermelho do início dela ([GameSnapshot.turnRedThrees]).
+ */
+internal fun com.gtranca.game.GameSnapshot.shownTurnEvents(index: Int): List<com.gtranca.engine.PublicEvent> =
+    if (stage == com.gtranca.game.Stage.PLAYING && view.currentSeat.index == index && view.phase == com.gtranca.engine.model.Phase.AWAITING_DRAW) emptyList()
+    else turnEvents.getOrNull(index).orEmpty()

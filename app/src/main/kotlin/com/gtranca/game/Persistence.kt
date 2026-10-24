@@ -1,7 +1,7 @@
 package com.gtranca.game
 
 import com.gtranca.ai.Difficulty
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.data.GameData
 import com.gtranca.data.GameResult
 import com.gtranca.data.SavedConfig

@@ -15,8 +15,8 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        // Identificador definitivo na loja (não muda depois de publicado). O código continua no pacote com.gtranca.
-        applicationId = "br.com.funnyandplay.mestredacanastra"
+        // Identificador na loja (definitivo depois de publicado; trocado de mestredacanastra em out/2026, antes da 1ª publicação). O código continua no pacote com.gtranca.
+        applicationId = "br.com.funnyandplay.trancabot"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Versão 0.N até a primeira publicação: N sobe a cada commit (contagem do git a partir do commit 87 = 0.1).
@@ -72,6 +72,7 @@ dependencies {
     implementation(project(":core-engine"))
     implementation(project(":ai"))
     implementation(project(":data"))
+    implementation(project(":net"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -81,6 +82,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.play.services.nearby)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

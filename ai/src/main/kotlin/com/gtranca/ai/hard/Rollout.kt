@@ -2,7 +2,7 @@ package com.gtranca.ai.hard
 
 import com.gtranca.ai.MediumBot
 import com.gtranca.ai.MediumWeights
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.RoundEngine
 import com.gtranca.engine.RuleSet

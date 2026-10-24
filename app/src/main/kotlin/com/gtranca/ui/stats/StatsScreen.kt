@@ -229,7 +229,7 @@ private fun WinRing(wins: Int, games: Int) {
             Text(stringResource(R.string.stats_wins), color = GColors.Gold, fontWeight = FontWeight.Bold)
             Text(
                 "${stringResource(R.string.stats_games)}: $games" + if (games > 0) " · ${(fraction * 100).toInt()}%" else "",
-                color = GColors.Lavender,
+                color = GColors.Steel,
                 style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = TabularNums),
             )
         }
@@ -237,11 +237,11 @@ private fun WinRing(wins: Int, games: Int) {
 }
 
 /** Cores das séries do gráfico (validadas para daltonismo sobre o índigo). */
-private val ChartGames = Color(0xFF8F7FF0)
+private val ChartGames = Color(0xFF6EB8EC)
 private val ChartWins = Color(0xFFC8921A)
 
 /**
- * Barras agrupadas por dificuldade: jogos (ametista) e vitórias (ouro), com o valor sobre cada barra e
+ * Barras agrupadas por dificuldade: jogos (azul) e vitórias (ouro), com o valor sobre cada barra e
  * legenda; a tabela logo abaixo traz os mesmos números.
  */
 @Composable
@@ -256,7 +256,7 @@ private fun StatsBarChart(labels: List<String>, games: List<Int>, wins: List<Int
             listOf(ChartGames to gamesLabel, ChartWins to winsLabel).forEach { (color, label) ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box(Modifier.size(10.dp).background(color, RoundedCornerShape(2.dp)))
-                    Text(label, style = MaterialTheme.typography.labelSmall, color = GColors.Lavender)
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = GColors.Steel)
                 }
             }
         }
@@ -279,9 +279,9 @@ private fun StatsBarChart(labels: List<String>, games: List<Int>, wins: List<Int
             }
         }
         // Linha de base e rótulos das dificuldades.
-        Box(Modifier.fillMaxWidth().height(1.dp).background(GColors.Lavender.copy(alpha = 0.4f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(GColors.Steel.copy(alpha = 0.4f)))
         Row(Modifier.fillMaxWidth()) {
-            labels.forEach { Text(it, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = GColors.Lavender, textAlign = TextAlign.Center) }
+            labels.forEach { Text(it, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.Center) }
         }
     }
 }

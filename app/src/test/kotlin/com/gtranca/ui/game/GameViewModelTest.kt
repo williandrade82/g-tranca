@@ -132,7 +132,7 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§14_4 Continuar mostra os mesmos personagens mesmo que o perfil seja renomeado para o nome de um deles`() = runTest(dispatcher) {
+    fun `§14_4 Continuar mostra os mesmos personagens mesmo que o perfil seja renomeado para o nome de um robô`() = runTest(dispatcher) {
         val original = newGame(seed = 11, mode = GameMode.DUPLAS)
         val colliding = original.personas[1].firstName
         // jogo salvo com o nome usado no sorteio ("" = perfil sem nome); o perfil agora tem o nome de um adversário
@@ -153,7 +153,7 @@ class GameViewModelTest {
         )
         advanceUntilIdle()
         resumed.personas.drop(1) shouldBe original.personas.drop(1)
-        // jogo salvo antigo (sem o nome): vale o do perfil e só o nome colidente muda
+        // jogo salvo antigo (sem o nome do jogador): os nomes dos robôs são fixos, então nada muda
         val old = GameViewModel(
             GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
             gameSeed = 11,
@@ -166,7 +166,7 @@ class GameViewModelTest {
         )
         advanceUntilIdle()
         old.personas.drop(1).map { it.character } shouldBe original.personas.drop(1).map { it.character }
-        old.personas.drop(1).map { it.firstName } shouldNotBe original.personas.drop(1).map { it.firstName }
+        old.personas.drop(1).map { it.firstName } shouldBe original.personas.drop(1).map { it.firstName }
     }
 
     @Test

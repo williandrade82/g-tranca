@@ -4,7 +4,7 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.GameMode
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.DiscardPlan

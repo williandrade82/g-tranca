@@ -39,7 +39,7 @@ object Tables {
     /** Identificador da mesa criada pelo jogador (não está na lista das mesas dos jogadores virtuais). */
     const val CREATED_TABLE_ID = -1
 
-    private const val MAX_HOST_RETRIES = 20
+    private const val MAX_HOST_RETRIES = 200
 
     /** Identificador das regras personalizadas do jogador (§14.4). */
     const val CUSTOM_RULES_ID = "minhas-regras"

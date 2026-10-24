@@ -17,6 +17,8 @@ import com.gtranca.game.PlanRanking
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameSnapshot
+import com.gtranca.game.LocalTableDriver
+import com.gtranca.game.TableDriver
 import com.gtranca.game.HandOrder
 import com.gtranca.game.HandPrefs
 import com.gtranca.game.HandSort
@@ -65,6 +67,9 @@ sealed interface UiMessage {
 
     /** Para descartar, selecione exatamente uma carta. */
     data object SelectOneCardToDiscard : UiMessage
+
+    /** Mesa multijogador com as cartas escondidas: mostre-as para selecionar. */
+    data object ShowCardsToPlay : UiMessage
 }
 
 /**
@@ -126,9 +131,17 @@ data class GameUiState(
     val dealFlightIds: Set<Long> = emptySet(),
     /** Quanto tempo o aviso de troca de 3 vermelho fica na tela antes de fechar sozinho (0 = sem animações). */
     val swapNoticeMillis: Long = 0,
+    /** §16.6 multijogador: a vez já chegou, mas este aparelho ainda anima as jogadas anteriores. */
+    val turnHeld: Boolean = false,
+    /** §16.6 multijogador: a vez de um humano remoto também aparece (não há robô "pensando" nela). */
+    val remoteTurns: Boolean = false,
+    /** Mesa multijogador: o botão "Esconder cartas" aparece. */
+    val canHideHand: Boolean = false,
+    /** As cartas da mão estão viradas (só neste aparelho). */
+    val handHidden: Boolean = false,
 ) {
-    val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending
-    private val legal: List<Action> get() = if (ownSwapPending) emptyList() else snapshot.humanLegal
+    val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
+    private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
     val awaitingDraw: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW
     val playing: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.PLAYING
     val canDraw: Boolean get() = Action.DrawFromStock in legal
@@ -183,6 +196,15 @@ class GameViewModel(
     playerPhoto: String? = null,
     /** Fila das gravações (fora da thread principal e do laço do jogo; sobrevive ao fim desta tela). */
     private val writes: WriteQueue = WriteQueue.app,
+    /** §16 mesa multijogador: quem conduz a mesa no lugar do controlador local; `null` = jogo contra robôs de sempre. */
+    externalDriver: TableDriver? = null,
+    /** §16 nomes e avatares dos assentos vindos da sala (mudam no jogo: robô substituto, "VAGO"); `null` = sorteio local. */
+    private val externalPersonas: StateFlow<List<Persona>>? = null,
+    /**
+     * §16 mesa multijogador: a vez só é entregue ao jogador depois de terminar as animações deste aparelho (o anfitrião não
+     * as espera, §16.6) e a mesa indica a vez também dos humanos remotos.
+     */
+    private val multiplayer: Boolean = false,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -243,6 +265,8 @@ class GameViewModel(
         val planRequestId: Long = 0,
         val confirmDecline: Boolean = false,
         val confirmResign: Boolean = false,
+        /** Mesa multijogador: cartas da mão viradas (só local, até o fim do jogo). */
+        val handHidden: Boolean = false,
         val message: UiMessage? = null,
         val endStep: Int = 0,
     )
@@ -264,17 +288,20 @@ class GameViewModel(
     private val styledBots: (Seat, Random) -> BotPlayer = { seat, random ->
         createBot(config.difficulty, random, style = personas[seat.index].character?.profile?.style ?: PlayStyle.NEUTRO)
     }
-    private val controller = GameController(
-        config = config,
-        gameSeed = gameSeed,
-        players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory ?: styledBots, restored?.botRandomCalls.orEmpty()),
-        viewerSeat = humanSeat,
-        computeDispatcher = computeDispatcher,
-        botDelayMillis = botDelayMillis,
-        dealDelayMillis = if (animationMillis > 0) dealAnimationMillis(config) else 0,
-        restored = restored,
-        // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
-        onSave = if (persistence == null) null else ::enqueueSave,
+    private val controller: TableDriver = externalDriver ?: LocalTableDriver(
+        GameController(
+            config = config,
+            gameSeed = gameSeed,
+            players = GameController.playersFor(config, gameSeed, human, humanSeat, botFactory ?: styledBots, restored?.botRandomCalls.orEmpty()),
+            viewerSeat = humanSeat,
+            computeDispatcher = computeDispatcher,
+            botDelayMillis = botDelayMillis,
+            dealDelayMillis = if (animationMillis > 0) dealAnimationMillis(config) else 0,
+            restored = restored,
+            // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
+            onSave = if (persistence == null) null else ::enqueueSave,
+        ),
+        human,
     )
     private val animationIds = AtomicLong(0)
 
@@ -298,8 +325,14 @@ class GameViewModel(
         },
     )
 
-    val uiState: StateFlow<GameUiState> = local.map(::build)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, build(local.value))
+    val uiState: StateFlow<GameUiState> = (
+        if (externalPersonas == null) local.map(::build)
+        else kotlinx.coroutines.flow.combine(local, externalPersonas) { state, _ -> build(state) }
+        ).stateIn(viewModelScope, SharingStarted.Eagerly, build(local.value))
+
+    /** §16.6 a vez fica segura enquanto este aparelho ainda anima (distribuição, voos, trocas de 3 vermelho). */
+    private fun turnHeld(state: Local): Boolean =
+        multiplayer && (!state.dealDone || state.flights.isNotEmpty() || state.swaps.isNotEmpty() || state.settling > 0)
 
     init {
         viewModelScope.launch {
@@ -320,7 +353,9 @@ class GameViewModel(
         // Jogo novo: salvo desde o início (se o processo morrer antes da 1ª ação, o jogo continua de onde estava).
         // §14.6 a aposta é debitada ao começar o jogo (antes de salvar o jogo; retomar não debita de novo).
         if (restored == null && config.stake > 0) persistence?.let { store -> writes.enqueue { if (!store.debitStake(config.stake)) stakeCharged = false } }
-        if (restored == null) enqueueSave(controller.saveSnapshot())
+        if (restored == null) (controller as? LocalTableDriver)?.let { enqueueSave(it.controller.saveSnapshot()) }
+        // §16.1 recusa do anfitrião depois do envio: mostra o motivo (o convidado não valida nada sozinho).
+        viewModelScope.launch { controller.rejections.collect { error -> local.update { it.copy(message = UiMessage.Rejected(error)) } } }
         // §3.5 rede de segurança: se a tela nunca avisar que a distribuição terminou (ex.: app em segundo plano), segue
         // depois do tempo da animação mais uma folga, para o jogo não travar.
         viewModelScope.launch {
@@ -538,7 +573,8 @@ class GameViewModel(
         val split = if (state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
         val hand = split?.all ?: HandOrder.sort(visibleHand, state.sort)
         val ownSwapPending = state.swaps.any { isOwn(it, snapshot) }
-        val legal = if (ownSwapPending) emptyList() else snapshot.humanLegal
+        val held = turnHeld(state)
+        val legal = if (ownSwapPending || held) emptyList() else snapshot.humanLegal
         return GameUiState(
             snapshot = snapshot,
             hand = hand,
@@ -562,7 +598,11 @@ class GameViewModel(
             flights = state.flights,
             canastaFlashes = state.flashes,
             animationMillis = effectiveMillis(state),
-            personas = personas,
+            personas = externalPersonas?.value ?: personas,
+            turnHeld = held,
+            remoteTurns = multiplayer,
+            canHideHand = multiplayer,
+            handHidden = multiplayer && state.handHidden,
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
         )
@@ -581,7 +621,15 @@ class GameViewModel(
 
     // ---------- gestos ----------
 
+    /** Mesa multijogador: esconde ou mostra as cartas da mão (a seleção é limpa ao esconder). */
+    override fun onToggleHideHand() {
+        if (!multiplayer) return
+        local.update { it.copy(handHidden = !it.handHidden, selected = if (!it.handHidden) emptyList() else it.selected) }
+    }
+
     override fun onCardClick(card: Card) = local.update { state ->
+        // Cartas escondidas não se selecionam: um aviso curto lembra de mostrá-las.
+        if (multiplayer && state.handHidden) return@update state.copy(message = UiMessage.ShowCardsToPlay)
         val selected = state.selected.filter { it in state.snapshot.view.hand }
         state.copy(selected = if (card in selected) selected - card else selected + card, message = null)
     }
@@ -708,7 +756,7 @@ class GameViewModel(
         // vermelho a mesa está bloqueada.
         val snapshot = controller.state.value
         val ownSwapPending = local.value.let { l -> l.swaps.any { isOwn(it, l.snapshot) } }
-        if (!snapshot.isHumanTurn || !human.waiting.value || ownSwapPending) return
+        if (!snapshot.isHumanTurn || !controller.awaitingHuman() || ownSwapPending || turnHeld(local.value)) return
         val requestId = snapshot.humanRequestId
         val selected = local.value.selected.filter { it in snapshot.view.hand }
         val resolution = HumanTurnResolver.resolve(intent, selected, snapshot.humanLegal) { controller.explain(it, requestId) }

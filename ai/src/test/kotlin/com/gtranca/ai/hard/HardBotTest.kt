@@ -4,7 +4,7 @@ import com.gtranca.ai.BotPlayer
 import com.gtranca.ai.Difficulty
 import com.gtranca.ai.HardBotConfig
 import com.gtranca.ai.MediumBot
-import com.gtranca.ai.PublicEvent
+import com.gtranca.engine.PublicEvent
 import com.gtranca.ai.cards
 import com.gtranca.ai.createBot
 import com.gtranca.ai.playRound

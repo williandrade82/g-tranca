@@ -59,11 +59,36 @@ class TurnRedThreesTest {
     }
 
     @Test
+    fun `§3_5 com a vez passada ao assento, a troca do inicio da vez aparece antes da compra e a compra nao a apaga`() {
+        val reds = TurnRedThrees(4)
+        reds.reset(emptyList())
+        reds.record(Seat(1), startsTurn = false, newEntries = listOf(laid(2, "3H", true)))
+        reds.beginTurn(Seat(2))
+        reds.current[2] shouldBe listOf(c("3H"))
+        reds.record(Seat(2), startsTurn = draw, newEntries = emptyList())
+        reds.current[2] shouldBe listOf(c("3H"))
+        // a vez seguinte (sem passar por beginTurn) recomeça
+        reds.record(Seat(2), startsTurn = draw, newEntries = emptyList())
+        reds.current[2] shouldBe emptyList()
+    }
+
+    @Test
     fun `partida nova zera tudo`() {
         val reds = TurnRedThrees(2)
         reds.reset(emptyList())
         reds.record(Seat(0), startsTurn = draw, newEntries = listOf(laid(0, "3H", false)))
         reds.reset(emptyList())
         reds.current shouldBe List(2) { emptyList() }
+    }
+
+    @Test
+    fun `§6_5 cada 3 vermelho guarda em que ponto da vez foi baixado`() {
+        val reds = TurnRedThrees(2)
+        reds.reset(emptyList())
+        reds.record(Seat(1), startsTurn = false, newEntries = listOf(laid(0, "3H", true)), eventsInTurn = 3)
+        reds.beginTurn(Seat(0))
+        reds.record(Seat(0), startsTurn = draw, newEntries = listOf(laid(0, "3D", false)), eventsInTurn = 1)
+        reds.current[0] shouldBe listOf(c("3H"), c("3D"))
+        reds.currentAfter[0] shouldBe listOf(0, 1)
     }
 }

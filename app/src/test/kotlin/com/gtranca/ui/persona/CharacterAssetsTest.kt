@@ -52,6 +52,21 @@ class CharacterAssetsTest {
     }
 
     @Test
+    fun `§14_5 cada perfil tem a imagem quadrada com as cartas na mao`() {
+        val problems = mutableListOf<String>()
+        for (profile in BotProfile.entries) {
+            val f = File(dir, "char_${profile.code}_cartas.webp")
+            if (!f.exists()) {
+                problems += "${f.name}: não existe"
+                continue
+            }
+            val actual = dimensions(f.readBytes())
+            if (actual != 256 to 256) problems += "${f.name}: ${actual.first}x${actual.second}, esperado 256x256"
+        }
+        problems.shouldBeEmpty()
+    }
+
+    @Test
     fun `§14_5 cada personagem tem o rosto quadrado do vencedor e do perdedor para as tabelas`() {
         val problems = mutableListOf<String>()
         for (profile in BotProfile.entries) for (level in BotLevel.entries) for (pose in listOf(Pose.VENCEDOR, Pose.PERDEDOR)) {
@@ -75,7 +90,7 @@ class CharacterAssetsTest {
 
     @Test
     fun `§14_5 os originais ficam em docs, um por perfil e nivel`() {
-        val originals = File("../docs/personagens").listFiles { f -> f.extension == "png" }.orEmpty()
+        val originals = File("../docs/personagens").listFiles { f -> f.extension == "png" && f.name.firstOrNull()?.isDigit() == true }.orEmpty()
         originals.size shouldBe BotProfile.entries.size * BotLevel.entries.size
     }
 }
