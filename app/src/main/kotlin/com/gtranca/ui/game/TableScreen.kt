@@ -237,11 +237,19 @@ fun TableScreen(
     hostSeat: Seat? = null,
     /** §16.15 qualidade da conexão com o anfitrião (1 a 3), na pílula dele; só no convidado. */
     hostLinkQuality: Int? = null,
+    /** docs/telas.md 3.9 banner de fim de partida minimizado, junto do "Seguir" da mesa final. */
+    reviewBanner: (@Composable () -> Unit)? = null,
 ) {
     CompositionLocalProvider(LocalHostSignal provides hostSeat?.takeIf { hostLinkQuality != null }?.let { it to hostLinkQuality!! }) {
-    TableScreenContent(state, events, modifier, onReviewContinue, headerExtra, hostSeat)
+    TableScreenContent(state, events, modifier, onReviewContinue, headerExtra, hostSeat, reviewBanner)
     }
 }
+
+/** §16, docs/telas.md 3.14 botão de Wi-Fi da mesa de jogo: o estado do Wi-Fi do jogo e o toque (cada mesa decide o que fazer). */
+class TableWifi(val on: Boolean, val onToggle: () -> Unit)
+
+/** §16 botão de Wi-Fi da mesa de jogo (na linha do saco de moedas); `null` = sem o botão. */
+val LocalTableWifi = androidx.compose.runtime.compositionLocalOf<TableWifi?> { null }
 
 /** §16.15 assento do anfitrião e a qualidade da conexão com ele (só no convidado). */
 private val LocalHostSignal = androidx.compose.runtime.compositionLocalOf<Pair<Seat, Int>?> { null }
@@ -254,6 +262,7 @@ private fun TableScreenContent(
     onReviewContinue: (() -> Unit)?,
     headerExtra: (@Composable (close: () -> Unit) -> Unit)?,
     hostSeat: Seat?,
+    reviewBanner: (@Composable () -> Unit)? = null,
 ) {
     var showMatchInfo by rememberSaveable { mutableStateOf(false) }
     // Som da vez: uma vez quando a vez passa a ser deste jogador (nunca na revisão da mesa final).
@@ -417,7 +426,7 @@ private fun TableScreenContent(
                     }
                     HandArea(state, events) { detailSeat = snapshot.viewerSeat.index }
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
-                    if (onReviewContinue != null) ReviewContinueBar(onReviewContinue) else StatusAndActions(state, events)
+                    if (onReviewContinue != null) ReviewContinueBar(onReviewContinue, reviewBanner) else StatusAndActions(state, events)
                 }
                 FlightsLayer(state.flights, anchors, state.animationMillis, { readyFlights[it] == true }) { id ->
                     arrived[id] = true
@@ -536,28 +545,39 @@ private fun Header(
     val view = snapshot.view
     val other = view.mode.sides.first { it != view.side }
     val resignText = stringResource(R.string.action_resign)
-    Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Esquerda: "Partida 1 · alvo 3000" e, embaixo, o placar (cabe ao lado dos três botões, sem cortar o texto).
-        // Tocar em "Partida N · alvo X" ou no placar abre as Informações do jogo.
-        val matchInfoText = stringResource(R.string.match_info_open)
-        Column(
+    val matchInfoText = stringResource(R.string.match_info_open)
+    // Linha dos ícones (docs/telas.md 3.8): "Partida N · alvo X" à esquerda; à direita, todos no tamanho da engrenagem:
+    // valor em jogo, saldo, Wi-Fi, tour, som e engrenagem. Embaixo, o placar.
+    Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp)) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        com.gtranca.ui.theme.FitText(
+            stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
+            MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
             Modifier.weight(1f)
                 .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo)
                 .testTag("match-info-open"),
+            minFontSp = 8,
+        )
+        // §14.6, §16.13 total em jogo: a aposta de todos os assentos.
+        val seats = view.mode.seatsInPlayOrder(snapshot.viewerSeat).size
+        if (snapshot.config.stake > 0) {
+            HeaderStat(R.drawable.money_stack_small, snapshot.config.stake * seats, stringResource(R.string.table_pot_desc, snapshot.config.stake * seats), "table-pot")
+        }
+        com.gtranca.ui.theme.LocalCoinBalance.current?.let { balance ->
+            HeaderStat(R.drawable.coin_bag_small, balance, stringResource(R.string.coins_balance, balance), "coin-balance")
+        }
+        // §16, 3.14 botão de Wi-Fi, no tamanho da engrenagem.
+        LocalTableWifi.current?.let { wifi -> TableWifiButton(wifi.on, wifi.onToggle) }
+        com.gtranca.ui.tour.TourButton(startTour, OnTable)
+        SoundButton(OnTable)
+        // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
+        OptionsMenu(events, extra, onLegend)
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier.weight(1f)
+                .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo),
         ) {
-            // "Partida N · alvo X" e, ao lado, o saldo (sem ganhar faixa própria na mesa; docs/telas.md 0).
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                com.gtranca.ui.theme.FitText(
-                    stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
-                    MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
-                    Modifier.weight(1f, fill = false),
-                    minFontSp = 9,
-                )
-                com.gtranca.ui.theme.LocalCoinBalance.current?.let { com.gtranca.ui.theme.CoinBalanceChip(it) }
-            }
             Text(
                 stringResource(
                     R.string.score_line,
@@ -579,11 +599,47 @@ private fun Header(
                     .testTag("score").tourTarget("score"),
             )
         }
-        com.gtranca.ui.tour.TourButton(startTour, OnTable)
-        SoundButton(OnTable)
-        // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
-        OptionsMenu(events, extra, onLegend)
     }
+    }
+}
+
+/** Ícone do cabeçalho no tamanho da engrenagem (48 dp, imagem de 24 dp) com o número embaixo. */
+@Composable
+private fun HeaderStat(icon: Int, value: Int, description: String, tag: String) {
+    Column(
+        Modifier
+            .size(48.dp)
+            .semantics(mergeDescendants = true) { contentDescription = description }
+            .testTag(tag)
+            .tourTarget(tag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon), null, Modifier.size(24.dp))
+        Text(
+            value.toString(),
+            color = GColors.Gold,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
+            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = TabularNums),
+        )
+    }
+}
+
+/** §16, 3.14 Wi-Fi do jogo na mesa: o mesmo tamanho e estilo da engrenagem (riscado quando desligado). */
+@Composable
+private fun TableWifiButton(on: Boolean, onToggle: () -> Unit) {
+    val description = stringResource(if (on) R.string.mp_wifi_on_desc else R.string.mp_wifi_off_desc)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clickable(onClickLabel = description, role = Role.Switch, onClick = onToggle)
+            .semantics { contentDescription = description }
+            .testTag("table-wifi"),
+        contentAlignment = Alignment.Center,
+    ) { com.gtranca.ui.theme.WifiIcon(if (on) GColors.Gold else OnTable, crossed = !on, size = 24.dp) }
 }
 
 /**
@@ -1053,7 +1109,7 @@ private val HandGrowMargin = 6.dp
 
 /** Barra da revisão da mesa final: no mesmo lugar e estilo da barra de ações, só com "Continuar". */
 @Composable
-private fun ReviewContinueBar(onContinue: () -> Unit) {
+private fun ReviewContinueBar(onContinue: () -> Unit, banner: (@Composable () -> Unit)? = null) {
     val shape = RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md)
     Box(
         Modifier
@@ -1064,8 +1120,12 @@ private fun ReviewContinueBar(onContinue: () -> Unit) {
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = Spacing.sm),
     ) {
-        GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("review-continue")) {
-            Text(stringResource(R.string.table_review_continue))
+        androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            // docs/telas.md 3.9 o banner de fim de partida fica aqui, minimizado, enquanto a mesa final está aberta.
+            banner?.invoke()
+            GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("final-table-continue")) {
+                Text(stringResource(R.string.table_review_continue))
+            }
         }
     }
 }

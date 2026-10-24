@@ -61,11 +61,21 @@ class MultiplayerScreenHooks(
     val hostSeat: () -> com.gtranca.engine.model.Seat? = { null },
     /** §16.15 qualidade da conexão com o anfitrião (1 a 3), só no convidado. */
     val hostLinkQuality: () -> Int? = { null },
+    /** §16.9 a desistência foi confirmada ou cancelada no "Desistir da mesa?" (o Wi-Fi do convidado depende disso, 3.14). */
+    val onResignAnswered: (confirmed: Boolean) -> Unit = {},
+    /** §16, 3.14 botão de Wi-Fi da mesa multijogador. */
+    val wifi: TableWifi? = null,
 )
 
 /** Tela do jogo: mesa, fim de partida (§12) ou fim de jogo (§13), conforme o estado. */
 @Composable
-fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = null, onExit: () -> Unit) {
+fun GameScreen(
+    viewModel: GameViewModel,
+    multiplayer: MultiplayerScreenHooks? = null,
+    /** §16, docs/telas.md 3.14 botão de Wi-Fi da mesa; `null` = sem o botão. */
+    wifi: TableWifi? = null,
+    onExit: () -> Unit,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ObserveAnimationScale(viewModel::onAnimationScaleChanged)
     // Velocidade das animações (Perfil ou botão da mesa): vale já na jogada seguinte.
@@ -83,24 +93,40 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
         }
     }
 
-    // Depois do fim do jogo (§13) não há mais o que desistir.
-    val canResign = snapshot.stage != Stage.GAME_OVER
-    // Revisão da mesa final, aberta pelo anúncio; "Continuar" volta ao anúncio e segue o fluxo de fim.
-    var reviewingTable by rememberSaveable(state.endScreen) { mutableStateOf(false) }
-    val review = { reviewingTable = true }
+    // §11.1 animação da batida sobre a mesa final: uma vez por partida, 2 s ou até um toque (docs/telas.md 3.9).
+    var goOutSeen by rememberSaveable { mutableStateOf(0) }
+    val finishedRounds = snapshot.history.size
     // §14.4 regras da mesa para os textos (sem coringa, §1: só "Canastra", sem limpa/suja).
     androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules) {
-    if (reviewingTable) FinalTableReview(state, viewModel) { reviewingTable = false }
+    if (state.endScreen == EndScreen.FINAL_TABLE) {
+        // docs/telas.md 3.9, 3.12 a mesa final, só para olhar: o banner de fim de partida grande por 2 s e, depois,
+        // minimizado junto do "Seguir", que vai direto aos pontos da partida. Numa caixa só, com a animação por cima.
+        val end = roundEnd(snapshot)
+        val showing = end != null && goOutSeen < finishedRounds
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
+                FinalTableReview(
+                    state, viewModel, viewModel::onEndNext,
+                    banner = if (end != null && !showing) {
+                        { RoundEndBanner(end, snapshot.view.mode, compact = true, Modifier.fillMaxWidth()) }
+                    } else null,
+                )
+            }
+            if (showing) RoundEndOverlay(end!!, snapshot.view.mode, state.animationMillis > 0, onDone = { goOutSeen = finishedRounds })
+        }
+    }
     else if (state.endScreen != null) {
         // Telas de resultado: a faixa do saldo no topo (docs/telas.md 0), como fora do jogo.
         androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
             com.gtranca.ui.theme.CoinBalanceBar(Modifier.statusBarsPadding())
             androidx.compose.foundation.layout.Box(Modifier.weight(1f).consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.Companion.statusBars)) {
-                EndScreens(state, viewModel, snapshot, canResign, review, multiplayer, onExit)
+                EndScreens(state, viewModel, snapshot, multiplayer, onExit)
             }
         }
     }
-    else TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
+    else androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
+        TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
+    }
     }
 
     // §13.1 desistência: disponível na mesa, na encenação e na tela de anúncio (não na de pontos, decisão do usuário).
@@ -114,12 +140,12 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
                 illustration = MessageIllustration.Flag,
                 tone = MessageTone.Danger,
                 confirmText = stringResource(R.string.resign_confirm),
-                onConfirm = viewModel::onConfirmResign,
+                onConfirm = { viewModel.onConfirmResign(); multiplayer.onResignAnswered(true) },
                 confirmTag = "resign-confirm",
                 dismissText = stringResource(R.string.cancel),
-                onDismiss = viewModel::onDismissResign,
+                onDismiss = { viewModel.onDismissResign(); multiplayer.onResignAnswered(false) },
                 dismissTag = "resign-cancel",
-                onDismissRequest = viewModel::onDismissResign,
+                onDismissRequest = { viewModel.onDismissResign(); multiplayer.onResignAnswered(false) },
                 content = { ResignSummary(snapshot, state.personas) },
             )
         } else {
@@ -145,11 +171,11 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
     }
 }
 
-/** Mesa final só para olhar; "Continuar" fica no lugar da barra de ações e segue o fluxo de fim da partida. */
+/** Mesa final só para olhar; "Seguir" fica no lugar da barra de ações e vai aos pontos da partida. */
 @Composable
-private fun FinalTableReview(state: GameUiState, events: TableEvents, onContinue: () -> Unit) {
+private fun FinalTableReview(state: GameUiState, events: TableEvents, onContinue: () -> Unit, banner: (@Composable () -> Unit)? = null) {
     BackHandler(onBack = onContinue)
-    TableScreen(state, events, onReviewContinue = onContinue)
+    TableScreen(state, events, onReviewContinue = onContinue, reviewBanner = banner)
 }
 
 /** §13.1 confirmação da desistência; cancelar volta exatamente ao estado anterior. */
@@ -244,23 +270,19 @@ private fun ObserveAnimationScale(onChange: (Float) -> Unit) {
     }
 }
 
-/** Telas de resultado (anúncio, pontos, fim de jogo), conforme a etapa. */
+/** Telas de resultado (pontos, fim de jogo), conforme a etapa. */
 @Composable
 private fun EndScreens(
     state: GameUiState,
     viewModel: GameViewModel,
     snapshot: com.gtranca.game.GameSnapshot,
-    canResign: Boolean,
-    review: () -> Unit,
     multiplayer: MultiplayerScreenHooks?,
     onExit: () -> Unit,
 ) {
     when (state.endScreen) {
-        null -> Unit
-        EndScreen.ANNOUNCE_ROUND -> RoundAnnouncement(snapshot, viewModel::onEndNext, viewModel::onResign.takeIf { canResign }, state.personas, state.animationMillis > 0, review)
+        null, EndScreen.FINAL_TABLE -> Unit
         EndScreen.ROUND_POINTS ->
             RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
-        EndScreen.ANNOUNCE_GAME -> GameAnnouncement(snapshot, viewModel::onEndNext, state.personas, state.animationMillis > 0, review)
         EndScreen.FINAL -> GameOverScreen(
             snapshot, onExit, state.personas, state.animationMillis > 0,
             multiplayer = multiplayer != null,

@@ -49,15 +49,12 @@ class GameTextsTest {
     }
 
     @Test
-    fun `§11 anuncio da partida antes dos pontos`() {
-        val seat2Out = RoundResult.GoOut(Side(0), Seat(2))
-        roundAnnouncementRes(GameMode.DUPLAS, seat2Out, Seat(0)) shouldBe R.string.round_result_partner_went_out
-        roundTeamAnnouncementRes(GameMode.DUPLAS, seat2Out, Side(0)) shouldBe R.string.announce_team_won_round
-        val rightOut = RoundResult.GoOut(Side(1), Seat(1))
-        roundAnnouncementRes(GameMode.DUPLAS, rightOut, Seat(0)) shouldBe R.string.round_result_right_went_out
-        roundTeamAnnouncementRes(GameMode.DUPLAS, rightOut, Side(0)) shouldBe R.string.announce_other_team_won_round
-        // §11.2/§10.2 sem vencedor: o monte acabou.
-        roundAnnouncementRes(GameMode.INDIVIDUAL, RoundResult.NoWinner, Seat(0)) shouldBe R.string.announce_no_winner
-        roundTeamAnnouncementRes(GameMode.INDIVIDUAL, RoundResult.GoOut(Side(0), Seat(0)), Side(0)).shouldBeNull()
+    fun `§11 banner de fim de partida, por quem bateu e por modo`() {
+        roundEndMessageRes(RoundEnd.YOU, GameMode.INDIVIDUAL) shouldBe R.string.go_out_you
+        roundEndMessageRes(RoundEnd.PARTNER, GameMode.DUPLAS) shouldBe R.string.go_out_partner
+        roundEndMessageRes(RoundEnd.OPPONENT, GameMode.INDIVIDUAL) shouldBe R.string.go_out_lost
+        roundEndMessageRes(RoundEnd.OPPONENT, GameMode.DUPLAS) shouldBe R.string.go_out_lost_team
+        // §11.2 sem batida: o monte acabou.
+        roundEndMessageRes(RoundEnd.NO_WINNER, GameMode.DUPLAS) shouldBe R.string.round_end_stock_out
     }
 }

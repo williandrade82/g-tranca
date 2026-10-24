@@ -41,6 +41,12 @@ data class SavedGame(
      * tenha sido renomeado. `null` em jogos salvos antes desta versão (vale o nome atual do perfil).
      */
     val playerName: String? = null,
+    /**
+     * §14.4, §14.5 personagem de cada assento de robô (índice do assento → `BotProfile.code`), como a mesa foi montada
+     * (escolhidos e sorteados) e na posição escolhida. Vazio em jogos salvos antes da mesa montada (vale o sorteio pela
+     * semente do jogo).
+     */
+    val robots: Map<Int, String> = emptyMap(),
 ) {
     companion object {
         /** Versão atual do formato; arquivos de outra versão são tratados como "sem jogo salvo". */

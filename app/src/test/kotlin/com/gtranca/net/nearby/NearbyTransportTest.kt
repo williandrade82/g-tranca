@@ -71,6 +71,36 @@ class NearbyTransportTest {
     }
 
     @Test
+    fun `§16_2 presenca e mesa usam o mesmo anuncio e a busca as separa pelo formato`() = runTest {
+        val (api, host) = node()
+        val (_, other) = node()
+        val presence = com.gtranca.net.PresenceAdvert("abc234", "Ana")
+        host.advertisePresence(presence)
+        other.discoverPresence().first { it.isNotEmpty() } shouldBe listOf(presence)
+        // Presença no ar: parar o anúncio de mesa não a derruba.
+        host.stopAdvertising()
+        api.advertInfo!!.contentEquals(AdvertCodec.encodePresence(presence)) shouldBe true
+        api.advertiseStops shouldBe 0
+        // A mesa toma o lugar da presença; a busca a vê como mesa, e a presença some.
+        host.advertise(advert)
+        runCurrent()
+        api.advertiseStops shouldBe 1
+        other.discover().first().single().tableId shouldBe advert.tableId
+        other.discoverPresence().first() shouldBe emptyList()
+        // Parar a presença com a mesa no ar não faz nada; parar a mesa sim.
+        host.stopPresence()
+        api.advertiseStops shouldBe 1
+        host.advertisePresence(presence)
+        runCurrent()
+        api.advertiseStops shouldBe 2
+        other.discoverPresence().first { it.isNotEmpty() } shouldBe listOf(presence)
+        host.stopPresence()
+        // §16.2 antes de parar, o aviso de "saindo" (uma troca de anúncio a mais).
+        api.advertiseStops shouldBe 4
+        api.advertInfo shouldBe null
+    }
+
+    @Test
     fun `busca recem ligada nao emite a lista vazia antes do aquecimento`() = runTest {
         val (_, host) = node()
         val (_, guest) = node()
@@ -165,6 +195,119 @@ class NearbyTransportTest {
         advanceUntilIdle()
         guest.status.value shouldBe GuestStatus.Lobby
         host.roster.value.map { it.name } shouldContainExactly listOf("Ana", "Bia")
+        scope.cancel()
+    }
+
+    private val wait = NearbyTransport.PRESENCE_REFRESH_MILLIS
+
+    @Test
+    fun `§16_2 §16_15 quem some sem avisar sai da lista depois de duas verificacoes e quem continua nao pisca`() = runTest {
+        network.silentStop = true
+        val (goneApi, gone) = node()
+        val (_, stays) = node()
+        val (_, me) = node()
+        val bia = com.gtranca.net.PresenceAdvert("kbia", "Bia")
+        val caio = com.gtranca.net.PresenceAdvert("kcaio", "Caio")
+        gone.advertisePresence(bia)
+        stays.advertisePresence(caio)
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        lists.last().toSet() shouldBe setOf(bia, caio)
+        goneApi.stopAdvertising() // sumiu sem aviso (aparelho fora do alcance)
+        advanceTimeBy(wait + NearbyTransport.PRESENCE_SWEEP_GRACE_MILLIS + 1)
+        runCurrent()
+        lists.last().toSet() shouldBe setOf(bia, caio) // uma verificação só não basta
+        advanceTimeBy(wait)
+        runCurrent()
+        lists.last() shouldBe listOf(caio)
+        lists.dropWhile { caio !in it }.all { caio in it } shouldBe true
+        // Mesas não são varridas (a "mesa sumida" do sucessor, §16.10, depende só do onLost).
+        val (_, host) = node()
+        host.advertise(advert)
+        host.stopAdvertising()
+        advanceTimeBy(wait * 4)
+        runCurrent()
+        me.discover().first().map { it.tableId } shouldBe listOf(advert.tableId)
+    }
+
+    @Test
+    fun `§16_2 §16_15 desligar o Wi-Fi do jogo anuncia saindo por 2 s e os outros tiram o jogador na hora`() = runTest {
+        network.silentStop = true
+        val (goneApi, gone) = node()
+        val (_, me) = node()
+        val bia = com.gtranca.net.PresenceAdvert("kbia", "Bia")
+        gone.advertisePresence(bia)
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        lists.last() shouldBe listOf(bia)
+        val stopping = backgroundScope.launch(StandardTestDispatcher(testScheduler)) { gone.stopPresence() }
+        runCurrent()
+        lists.last() shouldBe emptyList() // na hora
+        goneApi.advertInfo!!.first().toInt() shouldBe AdvertCodec.PRESENCE_LEAVING_FORMAT
+        advanceTimeBy(NearbyTransport.PRESENCE_LEAVING_MILLIS + 1)
+        runCurrent()
+        stopping.isCompleted shouldBe true
+        goneApi.advertInfo shouldBe null
+    }
+
+    @Test
+    fun `§16_2 falha ao religar a busca nao abandona a verificacao`() = runTest {
+        network.silentStop = true
+        val (goneApi, gone) = node()
+        val (api, me) = node()
+        gone.advertisePresence(com.gtranca.net.PresenceAdvert("kbia", "Bia"))
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        api.failNextDiscoveryStarts = 2
+        goneApi.stopAdvertising()
+        advanceTimeBy(wait * 4)
+        runCurrent()
+        lists.last() shouldBe emptyList()
+        (api.discovery != null) shouldBe true // a busca voltou a ficar ligada
+        // A busca de mesas também segue viva.
+        val (_, host) = node()
+        host.advertise(advert)
+        runCurrent()
+        me.discover().first().map { it.tableId } shouldBe listOf(advert.tableId)
+    }
+
+    @Test
+    fun `§16_2 a busca nao recomeca com conexao de presenca aberta`() = runTest {
+        val (_, other) = node()
+        val (api, me) = node()
+        val bia = com.gtranca.net.PresenceAdvert("kbia", "Bia")
+        other.advertisePresence(bia)
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect {} }
+        runCurrent()
+        val endpoint = me.connectPresence(bia)
+        advanceTimeBy(wait * 3)
+        runCurrent()
+        api.discoveryStarts shouldBe 1
+        me.disconnect(endpoint)
+        advanceTimeBy(wait + 1_500)
+        runCurrent()
+        (api.discoveryStarts > 1) shouldBe true
+    }
+
+    @Test
+    fun `§16_2 foto do jogador proximo pelo Nearby - conexao curta com a presenca`() = runTest {
+        val (_, ana) = node()
+        val (_, bia) = node()
+        ana.advertisePresence(com.gtranca.net.PresenceAdvert("kana", "Ana"))
+        bia.advertisePresence(com.gtranca.net.PresenceAdvert("kbia", "Bia"))
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job())
+        val anaPhotos = com.gtranca.net.PresencePhotos(ana, "kana", "FOTO")
+        val biaPhotos = com.gtranca.net.PresencePhotos(bia, "kbia", null)
+        scope.launch { anaPhotos.serve() }
+        scope.launch { biaPhotos.serve() }
+        scope.launch { anaPhotos.fetchAll(ana.discoverPresence()) }
+        scope.launch { biaPhotos.fetchAll(bia.discoverPresence()) }
+        runCurrent()
+        biaPhotos.photos.value shouldBe mapOf("kana" to "FOTO")
+        anaPhotos.photos.value shouldBe mapOf("kbia" to "")
         scope.cancel()
     }
 }

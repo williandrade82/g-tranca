@@ -147,9 +147,33 @@ class PersistenceTest {
         settings.settings.first().tourAuto shouldBe true
         settings.setTourAuto(false)
         settings.settings.first().tourAuto shouldBe false
-        settings.settings.first().createTable shouldBe null
-        settings.setCreateTable("v1")
-        settings.settings.first().createTable shouldBe "v1"
+        settings.settings.first().tableSetup shouldBe null
+        val setup = TableSetup(GameMode.DUPLAS, "dificil", "PAULISTA", 50, "2000", listOf("zen", "jovem"))
+        settings.setTableSetup(setup)
+        settings.settings.first().tableSetup shouldBe setup
+    }
+
+    @Test
+    fun `§14_4 montagem antiga de Criar mesa vira TableSetup sem tipo nem nome e some ao gravar a nova`() = runBlocking<Unit> {
+        val store = MemoryDataStore()
+        store.updateData { prefs ->
+            prefs.toMutablePreferences().apply {
+                this[androidx.datastore.preferences.core.stringPreferencesKey("create_table")] =
+                    listOf("1", "true", "Mesa da Ana", "DUPLAS", "facil", "CUSTOM", "20", "1500").joinToString("\t")
+            }
+        }
+        val settings = DataStoreSettingsRepository(store)
+        settings.settings.first().tableSetup shouldBe TableSetup(GameMode.DUPLAS, "facil", "CUSTOM", 20, "1500")
+        settings.setTableSetup(TableSetup(robots = listOf("atleta")))
+        settings.settings.first().tableSetup shouldBe TableSetup(robots = listOf("atleta"))
+        store.data.first().asMap().keys.map { it.name }.contains("create_table") shouldBe false
+    }
+
+    @Test
+    fun `§14_4 montagem ilegivel ou antiga invalida vale como nenhuma`() {
+        TableSetup.decode("lixo") shouldBe null
+        TableSetup.fromLegacy("lixo") shouldBe null
+        TableSetup.fromLegacy(listOf("2", "x", "y", "DUPLAS", "facil", "CLASSICA", "20", "1500").joinToString("\t")) shouldBe null
     }
 
     @Test
@@ -213,6 +237,10 @@ class PersistenceTest {
             ),
         ).replace(Regex(""",?\s*"stake"\s*:\s*\d+"""), "")
         FileSavedGameStore.decode(old)!!.config.stake shouldBe 0
+        // §14.5 jogo salvo antes da mesa montada: sem robôs gravados (vale o sorteio pela semente).
+        FileSavedGameStore.decode(old)!!.robots shouldBe emptyMap()
+        val withRobots = SavedGame(gameId = "g", config = SavedConfig(GameMode.DUPLAS, "medio", 1500), gameSeed = 1, match = startMatch(GameMode.DUPLAS, 1500, kotlin.random.Random(1)), events = emptyList(), robots = mapOf(1 to "zen", 2 to "jovem", 3 to "atleta"))
+        FileSavedGameStore.decode(FileSavedGameStore.encode(withRobots))!!.robots shouldBe withRobots.robots
         FileSavedGameStore.decode(FileSavedGameStore.encode(SavedGame(gameId = "g", config = SavedConfig(GameMode.DUPLAS, "medio", 1500, stake = 250), gameSeed = 1, match = startMatch(GameMode.DUPLAS, 1500, kotlin.random.Random(1)), events = emptyList())))!!.config.stake shouldBe 250
     }
 

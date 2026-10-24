@@ -43,9 +43,9 @@ class TourTest {
 
     @Test
     fun `os passos seguem a tela de cima para baixo`() {
-        Tours.tablesSteps.map { it.target } shouldBe listOf(Tours.BUTTON, "tables-wifi", "coins-balance", "tables-first", "tables-create")
+        Tours.tablesSteps.map { it.target } shouldBe listOf(Tours.BUTTON, "tables-wifi", "participants", "table-options-panel", "choose-seats")
         Tours.tableSteps.map { it.target } shouldBe listOf(
-            "score", Tours.BUTTON, "table-options", "seats", "stock", "mortos", "discard-pile", "hand", "action-bar",
+            "score", "table-pot", "coin-balance", Tours.BUTTON, "table-options", "seats", "stock", "mortos", "discard-pile", "hand", "action-bar",
         )
     }
 }

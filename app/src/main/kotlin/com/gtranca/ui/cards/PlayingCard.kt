@@ -56,6 +56,9 @@ enum class CardSize(val width: Dp, val height: Dp, val cornerFont: Dp, val cente
     /** Versos das mãos dos outros assentos (só [CardBack]). */
     TINY(16.dp, 24.dp, 8.dp, 10.dp, false),
 
+    /** Exemplos de cartas na tabela de pontos (só o índice do canto). */
+    MINI(20.dp, 28.dp, 10.dp, 0.dp, false),
+
     /** Conjuntos na mesa e lixo. */
     SMALL(34.dp, 50.dp, 12.dp, 17.dp, true),
 
@@ -199,7 +202,7 @@ fun PlayingCard(
                     .padding(end = if (size == CardSize.SMALL) 2.dp else 0.dp, bottom = if (size == CardSize.SMALL) 1.dp else 0.dp),
             )
         }
-        if (size != CardSize.SMALL) {
+        if (size != CardSize.SMALL && size != CardSize.MINI) {
             CornerIndex(card, cornerStyle, Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 2.dp).rotate(180f))
         }
         if (emphasis == CardEmphasis.DIMMED) Box(Modifier.matchParentSize().background(GColors.CardDim))

@@ -4,18 +4,23 @@ import android.content.Context
 import com.gtranca.data.GameData
 import com.gtranca.data.GameResult
 import com.gtranca.net.LocalTransport
+import com.gtranca.net.PresenceAdvert
 import com.gtranca.net.TableAdvert
 import com.gtranca.net.TableRules
 import com.gtranca.net.nearby.MultiplayerAccess
 import com.gtranca.net.nearby.NearbyTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * O modo multijogador do app (§16): um transporte (Nearby) e, no máximo, uma mesa por vez. Vive no processo, fora das
@@ -38,13 +43,96 @@ object MultiplayerHub {
     /** Mesas anunciadas por perto (§16.2); a busca para sozinha quando ninguém mais observa. */
     fun discover(context: Context): Flow<List<TableAdvert>> = transport(context).discover()
 
+    /** §16.2 jogadores próximos (presença) achados por perto. */
+    fun discoverPresence(context: Context): Flow<List<PresenceAdvert>> = transport(context).discoverPresence()
+
+    /** §16.2 chave de presença deste aparelho: nova a cada vez que o Wi-Fi do jogo liga. */
+    @Volatile
+    private var presenceKey: String? = null
+
+    private val _presencePhotos = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** §16.2 fotos dos jogadores próximos por chave de presença (Base64; "" = sem foto). Só em memória. */
+    val presencePhotos: StateFlow<Map<String, String>> = _presencePhotos.asStateFlow()
+
+    /** §16.2 o Wi-Fi do jogo desligou: a próxima presença leva uma chave nova e as fotos recebidas são descartadas. */
+    fun resetPresence() {
+        presenceKey = null
+        _presencePhotos.value = emptyMap()
+    }
+
+    private val _recruitment = MutableStateFlow<com.gtranca.net.Recruitment?>(null)
+
+    /** §16.2 o recrutamento imediato deste aparelho (anfitrião montando a mesa e/ou recrutado), enquanto fora de mesa. */
+    val recruitment: StateFlow<com.gtranca.net.Recruitment?> = _recruitment.asStateFlow()
+
+    private val _recruitEvents = kotlinx.coroutines.flow.MutableSharedFlow<com.gtranca.net.RecruitEvent>(extraBufferCapacity = 16)
+
+    /** §16.2 avisos ao recrutado (tirado da mesa, mesa encerrada, saldo insuficiente); o início vai direto à mesa. */
+    val recruitEvents: kotlinx.coroutines.flow.SharedFlow<com.gtranca.net.RecruitEvent> = _recruitEvents
+
+    /** Leitura dos eventos do transporte pelo recrutamento (parada antes de uma mesa ler, um leitor por transporte). */
+    @Volatile
+    private var recruiting: kotlinx.coroutines.Job? = null
+
+    /** §16.2 para o recrutamento (o anfitrião tocou em Escolher posições) antes de a mesa começar a ler o transporte. */
+    suspend fun stopRecruiting() {
+        recruiting?.let { it.cancel(); it.join() }
+    }
+
+    /** Chave de presença atual deste aparelho (`null` com o Wi-Fi do jogo desligado). */
+    val myPresenceKey: String? get() = presenceKey
+
+    /**
+     * §16.2 com o Wi-Fi do jogo ligado e fora de uma mesa: anuncia a presença ([name]), troca fotos e atende o
+     * recrutamento imediato ([com.gtranca.net.Recruitment]); recrutado que recebe o início entra na mesa com a própria
+     * chave. Roda até ser cancelado (Wi-Fi desligado, mesa aberta ou jogo); a presença para ao sair.
+     */
+    suspend fun runPresence(context: Context, data: GameData, name: String, photo: String?) {
+        if (_table.value != null) return
+        val t = transport(context)
+        val key = presenceKey ?: com.gtranca.net.newPresenceKey().also { presenceKey = it }
+        try {
+            val start = kotlinx.coroutines.coroutineScope {
+                val photos = com.gtranca.net.PresencePhotos(t, key, photo, _presencePhotos)
+                val rec = com.gtranca.net.Recruitment(
+                    t, this, key, name, photos,
+                    canAfford = { stake -> runCatching { com.gtranca.engine.Coins.canJoin(data.wallet.wallet.first().balance, stake) }.getOrDefault(true) },
+                )
+                val running = launch { runCatching { rec.run() } }
+                recruiting = running
+                val fetching = launch { runCatching { photos.fetchAll(t.discoverPresence().catch { emit(emptyList()) }) } }
+                _recruitment.value = rec
+                try {
+                    val events = launch {
+                        rec.events.collect { if (it !is com.gtranca.net.RecruitEvent.Start) _recruitEvents.emit(it) }
+                    }
+                    val start = rec.events.first { it is com.gtranca.net.RecruitEvent.Start } as com.gtranca.net.RecruitEvent.Start
+                    events.cancel()
+                    start
+                } finally {
+                    _recruitment.value = null
+                    // Pára de ler os eventos antes de a sessão da mesa começar a ler.
+                    running.cancel()
+                    fetching.cancel()
+                    running.join()
+                    recruiting = null
+                }
+            }
+            // §16.2 o anfitrião tocou em Escolher posições: entra direto, com a própria chave (sem novo convite).
+            newTable(context, data, photo).joinAsync(start.tableId, name, inviteKey = start.inviteKey)
+        } finally {
+            withContext(NonCancellable) { runCatching { t.stopPresence() } }
+        }
+    }
+
     /**
      * Uma mesa nova. A anterior, se houver, é deixada antes de a nova entrar ou publicar (um leitor por transporte); uma
      * entrega de resultado ainda aberta nela (§16.11) acaba aqui.
      */
     fun newTable(context: Context, data: GameData, photo: String? = null): MultiplayerTable {
         val leaving = _table.value?.let { old -> scope.launch { old.leave() } }
-        return MultiplayerTable(transport(context), scope, DataMpCoins(data), after = leaving).also {
+        return MultiplayerTable(transport(context), scope, DataMpCoins(data, scope), after = leaving).also {
             it.myPhoto = photo
             _table.value = it
         }
@@ -59,7 +147,7 @@ object MultiplayerHub {
         }
     }
 
-    /** Sai da sala de espera (ou desiste de entrar). */
+    /** Sai da sala de espera (ou desiste de entrar, ou recusa o convite). */
     fun leave() {
         val table = _table.value ?: return
         _table.value = null
@@ -68,7 +156,11 @@ object MultiplayerHub {
 }
 
 /** §16.13, §16.14 moedas e estatísticas locais do multijogador, no mesmo arquivo da carteira. */
-private class DataMpCoins(private val data: GameData) : MpCoins {
+private class DataMpCoins(private val data: GameData, scope: CoroutineScope) : MpCoins {
+    /** §14.6, §16.2 espera a leitura do saldo antes de responder ao convite ou à entrada (falha de leitura: não bloqueia). */
+    override suspend fun canAfford(stake: Int): Boolean =
+        runCatching { com.gtranca.engine.Coins.canJoin(data.wallet.wallet.first().balance, stake) }.getOrDefault(true)
+
     override suspend fun debit(stake: Int): Boolean = runCatching { data.wallet.debit(stake) }.getOrDefault(false)
 
     override suspend fun settle(gameId: String, rules: TableRules, result: GameResult, stake: Int, received: Int) {

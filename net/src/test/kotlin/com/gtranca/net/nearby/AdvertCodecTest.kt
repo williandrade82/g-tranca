@@ -1,6 +1,8 @@
 package com.gtranca.net.nearby
 
+import com.gtranca.net.PresenceAdvert
 import com.gtranca.net.TableAdvert
+import com.gtranca.net.newPresenceKey
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
@@ -62,5 +64,41 @@ class AdvertCodecTest {
         val good = AdvertCodec.encode(TableAdvert("abcdefgh", "Mesa", "Ana"))
         AdvertCodec.decode(good.copyOf(good.size - 3)) shouldBe null
         repeat(200) { AdvertCodec.decode(Random(it).nextBytes(Random(it).nextInt(1, 40))) }
+    }
+
+    @Test
+    fun `§16_2 mesa com 3 convidados e nomes longos acentuados cabe no limite e preserva as chaves`() {
+        val keys = List(3) { newPresenceKey(java.util.Random(it.toLong())) }
+        val advert = TableAdvert("ab3kx9mp", "Mesa de " + "Conceição ".repeat(8), "Maria Conceição 😀".repeat(4), hostId = 70_000, epoch = 3, invited = keys)
+        val bytes = AdvertCodec.encode(advert)
+        bytes.size shouldBeLessThanOrEqual AdvertCodec.MAX_BYTES
+        val back = AdvertCodec.decode(bytes)!!
+        back.invited shouldBe keys
+        back.tableId shouldBe advert.tableId
+        AdvertCodec.decodePresence(bytes) shouldBe null // um anúncio de mesa não é de presença
+    }
+
+    @Test
+    fun `§16_2 presenca de jogador proximo e distinta do anuncio de mesa e cabe no limite`() {
+        val presence = PresenceAdvert(newPresenceKey(java.util.Random(1)), "José Conceição 😀 ".repeat(10))
+        val bytes = AdvertCodec.encodePresence(presence)
+        bytes.size shouldBeLessThanOrEqual AdvertCodec.MAX_BYTES
+        val back = AdvertCodec.decodePresence(bytes)!!
+        back.key shouldBe presence.key
+        presence.name shouldStartWith back.name
+        back.name.contains('�') shouldBe false
+        AdvertCodec.decode(bytes) shouldBe null // a presença não aparece como mesa
+        AdvertCodec.decodePresence(AdvertCodec.encodePresence(PresenceAdvert("k1", "Ana"))) shouldBe PresenceAdvert("k1", "Ana")
+    }
+
+    @Test
+    fun `§16_2 presenca com recrutado por e 3 convites imediatos cabe no limite`() {
+        val keys = List(3) { newPresenceKey(java.util.Random(it.toLong() + 10)) }
+        val presence = PresenceAdvert(newPresenceKey(java.util.Random(1)), "Maria Conceição 😀 ".repeat(10), recruitedBy = newPresenceKey(java.util.Random(2)), inviting = keys)
+        val bytes = AdvertCodec.encodePresence(presence)
+        bytes.size shouldBeLessThanOrEqual AdvertCodec.MAX_BYTES
+        val back = AdvertCodec.decodePresence(bytes)!!
+        back.copy(name = presence.name) shouldBe presence
+        presence.name shouldStartWith back.name
     }
 }

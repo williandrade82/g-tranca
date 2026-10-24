@@ -200,21 +200,6 @@ fun turnText(events: List<PublicEvent>): String =
 fun countText(@PluralsRes pluralsRes: Int, @StringRes zeroRes: Int, count: Int): String =
     if (count == 0) stringResource(zeroRes) else pluralStringResource(pluralsRes, count, count)
 
-/** §11 anúncio do resultado da partida, antes dos pontos. */
-@StringRes
-fun roundAnnouncementRes(mode: GameMode, result: RoundResult, viewerSeat: Seat): Int = when (result) {
-    RoundResult.NoWinner -> R.string.announce_no_winner
-    is RoundResult.GoOut -> SeatRole.of(mode, result.seat, viewerSeat).wentOutRes()
-}
-
-/** Em duplas, a frase complementar do anúncio ("Sua dupla bateu!"); `null` no individual ou sem vencedor. */
-@StringRes
-fun roundTeamAnnouncementRes(mode: GameMode, result: RoundResult, viewerSide: Side): Int? = when {
-    mode != GameMode.DUPLAS || result !is RoundResult.GoOut -> null
-    result.side == viewerSide -> R.string.announce_team_won_round
-    else -> R.string.announce_other_team_won_round
-}
-
 /** §13.1 texto do fim de jogo por desistência. */
 @StringRes
 fun resignedRes(mode: GameMode): Int =
