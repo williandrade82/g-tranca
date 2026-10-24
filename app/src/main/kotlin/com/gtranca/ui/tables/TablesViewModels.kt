@@ -217,7 +217,7 @@ class CreateTableViewModel(
                         loaded = true,
                     )
                     // A última mesa criada, ajustada ao que vale agora (saldo, regras salvas).
-                    if (modeTouched) base else CreateTablePrefs.apply(base, stored.createTable, stored.customRules != null, balance)
+                    if (modeTouched) base else CreateTablePrefs.apply(base, stored.tableSetup, stored.customRules != null, balance)
                 }
             }
         }
@@ -262,11 +262,11 @@ class CreateTableViewModel(
         val state = _uiState.value
         if (!state.canCreate) return null
         val config = state.toConfig() ?: return null
-        val text = CreateTablePrefs.encode(state)
+        val setup = CreateTablePrefs.encode(state)
         settings?.let { repo ->
             // Grava a configuração toda; a mesa multijogador não muda o último modo escolhido contra robôs.
             val save: suspend () -> Unit = {
-                repo.setCreateTable(text)
+                repo.setTableSetup(setup)
                 if (!state.multiplayer) repo.setLastMode(config.mode)
             }
             if (writes != null) writes.enqueue { save() } else viewModelScope.launch { safely { save() } }
@@ -280,33 +280,20 @@ class CreateTableViewModel(
  * texto com campos separados por tabulação. Ao carregar, o que ficou inválido é ajustado (nunca falha).
  */
 object CreateTablePrefs {
-    private const val SEP = "\t"
-    private const val VERSION = "1"
+    fun encode(state: CreateTableUiState): com.gtranca.data.TableSetup = com.gtranca.data.TableSetup(
+        mode = state.mode, difficultyId = state.difficulty.id, rules = state.rulesChoice.name, stake = state.stake,
+        target = state.targetText,
+    )
 
-    fun encode(state: CreateTableUiState): String = listOf(
-        VERSION, state.multiplayer.toString(), state.tableName.replace(SEP, " "), state.mode.name, state.difficulty.id,
-        state.rulesChoice.name, state.stake.toString(), state.targetText.replace(SEP, ""),
-    ).joinToString(SEP)
-
-    /** [state] com a configuração [text] aplicada e ajustada: aposta que o [balance] cobre, "Personalizada" só com regras salvas. */
-    fun apply(state: CreateTableUiState, text: String?, hasCustomRules: Boolean, balance: Int?): CreateTableUiState {
-        val parts = text?.split(SEP) ?: return state.copy(stake = fitStake(state.stake, balance))
-        if (parts.size < 8 || parts[0] != VERSION) return state.copy(stake = fitStake(state.stake, balance))
-        val mode = GameMode.entries.firstOrNull { it.name == parts[3] } ?: state.mode
-        val difficulty = Difficulty.entries.firstOrNull { it.id == parts[4] } ?: state.difficulty
-        val rules = RulesChoice.entries.firstOrNull { it.name == parts[5] }
+    /** [state] com a montagem [setup] aplicada e ajustada: aposta que o [balance] cobre, "Personalizada" só com regras salvas. */
+    fun apply(state: CreateTableUiState, setup: com.gtranca.data.TableSetup?, hasCustomRules: Boolean, balance: Int?): CreateTableUiState {
+        setup ?: return state.copy(stake = fitStake(state.stake, balance))
+        val difficulty = Difficulty.entries.firstOrNull { it.id == setup.difficultyId } ?: state.difficulty
+        val rules = RulesChoice.entries.firstOrNull { it.name == setup.rules }
             ?.takeIf { it != RulesChoice.CUSTOM || hasCustomRules } ?: RulesChoice.CLASSICA
-        val stake = parts[6].toIntOrNull()?.takeIf { it in Coins.STAKES } ?: state.stake
-        val target = parts[7].takeIf { parseTargetScore(it) != null } ?: state.targetText
-        return state.copy(
-            multiplayer = parts[1].toBooleanStrictOrNull() ?: state.multiplayer,
-            tableName = parts[2].take(TABLE_NAME_MAX),
-            mode = mode,
-            difficulty = difficulty,
-            rulesChoice = rules,
-            stake = fitStake(stake, balance),
-            targetText = target,
-        )
+        val stake = setup.stake.takeIf { it in Coins.STAKES } ?: state.stake
+        val target = setup.target.takeIf { parseTargetScore(it) != null } ?: state.targetText
+        return state.copy(mode = setup.mode, difficulty = difficulty, rulesChoice = rules, stake = fitStake(stake, balance), targetText = target)
     }
 
     /** A aposta [stake] se o saldo a cobre; senão a maior que ele cobre (ou a menor, sem saldo). */

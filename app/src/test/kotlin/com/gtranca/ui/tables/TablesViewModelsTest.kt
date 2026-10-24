@@ -36,7 +36,7 @@ class TablesViewModelsTest {
         override suspend fun setHandSort(id: String) = state.update { it.copy(handSortId = id) }
         override suspend fun setCustomRules(rules: RuleSet) = state.update { it.copy(customRules = rules) }
         override suspend fun setWifiOn(on: Boolean) = state.update { it.copy(wifiOn = on) }
-        override suspend fun setCreateTable(text: String) = state.update { it.copy(createTable = text) }
+        override suspend fun setTableSetup(setup: com.gtranca.data.TableSetup) = state.update { it.copy(tableSetup = setup) }
     }
 
     private class FakeWallet(balance: Int) : com.gtranca.data.WalletRepository {
@@ -66,14 +66,13 @@ class TablesViewModelsTest {
             it.rulesChoice shouldBe RulesChoice.PAULISTA
             it.stake shouldBe 250
             it.targetText shouldBe "2000"
-            it.multiplayer shouldBe false
         }
     }
 
     @Test
     fun `Criar mesa ajusta ao carregar - aposta acima do saldo, Personalizada sem regras e texto ilegivel`() = withMain {
         val saved = listOf("1", "false", "", "DUPLAS", "facil", "CUSTOM", "500", "abc").joinToString("	")
-        val vm = CreateTableViewModel(FakeSettings(Settings(createTable = saved)), wallet = FakeWallet(120))
+        val vm = CreateTableViewModel(FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup.fromLegacy(saved))), wallet = FakeWallet(120))
         advanceUntilIdle()
         vm.uiState.value.let {
             it.stake shouldBe 100
@@ -81,7 +80,7 @@ class TablesViewModelsTest {
             it.targetText shouldBe "3000"
             it.mode shouldBe GameMode.DUPLAS
         }
-        val broken = CreateTableViewModel(FakeSettings(Settings(createTable = "lixo")))
+        val broken = CreateTableViewModel(FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup.decode("lixo"))))
         advanceUntilIdle()
         broken.uiState.value.rulesChoice shouldBe RulesChoice.CLASSICA
     }
