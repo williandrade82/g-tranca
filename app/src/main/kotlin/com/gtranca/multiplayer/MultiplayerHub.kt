@@ -106,15 +106,9 @@ object MultiplayerHub {
 
 /** §16.13, §16.14 moedas e estatísticas locais do multijogador, no mesmo arquivo da carteira. */
 private class DataMpCoins(private val data: GameData, scope: CoroutineScope) : MpCoins {
-    /** Saldo atual (lido sem esperar, para a recusa automática do convite, §16.2). */
-    @Volatile
-    private var balance: Int? = null
-
-    init {
-        scope.launch { runCatching { data.wallet.wallet.collect { balance = it.balance } } }
-    }
-
-    override fun canAfford(stake: Int): Boolean = balance?.let { com.gtranca.engine.Coins.canJoin(it, stake) } ?: true
+    /** §14.6, §16.2 espera a leitura do saldo antes de responder ao convite ou à entrada (falha de leitura: não bloqueia). */
+    override suspend fun canAfford(stake: Int): Boolean =
+        runCatching { com.gtranca.engine.Coins.canJoin(data.wallet.wallet.first().balance, stake) }.getOrDefault(true)
 
     override suspend fun debit(stake: Int): Boolean = runCatching { data.wallet.debit(stake) }.getOrDefault(false)
 

@@ -332,13 +332,6 @@ class HostSession(
     /** Publica a mesa e passa a atender os convidados em [scope]. */
     suspend fun open(scope: CoroutineScope) {
         this.scope = scope
-        // §16.2, §16.15 convidado que não se conecta no prazo do convite não está mais ao alcance: um robô assume.
-        members.values.filter { it.inviteKey != null }.forEach { invitee ->
-            scope.launch {
-                delay(INVITE_TIMEOUT_MILLIS)
-                mutex.withLock { if (invitee.inviteKey != null && invitee.link == null) refuseInviteeLocked(invitee, RefusalReason.OUT_OF_RANGE) }
-            }
-        }
         collector = scope.launch { transport.events.collect { handle(it) } }
         // §16.10 outro anfitrião da mesma mesa que prevaleça (só com o jogo em andamento).
         watcher = scope.launch {
@@ -350,6 +343,14 @@ class HostSession(
         mutex.withLock {
             if (started) refreshSuccessorsLocked()
             advertiseLocked(force = true)
+        }
+        // §16.2, §16.15 o prazo de 10 s para o convidado se conectar conta da publicação do anúncio com as chaves; sem
+        // conexão, ele não está mais ao alcance e um robô assume.
+        members.values.filter { it.inviteKey != null }.forEach { invitee ->
+            scope.launch {
+                delay(INVITE_TIMEOUT_MILLIS)
+                mutex.withLock { if (invitee.inviteKey != null && invitee.link == null) refuseInviteeLocked(invitee, RefusalReason.OUT_OF_RANGE) }
+            }
         }
         // §16.10 provisório sem outro humano que possa confirmar: confirma sozinho depois do tempo de §16.15.
         if (provisionalRank > 0 && members.values.none { it.info.id != hostId && it.info.id != previousHostId && !it.info.resigned }) {
@@ -1012,7 +1013,10 @@ class HostSession(
                 publishRosterLocked(broadcast = true)
             }
             is RotateSeat -> rotateLocked(player.id, payload.direction)
-            is InviteReply -> if (member.inviteKey != null && !started) {
+            // §14.6, §16.2 quem entrou pelo pedido e não tem saldo sai com o motivo; um robô assume.
+            is InviteReply -> if (member.inviteKey == null && !started && seatingRoom != null && payload.reason == RefusalReason.INSUFFICIENT_BALANCE) {
+                refuseInviteeLocked(member, RefusalReason.INSUFFICIENT_BALANCE)
+            } else if (member.inviteKey != null && !started) {
                 if (payload.accepted) {
                     acceptInviteLocked(member)
                 } else {

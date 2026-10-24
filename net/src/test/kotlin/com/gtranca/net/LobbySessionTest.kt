@@ -42,7 +42,7 @@ class LobbySessionTest {
     }
 
     /** O convidado acha a mesa pela própria chave e conecta (como a interface fará ao ver o anúncio). */
-    private suspend fun TestScope.invitee(t: Table, key: String, name: String, canAfford: (Int) -> Boolean = { true }): GuestSession {
+    private suspend fun TestScope.invitee(t: Table, key: String, name: String, canAfford: suspend (Int) -> Boolean = { true }): GuestSession {
         val transport = t.network.transport()
         val advert = transport.discover().first().invitationFor(key).shouldNotBeNull()
         return GuestSession(transport, name, canAfford = canAfford).also {
@@ -291,6 +291,68 @@ class LobbySessionTest {
         caio.status.value shouldBe GuestStatus.Playing
         caio.seat shouldBe Seat(1)
         host.robots[0] shouldBe "bolt"
+    }
+
+    @Test
+    fun `§16_2 §14_6 entrada aprovada sem saldo sai sozinha com o motivo e o robo volta ao lugar`() = runTest {
+        val t = table(emptyList(), rules(stake = 100))
+        val notices = mutableListOf<TableNotice>()
+        val job = sessionScope.launch { t.host.lobbyNotices.collect { notices += it } }
+        val caio = GuestSession(t.network.transport(), "Caio", canAfford = { it <= 50 }).also { it.join(sessionScope, "m") }
+        runCurrent()
+        t.host.approveJoin(t.host.joinRequests.value.single().requestId).shouldNotBeNull()
+        runCurrent()
+        caio.status.value shouldBe GuestStatus.Refused(refusalMessage(RefusalReason.INSUFFICIENT_BALANCE), RefusalReason.INSUFFICIENT_BALANCE)
+        notices.single().refusal shouldBe RefusalReason.INSUFFICIENT_BALANCE
+        t.host.seating.value!!.humans shouldBe listOf(0)
+        // A mesa não fica presa esperando por ele: o anfitrião confirma e as posições travam.
+        t.host.confirmPosition() shouldBe true
+        runCurrent()
+        t.host.seating.value!!.locked shouldBe true
+        job.cancel()
+    }
+
+    @Test
+    fun `§16_2 §14_6 o convite espera a leitura do saldo antes de responder`() = runTest {
+        val t = table(listOf(nearby("k-bia", "Bia")), rules(stake = 100))
+        val balance = kotlinx.coroutines.CompletableDeferred<Int>()
+        val bia = invitee(t, "k-bia", "Bia", canAfford = { it <= balance.await() })
+        bia.status.value shouldBe GuestStatus.Invited
+        balance.complete(10)
+        runCurrent()
+        (bia.status.value as GuestStatus.Refused).reason shouldBe RefusalReason.INSUFFICIENT_BALANCE
+    }
+
+    @Test
+    fun `§16_2 nome em branco no pedido de entrada vira Jogador N`() = runTest {
+        val t = table(emptyList())
+        val g = GuestSession(t.network.transport(), "   ").also { it.join(sessionScope, "m") }
+        runCurrent()
+        val info = t.host.approveJoin(t.host.joinRequests.value.single().requestId).shouldNotBeNull()
+        runCurrent()
+        info.name shouldBe "Jogador ${info.id}"
+        g.roster.value.single { it.id == g.playerId }.name shouldBe "Jogador ${g.playerId}"
+    }
+
+    @Test
+    fun `§16_7 §16_9 convidado que desliga o Wi-Fi do jogo desiste - assento VAGO e o jogo segue`() = runTest {
+        val t = table(listOf(nearby("k-bia", "Bia")))
+        val bia = invitee(t, "k-bia", "Bia")
+        bia.acceptInvite()
+        runCurrent()
+        t.host.confirmPosition(); bia.confirmSeat()
+        runCurrent()
+        advanceTimeBy(START_DELAY_MILLIS + 1)
+        runCurrent()
+        t.host.game = object : HostGamePort {
+            override fun propose(seat: Seat, requestId: Long, action: com.gtranca.engine.Action): ActionRejected? = null
+            override fun resign(seat: Seat): Boolean = true
+        }
+        // A interface chama resign() ao desligar o Wi-Fi depois da confirmação "Desistir da mesa?".
+        bia.resign()
+        runCurrent()
+        bia.status.value shouldBe GuestStatus.Resigned
+        t.host.roster.value.single { it.id == bia.playerId }.resigned shouldBe true
     }
 
     private companion object {

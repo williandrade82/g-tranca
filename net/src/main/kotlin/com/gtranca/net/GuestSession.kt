@@ -74,7 +74,7 @@ class GuestSession(
     /** §16.2 foto do perfil deste jogador (Base64, JPEG pequeno), enviada no [Hello]; `null` = sem foto. */
     private val photo: String? = null,
     /** §14.6, §16.2 o saldo local cobre a [TableRules.stake]? Não: o convite é recusado sozinho ("saldo insuficiente"). */
-    private val canAfford: (stake: Int) -> Boolean = { true },
+    private val canAfford: suspend (stake: Int) -> Boolean = { true },
 ) {
     private val mutex = Mutex()
     private lateinit var scope: CoroutineScope
@@ -267,6 +267,24 @@ class GuestSession(
         _invite.value = null
         if (reply.accepted) _status.value = GuestStatus.Lobby
         link?.let { scope.launch { mutex.withLock { it.sendLocked(reply) } } }
+    }
+
+    /**
+     * §14.6, §16.2 confere o saldo (pode esperar a leitura da carteira); sem saldo para a [stake], sai sozinho com o motivo
+     * "saldo insuficiente", informado aos dois lados (o anfitrião põe um robô no lugar).
+     */
+    private fun checkBalance(stake: Int) {
+        val current = link ?: return
+        scope.launch {
+            if (canAfford(stake)) return@launch
+            mutex.withLock {
+                if (link !== current) return@withLock
+                if (_status.value != GuestStatus.Invited && _status.value != GuestStatus.Lobby) return@withLock
+                _status.value = GuestStatus.Refused(refusalMessage(RefusalReason.INSUFFICIENT_BALANCE), RefusalReason.INSUFFICIENT_BALANCE)
+                _invite.value = null
+                current.sendLocked(InviteReply(false, RefusalReason.INSUFFICIENT_BALANCE))
+            }
+        }
     }
 
     /** §16.2 rotaciona a mesa (troca com o próximo não confirmado na [direction]). */
@@ -513,6 +531,8 @@ class GuestSession(
                 payload.rules?.let { _rules.value = it }
                 _roster.value = payload.roster
                 payload.seating?.let { _seating.value = it }
+                // §14.6, §16.2 entrada aprovada na escolha de posições: o mesmo teste de saldo do convite.
+                if (!payload.started && payload.seating != null && payload.rules != null) checkBalance(payload.rules.stake)
                 if (payload.started && payload.robots.isNotEmpty()) _robots.value = payload.robots
                 if (payload.started) {
                     // §16.5, §16.7 reingresso ou entrada no meio: a vista completa vem em seguida (e antes dela o fim de
@@ -542,17 +562,12 @@ class GuestSession(
                 _seating.value = payload.seating
                 _invite.value = payload
                 _status.value = GuestStatus.Invited
-                if (!canAfford(payload.rules.stake)) {
-                    // §14.6, §16.2 saldo menor que a aposta: recusa automática.
-                    _status.value = GuestStatus.Refused(refusalMessage(RefusalReason.INSUFFICIENT_BALANCE), RefusalReason.INSUFFICIENT_BALANCE)
-                    _invite.value = null
-                    link?.let { scope.launch { mutex.withLock { it.sendLocked(InviteReply(false, RefusalReason.INSUFFICIENT_BALANCE)) } } }
-                } else {
-                    // §16.2, §16.15 sem resposta em 10 s, aceita sozinho.
-                    scope.launch {
-                        delay(payload.timeoutMillis)
-                        mutex.withLock { replyInviteLocked(InviteReply(true)) }
-                    }
+                // §14.6, §16.2 saldo menor que a aposta: recusa automática (espera a leitura do saldo).
+                checkBalance(payload.rules.stake)
+                // §16.2, §16.15 sem resposta em 10 s, aceita sozinho.
+                scope.launch {
+                    delay(payload.timeoutMillis)
+                    mutex.withLock { replyInviteLocked(InviteReply(true)) }
                 }
             }
             is SeatingUpdate -> _seating.value = payload.seating

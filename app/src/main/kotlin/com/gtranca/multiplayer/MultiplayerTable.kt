@@ -91,7 +91,7 @@ interface MpCoins {
     suspend fun debit(stake: Int): Boolean
 
     /** §14.6, §16.2 o saldo deste aparelho cobre a aposta (senão o convite é recusado sozinho). */
-    fun canAfford(stake: Int): Boolean = true
+    suspend fun canAfford(stake: Int): Boolean = true
 
     /** Fim do jogo deste jogador: conta nas estatísticas e credita o que recebeu (uma vez por [gameId]). */
     suspend fun settle(gameId: String, rules: TableRules, result: GameResult, stake: Int, received: Int)
