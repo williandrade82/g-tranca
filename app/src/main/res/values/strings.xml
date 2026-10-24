@@ -142,6 +142,7 @@
     <string name="char_alternativo_motto">“Calma parceiro! A próxima carta pode mudar tudo!”</string>
     <string name="char_atleta_motto">“Agora é pra valer!”</string>
     <string name="coins_balance">Seu saldo: %1$d moedas</string>
+    <string name="table_pot_desc">Em jogo nesta mesa: %1$d moedas</string>
     <string name="stake_line">Aposta: %1$d moedas</string>
     <string name="stake_insufficient">Saldo insuficiente para esta aposta</string>
     <string name="create_stake">Aposta (moedas)</string>
