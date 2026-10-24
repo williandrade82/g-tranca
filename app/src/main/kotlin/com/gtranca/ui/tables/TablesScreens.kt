@@ -211,7 +211,7 @@ fun WifiButton(on: Boolean, onToggle: () -> Unit, tag: String = "tables-wifi") {
 }
 
 /**
- * §14.4 pílula de escolha dos participantes (docs/telas.md 3.2): grade de avatares, até 4 por linha — o jogador (sempre
+ * §14.4 pílula de escolha dos participantes (docs/telas.md 3.2): grade de avatares, até 6 por linha — o jogador (sempre
  * o primeiro e marcado), os jogadores próximos (ou "Recrutando", só com o Wi-Fi ligado) e os 4 robôs; até 3 marcados
  * além do jogador; mostra até 4 linhas e rola a partir da 5ª.
  */
@@ -302,10 +302,10 @@ private fun RowScope.ParticipantTile(avatar: Persona, name: String, checked: Boo
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
-                        .size(20.dp)
+                        .size(16.dp)
                         .background(GColors.Gold, androidx.compose.foundation.shape.CircleShape),
                     contentAlignment = Alignment.Center,
-                ) { Text("✓", color = GColors.Indigo, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                ) { Text("✓", color = GColors.Indigo, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
         }
         Text(
@@ -342,13 +342,13 @@ private fun RowScope.RecruitingTile() {
 }
 
 /** Diâmetro do avatar na grade de participantes. */
-private val PARTICIPANT_AVATAR = 56.dp
+private val PARTICIPANT_AVATAR = 42.dp
 
 /** Altura de cada linha da grade (avatar com aro + nome). */
-private val PARTICIPANT_TILE = 92.dp
+private val PARTICIPANT_TILE = 76.dp
 
-/** §14.4 até 4 avatares por linha (o jogador conta). */
-private const val PARTICIPANTS_PER_ROW = 4
+/** §14.4 até 6 avatares por linha (o jogador conta); em 360 dp cada coluna fica com ~53 dp. */
+private const val PARTICIPANTS_PER_ROW = 6
 
 /** §14.4 a pílula mostra até 4 linhas e rola a partir da 5ª. */
 private const val PARTICIPANT_ROWS_VISIBLE = 4
