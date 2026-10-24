@@ -34,7 +34,7 @@ Use estes nomes nos pedidos.
 | **Mão** | As cartas do jogador, em grade, com o seletor de ordem (Valor/Naipe e "separar 3 pretos e coringas") | mesa de jogo |
 | **Mesa** | O feltro verde com o monte, os mortos e o lixo | mesa de jogo |
 | **Verso da carta** | Cor do baralho do jogador + coroa no centro | monte, mãos viradas |
-| **Fundo dos perdedores** | Degradê vermelho escuro (embaixo) → transparente (em cima), que esmaece e reaparece em ciclo, atrás dos robôs que perderam | anúncio, fim de jogo |
+| **Fundo dos perdedores** | Degradê vermelho escuro (embaixo) → transparente (em cima), que esmaece e reaparece em ciclo, atrás dos robôs que perderam | fim de jogo |
 | **Chip de escolha** | Cápsula selecionável (selecionada: azul royal com borda dourada) | Mesas disponíveis, regras |
 | **Botão de Wi-Fi** | Botão com o símbolo de Wi-Fi (a mesma configuração **Wi-Fi do jogo** do Perfil); ligado, anuncia a presença do jogador e procura jogadores e mesas por perto (§16); desligado, nada de rede é usado | Mesas disponíveis, mesa de jogo |
 | **Banner "Multi player"** | Banner animado com "Multi" na 1ª linha e "player" na 2ª, no card de mesa de outro anfitrião | Mesas disponíveis |
@@ -58,7 +58,7 @@ Início ──► Mesas disponíveis (montagem; ⇄ Personalizar regra) ──Es
 Mesas disponíveis ──card de outro anfitrião──► pedido de entrada ──(aceito)──► Escolha sua posição ──► JOGO (multijogador)
 Início ──► Continuar (sessão multijogador) ──► reingresso na mesa ──► JOGO (multijogador)
 
-JOGO: mesa ─► anúncio da partida ─► pontos da partida ─► (próxima partida | anúncio do jogo ─► fim de jogo) ─► Início
+JOGO: mesa ─(batida: animação de 2 s)─► mesa final (Seguir) ─► pontos da partida ─► (próxima partida | fim de jogo) ─► Início
 ```
 
 Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/AppNavHost.kt`.
@@ -157,13 +157,18 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Regras:** §3 a §10 (jogada), §3.5 e §6.5 (3 vermelhos), §5 (lixo), §7 (canastras).
 **Tags:** `table-screen`, `table-scroll`, `score`, `seat-<n>`, `seat-hand-<n>`, `stock`, `mortos`, `discard-pile`, `discard-empty` (lixo vazio: lugar de uma carta com ícone de lixeira), `show-discard-pile` (contador sempre visível, mostra 0 com o lixo vazio), `action-bar`, `turn-status`, `hand`, `hand-card-<carta>`, `action-legend`, `action-resign`.
 
-### 3.9 Anúncio da partida / do jogo (`AnnouncementScreen`)
-**Objetivo:** dar o resultado antes dos números (§11, §13).
-**Conteúdo:** painel com moldura dourada; **coroa** pulsando quando o resultado é vitória; os robôs na pose de vencedor (confete) e os perdedores na de perdedor sobre o **fundo dos perdedores**; título do resultado, legenda e botão (**Ver pontos** / **Ver resultado**); botão **Ver a mesa** (revisão) e **Desistir** no topo.
-**Tags:** `announcement`, `announcement-crown`, `announcement-cast`, `announcement-title`.
+### 3.9 Animação da batida (sobre a mesa de jogo)
+**Objetivo:** marcar a batida (§11.1) sem sair da mesa. Substitui o antigo anúncio da partida/do jogo (`AnnouncementScreen`, removido).
+**Conteúdo:** camada transparente sobre a mesa, que fica ao fundo um pouco escurecida; nada cobre a tela de forma opaca.
+- **Batida do lado do jogador** (ele ou o parceiro): confete caindo pela tela toda; mensagem **"Você bateu!"** (foi ele) ou **"Sua dupla bateu!"** (foi o parceiro, em duplas). Som de vitória.
+- **Batida do adversário:** a **borda da tela** pisca em vermelho, num pulso suave; mensagem **"Você perdeu"** (individual) ou **"Sua dupla perdeu"** (duplas). Som de derrota.
+- Dura **2 s** e some sozinha; um toque em qualquer lugar a retira antes. Com as animações do Android desligadas: sem movimento, só a mensagem e o escurecimento. Os sons respeitam o botão de som.
+- **Fim sem batida** (§11.2, monte esgotado ou recusa da compra): sem animação. **Desistência** (§13.1) vai ao fim de jogo como antes.
+- **Multijogador:** cada aparelho mostra no seu tempo (§16.11).
+**Tags:** `go-out-overlay`, `go-out-message`.
 
 ### 3.10 Pontos da partida (`RoundSummaryScreen`)
-**Objetivo:** detalhar a pontuação da partida (§12) por lado: cartas na mesa e na mão (3 vermelhos, canastras, batida, morto, cartas por valor), subtotais, total da partida e acumulado, com o rosto vencedor/perdedor/pensador por lado. **Colunas:** item | e, para cada lado, **Qtd** e **Pontos** (a quantidade de cartas numa coluna própria, sem parênteses; linhas sem quantidade — batida, morto não pego, subtotais e totais — deixam a de quantidade vazia). No título de cada lado, o avatar e, abaixo, o **ícone de 3 cartas** (na cor do baralho do perfil para o seu lado, cinza-claro para o adversário) junto do nome do lado ("Nós"/"Eles" ou o nome no individual). Números com largura fixa; cabe em 360 dp com fonte 1,3×. Tags: `count-<item>-<lado>`. Aviso de empate quando for o caso. Botão **Próxima partida** ou **Continuar** (fim do jogo). Sem desistir (decisão do usuário).
+**Objetivo:** detalhar a pontuação da partida (§12) por lado: cartas na mesa e na mão (3 vermelhos, canastras, batida, morto, cartas por valor), subtotais, total da partida e acumulado, com o rosto vencedor/perdedor/pensador por lado. **Colunas:** item | e, para cada lado, **Qtd** e **Pontos** (a quantidade de cartas numa coluna própria, sem parênteses; linhas sem quantidade — batida, morto não pego, subtotais e totais — deixam a de quantidade vazia). No título de cada lado, o avatar e, abaixo, o **ícone de 3 cartas** (na cor do baralho do perfil para o seu lado, cinza-claro para o adversário) junto do nome do lado ("Nós"/"Eles" ou o nome no individual). Números com largura fixa; cabe em 360 dp com fonte 1,3×. Tags: `count-<item>-<lado>`. Aviso de empate quando for o caso. Botão **Próxima partida** ou **Continuar** (fim do jogo: vai direto ao *Fim de jogo*, 3.11). Sem desistir (decisão do usuário).
 **Tags:** `round-summary`, `next-round`, `show-final`, `tie-notice`.
 
 ### 3.11 Fim de jogo / resultado final (`GameOverScreen`)
@@ -172,7 +177,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Tags:** `game-over`, `outcome-ribbon`, `game-over-cast`, `coins-result`, `game-over-table`, `back-home`.
 
 ### 3.12 Revisão da mesa final
-A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações dá lugar a **Continuar**, que volta ao anúncio. Tag `review-continue`.
+Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jogo vendo a **mesa final**, "só para olhar": a barra de ações mostra só **Seguir**, que vai direto a *Pontos da partida* (3.10). Desistir continua pela engrenagem. No multijogador, o Seguir do anfitrião segue para os pontos e, de lá, a próxima partida, como antes (§16.11). Tag `final-table-continue`.
 
 ### 3.13 Escolha sua posição (`SeatPickerScreen`)
 **Objetivo:** cada jogador escolhe o assento (§16.2) e o jogo começa quando todos confirmam. Imagem de referência: `docs/telas/escolha-posicao-multiplayer.png`.
@@ -244,7 +249,7 @@ Todos levam o **cabeçalho de marca**.
 |---|---|---|---|
 | Começar um novo jogo? | mensagem (perigo) | Início, "Novo jogo" com jogo salvo | explica que o jogo salvo vira desistência |
 | Voltar ao início? | mensagem (aviso) | voltar durante o jogo | confirma sair |
-| Desistir do jogo? | mensagem (perigo) | bandeira (menu de engrenagem) / anúncio | §13.1; mostra as **apostas em jogo** (aposta de cada jogador, total em jogo, quanto o jogador perde e que deixa de concorrer ao prêmio) e os **pontos** da mesa (placar de cada lado, com os nomes de quem está nele); cancelar volta ao estado exato |
+| Desistir do jogo? | mensagem (perigo) | bandeira (menu de engrenagem) | §13.1; mostra as **apostas em jogo** (aposta de cada jogador, total em jogo, quanto o jogador perde e que deixa de concorrer ao prêmio) e os **pontos** da mesa (placar de cada lado, com os nomes de quem está nele); cancelar volta ao estado exato |
 | **Convite** | mensagem | jogador próximo escolhido na montagem de outro (§16.2), em qualquer tela fora de um jogo | "Mesa de <anfitrião>" e os participantes (avatares e nomes, humanos e robôs), contagem de **10 s**; **Aceitar** / **Recusar**; sem resposta, aceita sozinho e abre *Escolha sua posição*. Saldo menor que a aposta: recusa automática com aviso. Tags `invite`, `invite-accept`, `invite-refuse`, `invite-countdown` |
 | **Desconectar a mesa?** | mensagem (aviso) | anfitrião desliga o botão de Wi-Fi na mesa de jogo com humanos (3.14) | "Os jogadores por perto serão substituídos por robôs e o jogo segue só neste celular."; **Desconectar** / **Cancelar** (no convidado, o botão abre *Desistir da mesa?*) |
 | **Recusa** | mensagem (aviso) | convite ou pedido de entrada recusado (§16.2) | quem recusou e o **motivo** (recusou o convite, saldo insuficiente, fora do alcance, o anfitrião recusou, mesa cheia); **OK**. No anfitrião, aviso breve na escolha de posições |
@@ -304,7 +309,7 @@ Tiradas em 2026-10-19 no emulador Pixel 4 (API 33, 1080×2280), versão 0.85, da
 | 3.13 Escolha sua posição (**referência de design**, ainda não implementada) | `escolha-posicao-multiplayer.png` |
 
 **Sem captura (a fazer depois)** — dependem de situações que o emulador não força por toques:
-- 3.9 Anúncio da partida / do jogo, 3.10 Pontos da partida, 3.12 Revisão da mesa final e a variação de **vitória** do Fim de jogo: exigem terminar uma partida jogando. Desistir leva direto ao Fim de jogo (derrota), sem passar pelo anúncio. Caminho sugerido: adaptar [EndScreensTest.kt](../app/src/androidTest/kotlin/com/gtranca/EndScreensTest.kt), que monta essas telas com dados fixos.
+- 3.9 Animação da batida, 3.10 Pontos da partida, 3.12 Revisão da mesa final e a variação de **vitória** do Fim de jogo: exigem terminar uma partida jogando. Desistir leva direto ao Fim de jogo (derrota), sem passar pela mesa final. Caminho sugerido: adaptar [EndScreensTest.kt](../app/src/androidTest/kotlin/com/gtranca/EndScreensTest.kt), que monta essas telas com dados fixos.
 - Modais *Onde baixar?*, *Como usar o descarte?* e *Recusar a compra?*: dependem da mão sorteada (ou do monte acabar sem morto).
 - Faixa de troca de 3 vermelho de outro assento e pulso/selo de canastra (animações curtas).
 - Variações: mesa com "saldo insuficiente", Perfil com foto, Estatísticas com partidas jogadas.
