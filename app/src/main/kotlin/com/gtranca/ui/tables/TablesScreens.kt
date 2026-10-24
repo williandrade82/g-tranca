@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -210,84 +211,146 @@ fun WifiButton(on: Boolean, onToggle: () -> Unit, tag: String = "tables-wifi") {
 }
 
 /**
- * §14.4 pílula de escolha dos participantes: o jogador (sempre o primeiro e marcado), os jogadores próximos (ou
- * "Recrutando", só com o Wi-Fi ligado) e os 4 robôs; até 3 marcados além do jogador; mostra até 4 linhas e rola.
+ * §14.4 pílula de escolha dos participantes (docs/telas.md 3.2): grade de avatares, até 4 por linha — o jogador (sempre
+ * o primeiro e marcado), os jogadores próximos (ou "Recrutando", só com o Wi-Fi ligado) e os 4 robôs; até 3 marcados
+ * além do jogador; mostra até 4 linhas e rola a partir da 5ª.
  */
 @Composable
 private fun ParticipantsPill(state: TableSetupUiState, self: Persona, wifiOn: Boolean, onToggle: (Pick) -> Unit) {
     val shape = RoundedCornerShape(Corner.md)
     val level = BotLevel.of(state.difficulty)
+    val tiles = buildList<@Composable RowScope.() -> Unit> {
+        add { ParticipantTile(self, self.firstName, checked = true, enabled = false, tag = "participant-self") {} }
+        if (wifiOn) {
+            if (state.nearby.isEmpty()) add { RecruitingTile() }
+            state.nearby.forEach { player ->
+                val pick = Pick.Near(player.key)
+                add {
+                    ParticipantTile(
+                        Persona(player.name, color = player.key.hashCode().mod(Persona.COLORS)),
+                        player.name,
+                        checked = state.isPicked(pick),
+                        enabled = true,
+                        tag = "participant-near-${player.key}",
+                    ) { onToggle(pick) }
+                }
+            }
+        }
+        BotProfile.entries.forEach { profile ->
+            val pick = Pick.Bot(profile)
+            add {
+                ParticipantTile(
+                    Persona(profile.botName, "", BotCharacter(profile, level)),
+                    profile.botName,
+                    checked = state.isPicked(pick),
+                    enabled = true,
+                    tag = "participant-bot-${profile.code}",
+                ) { onToggle(pick) }
+            }
+        }
+    }
     Column(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(GColors.Indigo, shape)
             .border(1.dp, GColors.Gold.copy(alpha = 0.6f), shape)
-            .heightIn(max = PARTICIPANT_ROW * PARTICIPANT_ROWS_VISIBLE)
+            .heightIn(max = PARTICIPANT_TILE * PARTICIPANT_ROWS_VISIBLE + Spacing.sm * 2)
             .verticalScroll(rememberScrollState())
+            .padding(vertical = Spacing.sm)
             .testTag("participants")
             .tourTarget("participants"),
     ) {
-        ParticipantRow(self, self.firstName, checked = true, enabled = false, tag = "participant-self") {}
-        if (wifiOn) {
-            if (state.nearby.isEmpty()) {
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = PARTICIPANT_ROW).padding(horizontal = Spacing.md).testTag("participant-recruiting"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp), color = GColors.Gold, strokeWidth = 2.dp)
-                    Spacer(Modifier.width(Spacing.md))
-                    Text(stringResource(R.string.tables_recruiting), color = GColors.Steel, style = MaterialTheme.typography.bodyLarge)
+        tiles.chunked(PARTICIPANTS_PER_ROW).forEach { row ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.xs)) {
+                row.forEach { it() }
+                repeat(PARTICIPANTS_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/**
+ * Um avatar da pílula de participantes: imagem em círculo e o nome embaixo. Marcado: aro dourado grosso e um ✓ dourado
+ * no canto; desmarcado: aro fino e a imagem um pouco apagada.
+ */
+@Composable
+private fun RowScope.ParticipantTile(avatar: Persona, name: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .weight(1f)
+            .heightIn(min = PARTICIPANT_TILE)
+            .clip(RoundedCornerShape(Corner.sm))
+            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
+            .padding(vertical = Spacing.xs)
+            .testTag(tag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(PARTICIPANT_AVATAR + 8.dp)) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(PARTICIPANT_AVATAR + 6.dp)
+                    .border(if (checked) 3.dp else 1.dp, GColors.Gold.copy(alpha = if (checked) 1f else 0.4f), androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(PARTICIPANT_AVATAR).then(if (checked) Modifier else Modifier.alpha(0.55f))) {
+                    PersonaAvatar(avatar, PARTICIPANT_AVATAR)
                 }
             }
-            state.nearby.forEach { player ->
-                val pick = Pick.Near(player.key)
-                ParticipantRow(
-                    Persona(player.name, color = player.key.hashCode().mod(Persona.COLORS)),
-                    player.name,
-                    checked = state.isPicked(pick),
-                    enabled = true,
-                    tag = "participant-near-${player.key}",
-                ) { onToggle(pick) }
+            if (checked) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(20.dp)
+                        .background(GColors.Gold, androidx.compose.foundation.shape.CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) { Text("✓", color = GColors.Indigo, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             }
         }
-        BotProfile.entries.forEach { profile ->
-            val pick = Pick.Bot(profile)
-            ParticipantRow(
-                Persona(profile.botName, "", BotCharacter(profile, level)),
-                profile.botName,
-                checked = state.isPicked(pick),
-                enabled = true,
-                tag = "participant-bot-${profile.code}",
-            ) { onToggle(pick) }
-        }
+        Text(
+            name,
+            Modifier.padding(horizontal = 2.dp),
+            color = if (checked) GColors.Champagne else GColors.Steel,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
-/** Uma linha da pílula de participantes: medalhão, nome e a marca (caixa de seleção). */
+/** "Recrutando" (Wi-Fi ligado e ninguém por perto): círculo girando no lugar do avatar, logo depois do jogador. */
 @Composable
-private fun ParticipantRow(avatar: Persona, name: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = PARTICIPANT_ROW)
-            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
-            .padding(horizontal = Spacing.md)
-            .testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
+private fun RowScope.RecruitingTile() {
+    Column(
+        Modifier.weight(1f).heightIn(min = PARTICIPANT_TILE).padding(vertical = Spacing.xs).testTag("participant-recruiting"),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        PersonaAvatar(avatar, 40.dp)
-        Spacer(Modifier.width(Spacing.md))
-        Text(name, Modifier.weight(1f), color = GColors.Champagne, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        // A caixa só desenha: o toque é da linha toda (alvo maior).
-        androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = null, enabled = enabled || checked)
+        Box(Modifier.size(PARTICIPANT_AVATAR + 8.dp), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.CircularProgressIndicator(Modifier.size(PARTICIPANT_AVATAR - 8.dp), color = GColors.Gold, strokeWidth = 2.dp)
+        }
+        Text(
+            stringResource(R.string.tables_recruiting),
+            color = GColors.Steel,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
-/** Altura de cada linha da pílula de participantes (alvo de toque ≥ 48 dp). */
-private val PARTICIPANT_ROW = 56.dp
+/** Diâmetro do avatar na grade de participantes. */
+private val PARTICIPANT_AVATAR = 56.dp
 
-/** §14.4 a pílula mostra até 4 linhas e rola se houver mais. */
+/** Altura de cada linha da grade (avatar com aro + nome). */
+private val PARTICIPANT_TILE = 92.dp
+
+/** §14.4 até 4 avatares por linha (o jogador conta). */
+private const val PARTICIPANTS_PER_ROW = 4
+
+/** §14.4 a pílula mostra até 4 linhas e rola a partir da 5ª. */
 private const val PARTICIPANT_ROWS_VISIBLE = 4
 
 /** §14.4 opções da mesa (as da antiga "Criar mesa"): modo, dificuldade dos robôs, aposta, regras e pontuação-alvo. */

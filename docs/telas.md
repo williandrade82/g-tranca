@@ -91,11 +91,11 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Objetivo:** montar a mesa (§14.4) — escolher quem joga e as regras — ou entrar na mesa de outro anfitrião por perto (§16.2). Absorve a antiga *Criar mesa*; *Regras da mesa* e *Criar mesa* deixaram de existir.
 **De cima para baixo (rola):**
 1. Título "Mesas disponíveis", o ícone do tour e o **botão de Wi-Fi** (configuração **Wi-Fi do jogo**, a mesma do Perfil: tocar alterna e grava; ao ligar, passa pelo modal *Procurar mesas por perto*; recusar deixa desligado). Sem linha de saldo (só o do topo, seção 0).
-2. **Pílula de escolha dos participantes:** em linhas, cada uma com o medalhão (foto do perfil; inicial só para quem não tem foto; robô no círculo) e o nome:
+2. **Pílula de escolha dos participantes:** uma **grade de avatares**, até **4 por linha** (o jogador conta), um ao lado do outro; cada avatar é a imagem **em círculo** (foto do perfil; inicial só para quem não tem foto ou enquanto a foto do jogador próximo não chegou; robô no círculo) com o **nome abaixo** (uma linha, "…" se não couber). **Marcado:** aro dourado grosso e um **✓ dourado** no canto; **desmarcado:** aro fino e a imagem um pouco apagada. A ordem:
    - **o jogador**, sempre o primeiro e sempre com aparência de **marcado** (não desmarca);
-   - com o Wi-Fi ligado, cada **jogador próximo** encontrado (aparecem e somem conforme a busca); sem nenhum, a linha **"Recrutando"** (não selecionável). Com o Wi-Fi desligado, essa parte não aparece;
+   - com o Wi-Fi ligado, cada **jogador próximo** encontrado (aparecem e somem conforme a busca); sem nenhum, o avatar **"Recrutando"** (círculo girando, não selecionável), logo depois do jogador. Com o Wi-Fi desligado, essa parte não aparece;
    - os **4 robôs** (Bolt, Domino, Turbo, Zen).
-   Tocar numa linha marca ou desmarca; no máximo **3** marcados além do jogador (o 4º toque não marca). A pílula mostra até **4 linhas** e rola se houver mais.
+   Tocar numa linha marca ou desmarca; no máximo **3** marcados além do jogador (o 4º toque não marca). A pílula mostra até **4 linhas** de avatares e rola a partir da 5ª.
 3. **Mesas de outros anfitriões** (só com o Wi-Fi ligado): card com o **banner "Multi player"**, "Mesa de <anfitrião>" e a marca "jogo em andamento" quando for o caso. Aparecem enquanto a mesa está na escolha de posições com algum robô (ou com assento aberto no meio do jogo, §16.7). Tocar envia o **pedido de entrada**; aceito pelo anfitrião, abre *Escolha sua posição* (3.13). As regras, a aposta e o nível aparecem lá; saldo menor que a aposta é avisado lá (só pode sair).
 4. **Opções da mesa** (as da antiga *Criar mesa*, sempre preenchidas com a última configuração gravada):
    - **Modo** (Individual / Duplas): com **3 ou 4** participantes marcados (contando o jogador), fica em **Duplas** e Individual desabilitado; com **1 ou 2**, os dois habilitados.
