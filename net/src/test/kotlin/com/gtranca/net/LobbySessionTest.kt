@@ -6,11 +6,14 @@ import com.gtranca.engine.model.Seat
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -26,13 +29,12 @@ class LobbySessionTest {
 
     private class Table(val network: MemoryNetwork, val host: HostSession, val tokens: MutableList<String>)
 
-    private suspend fun TestScope.table(others: List<Participant>, rules: TableRules = rules()): Table {
-        val network = MemoryNetwork()
+    private suspend fun TestScope.table(others: List<Participant>, rules: TableRules = rules(), network: MemoryNetwork = MemoryNetwork()): Table {
         val tokens = mutableListOf<String>()
         var n = 0
         val host = HostSession(
             network.transport(), "m", rules, "Ana", newToken = { "tok-${n++}-secreto".also { tokens += it } },
-            lobby = LobbySetup(others, pool, seed = 11),
+            lobby = LobbySetup(others, pool, seed = SEED),
         )
         host.open(sessionScope)
         runCurrent()
@@ -243,7 +245,19 @@ class LobbySessionTest {
         advanceTimeBy(START_DELAY_MILLIS + 1)
         runCurrent()
         t.host.successors.value shouldBe listOf(bia.playerId, caio.playerId)
-        val seats = t.host.goOffline()
+        // Bia guarda o estado completo (é a 1ª sucessora): sem o aviso, ela assumiria quando a mesa sumisse.
+        val match = com.gtranca.engine.startMatch(GameMode.DUPLAS, 1000, kotlin.random.Random(1), RuleSet.DEFAULT)
+        t.host.sendSuccessorState(bia.playerId, SuccessorState(1, match, emptyList(), emptyList(), t.host.membersForSuccessor(), null, t.host.nextPlayerId())) shouldBe true
+        runCurrent()
+        bia.holdsSuccessorState shouldBe true
+        // A primeira tentativa do aviso se perde: o reenvio entrega antes de a mesa sumir.
+        var lost = 0
+        t.network.tap = { d -> if (d.bytes.decodeToString().contains("\"closed\"") && lost++ == 0) emptyList() else listOf(d) }
+        val offline = sessionScope.async { t.host.goOffline() }
+        advanceTimeBy(ReliableLink.RESEND_AFTER_MILLIS * 3)
+        runCurrent()
+        val seats = offline.await()
+        lost shouldBeGreaterThan 0
         seats shouldBe mapOf(bia.seat!! to bia.playerId, caio.seat!! to caio.playerId)
         runCurrent()
         // §16.10 não se aplica: a mesa foi encerrada de propósito.
@@ -277,6 +291,70 @@ class LobbySessionTest {
         caio.status.value shouldBe GuestStatus.Playing
         caio.seat shouldBe Seat(1)
         host.robots[0] shouldBe "bolt"
+    }
+
+    private companion object {
+        const val SEED = 987654321987L
+    }
+
+    @Test
+    fun `§16_4 §16_2 nenhuma mensagem da sala leva a semente da mesa nem o token de outro jogador`() = runTest {
+        val network = MemoryNetwork()
+        val sent = mutableListOf<Delivery>()
+        network.tap = { sent += it; listOf(it) }
+        val t = table(listOf(nearby("k-bia", "Bia"), nearby("k-caio", "Caio")), network = network)
+        val bia = invitee(t, "k-bia", "Bia")
+        val caio = invitee(t, "k-caio", "Caio")
+        bia.acceptInvite(); caio.acceptInvite()
+        runCurrent()
+        t.host.rotate(RotateDirection.RIGHT)
+        caio.rotate(RotateDirection.LEFT)
+        runCurrent()
+        t.host.confirmPosition(); bia.confirmSeat(); caio.confirmSeat()
+        runCurrent()
+        advanceTimeBy(START_DELAY_MILLIS + 1)
+        runCurrent()
+        bia.status.value shouldBe GuestStatus.Playing
+        val tokenOf = mapOf(bia.playerId to bia.token!!, caio.playerId to caio.token!!)
+        sent.size shouldBeGreaterThan 10
+        sent.forEach { d ->
+            val text = d.bytes.decodeToString()
+            text shouldNotContain SEED.toString()
+            text shouldNotContain t.tokens[0] // o do anfitrião nunca sai
+            // Cada token só no Welcome do próprio dono.
+            tokenOf.forEach { (id, token) ->
+                if (text.contains(token)) text shouldContain "\"you\":$id"
+            }
+        }
+    }
+
+    @Test
+    fun `§16_2 sair ou cair nos 2 s antes do inicio - robo assume e o convidado nao entra no jogo`() = runTest {
+        val network = MemoryNetwork()
+        val t = table(listOf(nearby("k-bia", "Bia"), nearby("k-caio", "Caio")), network = network)
+        val bia = invitee(t, "k-bia", "Bia")
+        val caioTransport = network.transport()
+        val caio = GuestSession(caioTransport, "Caio").also { it.join(sessionScope, "m", inviteKey = "k-caio") }
+        runCurrent()
+        bia.acceptInvite(); caio.acceptInvite()
+        runCurrent()
+        t.host.confirmPosition(); bia.confirmSeat(); caio.confirmSeat()
+        runCurrent()
+        t.host.seating.value!!.locked shouldBe true
+        val biaSeat = bia.seat!!
+        val caioSeat = caio.seat!!
+        bia.leave()
+        network.drop(caioTransport.id)
+        runCurrent()
+        advanceTimeBy(START_DELAY_MILLIS + 1)
+        runCurrent()
+        t.host.gameStart.value shouldBe emptyMap()
+        t.host.robots.size shouldBe 3
+        (biaSeat.index in t.host.robots) shouldBe true
+        (caioSeat.index in t.host.robots) shouldBe true
+        (bia.status.value == GuestStatus.Playing) shouldBe false
+        (caio.status.value == GuestStatus.Playing) shouldBe false
+        t.host.roster.value.map { it.id } shouldBe listOf(0)
     }
 
     private object Json {

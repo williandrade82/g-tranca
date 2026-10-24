@@ -144,14 +144,15 @@ class SeatingRoom private constructor(
     /**
      * §16.2 o humano [playerId] saiu antes do início (recusou o convite, não estava ao alcance, saldo insuficiente ou
      * abandonou): um robô sorteado entre os não usados assume o lugar. Se ele era o último humano sem confirmar, as
-     * posições travam. `null` se ele não está na mesa ou já travou.
+     * posições travam. Com as posições já travadas (os 2 s antes do início, ainda antes do início) o robô assume o lugar
+     * confirmado e a sala continua travada. `null` se ele não está na mesa.
      */
     fun replaceWithRobot(playerId: Int): SeatingRoom? {
         val seat = state.seatOf(playerId) ?: return null
-        if (state.locked) return null
         val persona = SeatingState.drawPersona(state.occupants, personaPool, nextRandom())
         val list = state.occupants.toMutableList().also { it[seat.index] = SeatOccupant.Robot(persona) }
-        return with(state.copy(occupants = list, confirmed = state.confirmed - seat.index).lockIfReady(), drew = true)
+        val confirmed = if (state.locked) state.confirmed else state.confirmed - seat.index
+        return with(state.copy(occupants = list, confirmed = confirmed).lockIfReady(), drew = true)
     }
 
     /**

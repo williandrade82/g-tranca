@@ -582,22 +582,32 @@ class HostSession(
      * aposta da opção 2 de §16.8 (aplicadas fora do `:net`). Mesa só com robôs: vazio.
      */
     suspend fun goOffline(): Map<Seat, Int> {
-        val remote = mutex.withLock {
+        val (remote, links) = mutex.withLock {
             val seats = members.values.filter { it.info.id != hostId && it.info.seat != null }.associate { it.info.seat!! to it.info.id }
             successorIds.forEach { members[it]?.link?.sendLocked(SuccessorDrop) }
             broadcastLocked(TableClosed(CloseReason.HOST_OFFLINE))
-            seats
+            seats to members.values.mapNotNull { it.link }
+        }
+        // §16.10 o aviso precisa chegar antes de a mesa sumir (senão o sucessor assumiria): espera a confirmação dentro do
+        // orçamento de reenvio de §16.15 (1 s, até 5 vezes).
+        var waited = 0L
+        while (waited < ReliableLink.RESEND_AFTER_MILLIS * (ReliableLink.MAX_RESENDS + 1)) {
+            if (mutex.withLock { links.all { it.allConfirmed } }) break
+            delay(OFFLINE_POLL_MILLIS)
+            waited += OFFLINE_POLL_MILLIS
         }
         close()
         return remote
     }
 
     private suspend fun applySeatingLocked(next: SeatingRoom) {
+        val wasLocked = seatingRoom?.state?.locked == true
         seatingRoom = next
         syncSeatsLocked()
         publishRosterLocked(broadcast = true)
         broadcastLocked(SeatingUpdate(next.state))
-        if (next.state.locked) lockLocked() else advertiseLocked()
+        // Só na transição: uma troca depois de travar (abandono nos 2 s) não reinicia a contagem nem o início.
+        if (next.state.locked && !wasLocked) lockLocked() else advertiseLocked()
     }
 
     private suspend fun rotateLocked(playerId: Int, direction: RotateDirection): Boolean {
@@ -1206,6 +1216,9 @@ class HostSession(
 
         /** Folga da rede depois do prazo do convite antes de o anfitrião dar o convite como aceito (§16.2, sem resposta). */
         const val INVITE_REPLY_GRACE_MILLIS: Long = 2_000
+
+        /** Intervalo da verificação da entrega do aviso de Wi-Fi desligado (técnico, não é regra). */
+        const val OFFLINE_POLL_MILLIS: Long = 100
 
         /**
          * §16.7 "Wi-Fi ligado no meio de um jogo só com robôs": o jogador vira anfitrião da mesa (o jogo não muda) e pode

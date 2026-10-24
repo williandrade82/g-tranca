@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 
 class SeatingRoomTest {
@@ -93,6 +94,17 @@ class SeatingRoomTest {
         s.state.locked shouldBe true // só restava ele sem confirmar
         // Determinístico pela semente.
         room(h(0), r("bolt"), h(1), r("zen")).confirm(0)!!.replaceWithRobot(1)!!.state shouldBe s.state
+    }
+
+    @Test
+    fun `§16_2 abandono nos 2 s depois de travar - robo assume o lugar confirmado e a sala continua travada`() {
+        val s = room(h(0), r("bolt"), h(1), r("zen")).confirm(0)!!.confirm(1)!!
+        s.state.locked shouldBe true
+        val after = s.replaceWithRobot(1)!!.state
+        after.locked shouldBe true
+        after.confirmed shouldBe setOf(0, 1, 2, 3)
+        after.occupants[2].shouldBeInstanceOf<SeatOccupant.Robot>()
+        after.humans shouldBe listOf(0)
     }
 
     @Test

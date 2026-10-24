@@ -97,7 +97,10 @@ interface LocalTransport {
 
     suspend fun disconnect(endpoint: EndpointId)
 
-    /** §16.2 anuncia a presença deste jogador (substitui o anúncio de presença anterior). */
+    /**
+     * §16.2 anuncia a presença deste jogador (substitui o anúncio de presença anterior). A presença e a mesa
+     * ([advertise]) **se excluem**: quem abre uma mesa deixa de anunciar presença (no Nearby há um anúncio por vez).
+     */
     suspend fun advertisePresence(presence: PresenceAdvert) {}
 
     /** §16.2 deixa de anunciar a presença (entrou num jogo ou desligou o Wi-Fi do jogo). */
