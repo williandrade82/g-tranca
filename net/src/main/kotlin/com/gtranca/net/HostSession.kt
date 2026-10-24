@@ -689,15 +689,9 @@ class HostSession(
         pending.remove(p.link.endpoint)
         member.link = p.link
         updateLocked(member) { it.copy(connected = true) }
-        publishRosterLocked(broadcast = true)
-        p.link.sendLocked(Invite(hostId, member.info.id, rules, _roster.value, _seating.value!!))
+        // §16.2 o recrutado já aceitou na montagem: entra direto na escolha de posições (sem novo convite).
+        acceptInviteLocked(member)
         sharePhotosLocked(member, p.link, hello.photo)
-        advertiseLocked()
-        // §16.2, §16.15 sem resposta, o convite é aceito sozinho (o convidado aceita no prazo; aqui, a folga da rede).
-        scope.launch {
-            delay(INVITE_TIMEOUT_MILLIS + INVITE_REPLY_GRACE_MILLIS)
-            mutex.withLock { if (member.inviteKey != null && member.link != null && members.containsKey(member.info.id)) acceptInviteLocked(member) }
-        }
     }
 
     private suspend fun acceptInviteLocked(member: Member) {
@@ -705,7 +699,7 @@ class HostSession(
         member.inviteKey = null
         syncSeatsLocked()
         publishRosterLocked(broadcast = false)
-        member.link?.sendLocked(Welcome(member.token, member.info.id, null, _roster.value, seating = _seating.value))
+        member.link?.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, seating = _seating.value))
         broadcastLocked(RosterUpdate(_roster.value), except = member)
         advertiseLocked()
     }
@@ -1218,8 +1212,6 @@ class HostSession(
         /** Mesa antiga: o anfitrião ocupa a posição 1 (na mesa montada ele escolhe, §16.2). */
         val HOST_SEAT = Seat(0)
 
-        /** Folga da rede depois do prazo do convite antes de o anfitrião dar o convite como aceito (§16.2, sem resposta). */
-        const val INVITE_REPLY_GRACE_MILLIS: Long = 2_000
 
         /** Intervalo da verificação da entrega do aviso de Wi-Fi desligado (técnico, não é regra). */
         const val OFFLINE_POLL_MILLIS: Long = 100

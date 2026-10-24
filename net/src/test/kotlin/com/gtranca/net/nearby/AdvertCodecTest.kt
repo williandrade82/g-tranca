@@ -90,4 +90,15 @@ class AdvertCodecTest {
         AdvertCodec.decode(bytes) shouldBe null // a presença não aparece como mesa
         AdvertCodec.decodePresence(AdvertCodec.encodePresence(PresenceAdvert("k1", "Ana"))) shouldBe PresenceAdvert("k1", "Ana")
     }
+
+    @Test
+    fun `§16_2 presenca com recrutado por e 3 convites imediatos cabe no limite`() {
+        val keys = List(3) { newPresenceKey(java.util.Random(it.toLong() + 10)) }
+        val presence = PresenceAdvert(newPresenceKey(java.util.Random(1)), "Maria Conceição 😀 ".repeat(10), recruitedBy = newPresenceKey(java.util.Random(2)), inviting = keys)
+        val bytes = AdvertCodec.encodePresence(presence)
+        bytes.size shouldBeLessThanOrEqual AdvertCodec.MAX_BYTES
+        val back = AdvertCodec.decodePresence(bytes)!!
+        back.copy(name = presence.name) shouldBe presence
+        presence.name shouldStartWith back.name
+    }
 }

@@ -56,6 +56,10 @@ data class PresenceAdvert(
     val name: String,
     /** §16.2 aviso de "saindo" (Wi-Fi do jogo desligando): quem vê tira a [key] da lista na hora. */
     val leaving: Boolean = false,
+    /** §16.2 recrutado (convite pendente ou aceito) pelo anfitrião desta chave: "Recrutado" para os outros anfitriões. */
+    val recruitedBy: String? = null,
+    /** §16.2 chaves que este jogador (como anfitrião) marcou e ainda não responderam: o convite imediato (até 3). */
+    val inviting: List<String> = emptyList(),
 )
 
 /** §16.2 chave de presença nova (6 caracteres, cabe no anúncio). Não identifica o jogador fora desta sessão de busca. */

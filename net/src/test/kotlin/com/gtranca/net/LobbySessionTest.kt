@@ -67,23 +67,17 @@ class LobbySessionTest {
     }
 
     @Test
-    fun `§16_2 convite aceito, rotacao vista por todos, confirmacao trava e o jogo comeca 2 s depois`() = runTest {
+    fun `§16_2 recrutado que aceitou entra direto na escolha, rotacao vista por todos, confirmacao trava e o jogo comeca 2 s depois`() = runTest {
         val t = table(listOf(nearby("k-bia", "Bia"), Participant.Robot("zen")))
         // O convidado aparece na sala desde a montagem; a mesa anuncia a chave dele.
         t.host.roster.value.map { it.name to it.invited } shouldBe listOf("Ana" to false, "Bia" to true)
         t.network.adverts().single().invited shouldBe listOf("k-bia")
         val bia = invitee(t, "k-bia", "Bia")
-        bia.status.value shouldBe GuestStatus.Invited
-        val invite = bia.invite.value.shouldNotBeNull()
-        invite.rules shouldBe t.host.rules
-        invite.seating.occupants.take(3) shouldBe listOf(SeatOccupant.Human(0), SeatOccupant.Human(1), SeatOccupant.Robot("zen"))
-        // §16.2 o convite (e a sala) nunca leva o token de ninguém.
-        t.tokens.forEach { Json.encode(invite) shouldNotContain it }
-        bia.acceptInvite()
-        runCurrent()
+        // §16.2 aceitou na montagem: sem novo convite, direto à escolha de posições.
         bia.status.value shouldBe GuestStatus.Lobby
+        bia.seating.value!!.occupants.take(3) shouldBe listOf(SeatOccupant.Human(0), SeatOccupant.Human(1), SeatOccupant.Robot("zen"))
         bia.token shouldBe t.tokens[1]
-        bia.rules.value shouldBe t.host.rules // recebidas uma vez, no convite
+        bia.rules.value shouldBe t.host.rules // recebidas uma vez, na entrada
 
         // §16.2 o anfitrião também escolhe posição: rotaciona e troca com o robô à esquerda (assento 3).
         t.host.rotate(RotateDirection.LEFT) shouldBe true
@@ -115,40 +109,7 @@ class LobbySessionTest {
     }
 
     @Test
-    fun `§16_2 §16_15 convite sem resposta e aceito sozinho em 10 s`() = runTest {
-        val t = table(listOf(nearby("k-bia", "Bia")))
-        val bia = invitee(t, "k-bia", "Bia")
-        advanceTimeBy(INVITE_TIMEOUT_MILLIS - 1)
-        runCurrent()
-        bia.status.value shouldBe GuestStatus.Invited
-        advanceTimeBy(2)
-        runCurrent()
-        bia.status.value shouldBe GuestStatus.Lobby
-        t.host.roster.value.single { it.id == bia.playerId }.invited shouldBe false
-    }
-
-    @Test
-    fun `§16_2 recusa do convite informa o motivo aos dois lados e um robo nao usado assume`() = runTest {
-        val t = table(listOf(nearby("k-bia", "Bia"), Participant.Robot("zen")))
-        val notices = mutableListOf<TableNotice>()
-        val job = sessionScope.launch { t.host.lobbyNotices.collect { notices += it } }
-        runCurrent()
-        val bia = invitee(t, "k-bia", "Bia")
-        bia.refuseInvite()
-        runCurrent()
-        bia.status.value shouldBe GuestStatus.Refused(refusalMessage(RefusalReason.INVITE_REFUSED), RefusalReason.INVITE_REFUSED)
-        val notice = notices.single()
-        notice.refusal shouldBe RefusalReason.INVITE_REFUSED
-        notice.seat shouldBe Seat(1)
-        val seating = t.host.seating.value!!
-        seating.occupants[1] shouldBe SeatOccupant.Robot(notice.persona!!)
-        seating.robots.values.toSet().size shouldBe 3 // perfis diferentes
-        t.host.roster.value.map { it.name } shouldBe listOf("Ana")
-        job.cancel()
-    }
-
-    @Test
-    fun `§16_2 §14_6 saldo menor que a aposta recusa o convite sozinho`() = runTest {
+    fun `§16_2 §14_6 recrutado sem saldo para a aposta sai sozinho ao entrar e um robo assume`() = runTest {
         val t = table(listOf(nearby("k-bia", "Bia")), rules(stake = 100))
         val notices = mutableListOf<TableNotice>()
         val job = sessionScope.launch { t.host.lobbyNotices.collect { notices += it } }
@@ -313,11 +274,11 @@ class LobbySessionTest {
     }
 
     @Test
-    fun `§16_2 §14_6 o convite espera a leitura do saldo antes de responder`() = runTest {
+    fun `§16_2 §14_6 a entrada espera a leitura do saldo antes de sair`() = runTest {
         val t = table(listOf(nearby("k-bia", "Bia")), rules(stake = 100))
         val balance = kotlinx.coroutines.CompletableDeferred<Int>()
         val bia = invitee(t, "k-bia", "Bia", canAfford = { it <= balance.await() })
-        bia.status.value shouldBe GuestStatus.Invited
+        bia.status.value shouldBe GuestStatus.Lobby
         balance.complete(10)
         runCurrent()
         (bia.status.value as GuestStatus.Refused).reason shouldBe RefusalReason.INSUFFICIENT_BALANCE

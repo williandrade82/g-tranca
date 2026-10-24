@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 11
+const val PROTOCOL_VERSION: Int = 12
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -228,6 +228,60 @@ data class PlayerPhoto(val playerId: Int, val photo: String) : Payload {
 data class PresencePhoto(val key: String, val photo: String? = null) : Payload {
     override fun toString(): String = "PresencePhoto(${photo?.length ?: 0})"
 }
+
+/** §16.2 participante da montagem do anfitrião, como o recrutado o vê (só nome; [persona] para robô). */
+@Serializable
+data class RecruitParticipant(val name: String, val persona: String? = null, val accepted: Boolean = true)
+
+/**
+ * §16.2 a montagem do anfitrião, sincronizada ao vivo com quem aceitou o recrutamento (só para leitura): modo, nível dos
+ * robôs, aposta, regras completas, pontuação-alvo e participantes. Nada oculto (ainda não há cartas).
+ */
+@Serializable
+data class RecruitConfig(
+    val hostName: String,
+    val mode: GameMode,
+    val difficulty: String,
+    val stake: Int,
+    val rules: RuleSet,
+    val targetScore: Int,
+    val participants: List<RecruitParticipant>,
+)
+
+/** §16.2 resposta ao convite imediato (recrutado → anfitrião, primeira mensagem da conexão). */
+@Serializable
+@SerialName("recruitReply")
+data class RecruitReply(val key: String, val accepted: Boolean, val reason: RefusalReason? = null) : Payload
+
+/** §16.2 a montagem do anfitrião mudou (anfitrião → recrutados que aceitaram). */
+@Serializable
+@SerialName("recruitSync")
+data class RecruitSync(val config: RecruitConfig) : Payload
+
+/** §16.2 o recrutado saiu da mesa ("Sair da mesa", `null`) ou saiu sozinho ([RefusalReason.INSUFFICIENT_BALANCE]). */
+@Serializable
+@SerialName("recruitLeave")
+data class RecruitLeave(val reason: RefusalReason? = null) : Payload
+
+/** §16.2 por que o recrutamento acabou do lado do anfitrião. */
+@Serializable
+enum class RecruitEndReason {
+    /** "<anfitrião> tirou você da mesa". */
+    REMOVED,
+
+    /** "Mesa encerrada": o anfitrião saiu da montagem ou desligou o Wi-Fi do jogo. */
+    CLOSED,
+}
+
+/** §16.2 o anfitrião encerrou o recrutamento deste jogador. */
+@Serializable
+@SerialName("recruitEnd")
+data class RecruitEnd(val reason: RecruitEndReason) : Payload
+
+/** §16.2 o anfitrião tocou em Escolher posições: entrar na mesa [tableId] com a própria chave (sem novo convite). */
+@Serializable
+@SerialName("recruitStart")
+data class RecruitStart(val tableId: String) : Payload
 
 /** Limite do texto Base64 da foto aceito na mesa (~15 KB de JPEG); maior é descartado. */
 const val MAX_PHOTO_BASE64: Int = 20_480

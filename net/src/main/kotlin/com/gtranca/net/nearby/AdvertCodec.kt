@@ -19,7 +19,7 @@ object AdvertCodec {
     const val FORMAT: Int = 2
 
     /** §16.2 formato do anúncio de presença de um jogador próximo. */
-    const val PRESENCE_FORMAT: Int = 3
+    const val PRESENCE_FORMAT: Int = 5
 
     /** §16.2 formato do aviso de "saindo" de um jogador próximo: `[4][key]`. */
     const val PRESENCE_LEAVING_FORMAT: Int = 4
@@ -95,8 +95,17 @@ object AdvertCodec {
         val out = ByteArrayOutputStream()
         out.write(PRESENCE_FORMAT)
         out.writeText(key)
+        // §16.2 recrutado por (vazio = livre) e os convites imediatos deste jogador como anfitrião.
+        out.writeText(presence.recruitedBy?.let(::keyBytes) ?: ByteArray(0))
+        require(presence.inviting.size <= MAX_INVITED) { "Convites demais" }
+        out.write(presence.inviting.size)
+        presence.inviting.forEach { out.writeText(keyBytes(it)) }
         out.writeText(truncateUtf8(presence.name, MAX_BYTES - out.size() - 1))
         return out.toByteArray().also { check(it.size <= MAX_BYTES) }
+    }
+
+    private fun keyBytes(key: String): ByteArray = key.toByteArray(Charsets.UTF_8).also {
+        require(it.size in 1..MAX_PRESENCE_KEY_BYTES) { "Chave de presença com tamanho inválido" }
     }
 
     /** §16.2 aviso de "saindo" (só a chave): o mesmo jogador, que está desligando o Wi-Fi do jogo. */
@@ -121,9 +130,13 @@ object AdvertCodec {
         }
         if (format != PRESENCE_FORMAT) return null
         val key = r.text()
+        val recruitedBy = r.text().ifEmpty { null }
+        val count = r.byte()
+        if (count > MAX_INVITED) return null
+        val inviting = List(count) { r.text() }
         val name = r.text()
         if (key.isEmpty() || !r.atEnd) return null
-        PresenceAdvert(key, name)
+        PresenceAdvert(key, name, recruitedBy = recruitedBy, inviting = inviting)
     }.getOrNull()
 
     /** Maior prefixo de [text] (por caractere, sem partir pares substitutos) que cabe em [maxBytes] em UTF-8. */

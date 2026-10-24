@@ -43,10 +43,15 @@ class PresencePhotos(
 
     /** Responde às trocas abertas pelos outros e entrega as respostas às trocas deste aparelho. Roda até ser cancelado. */
     suspend fun serve() {
-        transport.events.collect { event ->
+        transport.events.collect { handle(it) }
+    }
+
+    /** Trata um evento do transporte (quem já lê os eventos, como [Recruitment], repassa os de foto). */
+    suspend fun handle(event: TransportEvent) {
+        run {
             when (event) {
                 is TransportEvent.Received -> {
-                    val p = ((codec.decode(event.bytes) as? Decoded.Ok)?.envelope?.p as? PresencePhoto) ?: return@collect
+                    val p = ((codec.decode(event.bytes) as? Decoded.Ok)?.envelope?.p as? PresencePhoto) ?: return
                     val waiter = waiters[event.endpoint]
                     if (waiter != null) {
                         waiter.complete(p)
