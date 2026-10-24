@@ -90,7 +90,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 ### 3.2 Mesas disponíveis (`TablesScreen`)
 **Objetivo:** montar a mesa (§14.4) — escolher quem joga e as regras — ou entrar na mesa de outro anfitrião por perto (§16.2). Absorve a antiga *Criar mesa*; *Regras da mesa* e *Criar mesa* deixaram de existir.
 **De cima para baixo (rola):**
-1. Título "Mesas disponíveis", o ícone do tour e o **botão de Wi-Fi** (configuração **Wi-Fi do jogo**, a mesma do Perfil: tocar alterna e grava; ao ligar, passa pelo modal *Procurar mesas por perto*; recusar deixa desligado). Sem linha de saldo (só o do topo, seção 0).
+1. Título **"Iniciar novo jogo"** (a tela continua chamada *Mesas disponíveis* nestes documentos), o ícone do tour e o **botão de Wi-Fi** (configuração **Wi-Fi do jogo**, a mesma do Perfil: tocar alterna e grava; ao ligar, passa pelo modal *Procurar mesas por perto*; recusar deixa desligado). Sem linha de saldo (só o do topo, seção 0).
 2. **Pílula de escolha dos participantes:** uma **grade de avatares**, até **6 por linha** (o jogador conta), um ao lado do outro; cada avatar é a imagem **em círculo** (foto do perfil; inicial só para quem não tem foto ou enquanto a foto do jogador próximo não chegou; robô no círculo) com o **nome abaixo** (uma linha, "…" se não couber). **Marcado:** aro dourado grosso e um **✓ dourado** no canto; **desmarcado:** aro fino e a imagem um pouco apagada. A ordem:
    - **o jogador**, sempre o primeiro e sempre com aparência de **marcado** (não desmarca);
    - com o Wi-Fi ligado, cada **jogador próximo** encontrado, com a **foto** do perfil (pedida uma vez ao achá-lo; inicial se não tiver foto ou com "Ver fotos nas mesas compartilhadas" desligada). A lista acompanha a busca: quem desliga o Wi-Fi do jogo some na hora (aviso de "saindo"), quem some sem avisar sai em até cerca de 20 s (§16.15) e quem continua não pisca; sem nenhum, o avatar **"Recrutando"** (círculo girando, não selecionável), logo depois do jogador. Com o Wi-Fi desligado, essa parte não aparece;
@@ -232,14 +232,16 @@ Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jo
 **Mesa de jogo (3.8)** — aparece **só na primeira vez em que é a vez do jogador**, depois das animações iniciais (distribuição e trocas de 3 vermelho) e com a vez já liberada; vale contra robôs e no multijogador:
 (passos na ordem da tela, de cima para baixo e, na mesma linha, da esquerda para a direita)
 1. Placar: "O placar: os pontos de cada lado no jogo."
-2. Ícone do tour: "Toque aqui para rever este tour quando quiser."
-3. Som e Opções: "Som e Opções (engrenagem): velocidade, símbolos das jogadas e desistir."
-4. Outros jogadores: "Os outros jogadores: cartas na mão e a última jogada. Toque numa pílula para ver o detalhe."
-5. Monte: "O monte: no começo da vez, compre uma carta daqui."
-6. Mortos: "Os mortos: quem acabar primeiro com as cartas da mão pega um."
-7. Lixo: "O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer."
-8. Mão: "Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora."
-9. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
+2. Total em jogo (maço de notas, `table-pot`, só com aposta): "Total em jogo: a soma das apostas de todos na mesa; quem vence leva."
+3. Saldo (`coin-balance`): "Seu saldo de moedas."
+4. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+5. Som e Opções: "Som e Opções (engrenagem): velocidade, símbolos das jogadas e desistir."
+6. Outros jogadores: "Os outros jogadores: cartas na mão e a última jogada. Toque numa pílula para ver o detalhe."
+7. Monte: "O monte: no começo da vez, compre uma carta daqui."
+8. Mortos: "Os mortos: quem acabar primeiro com as cartas da mão pega um."
+9. Lixo: "O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer."
+10. Mão: "Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora."
+11. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
 **Multijogador:** o tour é só da tela deste aparelho e não pausa o jogo; a vez continua aberta enquanto ele está na tela (não há limite de tempo para jogar, §16).
 
 ## 4. Modais
