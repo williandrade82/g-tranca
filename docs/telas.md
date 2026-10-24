@@ -190,7 +190,8 @@ A mesa de jogo "só para olhar", aberta a partir do anúncio; a barra de ações
 ### 3.14 Mesa multijogador durante o jogo
 **Botão de Wi-Fi (cabeçalho da mesa de jogo, 3.8):** na linha do saco de moedas. Reflete o **Wi-Fi do jogo**.
 - **Jogo só com robôs, ligar:** o jogo não muda; o jogador vira **anfitrião** (§16.7) e passa a poder liberar assentos de robô para entrada.
-- **Jogo com humanos, desligar:** abre o modal **Desconectar a mesa?**; confirmado, no anfitrião todos os humanos remotos viram robôs e o jogo segue no aparelho; no convidado vale como sair (desistência, §16.9 — *provisório*).
+- **Desligar, anfitrião com humanos:** abre o modal **Desconectar a mesa?**; confirmado, todos os humanos remotos viram robôs e o jogo segue no aparelho. **Anfitrião só com robôs:** desliga sem pergunta e o jogo continua normalmente.
+- **Desligar, convidado:** abre **Desistir da mesa?** (§16.9); cancelar mantém o Wi-Fi ligado e o jogo.
 **Menu de engrenagem, seção Multijogador** (só com o Wi-Fi ligado):
 - **Anfitrião:** *Trocar jogador ou robô* (escolhe um assento: humano → robô, ou robô → vaga aberta para entrada, §16.7, §16.8) e *Entregar a mesa* (o antigo *Repassar a mesa*, §16.10).
 - **Convidado:** uma linha informativa "Anfitrião: <nome>" (sem ação).
@@ -245,7 +246,8 @@ Todos levam o **cabeçalho de marca**.
 | Voltar ao início? | mensagem (aviso) | voltar durante o jogo | confirma sair |
 | Desistir do jogo? | mensagem (perigo) | bandeira (menu de engrenagem) / anúncio | §13.1; mostra as **apostas em jogo** (aposta de cada jogador, total em jogo, quanto o jogador perde e que deixa de concorrer ao prêmio) e os **pontos** da mesa (placar de cada lado, com os nomes de quem está nele); cancelar volta ao estado exato |
 | **Convite** | mensagem | jogador próximo escolhido na montagem de outro (§16.2), em qualquer tela fora de um jogo | "Mesa de <anfitrião>" e os participantes (avatares e nomes, humanos e robôs), contagem de **10 s**; **Aceitar** / **Recusar**; sem resposta, aceita sozinho e abre *Escolha sua posição*. Saldo menor que a aposta: recusa automática com aviso. Tags `invite`, `invite-accept`, `invite-refuse`, `invite-countdown` |
-| **Desconectar a mesa?** | mensagem (aviso) | desligar o botão de Wi-Fi na mesa de jogo com humanos (3.14) | anfitrião: "Os jogadores por perto serão substituídos por robôs e o jogo segue só neste celular."; convidado: vale como desistir; **Desconectar** / **Cancelar** |
+| **Desconectar a mesa?** | mensagem (aviso) | anfitrião desliga o botão de Wi-Fi na mesa de jogo com humanos (3.14) | "Os jogadores por perto serão substituídos por robôs e o jogo segue só neste celular."; **Desconectar** / **Cancelar** (no convidado, o botão abre *Desistir da mesa?*) |
+| **Recusa** | mensagem (aviso) | convite ou pedido de entrada recusado (§16.2) | quem recusou e o **motivo** (recusou o convite, saldo insuficiente, fora do alcance, o anfitrião recusou, mesa cheia); **OK**. No anfitrião, aviso breve na escolha de posições |
 | Recusar a compra? | mensagem | monte acabou sem morto | encerra a partida sem batida |
 | Zerar estatísticas? | mensagem | Estatísticas | confirma zerar |
 | **Informações do jogo** | diálogo | tocar em "Partida N · alvo X" ou no placar, na mesa de jogo | **Jogo:** regras (nome do perfil e o resumo, o mesmo de 3.13), modo, nível dos robôs, pontuação-alvo, aposta de cada jogador e quanto recebe cada vencedor (§14.6, §16.13); **Lados:** quem joga em cada lado (avatar, nome, "robô" ou "humano"; no multijogador, quem é o anfitrião); **Partida atual:** número e quem começou; **Partidas:** tabela partida a partida (número, total de cada lado e quem bateu ou "sem batida") e o acumulado. Só informação pública (no multijogador, o histórico recebido). Botão **Fechar**. Tags `match-info`, `match-info-rounds`, `match-info-close` |
