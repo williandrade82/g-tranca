@@ -51,7 +51,12 @@ data class TableAdvert(
  * por [newPresenceKey] a cada vez que o Wi-Fi do jogo liga) e o [name]. Distinto do anúncio de mesa ([TableAdvert]). A foto
  * não vai aqui: vai pela conexão, depois do convite.
  */
-data class PresenceAdvert(val key: String, val name: String)
+data class PresenceAdvert(
+    val key: String,
+    val name: String,
+    /** §16.2 aviso de "saindo" (Wi-Fi do jogo desligando): quem vê tira a [key] da lista na hora. */
+    val leaving: Boolean = false,
+)
 
 /** §16.2 chave de presença nova (6 caracteres, cabe no anúncio). Não identifica o jogador fora desta sessão de busca. */
 fun newPresenceKey(random: java.util.Random = java.security.SecureRandom()): String {

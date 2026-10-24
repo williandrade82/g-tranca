@@ -65,8 +65,15 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
         if (!network.silentStop) network.withdraw(this)
     }
 
+    /** Quantas das próximas buscas falham ao ligar (rádio recusando). */
+    var failNextDiscoveryStarts = 0
+
     override suspend fun startDiscovery(callback: DiscoveryCallback) {
         check(discovery == null) { "STATUS_ALREADY_DISCOVERING" }
+        if (failNextDiscoveryStarts > 0) {
+            failNextDiscoveryStarts--
+            error("STATUS_RADIO_ERROR")
+        }
         discoveryStarts++
         discovery = callback
         network.advertisers().filter { it !== this }.forEach { callback.onFound(it.id, it.advertInfo!!) }

@@ -75,7 +75,7 @@ object MultiplayerHub {
             t.advertisePresence(PresenceAdvert(key, name))
             // §16.2 enquanto fora de mesa: atende os pedidos de foto e pede a dos jogadores próximos novos.
             val advert = kotlinx.coroutines.coroutineScope {
-                val photos = com.gtranca.net.PresencePhotos(t, photo, _presencePhotos)
+                val photos = com.gtranca.net.PresencePhotos(t, key, photo, _presencePhotos)
                 val serving = launch { runCatching { photos.serve() } }
                 val fetching = launch { runCatching { photos.fetchAll(t.discoverPresence().catch { emit(emptyList()) }) } }
                 try {

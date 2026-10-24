@@ -21,6 +21,9 @@ object AdvertCodec {
     /** §16.2 formato do anúncio de presença de um jogador próximo. */
     const val PRESENCE_FORMAT: Int = 3
 
+    /** §16.2 formato do aviso de "saindo" de um jogador próximo: `[4][key]`. */
+    const val PRESENCE_LEAVING_FORMAT: Int = 4
+
     /** §16.2 no máximo 3 convidados (4 participantes com o anfitrião). */
     const val MAX_INVITED: Int = 3
 
@@ -96,10 +99,27 @@ object AdvertCodec {
         return out.toByteArray().also { check(it.size <= MAX_BYTES) }
     }
 
+    /** §16.2 aviso de "saindo" (só a chave): o mesmo jogador, que está desligando o Wi-Fi do jogo. */
+    fun encodePresenceLeaving(key: String): ByteArray {
+        val bytes = key.toByteArray(Charsets.UTF_8)
+        require(bytes.size in 1..MAX_PRESENCE_KEY_BYTES) { "Chave de presença com tamanho inválido" }
+        return ByteArrayOutputStream().apply { write(PRESENCE_LEAVING_FORMAT); writeText(bytes) }.toByteArray()
+    }
+
+    /** O primeiro byte é de um anúncio de presença (comum ou "saindo"). */
+    fun isPresence(bytes: ByteArray): Boolean =
+        bytes.firstOrNull()?.toInt().let { it == PRESENCE_FORMAT || it == PRESENCE_LEAVING_FORMAT }
+
     /** `null` se os bytes não são um anúncio de presença desta versão (ex.: é o de uma mesa). */
     fun decodePresence(bytes: ByteArray): PresenceAdvert? = runCatching {
         val r = Reader(bytes)
-        if (r.byte() != PRESENCE_FORMAT) return null
+        val format = r.byte()
+        if (format == PRESENCE_LEAVING_FORMAT) {
+            val key = r.text()
+            if (key.isEmpty() || !r.atEnd) return null
+            return PresenceAdvert(key, "", leaving = true)
+        }
+        if (format != PRESENCE_FORMAT) return null
         val key = r.text()
         val name = r.text()
         if (key.isEmpty() || !r.atEnd) return null

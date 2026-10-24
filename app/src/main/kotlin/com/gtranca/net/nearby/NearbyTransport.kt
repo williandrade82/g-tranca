@@ -59,10 +59,16 @@ class NearbyTransport(
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     private val refreshMillis: Long = PRESENCE_REFRESH_MILLIS,
     private val sweepGraceMillis: Long = PRESENCE_SWEEP_GRACE_MILLIS,
+    private val leavingMillis: Long = PRESENCE_LEAVING_MILLIS,
+    /** Diagnóstico (só no build debug): eventos sem nomes, fotos nem bytes. */
+    private val log: (String) -> Unit = {},
 ) : LocalTransport {
 
     /** §16.2 quando cada presença foi vista (achada) pela última vez, por endpoint. */
     private val presenceSeen = mutableMapOf<String, Long>()
+
+    /** §16.2 varreduras seguidas em que a presença não foi revista (sai da lista na [SWEEPS_TO_REMOVE]ª). */
+    private val presenceMisses = mutableMapOf<String, Int>()
     private var presenceSubscribers = 0
     private var refresher: Job? = null
 
@@ -112,10 +118,19 @@ class NearbyTransport(
     private val discoveryCallback = object : DiscoveryCallback {
         override fun onFound(endpointId: String, endpointInfo: ByteArray) {
             // O primeiro byte distingue a presença (§16.2) do anúncio de mesa.
-            if (endpointInfo.firstOrNull()?.toInt() == AdvertCodec.PRESENCE_FORMAT) {
+            if (AdvertCodec.isPresence(endpointInfo)) {
                 val presence = AdvertCodec.decodePresence(endpointInfo) ?: return
-                synchronized(presenceSeen) { presenceSeen[endpointId] = now() }
                 found.update { it - endpointId }
+                if (presence.leaving) {
+                    // §16.2 "saindo": todas as entradas com a chave somem na hora.
+                    log("found leaving ${presence.key.take(2)}")
+                    val gone = foundPresence.value.filterValues { it.key == presence.key }.keys + endpointId
+                    synchronized(presenceSeen) { gone.forEach { presenceSeen.remove(it); presenceMisses.remove(it) } }
+                    foundPresence.update { it - gone }
+                    return
+                }
+                log("found presence ${presence.key.take(2)}")
+                synchronized(presenceSeen) { presenceSeen[endpointId] = now(); presenceMisses.remove(endpointId) }
                 foundPresence.update { it + (endpointId to presence) }
                 return
             }
@@ -125,6 +140,7 @@ class NearbyTransport(
         }
 
         override fun onLost(endpointId: String) {
+            log("lost ${endpointId.take(2)}")
             found.update { it - endpointId }
             foundPresence.update { it - endpointId }
         }
@@ -165,8 +181,31 @@ class NearbyTransport(
     /** Para o anúncio da mesa (a presença, se for ela no ar, continua). */
     override suspend fun stopAdvertising() = stopKind(presence = false)
 
-    /** §16.2 para a presença (a mesa, se for ela no ar, continua). */
-    override suspend fun stopPresence() = stopKind(presence = true)
+    /**
+     * §16.2, §16.15 para a presença (a mesa, se for ela no ar, continua): antes, anuncia "saindo" com a mesma chave por
+     * [leavingMillis], para os outros tirarem o jogador da lista na hora.
+     */
+    override suspend fun stopPresence() {
+        val leaving = control.withLock {
+            val current = advertised
+            if (current == null || !advertisingPresence) return
+            val presence = AdvertCodec.decodePresence(current) ?: return@withLock null
+            if (presence.leaving) return@withLock null
+            val bytes = AdvertCodec.encodePresenceLeaving(presence.key)
+            api.stopAdvertising()
+            advertised = null
+            runCatching { api.startAdvertising(bytes, connectionCallback) }.onSuccess { advertised = bytes; log("advertise leaving") }
+            bytes.takeIf { advertised === it }
+        }
+        if (leaving != null) delay(leavingMillis)
+        control.withLock {
+            // Outra coisa (a mesa, ou a presença de novo) pode ter tomado o lugar durante o aviso.
+            if (leaving != null && advertised !== leaving) return
+            if (advertised == null || !advertisingPresence) return
+            api.stopAdvertising()
+            advertised = null
+        }
+    }
 
     private suspend fun stopKind(presence: Boolean) {
         control.withLock {
@@ -203,32 +242,70 @@ class NearbyTransport(
         }
     }
 
-    /** §16.2, §16.15 recomeça a busca periodicamente e tira da lista as presenças que não reapareceram. */
+    /**
+     * §16.2, §16.15 recomeça a busca periodicamente e tira da lista as presenças que não reapareceram em
+     * [SWEEPS_TO_REMOVE] recomeços seguidos. Falha ao religar não abandona: tenta de novo depois de [RESTART_RETRY_MILLIS].
+     * Com conexão de presença pendente ou aberta (troca de fotos), o recomeço é adiado (no Nearby ele pode abortá-la).
+     */
     private suspend fun refreshPresence() {
+        delay(refreshMillis)
         while (true) {
-            delay(refreshMillis)
+            if (presenceConnectionBusy()) {
+                delay(RESTART_RETRY_MILLIS)
+                continue
+            }
             val restartedAt = control.withLock {
-                if (!discovering) return@withLock null
+                if (subscribers == 0) return@withLock null
                 val at = now()
-                runCatching { api.stopDiscovery() }
+                if (discovering) runCatching { api.stopDiscovery() }
                 try {
                     api.startDiscovery(discoveryCallback)
+                    discovering = true
+                    log("restart ok")
+                    at
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    // Sem busca agora: a próxima volta tenta de novo; a lista fica como estava.
                     discovering = false
-                    return@withLock null
+                    log("restart failed ${e.message?.take(40)}")
+                    null
                 }
-                at
-            } ?: continue
-            delay(sweepGraceMillis)
-            val stale = synchronized(presenceSeen) { presenceSeen.filterValues { it < restartedAt }.keys.toSet() }
-            if (stale.isNotEmpty()) {
-                synchronized(presenceSeen) { stale.forEach { presenceSeen.remove(it) } }
-                foundPresence.update { it - stale }
             }
+            if (restartedAt == null) {
+                delay(RESTART_RETRY_MILLIS)
+                continue
+            }
+            delay(sweepGraceMillis)
+            sweep(restartedAt)
+            delay((refreshMillis - sweepGraceMillis).coerceAtLeast(0))
         }
+    }
+
+    private fun sweep(restartedAt: Long) {
+        val live = synchronized(lock) { connected.toSet() }
+        val remove = synchronized(presenceSeen) {
+            foundPresence.value.keys.filter { endpoint ->
+                val seen = presenceSeen[endpoint] ?: Long.MIN_VALUE
+                if (seen >= restartedAt || endpoint in live) {
+                    presenceMisses.remove(endpoint)
+                    false
+                } else {
+                    val misses = (presenceMisses[endpoint] ?: 0) + 1
+                    presenceMisses[endpoint] = misses
+                    misses >= SWEEPS_TO_REMOVE
+                }
+            }.toSet().also { gone -> gone.forEach { presenceSeen.remove(it); presenceMisses.remove(it) } }
+        }
+        if (remove.isNotEmpty()) {
+            log("sweep removed ${remove.size}")
+            foundPresence.update { it - remove }
+        }
+    }
+
+    /** Há conexão pendente ou aberta com um jogador próximo (troca de fotos, §16.2). */
+    private fun presenceConnectionBusy(): Boolean {
+        val presenceEndpoints = foundPresence.value.keys
+        return synchronized(lock) { pending.keys.any { it in presenceEndpoints } || connected.any { it in presenceEndpoints } }
     }
 
     /** Liga a busca se preciso; devolve quando ela foi ligada (para o aquecimento). */
@@ -283,7 +360,16 @@ class NearbyTransport(
         foundPresence.value.entries.lastOrNull { it.value.key == presence.key }?.key ?: error("Presença não encontrada"),
     )
 
-    private suspend fun connectTo(endpointId: String): EndpointId {
+    private suspend fun connectTo(endpointId: String): EndpointId = try {
+        connectEndpoint(endpointId).also { log("connect ok") }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log("connect failed ${(e.cause?.message ?: e.message)?.take(40)}")
+        throw e
+    }
+
+    private suspend fun connectEndpoint(endpointId: String): EndpointId {
         val waiting = synchronized(lock) {
             if (endpointId in connected) return EndpointId(endpointId)
             pending.getOrPut(endpointId) { CompletableDeferred() }
@@ -337,8 +423,17 @@ class NearbyTransport(
         /** §16.15 a busca recomeça a cada 8 s enquanto alguém observa os jogadores próximos. */
         const val PRESENCE_REFRESH_MILLIS: Long = 8_000
 
-        /** §16.15 presença não revista 3 s depois do recomeço sai da lista (some em até 11 s). */
+        /** §16.15 folga depois de cada recomeço para o Nearby reportar de novo quem continua no ar. */
         const val PRESENCE_SWEEP_GRACE_MILLIS: Long = 3_000
+
+        /** §16.15 sai da lista quem não foi revisto em dois recomeços seguidos (cerca de 20 s). */
+        const val SWEEPS_TO_REMOVE: Int = 2
+
+        /** §16.15 aviso de "saindo" no ar antes de parar a presença. */
+        const val PRESENCE_LEAVING_MILLIS: Long = 2_000
+
+        /** Espera técnica antes de tentar religar a busca (falhou ou havia conexão de presença em andamento). */
+        const val RESTART_RETRY_MILLIS: Long = 1_000
 
         /** Nome local na conexão: neutro (nada privado; a identidade vem no `Hello` do protocolo). */
         private val LOCAL_INFO = byteArrayOf(1)
