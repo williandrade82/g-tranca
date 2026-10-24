@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gtranca.R
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import com.gtranca.ui.theme.GButton
 import com.gtranca.ui.theme.GButtonKind
 import com.gtranca.ui.theme.GColors
@@ -81,7 +82,42 @@ data class TourState(val size: Int, val index: Int = 0) {
 object Tours {
     const val TABLES = "tables"
     const val TABLE = "table"
+    const val SUMMARY = "round-summary"
     const val BUTTON = "tour-button"
+
+    /**
+     * Tour de Pontos da partida (docs/telas.md 3.10, 3.16): cada coluna e cada linha da tabela, de cima para baixo.
+     * Sem coringas na mesa (§1), as linhas de canastra suja e de coringas não existem e ficam de fora.
+     */
+    fun summarySteps(noWilds: Boolean): List<TourStep> = listOfNotNull(
+        TourStep(BUTTON, R.string.tour_again),
+        TourStep("score-col-item", R.string.tour_summary_item),
+        TourStep("score-side-own", R.string.tour_summary_sides),
+        TourStep("score-col-value", R.string.tour_summary_value),
+        TourStep("score-col-count", R.string.tour_summary_count),
+        TourStep("score-col-points", R.string.tour_summary_points),
+        TourStep("score-row-RED_THREES", R.string.tour_summary_red_threes),
+        TourStep("score-row-CLEAN_CANASTAS", if (noWilds) R.string.tour_summary_canastas else R.string.tour_summary_clean),
+        TourStep("score-row-DIRTY_CANASTAS", R.string.tour_summary_dirty).takeUnless { noWilds },
+        TourStep("score-row-GO_OUT", R.string.tour_summary_go_out),
+        TourStep("score-row-MORTO_NOT_TAKEN", R.string.tour_summary_morto),
+        TourStep("table-section", R.string.tour_summary_table_section),
+        TourStep("score-row-TABLE_RED_THREES", R.string.tour_summary_table_red_threes),
+        TourStep("score-row-TABLE_FOUR_TO_TEN", R.string.tour_summary_table_low),
+        TourStep("score-row-TABLE_FACES", R.string.tour_summary_table_faces),
+        TourStep("score-row-TABLE_WILDS", R.string.tour_summary_table_wilds).takeUnless { noWilds },
+        TourStep("table-subtotal", R.string.tour_summary_table_subtotal),
+        TourStep("hand-section", R.string.tour_summary_hand_section),
+        TourStep("score-row-HAND_RED_THREES", R.string.tour_summary_hand_red_threes),
+        TourStep("score-row-HAND_BLACK_THREES", R.string.tour_summary_hand_black_threes),
+        TourStep("score-row-HAND_FOUR_TO_TEN", R.string.tour_summary_hand_low),
+        TourStep("score-row-HAND_FACES", R.string.tour_summary_hand_faces),
+        TourStep("score-row-HAND_WILDS", R.string.tour_summary_hand_wilds).takeUnless { noWilds },
+        TourStep("hand-subtotal", R.string.tour_summary_hand_subtotal),
+        TourStep("score-round-total", R.string.tour_summary_round_total),
+        TourStep("cumulative", R.string.tour_summary_cumulative),
+        TourStep("summary-continue", R.string.tour_summary_continue),
+    )
 
     // Os passos seguem a tela de cima para baixo (e, na mesma linha, da esquerda para a direita).
     val tablesSteps = listOf(
@@ -140,10 +176,23 @@ val LocalTours = staticCompositionLocalOf { TourSettings(seen = emptySet()) }
 
 private val LocalTourTargets = compositionLocalOf<MutableMap<String, Rect>?> { null }
 
-/** Marca o elemento como alvo [key] do tour (posição na tela); sem tour por perto, não faz nada. */
+private val LocalTourRequesters = compositionLocalOf<MutableMap<String, androidx.compose.foundation.relocation.BringIntoViewRequester>?> { null }
+
+/**
+ * Marca o elemento como alvo [key] do tour (posição na tela); sem tour por perto, não faz nada. Dentro de uma área que
+ * rola, o tour rola até ele no seu passo.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun Modifier.tourTarget(key: String): Modifier = composed {
     val targets = LocalTourTargets.current ?: return@composed this
-    onGloballyPositioned { targets[key] = it.boundsInRoot() }
+    val requesters = LocalTourRequesters.current
+    val requester = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    androidx.compose.runtime.DisposableEffect(key, requesters) {
+        requesters?.set(key, requester)
+        onDispose { if (requesters?.get(key) === requester) requesters.remove(key) }
+    }
+    this.bringIntoViewRequester(requester)
+        .onGloballyPositioned { targets[key] = it.boundsInRoot() }
 }
 
 /**
@@ -163,8 +212,14 @@ fun TourHost(id: String, steps: List<TourStep>, autoStart: Boolean, modifier: Mo
             tours.markSeen(id)
         }
     }
+    val requesters = remember { mutableMapOf<String, androidx.compose.foundation.relocation.BringIntoViewRequester>() }
+    // Passo novo: rola até o alvo, se ele estiver numa área que rola.
+    LaunchedEffect(state?.index) {
+        val index = state?.index ?: return@LaunchedEffect
+        runCatching { requesters[steps[index].target]?.bringIntoView() }
+    }
     Box(modifier) {
-        CompositionLocalProvider(LocalTourTargets provides targets) { content(start) }
+        CompositionLocalProvider(LocalTourTargets provides targets, LocalTourRequesters provides requesters) { content(start) }
         state?.let { current ->
             TourOverlay(steps, current, targets, onChange = { state = it }, onClose = {
                 state = null

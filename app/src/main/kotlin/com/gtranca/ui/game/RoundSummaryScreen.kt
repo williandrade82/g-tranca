@@ -60,6 +60,7 @@ import com.gtranca.engine.model.SideScore
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.Stage
 import com.gtranca.engine.model.Card
+import com.gtranca.ui.tour.tourTarget
 import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.Suit
 import androidx.compose.ui.semantics.contentDescription
@@ -94,12 +95,18 @@ fun RoundSummaryScreen(
     }
     // §14.5 o robô aparece feliz se o lado dele lidera o placar acumulado e frustrado se está perdendo; o jogador, sempre como é
     val poses = leaderPoses(snapshot.totals, sides)
+    val rules = LocalTableRules.current
+    // Tour da tabela (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
+    com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.SUMMARY, com.gtranca.ui.tour.Tours.summarySteps(rules.noWilds), autoStart = true) { startTour ->
     GBackground(Modifier.fillMaxSize().testTag("round-summary"), royal = true) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            GTitle(stringResource(R.string.round_over_title, record.number))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GTitle(stringResource(R.string.round_over_title, record.number), Modifier.weight(1f))
+                com.gtranca.ui.tour.TourButton(startTour)
+            }
             GBanner(resultText, bannerColor, onBanner)
 
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = Spacing.sm)) {
@@ -109,10 +116,10 @@ fun RoundSummaryScreen(
             // do jogador no seu lado, cinza-claro no adversário) e o nome do lado.
             val ownDeck = com.gtranca.ui.cards.LocalDeckColor.current
             Row(Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom).tourTarget("score-col-item"), fontWeight = FontWeight.Bold)
                 Box(Modifier.weight(VALUE_WEIGHT))
                 sides.forEach { side ->
-                    Column(Modifier.weight(COUNT_WEIGHT + POINTS_WEIGHT), horizontalAlignment = Alignment.End) {
+                    Column(Modifier.weight(COUNT_WEIGHT + POINTS_WEIGHT).tourTarget("score-side-${if (side == view.side) "own" else "other"}"), horizontalAlignment = Alignment.End) {
                         AvatarRow(personasOfSide(view.mode, side, personas), 26.dp, pose = poses.getValue(side))
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             ThreeCardsIcon(if (side == view.side) ownDeck.frameColor() else OpponentCards, Modifier.testTag("score-cards-icon-${side.index}"))
@@ -125,14 +132,7 @@ fun RoundSummaryScreen(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth()) {
-                Box(Modifier.weight(LABEL_WEIGHT))
-                Text(stringResource(R.string.score_col_value), Modifier.weight(VALUE_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
-                sides.forEach { _ ->
-                    Text(stringResource(R.string.score_col_count), Modifier.weight(COUNT_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
-                    Text(stringResource(R.string.score_col_points), Modifier.weight(POINTS_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
-                }
-            }
+            ColumnHeaders(sides.size, tour = true)
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
             // Tudo vem de ScoreBreakdown: a soma das linhas exibidas é o "Total da partida" de cada lado.
             val lines = scores.map { ScoreBreakdown.lines(it) }
@@ -142,7 +142,8 @@ fun RoundSummaryScreen(
                 ScoreRow(
                     stringResource(item.labelRes()),
                     examples = item.examples(),
-                    value = item.unitValue(LocalTableRules.current),
+                    value = item.unitValue(rules),
+                    tourKey = "score-row-${item.name}",
                     values = lines.mapIndexed { i, side ->
                         val line = side.getValue(item)
                         // §12.1 sem canastra na mesa, 3 vermelho vale −100: a célula diz o motivo.
@@ -155,13 +156,14 @@ fun RoundSummaryScreen(
             ScoreSectionBox(ScoreSection.TABLE, scores, lines)
             ScoreSectionBox(ScoreSection.HAND, scores, lines)
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
-            ScoreRow(stringResource(R.string.score_round_total), scores.map { ScoreCell(null, signed(it.total)) }, bold = true, pill = true)
+            ScoreRow(stringResource(R.string.score_round_total), scores.map { ScoreCell(null, signed(it.total)) }, bold = true, pill = true, tourKey = "score-round-total")
             ScoreRow(
                 stringResource(R.string.score_cumulative),
                 sides.map { ScoreCell(null, plainPoints(snapshot.totals[it.index])) },
                 bold = true,
                 tag = "cumulative",
                 pill = true,
+                tourKey = "cumulative",
             )
             }
             }
@@ -170,14 +172,30 @@ fun RoundSummaryScreen(
             if (tie) GBanner(stringResource(R.string.round_tie_notice), GColors.GoldDeep, GColors.Ivory, Modifier.testTag("tie-notice"))
 
             if (snapshot.stage == Stage.GAME_OVER) {
-                GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("show-final")) {
+                GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("show-final").tourTarget("summary-continue")) {
                     Text(stringResource(R.string.announce_continue))
                 }
             } else {
-                GButton(onNextRound, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("next-round")) {
+                GButton(onNextRound, Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("next-round").tourTarget("summary-continue")) {
                     Text(stringResource(R.string.next_round))
                 }
             }
+        }
+    }
+    }
+}
+
+/** Títulos das colunas (Valor e, para cada lado, Qtd e Pontos); repetidos no topo de cada seção. */
+@Composable
+private fun ColumnHeaders(sides: Int, tour: Boolean = false) {
+    val style = MaterialTheme.typography.labelSmall
+    fun Modifier.target(key: String) = if (tour) tourTarget(key) else this
+    Row(Modifier.fillMaxWidth()) {
+        Box(Modifier.weight(LABEL_WEIGHT))
+        Text(stringResource(R.string.score_col_value), Modifier.weight(VALUE_WEIGHT).target("score-col-value"), style = style, color = GColors.Steel, textAlign = TextAlign.End)
+        repeat(sides) { i ->
+            Text(stringResource(R.string.score_col_count), Modifier.weight(COUNT_WEIGHT).then(if (i == 0) Modifier.target("score-col-count") else Modifier), style = style, color = GColors.Steel, textAlign = TextAlign.End)
+            Text(stringResource(R.string.score_col_points), Modifier.weight(POINTS_WEIGHT).then(if (i == 0) Modifier.target("score-col-points") else Modifier), style = style, color = GColors.Steel, textAlign = TextAlign.End)
         }
     }
 }
@@ -218,19 +236,22 @@ private fun ThreeCardsIcon(color: Color, modifier: Modifier = Modifier) {
 @Composable
 private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, lines: List<Map<ScoreItem, ScoreBreakdown.Line>>) {
     val tag = if (section == ScoreSection.TABLE) "table-section" else "hand-section"
+    val rules = LocalTableRules.current
     GSubPanel(Modifier.testTag(tag)) {
         Text(
             stringResource(if (section == ScoreSection.TABLE) R.string.score_table_header else R.string.score_hand_header),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.semantics { heading() },
+            modifier = Modifier.semantics { heading() }.tourTarget(tag),
         )
+        // Os títulos das colunas de novo, no topo da seção.
+        ColumnHeaders(scores.size)
         // §1 sem coringas: sem canastra suja nem linhas de coringa; "Canastras" sem "limpas".
         val noWilds = LocalTableRules.current.noWilds
         val hidden = if (noWilds) setOf(ScoreItem.DIRTY_CANASTAS, ScoreItem.TABLE_WILDS, ScoreItem.HAND_WILDS) else emptySet()
         ScoreItem.entries.filter { it.section == section && it !in hidden }.forEach { item ->
             val label = if (noWilds && item == ScoreItem.CLEAN_CANASTAS) R.string.score_canastas else item.labelRes()
-            ScoreRow(stringResource(label), lines.mapIndexed { i, side -> side.getValue(item).cell(item, scores[i].side.index) }, examples = item.examples(), value = item.unitValue(LocalTableRules.current))
+            ScoreRow(stringResource(label), lines.mapIndexed { i, side -> side.getValue(item).cell(item, scores[i].side.index) }, examples = item.examples(), value = item.unitValue(rules), tourKey = "score-row-${item.name}")
         }
         HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
         ScoreRow(
@@ -238,6 +259,7 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
             scores.map { ScoreCell(null, signed(ScoreBreakdown.subtotal(it, section))) },
             bold = true,
             tag = if (section == ScoreSection.TABLE) "table-subtotal" else "hand-subtotal",
+            tourKey = if (section == ScoreSection.TABLE) "table-subtotal" else "hand-subtotal",
         )
     }
 }
@@ -308,10 +330,15 @@ private fun CardExamples(cards: List<Card>, description: String, modifier: Modif
 }
 
 @Composable
-private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = false, tag: String? = null, pill: Boolean = false, examples: List<Card>? = null, value: String? = null) {
+private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = false, tag: String? = null, pill: Boolean = false, examples: List<Card>? = null, value: String? = null, tourKey: String? = null) {
     val weight = if (bold) FontWeight.Bold else FontWeight.Normal
     val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums, fontWeight = weight, textAlign = TextAlign.End)
-    Row(Modifier.fillMaxWidth().then(if (tag != null) Modifier.testTag(tag) else Modifier), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth()
+            .then(if (tag != null) Modifier.testTag(tag) else Modifier)
+            .then(if (tourKey != null) Modifier.tourTarget(tourKey) else Modifier),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (examples != null) {
             Box(Modifier.weight(LABEL_WEIGHT)) { CardExamples(examples, label) }
         } else {
