@@ -52,6 +52,9 @@ interface GamePersistence {
 
     /** §14.6 debita da carteira a aposta de um jogo que começa; devolve se debitou (sem carteira: sempre). */
     suspend fun debitStake(stake: Int): Boolean = true
+
+    /** §16.7, §16.12 o jogo virou online: apaga o jogo salvo (sem estatística; o jogo segue na mesa). */
+    suspend fun discard() = Unit
 }
 
 /** Persistência real, no `:data`. */
@@ -73,6 +76,8 @@ class DataGamePersistence(
     }
 
     override suspend fun debitStake(stake: Int): Boolean = wallet?.debit(stake) ?: true
+
+    override suspend fun discard() = savedGames.clear()
 
     override suspend fun saveHandSort(id: String) = settings.setHandSort(id)
 }

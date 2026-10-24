@@ -694,4 +694,56 @@ class MultiplayerTableTest {
         advanceUntilIdle()
         (third.end.value as MpEnd.Refused).reason shouldBe com.gtranca.net.RefusalReason.HOST_REFUSED
     }
+
+    @Test
+    fun `§16_7 §16_12 Wi-Fi ligado num jogo so com robos - o jogo segue igual hospedado, o salvo e apagado e um robo pode dar lugar a quem entra`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        kotlinx.coroutines.Dispatchers.setMain(dispatcher)
+        try {
+            val saves = Collections.synchronizedList(mutableListOf<com.gtranca.data.SavedGame>())
+            var discarded = 0
+            val persistence = object : com.gtranca.game.GamePersistence {
+                override suspend fun save(game: com.gtranca.data.SavedGame) { saves += game }
+                override suspend fun finish(gameId: String, config: com.gtranca.data.SavedConfig, result: GameResult) = Unit
+                override suspend fun saveHandSort(id: String) = Unit
+                override suspend fun discard() { discarded++ }
+            }
+            val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000, stake = 50)
+            val robots = mapOf(1 to "alternativo", 2 to "jovem", 3 to "atleta")
+            val vm = com.gtranca.ui.game.GameViewModel(
+                config, gameSeed = 7, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
+                persistence = persistence, writes = com.gtranca.game.WriteQueue(CoroutineScope(dispatcher)), robots = robots,
+            )
+            advanceUntilIdle()
+            val before = vm.uiState.value.snapshot
+            val handOff = vm.handOffToHost().shouldNotBeNull()
+            advanceUntilIdle()
+            // §16.12 o jogo salvo é apagado e nada mais é gravado.
+            discarded shouldBe 1
+            val savesAtHandOff = saves.size
+            handOff.robots shouldBe robots
+            val network = MemoryNetwork()
+            val scope = CoroutineScope(dispatcher + Job())
+            val table = MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, newSeed = { 7 })
+            val rules = TableRules("Mesa de Ana", GameMode.DUPLAS, handOff.config.rules, 3000, 50, Difficulty.FACIL.id)
+            table.hostRobotGame(rules, "Ana", "mesa-r", handOff.gameSeed, handOff.snapshot, handOff.robots)
+            advanceTimeBy(1)
+            val host = (table.role.value as MpRole.Hosting).host.shouldNotBeNull()
+            // O jogo não muda: mesma partida, mesma mão, mesmo placar, os mesmos robôs.
+            host.controller.currentMatch.currentRound shouldBe handOff.snapshot.match.currentRound
+            host.controller.state.value.view.hand shouldBe before.view.hand
+            host.controller.state.value.totals shouldBe before.totals
+            host.robotPersonas.value shouldBe robots
+            table.hostControls.value.shouldNotBeNull()
+            // §16.7 o anfitrião libera um assento de robô: a mesa aparece na lista com "jogo em andamento".
+            table.openRobotSeat(Seat(2))
+            advanceTimeBy(1)
+            network.adverts().single().let { it.listed shouldBe true; it.inProgress shouldBe true }
+            saves.size shouldBe savesAtHandOff
+            table.leave()
+            advanceTimeBy(1)
+        } finally {
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
+    }
 }

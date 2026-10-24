@@ -575,7 +575,7 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
     val session = viewModel { GameSession() }
     if (session.started) {
         val existing = viewModel<GameViewModel> { error("O jogo desta tela já foi criado") }
-        GameScreen(existing) { goHome() }
+        GameScreen(existing, wifi = rememberLocalWifi(existing, data, navController)) { goHome() }
         return
     }
     /** O jogo desta tela, depois de criado; `null` antes disso. */
@@ -623,7 +623,7 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                 }
                 session.started = true
                 LaunchedEffect(Unit) { gameId = saved?.gameId ?: newGameId }
-                GameScreen(viewModel) { goHome() }
+                GameScreen(viewModel, wifi = rememberLocalWifi(viewModel, data, navController)) { goHome() }
             }
         }
     }
@@ -791,5 +791,61 @@ private fun InviteDialog(invite: com.gtranca.net.Invite, onAccept: () -> Unit, o
                 style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
             )
         }
+    }
+}
+
+/**
+ * §16.7 botão de Wi-Fi da mesa de jogo num jogo local só com robôs: o jogo está fora da rede (apagado). Ligar (passando
+ * pela explicação das permissões, se preciso) faz o jogador **virar anfitrião** sem mudar o jogo: o estado exato segue
+ * hospedado ([com.gtranca.multiplayer.MultiplayerTable.hostRobotGame]) e, por §16.12, o jogo salvo é apagado e deixa de
+ * ser gravado.
+ */
+@Composable
+private fun rememberLocalWifi(viewModel: GameViewModel, data: GameData, navController: NavHostController): com.gtranca.ui.game.TableWifi {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var asking by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val tableName = androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, "%s")
+    val goOnline: () -> Unit = {
+        if (!busy) {
+            busy = true
+            scope.launch {
+                val handOff = viewModel.handOffToHost()
+                if (handOff == null) {
+                    busy = false
+                    return@launch
+                }
+                WriteQueue.app.enqueue { data.settings.setWifiOn(true) }
+                val profile = data.settings.settings.catch { emit(Settings()) }.first().let { PlayerProfile.decode(it.profileId) }
+                val name = profile.name.takeIf { it.isNotBlank() } ?: PlayerProfile.DEFAULT_NAME
+                val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
+                val config = handOff.config
+                val rules = com.gtranca.net.TableRules(
+                    tableName = tableName.format(name),
+                    mode = config.mode,
+                    rules = config.rules,
+                    targetScore = config.targetScore,
+                    stake = config.stake,
+                    difficulty = config.difficulty.id,
+                )
+                com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).hostRobotGameAsync(
+                    rules, name, com.gtranca.net.nearby.newTableId(), handOff.gameSeed, handOff.snapshot, handOff.robots,
+                )
+                navController.navigate(MultiplayerGameRoute) {
+                    popUpTo(HomeRoute) { inclusive = false }
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
+    if (asking) {
+        com.gtranca.net.nearby.MultiplayerAccessGate(
+            onReady = { asking = false; goOnline() },
+            onCancel = { asking = false },
+        )
+    }
+    return com.gtranca.ui.game.TableWifi(on = false) {
+        if (com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) goOnline() else asking = true
     }
 }

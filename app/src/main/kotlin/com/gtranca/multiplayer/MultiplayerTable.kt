@@ -276,6 +276,58 @@ class MultiplayerTable(
         }
     }
 
+    /**
+     * §16.7 "Wi-Fi ligado no meio de um jogo só com robôs": o jogo local continua hospedado neste aparelho
+     * ([HostSession.forRobotGame]) a partir do estado exato ([snapshot]): mesma mão, vez e placar. A aposta já foi
+     * debitada no início (nada é debitado de novo). O jogador vira anfitrião e pode liberar assentos de robô.
+     */
+    suspend fun hostRobotGame(
+        rules: TableRules,
+        playerName: String,
+        tableId: String,
+        gameSeed: Long,
+        snapshot: com.gtranca.game.SaveSnapshot,
+        robots: Map<Int, String>,
+        hostSeat: Seat = Seat(0),
+    ) {
+        name = playerName
+        val session = HostSession.forRobotGame(transport, tableId, rules, playerName, hostSeat, robots, hostPhoto = myPhoto)
+        _rules.value = rules
+        val config = configOf(rules)
+        val state = com.gtranca.net.SuccessorState(
+            stateSeq = 0,
+            match = snapshot.match,
+            events = snapshot.events,
+            botRandomCalls = snapshot.botRandomCalls,
+            members = session.membersForSuccessor(),
+            nextPlayerId = session.nextPlayerId(),
+            robotPersonas = robots,
+        )
+        val host = MultiplayerHost(
+            session, config, gameSeed, emptySet(),
+            botFactory = botFactory?.invoke(config) ?: { _, random -> com.gtranca.ai.createBot(config.difficulty, random) },
+            computeDispatcher = computeDispatcher,
+            restored = state,
+        )
+        session.open(scope)
+        setRole(MpRole.Hosting(session, host))
+        scope.launch { runHost(host) }
+    }
+
+    /** [hostRobotGame] sem esperar. */
+    fun hostRobotGameAsync(rules: TableRules, playerName: String, tableId: String, gameSeed: Long, snapshot: com.gtranca.game.SaveSnapshot, robots: Map<Int, String>) {
+        scope.launch {
+            after?.join()
+            try {
+                hostRobotGame(rules, playerName, tableId, gameSeed, snapshot, robots)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _end.value = MpEnd.Closed
+            }
+        }
+    }
+
     /** [host] sem esperar. */
     fun hostAsync(rules: TableRules, playerName: String, tableId: String, lobby: com.gtranca.net.LobbySetup) {
         scope.launch {

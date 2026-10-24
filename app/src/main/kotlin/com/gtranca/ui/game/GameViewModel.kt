@@ -24,6 +24,7 @@ import com.gtranca.game.HandPrefs
 import com.gtranca.game.HandSort
 import com.gtranca.game.Persona
 import com.gtranca.game.PersonaGenerator
+import kotlinx.coroutines.cancelAndJoin
 import com.gtranca.game.BotLevel
 import com.gtranca.game.BotProfile
 import com.gtranca.game.BotCharacter
@@ -220,6 +221,9 @@ class GameViewModel(
 
     /** O fim do jogo já foi para a fila: nenhuma gravação depois dele (recriaria o salvo apagado). */
     private val finishSent = AtomicBoolean(false)
+
+    /** Laço do controlador local (parado quando o jogo vira online, §16.7). */
+    private var runJob: kotlinx.coroutines.Job? = null
 
     /** Grava a foto do jogo (na fila, em ordem; falha só é registrada). */
     /**
@@ -445,7 +449,22 @@ class GameViewModel(
                 }
             }
         }
-        viewModelScope.launch { controller.run() }
+        runJob = viewModelScope.launch { controller.run() }
+    }
+
+    /**
+     * §16.7, §16.12 "Wi-Fi ligado no meio de um jogo só com robôs": para o laço local e a gravação, apaga o jogo salvo e
+     * devolve o estado exato (mesma mão, vez, placar e aposta) para o jogo seguir hospedado. `null` se não é um jogo local
+     * em andamento.
+     */
+    suspend fun handOffToHost(): HandOff? {
+        val driver = controller as? LocalTableDriver ?: return null
+        if (driver.controller.state.value.stage == Stage.GAME_OVER || !finishSent.compareAndSet(false, true)) return null
+        runJob?.cancelAndJoin()
+        val snapshot = driver.controller.saveSnapshot()
+        persistence?.let { store -> writes.enqueue { store.discard() } }
+        val robots = personas.withIndex().mapNotNull { (i, p) -> p.character?.let { i to it.profile.code } }.toMap()
+        return HandOff(playedConfig.copy(rules = snapshot.match.rules), gameSeed, snapshot, robots)
     }
 
     /** A troca é do próprio humano: encenação com o botão "Baixar 3 vermelho". */
@@ -888,3 +907,11 @@ class GameViewModel(
         }
     }
 }
+
+/** §16.7 o jogo local que vira online: configuração jogada, semente, estado salvo e o personagem de cada assento de robô. */
+data class HandOff(
+    val config: GameConfig,
+    val gameSeed: Long,
+    val snapshot: SaveSnapshot,
+    val robots: Map<Int, String>,
+)
