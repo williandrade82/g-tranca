@@ -7,11 +7,9 @@
     <string name="home_bots_description">Os quatro robôs do Tranca-Bot, abraçados e sorrindo</string>
     <string name="brand_name">TRANCA-BOT</string>
     <string name="home_title_tagline">Um jogo de tranca robotizado pra jogar entre família</string>
-    <string name="home_subtitle">Você contra a máquina, sozinho ou em dupla</string>
     <string name="home_mode">Modo</string>
     <string name="mode_individual">Individual</string>
     <string name="mode_duplas">Duplas (você e um parceiro virtual)</string>
-    <string name="home_difficulty">Dificuldade</string>
     <string name="difficulty_facil">Fácil</string>
     <string name="difficulty_medio">Médio</string>
     <string name="difficulty_dificil">Difícil</string>
@@ -19,13 +17,7 @@
     <string name="home_target_error">Informe um número inteiro positivo</string>
     <string name="home_target_too_large">Número grande demais (máximo %1$d)</string>
     <string name="profile_wifi">Wi-Fi do jogo</string>
-    <string name="profile_wifi_hint">Ligado, o app procura mesas de outros celulares por perto e permite criar mesas multijogador.</string>
-    <string name="mp_start_confirm_title">Iniciar com robôs?</string>
-    <plurals name="mp_start_vacant">
-        <item quantity="one">%1$d assento está VAGO e será ocupado por um robô.</item>
-        <item quantity="other">%1$d assentos estão VAGOS e serão ocupados por robôs.</item>
-    </plurals>
-    <string name="mp_start_unconfirmed">Ainda não confirmaram a posição: %1$s. Ao iniciar, serão desconectados e o assento fica com um robô.</string>
+    <string name="profile_wifi_hint">Ligado, o app mostra você aos jogadores por perto e procura jogadores e mesas de outros celulares para jogar junto.</string>
     <string name="table_options">Opções</string>
     <string name="menu_speed_normal">Velocidade: normal (tocar para deixar mais lenta)</string>
     <string name="menu_speed_slow">Velocidade: lenta (tocar para voltar ao normal)</string>
@@ -38,10 +30,7 @@
     <string name="tour_skip">Pular</string>
     <string name="tour_done">Concluir</string>
     <string name="tour_again">Toque aqui para rever este tour quando quiser.</string>
-    <string name="tour_tables_balance">Seu saldo de moedas. Cada mesa tem uma aposta; vencendo, você ganha as moedas da mesa.</string>
-    <string name="tour_tables_card">Cada mesa mostra os robôs, o nível (estrelas), as regras, a aposta e a pontuação-alvo. Toque nela para ver as regras e começar.</string>
-    <string name="tour_tables_wifi">Wi-Fi do jogo: ligado, aparecem também as mesas de outros celulares por perto para jogar junto.</string>
-    <string name="tour_tables_create">Crie a sua mesa: modo, nível dos robôs, regras, aposta e pontuação-alvo.</string>
+    <string name="tour_tables_wifi">Wi-Fi do jogo: ligado, aparecem os jogadores e as mesas de outros celulares por perto para jogar junto.</string>
     <string name="tour_table_hand">Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora.</string>
     <string name="tour_table_stock">O monte: no começo da vez, compre uma carta daqui.</string>
     <string name="tour_table_discard">O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer.</string>
@@ -52,9 +41,6 @@
     <string name="tour_table_options">Som e Opções (engrenagem): velocidade, símbolos das jogadas e desistir.</string>
     <string name="profile_tour">Tour guiado</string>
     <string name="profile_tour_hint">Ligado, cada tela mostra o tour na primeira vez (ao ligar, ele volta a aparecer). O ícone "i" das telas sempre mostra o tour.</string>
-    <string name="mp_exclude_seats">Excluir duas posições (1×1)</string>
-    <string name="mp_restore_seats">Restaurar 4 posições</string>
-    <string name="mp_exclude_blocked">Com 2 ou mais convidados na mesa, as posições não podem ser excluídas.</string>
     <string name="score_col_count">Qtd</string>
     <string name="score_col_points">Pontos</string>
     <string name="match_info_title">Informações do jogo</string>
@@ -151,9 +137,6 @@
     <string name="char_alternativo_pitch">Vê um sentido oculto em cada descarte e arrisca onde ninguém espera.</string>
     <string name="char_atleta_tag">Agressivo e competitivo</string>
     <string name="char_atleta_pitch">Joga no ataque: pega o lixo para tirar o seu material e quer bater cedo.</string>
-    <string name="table_rules_reroll">Sortear outros jogadores</string>
-    <string name="table_rules_level">Nível dos robôs:</string>
-    <string name="table_rules_opponents">Adversários</string>
     <string name="char_jovem_motto">“Bora fechar essa mesa!”</string>
     <string name="char_sobrio_motto">“Cada carta tem seu propósito.”</string>
     <string name="char_alternativo_motto">“Calma parceiro! A próxima carta pode mudar tudo!”</string>
@@ -198,7 +181,6 @@
     <string name="profile_speed_normal">Normal</string>
     <string name="profile_speed_slow">30% mais lenta</string>
     <string name="round_result_named_went_out">%1$s bateu!</string>
-    <string name="game_over_named_won">%1$s venceu.</string>
     <string name="seat_left_short">Adv. esq.</string>
     <string name="seat_right_short">Adv. dir.</string>
     <string name="seat_detail_hint">Ver a última jogada</string>
@@ -357,7 +339,6 @@
     <string name="score_red_threes_note">Sem canastra na mesa, cada 3 vermelho vale −100 aqui e +5 em “Cartas na mesa”: −95 no total.</string>
     <string name="score_round_total">Total da partida</string>
     <string name="score_cumulative">Total acumulado</string>
-    <string name="score_points_with_count">%1$s (%2$d)</string>
     <string name="next_round">Próxima partida</string>
 
     <!-- Fim de jogo (§13) -->
@@ -383,7 +364,6 @@
     <string name="home_version">Versão %1$s</string>
 
     <!-- 3 vermelhos (§6.5) -->
-    <string name="game_over_rounds">Partidas jogadas: %1$d</string>
     <string name="game_over_col_round">Partida</string>
     <string name="game_over_col_total">Total</string>
     <string name="back_to_home">Voltar ao início</string>
@@ -423,16 +403,8 @@
     </plurals>
     <!-- Mesas e regras (§14.2–§14.4) -->
     <string name="tables_title">Mesas disponíveis</string>
-    <string name="tables_subtitle">Entre numa mesa aberta ou crie a sua</string>
     <string name="tables_host">Mesa de %1$s</string>
-    <string name="tables_line">%1$s · %2$s · até %3$s pontos</string>
-    <string name="tables_create">Criar mesa</string>
-    <string name="tables_view_rules">Ver regras</string>
-    <string name="create_title">Criar mesa</string>
     <string name="create_rules">Regras</string>
-    <string name="create_submit">Criar mesa</string>
-    <string name="table_rules_title">Regras da mesa</string>
-    <string name="table_rules_start">Iniciar jogo</string>
     <string name="table_rules_differs">Destacado: o que muda em relação à Clássica</string>
     <string name="rules_custom">Personalizada</string>
     <string name="rules_my_rules">Minhas regras</string>
@@ -488,36 +460,22 @@
     <string name="mp_access_close">Fechar</string>
 
     <!-- §16 multijogador local: lista de mesas, criação, sala e jogo -->
-    <string name="mp_wifi_off_desc">Procurar mesas por perto</string>
-    <string name="mp_wifi_on_desc">Parar de procurar mesas por perto</string>
-    <string name="mp_searching">Procurando mesas por perto…</string>
+    <string name="mp_wifi_off_desc">Ligar o Wi-Fi do jogo</string>
+    <string name="mp_wifi_on_desc">Desligar o Wi-Fi do jogo</string>
     <string name="mp_banner_multi">Multi</string>
     <string name="mp_banner_player">player</string>
     <string name="mp_table_host">Anfitrião: %1$s</string>
     <string name="mp_in_progress">jogo em andamento</string>
-    <string name="mp_table_details_inside">Regras, aposta e posições aparecem ao entrar</string>
-    <string name="create_type">Tipo</string>
-    <string name="create_type_bots">Contra robôs</string>
-    <string name="create_type_multi">Multijogador</string>
-    <string name="create_table_name">Nome da mesa</string>
-    <string name="create_table_name_default">Mesa de %1$s</string>
-    <string name="table_rules_publish">Publicar mesa</string>
     <string name="mp_picker_title">Escolha sua posição</string>
     <string name="mp_picker_subtitle">Você sempre joga na posição de baixo. Escolha onde deseja ficar na mesa.</string>
-    <string name="mp_host_subtitle">Você é o anfitrião e fica na posição 1. Inicie quando quiser: os assentos vagos ficam com robôs.</string>
     <string name="mp_seat_vacant">VAGO</string>
-    <string name="mp_seat_robot">Robô</string>
     <string name="mp_rotate_left">Rotacionar à esquerda</string>
     <string name="mp_rotate_right">Rotacionar à direita</string>
     <string name="mp_confirm_seat">Confirmar posição</string>
-    <string name="mp_waiting_start">Aguardando início do jogo</string>
-    <string name="mp_start">Iniciar jogo</string>
     <string name="mp_leave">Sair</string>
     <string name="mp_your_name">Seu nome</string>
     <string name="mp_connecting">Entrando na mesa…</string>
     <string name="mp_team">Dupla %1$d</string>
-    <string name="mp_dropped_title">Saíram da mesa</string>
-    <string name="mp_dropped_text">Não confirmaram a posição e foram desconectados: %1$s</string>
     <string name="mp_not_found">Mesa não encontrada por perto.</string>
     <string name="mp_seat_disconnected">%1$s (fora)</string>
     <string name="mp_someone">Um jogador</string>
@@ -558,14 +516,41 @@
     <string name="mp_waiting_others_title">Aguardando os outros jogadores</string>
     <string name="mp_waiting_others_text">O anfitrião saiu e você assumiu a mesa. O jogo segue quando outro jogador voltar a ela.</string>
     <string name="mp_force_commit">Assumir mesmo assim</string>
-    <string name="mp_host_menu">Menu do anfitrião</string>
-    <string name="mp_pass_role">Repassar a mesa</string>
-    <string name="mp_open_seat">Liberar um assento de robô</string>
+    <string name="mp_pass_role">Entregar a mesa</string>
     <string name="mp_pass_text">Escolha quem passa a sustentar a mesa. Você continua jogando, como jogador comum.</string>
-    <string name="mp_pass_confirm">Repassar</string>
+    <string name="mp_pass_confirm">Entregar</string>
     <string name="mp_pass_none">Não há outro jogador conectado para receber a mesa.</string>
-    <string name="mp_open_text">Quem entrar ocupa o lugar do robô, com a sua aprovação. Até lá, o robô continua jogando.</string>
-    <string name="mp_open_none">Não há assento de robô para liberar.</string>
     <string name="mp_ok">Entendi</string>
     <string name="mp_waiting_approval">Aguardando o anfitrião aprovar a sua entrada…</string>
+    <string name="tour_tables_participants">Escolha até 3 companheiros de mesa: jogadores por perto ou robôs. Você sempre joga.</string>
+    <string name="tour_tables_options">Modo, nível dos robôs, aposta, regras e pontuação-alvo. A última escolha fica guardada.</string>
+    <string name="tour_tables_choose_seats">Pronto? Os jogadores escolhidos recebem o convite e todos escolhem o lugar na mesa.</string>
+    <string name="tables_choose_seats">Escolher posições</string>
+    <string name="tables_difficulty">Dificuldade dos Robôs</string>
+    <string name="tables_recruiting">Recrutando</string>
+    <string name="mp_waiting_others">Aguardando os outros jogadores</string>
+    <string name="mp_seat_confirmed">Posição confirmada</string>
+    <string name="mp_refusal_title">Recusa</string>
+    <string name="mp_refusal_invite_refused">Recusou o convite.</string>
+    <string name="mp_refusal_balance">Saldo insuficiente.</string>
+    <string name="mp_refusal_out_of_range">Fora do alcance.</string>
+    <string name="mp_refusal_host">O anfitrião recusou.</string>
+    <string name="mp_refusal_full">Mesa cheia.</string>
+    <string name="mp_ok_short">OK</string>
+    <string name="mp_closed_host_left">O anfitrião saiu e desfez a mesa.</string>
+    <string name="mp_closed_host_offline">O anfitrião desligou o Wi-Fi do jogo: o jogo segue só no celular dele, com robôs no lugar dos outros jogadores.</string>
+    <string name="mp_invite_title">Convite</string>
+    <string name="mp_invite_participants">Participantes</string>
+    <string name="mp_invite_countdown">Aceito automaticamente em %1$d s</string>
+    <string name="mp_invite_accept">Aceitar</string>
+    <string name="mp_invite_refuse">Recusar</string>
+    <string name="mp_disconnect_title">Desconectar a mesa?</string>
+    <string name="mp_disconnect_text">Os jogadores por perto serão substituídos por robôs e o jogo segue só neste celular.</string>
+    <string name="mp_disconnect_confirm">Desconectar</string>
+    <string name="mp_menu_section">Multijogador</string>
+    <string name="mp_swap_seat">Trocar jogador ou robô</string>
+    <string name="mp_swap_text">Escolha um assento: o jogador dá lugar a um robô; o robô libera a vaga para alguém entrar, com a sua aprovação.</string>
+    <string name="mp_swap_none">Não há assento para trocar.</string>
+    <string name="mp_notice_left_robot">%1$s saiu; %2$s assume o lugar</string>
+    <string name="mp_notice_left_robot_reason">%1$s saiu; %2$s assume o lugar (%3$s)</string>
 </resources>

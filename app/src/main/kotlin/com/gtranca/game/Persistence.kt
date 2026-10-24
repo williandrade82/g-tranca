@@ -25,7 +25,7 @@ fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(diff
 
 fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls, playerName)
 
-fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null): SavedGame = SavedGame(
+fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null, robots: Map<Int, String> = emptyMap()): SavedGame = SavedGame(
     gameId = gameId,
     config = config.toSaved(),
     gameSeed = gameSeed,
@@ -33,6 +33,7 @@ fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: Sa
     events = snapshot.events.map { it.toSaved() },
     botRandomCalls = snapshot.botRandomCalls,
     playerName = playerName,
+    robots = robots,
 )
 
 /** O que o jogo em andamento grava. Interface para os testes. */

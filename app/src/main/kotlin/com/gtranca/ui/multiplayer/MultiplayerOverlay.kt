@@ -70,31 +70,94 @@ import kotlinx.coroutines.launch
  * entrada, faixas e avisos da mesa, reconexão, sucessão, moedas do fim de jogo e "Voltar à mesa".
  */
 @Composable
-fun rememberMultiplayerHooks(table: MultiplayerTable, personas: List<Persona>, onExit: () -> Unit): MultiplayerScreenHooks {
+fun rememberMultiplayerHooks(
+    table: MultiplayerTable,
+    personas: List<Persona>,
+    onExit: () -> Unit,
+    /** Abre o "Desistir da mesa?" (a mesma confirmação da bandeira). */
+    onResign: () -> Unit = {},
+    /** §16 Wi-Fi do jogo (Perfil) e a gravação dele. */
+    wifiOn: Boolean = true,
+    setWifi: (Boolean) -> Unit = {},
+): MultiplayerScreenHooks {
     val received by table.received.collectAsState()
     val resigned by table.resigned.collectAsState()
     val role by table.role.collectAsState()
     val rules by table.rules.collectAsState()
     val roster by table.roster.collectAsState()
+    val offline by table.offline.collectAsState()
     val stake = rules?.stake ?: 0
     val linkQuality by table.hostLinkQuality.collectAsState()
     // §16.10 segue o papel atual: quem recebe a mesa ganha o menu do anfitrião e quem a deixa o perde.
     val host by table.hostControls.collectAsState()
     var passing by remember { mutableStateOf(false) }
-    var opening by remember { mutableStateOf(false) }
+    var swapping by remember { mutableStateOf(false) }
+    var confirmDisconnect by remember { mutableStateOf(false) }
+    // §16.7 o convidado desligou o Wi-Fi: vale como desistência, e o Wi-Fi só desliga se ele confirmar.
+    var wifiOffOnResign by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val current = host
+    val connected = wifiOn && !offline && !resigned
+    val hostName = roster.firstOrNull { it.isHost }?.name.orEmpty()
+    val wifi = com.gtranca.ui.game.TableWifi(connected) {
+        when {
+            // Ligar de novo depois de sair da rede: só a configuração (o jogo segue neste aparelho).
+            !connected -> setWifi(!wifiOn)
+            role is MpRole.Guesting -> {
+                wifiOffOnResign = true
+                onResign()
+            }
+            // §16.7 anfitrião com humanos: pergunta antes; só com robôs: desliga sem pergunta.
+            roster.any { it.id != table.myId && !it.resigned } -> confirmDisconnect = true
+            else -> {
+                scope.launch { table.goOffline() }
+                setWifi(false)
+            }
+        }
+    }
     return MultiplayerScreenHooks(
-        headerExtra = if (current == null) null else {
-            { close -> HostMenuItems(onPass = { close(); passing = true }, onOpen = { close(); opening = true }) }
+        headerExtra = if (!connected) null else {
+            { close ->
+                MultiplayerMenuItems(
+                    hosting = current != null,
+                    hostName = hostName,
+                    onSwap = { close(); swapping = true },
+                    onHandOver = { close(); passing = true },
+                )
+            }
         },
         overlay = {
             MultiplayerOverlay(table, personas, onExit)
-            if (current != null) HostMenuDialogs(table, current, personas, passing, opening, { passing = false }, { opening = false })
+            if (current != null) HostMenuDialogs(table, current, personas, passing, swapping, { passing = false }, { swapping = false })
+            if (confirmDisconnect) {
+                GMessage(
+                    modifier = Modifier.testTag("mp-disconnect"),
+                    title = stringResource(R.string.mp_disconnect_title),
+                    text = stringResource(R.string.mp_disconnect_text),
+                    illustration = MessageIllustration.Question,
+                    tone = MessageTone.Warning,
+                    confirmText = stringResource(R.string.mp_disconnect_confirm),
+                    confirmTag = "mp-disconnect-confirm",
+                    onConfirm = {
+                        confirmDisconnect = false
+                        scope.launch { table.goOffline() }
+                        setWifi(false)
+                    },
+                    dismissText = stringResource(R.string.cancel),
+                    dismissTag = "mp-disconnect-cancel",
+                    onDismissRequest = { confirmDisconnect = false },
+                )
+            }
         },
         coinsNet = { received?.let { it - stake } },
         gameOverExtra = { if (resigned && role is MpRole.Guesting) ReturnToTableButton(table) },
         hostSeat = { roster.firstOrNull { it.isHost }?.seat },
         hostLinkQuality = { linkQuality },
+        onResignAnswered = { confirmed ->
+            if (wifiOffOnResign && confirmed) setWifi(false)
+            wifiOffOnResign = false
+        },
+        wifi = wifi,
     )
 }
 
@@ -191,15 +254,21 @@ private fun Strip(text: String, tag: String, color: androidx.compose.ui.graphics
 }
 
 @Composable
-private fun noticeText(notice: MpNotice): String {
+internal fun noticeText(notice: MpNotice): String {
     val name = notice.name ?: stringResource(R.string.mp_someone)
     val persona = notice.persona?.let { code -> com.gtranca.game.BotProfile.entries.firstOrNull { it.code == code }?.botName }
     return when (notice.kind) {
         NoticeKind.DISCONNECTED -> stringResource(R.string.mp_notice_disconnected, name)
         NoticeKind.RECONNECTED -> stringResource(R.string.mp_notice_reconnected, name)
         NoticeKind.RESIGNED -> stringResource(R.string.mp_notice_resigned, name)
-        NoticeKind.REPLACED_BY_ROBOT ->
-            if (persona != null) stringResource(R.string.mp_notice_robot, name, persona) else stringResource(R.string.mp_notice_robot_plain, name)
+        // §16.2 na escolha de posições: "<nome> saiu; <robô> assume o lugar", com o motivo da recusa quando houver.
+        NoticeKind.REPLACED_BY_ROBOT -> when {
+            persona != null && notice.refusal != null ->
+                stringResource(R.string.mp_notice_left_robot_reason, name, persona, stringResource(refusalText(notice.refusal)))
+            persona != null && notice.lobby -> stringResource(R.string.mp_notice_left_robot, name, persona)
+            persona != null -> stringResource(R.string.mp_notice_robot, name, persona)
+            else -> stringResource(R.string.mp_notice_robot_plain, name)
+        }
         NoticeKind.WAITING -> stringResource(R.string.mp_notice_waiting, name)
         NoticeKind.SEAT_OPENED -> stringResource(R.string.mp_notice_opened, name)
         NoticeKind.JOINED -> stringResource(R.string.mp_notice_joined, name)
@@ -223,9 +292,7 @@ private fun HostPanels(table: MultiplayerTable, host: MultiplayerHost, personas:
     val requests by host.sessionJoinRequests().collectAsState()
     val committed by host.committed.collectAsState()
     val canForce by host.canForceCommit.collectAsState()
-    val dropped by host.hostSession.droppedAtStart.collectAsState()
     val noSuccessor by host.noSuccessor.collectAsState()
-    var droppedSeen by remember { mutableStateOf(false) }
     var noSuccessorSeen by remember { mutableStateOf(false) }
     fun seatName(seat: Seat): String = personas.getOrNull(seat.index)?.firstName.orEmpty()
 
@@ -295,18 +362,6 @@ private fun HostPanels(table: MultiplayerTable, host: MultiplayerHost, personas:
             )
         }
     }
-    if (dropped.isNotEmpty() && !droppedSeen) {
-        // §16.2 quem não confirmou a posição no início saiu da mesa.
-        GMessage(
-            modifier = Modifier.testTag("mp-dropped"),
-            title = stringResource(R.string.mp_dropped_title),
-            text = stringResource(R.string.mp_dropped_text, dropped.joinToString(", ") { it.name }),
-            illustration = MessageIllustration.Info,
-            confirmText = stringResource(R.string.mp_ok),
-            onConfirm = { droppedSeen = true },
-            onDismissRequest = { droppedSeen = true },
-        )
-    }
     val othersHere = table.roster.collectAsState().value.any { it.id != host.hostSession.hostId && !it.resigned }
     if (noSuccessor && othersHere && !noSuccessorSeen && committed) {
         LaunchedEffect(Unit) {
@@ -349,27 +404,38 @@ private fun JoinRequestRow(request: JoinRequest, seatName: String, host: Multipl
     }
 }
 
-/** §16.7, §16.10 itens do menu do anfitrião (no menu de Opções da mesa): passar o cargo e liberar um assento de robô. */
+/**
+ * docs/telas.md 3.14 seção Multijogador do menu de engrenagem (só com o Wi-Fi ligado): no anfitrião, "Trocar jogador ou
+ * robô" e "Entregar a mesa"; no convidado, a linha "Anfitrião: <nome>".
+ */
 @Composable
-private fun HostMenuItems(onPass: () -> Unit, onOpen: () -> Unit) {
+private fun MultiplayerMenuItems(hosting: Boolean, hostName: String, onSwap: () -> Unit, onHandOver: () -> Unit) {
     Text(
-        stringResource(R.string.mp_host_menu),
-        Modifier.padding(horizontal = 12.dp, vertical = 4.dp).testTag("host-menu"),
+        stringResource(R.string.mp_menu_section),
+        Modifier.padding(horizontal = 12.dp, vertical = 4.dp).testTag("mp-menu"),
         style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
         color = GColors.Gold,
     )
-    DropdownMenuItem(
-        { Text(stringResource(R.string.mp_pass_role)) },
-        onPass,
-        Modifier.heightIn(min = 48.dp).testTag("host-pass-role"),
-        leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.PASS_TABLE) },
-    )
-    DropdownMenuItem(
-        { Text(stringResource(R.string.mp_open_seat)) },
-        onOpen,
-        Modifier.heightIn(min = 48.dp).testTag("host-open-seat"),
-        leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.SWAP_PLAYER) },
-    )
+    if (hosting) {
+        DropdownMenuItem(
+            { Text(stringResource(R.string.mp_swap_seat)) },
+            onSwap,
+            Modifier.heightIn(min = 48.dp).testTag("mp-swap-seat"),
+            leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.SWAP_PLAYER) },
+        )
+        DropdownMenuItem(
+            { Text(stringResource(R.string.mp_pass_role)) },
+            onHandOver,
+            Modifier.heightIn(min = 48.dp).testTag("mp-hand-over"),
+            leadingIcon = { com.gtranca.ui.theme.OptionGlyph(com.gtranca.ui.theme.OptionIcon.PASS_TABLE) },
+        )
+    } else {
+        Text(
+            stringResource(R.string.mp_table_host, hostName),
+            Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 12.dp).testTag("mp-host-name"),
+            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+        )
+    }
 }
 
 /** Diálogos do menu do anfitrião (fora do menu, que fecha ao escolher). */
@@ -379,9 +445,9 @@ private fun HostMenuDialogs(
     host: MultiplayerHost,
     personas: List<Persona>,
     passing: Boolean,
-    opening: Boolean,
+    swapping: Boolean,
     closePassing: () -> Unit,
-    closeOpening: () -> Unit,
+    closeSwapping: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val roster by table.roster.collectAsState()
@@ -414,23 +480,26 @@ private fun HostMenuDialogs(
             confirmButton = { TextButton(closePassing) { Text(stringResource(R.string.cancel)) } },
         )
     }
-    if (opening) {
-        // §16.7 assentos de robô (sem humano), ainda não abertos.
+    if (swapping) {
+        // §16.7, §16.8 trocar um assento: humano → robô (na hora); robô → vaga aberta para alguém entrar (com aprovação).
         val mode = table.rules.collectAsState().value?.mode
-        val robots = mode?.seats.orEmpty().filter { seat -> roster.none { it.seat == seat } && seat !in openSeats && seat != host.hostSeat }
+        val seats = mode?.seats.orEmpty().filter { it != host.hostSeat && it !in openSeats }
         GDialog(
-            onDismissRequest = closeOpening,
-            title = { Text(stringResource(R.string.mp_open_seat)) },
+            onDismissRequest = closeSwapping,
+            title = { Text(stringResource(R.string.mp_swap_seat)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(stringResource(if (robots.isEmpty()) R.string.mp_open_none else R.string.mp_open_text))
-                    robots.forEach { seat ->
+                    Text(stringResource(if (seats.isEmpty()) R.string.mp_swap_none else R.string.mp_swap_text))
+                    seats.forEach { seat ->
+                        val human = roster.firstOrNull { it.seat == seat && !it.resigned }
                         GButton(
-                            { closeOpening(); scope.launch { table.openRobotSeat(seat) } },
-                            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("host-open-${seat.index}"),
+                            {
+                                closeSwapping()
+                                scope.launch { if (human != null) host.replaceWithRobot(seat) else table.openRobotSeat(seat) }
+                            },
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("mp-swap-${seat.index}"),
                             kind = GButtonKind.Secondary,
                         ) {
-                            // Imagem do robô do assento, como na mesa.
                             personas.getOrNull(seat.index)?.let {
                                 com.gtranca.ui.persona.PersonaAvatar(it, 32.dp)
                                 Spacer(Modifier.width(Spacing.sm))
@@ -440,7 +509,7 @@ private fun HostMenuDialogs(
                     }
                 }
             },
-            confirmButton = { TextButton(closeOpening) { Text(stringResource(R.string.cancel)) } },
+            confirmButton = { TextButton(closeSwapping) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

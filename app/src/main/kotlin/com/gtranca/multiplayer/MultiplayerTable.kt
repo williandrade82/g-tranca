@@ -56,8 +56,11 @@ sealed interface MpRole {
 
 /** Fim da mesa para este aparelho (modais "Mesa encerrada", recusas, sessão substituída, §16.5, §16.11). */
 sealed interface MpEnd {
-    /** Recusa do anfitrião ou da sessão, com o texto pt-BR que veio dela. */
-    data class Refused(val message: String) : MpEnd
+    /** Recusa do anfitrião ou da sessão, com o texto pt-BR que veio dela e, no convite/pedido de entrada, o motivo (§16.2). */
+    data class Refused(val message: String, val reason: com.gtranca.net.RefusalReason? = null) : MpEnd
+
+    /** §16.2, §16.7 o anfitrião encerrou a mesa: desfez antes do início ou desligou o Wi-Fi do jogo. */
+    data class Ended(val reason: com.gtranca.net.CloseReason) : MpEnd
 
     /** A mesa sumiu da busca ou fechou. */
     data object Closed : MpEnd
@@ -67,7 +70,16 @@ sealed interface MpEnd {
 }
 
 /** Aviso a mostrar na mesa (§16.8); [name] e [persona] já resolvidos a partir da sala. */
-data class MpNotice(val kind: NoticeKind, val name: String?, val persona: String? = null, val id: Long = nextNoticeId())
+data class MpNotice(
+    val kind: NoticeKind,
+    val name: String?,
+    val persona: String? = null,
+    /** §16.2 na escolha de posições, por que o robô assumiu (recusa, saldo, fora do alcance); `null` = saiu. */
+    val refusal: com.gtranca.net.RefusalReason? = null,
+    /** Aviso da escolha de posições (antes do início do jogo). */
+    val lobby: Boolean = false,
+    val id: Long = nextNoticeId(),
+)
 
 private var noticeCounter = 0L
 
@@ -77,6 +89,9 @@ private fun nextNoticeId(): Long = synchronized(MpNotice::class) { ++noticeCount
 interface MpCoins {
     /** Debita a aposta (no início do jogo ou ao entrar no lugar de um robô); `false` se não havia saldo. */
     suspend fun debit(stake: Int): Boolean
+
+    /** §14.6, §16.2 o saldo deste aparelho cobre a aposta (senão o convite é recusado sozinho). */
+    fun canAfford(stake: Int): Boolean = true
 
     /** Fim do jogo deste jogador: conta nas estatísticas e credita o que recebeu (uma vez por [gameId]). */
     suspend fun settle(gameId: String, rules: TableRules, result: GameResult, stake: Int, received: Int)
@@ -224,29 +239,35 @@ class MultiplayerTable(
 
     // ---- sala de espera (§16.2) ------------------------------------------------------------------------------------
 
-    /** §16.2 publica a mesa com as [rules] escolhidas; o anfitrião ocupa a posição 1. */
-    suspend fun host(rules: TableRules, playerName: String, tableId: String) {
+    /**
+     * §14.4, §16.2 abre a mesa montada: os jogadores próximos de [lobby] recebem o convite e todos passam à escolha de
+     * posições; o jogo começa sozinho 2 s depois que todos confirmam ([HostSession.gameStart]).
+     */
+    suspend fun host(rules: TableRules, playerName: String, tableId: String, lobby: com.gtranca.net.LobbySetup) {
         name = playerName
-        val session = HostSession(transport, tableId, rules, playerName, hostPhoto = myPhoto)
+        val session = HostSession(transport, tableId, rules, playerName, hostPhoto = myPhoto, lobby = lobby)
         session.open(scope)
         _rules.value = rules
         setRole(MpRole.Hosting(session))
     }
 
-    /** Entra na mesa [tableId] (§16.2); falha (exceção) se ela não está na busca. */
-    suspend fun join(tableId: String, playerName: String) {
+    /**
+     * Entra na mesa [tableId] (§16.2): pelo convite (com a chave de presença [inviteKey]) ou por pedido de entrada; falha
+     * (exceção) se ela não está na busca.
+     */
+    suspend fun join(tableId: String, playerName: String, inviteKey: String? = null) {
         name = playerName
-        val session = GuestSession(transport, playerName, photo = myPhoto)
+        val session = GuestSession(transport, playerName, photo = myPhoto, canAfford = coins::canAfford)
         setRole(MpRole.Guesting(session, tableId))
-        session.join(scope, tableId)
+        session.join(scope, tableId, inviteKey = inviteKey)
     }
 
     /** [join] sem esperar: a mesa não achada vira [MpEnd.NotFound]. */
-    fun joinAsync(tableId: String, playerName: String) {
+    fun joinAsync(tableId: String, playerName: String, inviteKey: String? = null) {
         scope.launch {
             after?.join()
             try {
-                join(tableId, playerName)
+                join(tableId, playerName, inviteKey)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -256,11 +277,11 @@ class MultiplayerTable(
     }
 
     /** [host] sem esperar. */
-    fun hostAsync(rules: TableRules, playerName: String, tableId: String) {
+    fun hostAsync(rules: TableRules, playerName: String, tableId: String, lobby: com.gtranca.net.LobbySetup) {
         scope.launch {
             after?.join()
             try {
-                host(rules, playerName, tableId)
+                host(rules, playerName, tableId, lobby)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -278,16 +299,91 @@ class MultiplayerTable(
         }
     }
 
-    suspend fun chooseSeat(seat: Seat) = (_role.value as? MpRole.Guesting)?.session?.chooseSeat(seat)
+    /** §16.2 escolha de posições (ocupantes, confirmações, trava), do papel atual; `null` antes de entrar. */
+    val seating: StateFlow<com.gtranca.net.SeatingState?> = _role.flatMapLatest { role ->
+        when (role) {
+            is MpRole.Hosting -> role.session.seating
+            is MpRole.Guesting -> role.session.seating
+            null -> flowOf(null)
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, null)
 
-    suspend fun confirmSeat() = (_role.value as? MpRole.Guesting)?.session?.confirmSeat()
+    /** §16.2 convite recebido e ainda sem resposta (só no convidado). */
+    val invite: StateFlow<com.gtranca.net.Invite?> = _role.flatMapLatest { role ->
+        (role as? MpRole.Guesting)?.session?.invite ?: flowOf(null)
+    }.stateIn(scope, SharingStarted.Eagerly, null)
 
-    /** §16.2 o anfitrião inicia: assentos vagos com robôs, quem não confirmou sai; o jogo roda neste aparelho. */
-    suspend fun startGame() {
+    /** §16.2 situação do convidado (`null` no anfitrião). */
+    val guestStatus: StateFlow<GuestStatus?> = _role.flatMapLatest { role ->
+        (role as? MpRole.Guesting)?.session?.status ?: flowOf(null)
+    }.stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** §16.2, §16.7 pedidos de entrada esperando este anfitrião (vazio no convidado). */
+    val joinRequests: StateFlow<List<com.gtranca.net.JoinRequest>> = _role.flatMapLatest { role ->
+        (role as? MpRole.Hosting)?.session?.joinRequests ?: flowOf(emptyList())
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** §16.2 aceita o convite (vai à escolha de posições). */
+    suspend fun acceptInvite() {
+        (_role.value as? MpRole.Guesting)?.session?.acceptInvite()
+    }
+
+    /** §16.2 recusa o convite (um robô assume o lugar). */
+    suspend fun refuseInvite() {
+        (_role.value as? MpRole.Guesting)?.session?.refuseInvite()
+    }
+
+    /** §16.2 rotaciona a mesa (troca com o próximo ocupante não confirmado na [direction]). */
+    suspend fun rotate(direction: com.gtranca.net.RotateDirection) {
+        when (val role = _role.value) {
+            is MpRole.Hosting -> role.session.rotate(direction)
+            is MpRole.Guesting -> role.session.rotate(direction)
+            null -> Unit
+        }
+    }
+
+    /** §16.2 confirma a posição (trava o lugar). */
+    suspend fun confirmSeat() {
+        when (val role = _role.value) {
+            is MpRole.Hosting -> role.session.confirmPosition()
+            is MpRole.Guesting -> role.session.confirmSeat()
+            null -> Unit
+        }
+    }
+
+    /** §16.2, §16.7 o anfitrião aceita o pedido de entrada [requestId] (na escolha de posições ou no jogo). */
+    suspend fun approveJoin(requestId: Int) {
         val hosting = _role.value as? MpRole.Hosting ?: return
-        if (hosting.host != null) return
+        val host = hosting.host
+        if (host != null) host.approveJoin(requestId) else hosting.session.approveJoin(requestId)
+    }
+
+    /** §16.2, §16.7 o anfitrião recusa o pedido de entrada [requestId] (o candidato vê o motivo). */
+    suspend fun refuseJoin(requestId: Int) {
+        (_role.value as? MpRole.Hosting)?.session?.refuseJoin(requestId)
+    }
+
+    private val _offline = MutableStateFlow(false)
+
+    /** §16.7 o anfitrião desligou o Wi-Fi do jogo: a mesa saiu da rede e o jogo segue só neste aparelho. */
+    val offline: StateFlow<Boolean> = _offline.asStateFlow()
+
+    /**
+     * §16.7 o anfitrião desliga o Wi-Fi do jogo no meio do jogo: avisa os convidados, encerra a sessão e põe um robô no
+     * lugar de cada humano remoto, com as regras de aposta da opção 2 de §16.8 ([MultiplayerHost.replaceWithRobot]).
+     */
+    suspend fun goOffline() {
+        val hosting = _role.value as? MpRole.Hosting ?: return
+        val host = hosting.host ?: return
+        _offline.value = true
+        val remote = hosting.session.goOffline()
+        remote.keys.forEach { host.replaceWithRobot(it) }
+    }
+
+    /** §16.2 todos confirmaram: o jogo começa neste aparelho (anfitrião), com os robôs da escolha de posições. */
+    private suspend fun startHosted(hosting: MpRole.Hosting, seats: Set<Seat>) {
+        if (hosting.host != null || _role.value !== hosting) return
         val rules = _rules.value ?: return
-        val seats = hosting.session.startGame().keys
         val config = configOf(rules)
         // §16.13 cada humano debita a aposta no próprio celular ao começar.
         if (rules.stake > 0) coins.debit(rules.stake)
@@ -307,10 +403,15 @@ class MultiplayerTable(
      */
     suspend fun leave() {
         when (val role = _role.value) {
-            is MpRole.Hosting -> role.session.close()
+            // §16.2 "Sair" do anfitrião na escolha de posições desfaz a mesa e avisa os convidados.
+            is MpRole.Hosting -> if (role.host == null) role.session.disband() else role.session.close()
             is MpRole.Guesting -> {
                 val status = role.session.status.value
-                if (status == GuestStatus.Lobby || status == GuestStatus.Connecting) role.session.leave()
+                if (status == GuestStatus.Lobby || status == GuestStatus.Connecting || status == GuestStatus.Invited ||
+                    status == GuestStatus.WaitingApproval
+                ) {
+                    role.session.leave()
+                }
                 role.session.release()
             }
             null -> Unit
@@ -433,7 +534,7 @@ class MultiplayerTable(
         }
     }
 
-    private fun nameOf(id: Int?): String? = id?.let { i -> roster.value.firstOrNull { it.id == i }?.name }
+    private fun nameOf(id: Int?): String? = id?.let { i -> roster.value.firstOrNull { it.id == i }?.name ?: knownNames[i] }
 
     private fun watchGuest(role: MpRole.Guesting): List<Job> {
         val guest = role.session
@@ -452,7 +553,8 @@ class MultiplayerTable(
                             if (was == GuestStatus.Reconnecting || was == GuestStatus.Resigned) _resigned.value = false
                         }
                         GuestStatus.Resigned -> _resigned.value = true
-                        is GuestStatus.Refused -> _end.value = MpEnd.Refused(status.message)
+                        is GuestStatus.Refused -> _end.value = MpEnd.Refused(status.message, status.reason)
+                        is GuestStatus.TableEnded -> if (_received.value == null) _end.value = MpEnd.Ended(status.reason)
                         GuestStatus.Closed -> if (_received.value == null) _end.value = MpEnd.Closed
                         GuestStatus.TakingOver -> Unit
                         else -> Unit
@@ -490,8 +592,18 @@ class MultiplayerTable(
             robots.update { it + (notice.seat!!.index to notice.persona!!) }
         }
         if (notice.kind == NoticeKind.JOINED && notice.seat != null) robots.update { it - notice.seat!!.index }
-        _notices.emit(MpNotice(notice.kind, nameOf(notice.playerId), notice.persona))
+        _notices.emit(MpNotice(notice.kind, nameOf(notice.playerId), notice.persona, notice.refusal, lobby = inLobby()))
     }
+
+    /** Na escolha de posições (o jogo ainda não começou neste aparelho). */
+    private fun inLobby(): Boolean = when (val role = _role.value) {
+        is MpRole.Hosting -> role.host == null
+        is MpRole.Guesting -> role.session.status.value.let { it == GuestStatus.Lobby || it == GuestStatus.Invited || it == GuestStatus.Connecting }
+        null -> false
+    }
+
+    /** Nomes de todos que já passaram pela sala (quem sai some da sala antes do aviso chegar à tela). */
+    private val knownNames = java.util.concurrent.ConcurrentHashMap<Int, String>()
 
     /** §16.10 este convidado assume: solta a sessão de convidado e abre a mesa como anfitrião no mesmo transporte. */
     private suspend fun takeOver(role: MpRole.Guesting) {
@@ -515,7 +627,17 @@ class MultiplayerTable(
     }
 
     private fun watchHost(role: MpRole.Hosting): List<Job> {
-        val host = role.host ?: return listOf(scope.launch { diffRoster(role.session) }, scope.launch { role.session.photos.collect(::mergePhotos) })
+        val host = role.host ?: return listOf(
+            scope.launch { diffRoster(role.session) },
+            scope.launch { role.session.photos.collect(::mergePhotos) },
+            // §16.2 avisos da escolha de posições (quem saiu, o robô que assumiu e o motivo).
+            scope.launch { role.session.lobbyNotices.collect { onNotice(it) } },
+            // §16.2 todos confirmaram: 2 s depois o jogo começa sozinho.
+            scope.launch {
+                val seats = role.session.gameStart.filter { it != null }.first()!!
+                scope.launch { startHosted(role, seats.keys) }
+            },
+        )
         return listOf(
             scope.launch { host.robotPersonas.collect { robots.value = it } },
             scope.launch { role.session.photos.collect(::mergePhotos) },
@@ -574,6 +696,7 @@ class MultiplayerTable(
     private suspend fun diffRoster(session: HostSession) {
         var before: Map<Int, PlayerInfo> = session.roster.value.associateBy { it.id }
         session.roster.collect { list ->
+            list.forEach { knownNames[it.id] = it.name }
             val now = list.associateBy { it.id }
             now.values.forEach { p ->
                 val old = before[p.id]

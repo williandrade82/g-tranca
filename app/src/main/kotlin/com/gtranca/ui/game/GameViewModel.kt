@@ -24,6 +24,9 @@ import com.gtranca.game.HandPrefs
 import com.gtranca.game.HandSort
 import com.gtranca.game.Persona
 import com.gtranca.game.PersonaGenerator
+import com.gtranca.game.BotLevel
+import com.gtranca.game.BotProfile
+import com.gtranca.game.BotCharacter
 import com.gtranca.game.PlayerProfile
 import com.gtranca.game.HumanPlayer
 import com.gtranca.game.HumanTurnResolver
@@ -205,6 +208,11 @@ class GameViewModel(
      * as espera, §16.6) e a mesa indica a vez também dos humanos remotos.
      */
     private val multiplayer: Boolean = false,
+    /**
+     * §14.4, §14.5 personagem de cada assento de robô (índice → `BotProfile.code`) como a mesa foi montada (escolhidos e
+     * sorteados, na posição escolhida); vazio = sorteio pela semente do jogo (jogos salvos antes da mesa montada).
+     */
+    private val robots: Map<Int, String> = emptyMap(),
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -227,7 +235,7 @@ class GameViewModel(
     private fun enqueueSave(snapshot: SaveSnapshot) {
         val store = persistence ?: return
         if (finishSent.get()) return
-        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName)) }
+        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName, robots)) }
     }
 
     private data class Local(
@@ -279,8 +287,14 @@ class GameViewModel(
 
     val personas: List<Persona> = run {
         val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, config.difficulty, drawnForName).iterator()
+        val level = BotLevel.of(config.difficulty)
         List(config.mode.seatCount) { index ->
-            if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto) else opponents.next()
+            val chosen = robots[index]?.let { code -> BotProfile.entries.firstOrNull { it.code == code } }
+            when {
+                index == humanSeat.index -> playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto)
+                robots.isNotEmpty() && chosen != null -> Persona(chosen.botName, "", BotCharacter(chosen, level))
+                else -> opponents.next()
+            }
         }
     }
 

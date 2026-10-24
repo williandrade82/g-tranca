@@ -61,11 +61,21 @@ class MultiplayerScreenHooks(
     val hostSeat: () -> com.gtranca.engine.model.Seat? = { null },
     /** §16.15 qualidade da conexão com o anfitrião (1 a 3), só no convidado. */
     val hostLinkQuality: () -> Int? = { null },
+    /** §16.9 a desistência foi confirmada ou cancelada no "Desistir da mesa?" (o Wi-Fi do convidado depende disso, 3.14). */
+    val onResignAnswered: (confirmed: Boolean) -> Unit = {},
+    /** §16, 3.14 botão de Wi-Fi da mesa multijogador. */
+    val wifi: TableWifi? = null,
 )
 
 /** Tela do jogo: mesa, fim de partida (§12) ou fim de jogo (§13), conforme o estado. */
 @Composable
-fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = null, onExit: () -> Unit) {
+fun GameScreen(
+    viewModel: GameViewModel,
+    multiplayer: MultiplayerScreenHooks? = null,
+    /** §16, docs/telas.md 3.14 botão de Wi-Fi da mesa; `null` = sem o botão. */
+    wifi: TableWifi? = null,
+    onExit: () -> Unit,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ObserveAnimationScale(viewModel::onAnimationScaleChanged)
     // Velocidade das animações (Perfil ou botão da mesa): vale já na jogada seguinte.
@@ -100,7 +110,9 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
             }
         }
     }
-    else TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
+    else androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
+        TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
+    }
     }
 
     // §13.1 desistência: disponível na mesa, na encenação e na tela de anúncio (não na de pontos, decisão do usuário).
@@ -114,12 +126,12 @@ fun GameScreen(viewModel: GameViewModel, multiplayer: MultiplayerScreenHooks? = 
                 illustration = MessageIllustration.Flag,
                 tone = MessageTone.Danger,
                 confirmText = stringResource(R.string.resign_confirm),
-                onConfirm = viewModel::onConfirmResign,
+                onConfirm = { viewModel.onConfirmResign(); multiplayer.onResignAnswered(true) },
                 confirmTag = "resign-confirm",
                 dismissText = stringResource(R.string.cancel),
-                onDismiss = viewModel::onDismissResign,
+                onDismiss = { viewModel.onDismissResign(); multiplayer.onResignAnswered(false) },
                 dismissTag = "resign-cancel",
-                onDismissRequest = viewModel::onDismissResign,
+                onDismissRequest = { viewModel.onDismissResign(); multiplayer.onResignAnswered(false) },
                 content = { ResignSummary(snapshot, state.personas) },
             )
         } else {

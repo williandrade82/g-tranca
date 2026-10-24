@@ -120,15 +120,12 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§14_4 o jogo da mesa escolhida joga com exatamente os personagens que a mesa mostrou`() = runTest(dispatcher) {
-        for (seed in listOf(3L, 42L, 77L)) {
-            for (table in com.gtranca.game.Tables.botTables(seed)) {
-                val vm = GameViewModel(table.toConfig(), gameSeed = table.seed, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0)
-                advanceUntilIdle()
-                // os assentos 1.. são os personagens da mesa, na ordem (o 0 é o jogador)
-                vm.personas.drop(1) shouldBe table.players
-            }
-        }
+    fun `§14_4 o jogo da mesa montada joga com exatamente os personagens escolhidos, em cada assento`() = runTest(dispatcher) {
+        val robots = mapOf(1 to "alternativo", 2 to "jovem", 3 to "atleta")
+        val vm = GameViewModel(GameConfig(GameMode.DUPLAS, Difficulty.DIFICIL, 3000), gameSeed = 5, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0, robots = robots)
+        advanceUntilIdle()
+        vm.personas.drop(1).map { it.character!!.profile.code } shouldBe listOf("alternativo", "jovem", "atleta")
+        vm.personas.drop(1).forEach { it.character!!.level shouldBe com.gtranca.game.BotLevel.SENIOR }
     }
 
     @Test

@@ -243,6 +243,12 @@ fun TableScreen(
     }
 }
 
+/** §16, docs/telas.md 3.14 botão de Wi-Fi da mesa de jogo: o estado do Wi-Fi do jogo e o toque (cada mesa decide o que fazer). */
+class TableWifi(val on: Boolean, val onToggle: () -> Unit)
+
+/** §16 botão de Wi-Fi da mesa de jogo (na linha do saco de moedas); `null` = sem o botão. */
+val LocalTableWifi = androidx.compose.runtime.compositionLocalOf<TableWifi?> { null }
+
 /** §16.15 assento do anfitrião e a qualidade da conexão com ele (só no convidado). */
 private val LocalHostSignal = androidx.compose.runtime.compositionLocalOf<Pair<Seat, Int>?> { null }
 
@@ -557,6 +563,8 @@ private fun Header(
                     minFontSp = 9,
                 )
                 com.gtranca.ui.theme.LocalCoinBalance.current?.let { com.gtranca.ui.theme.CoinBalanceChip(it) }
+                // §16, 3.14 botão de Wi-Fi na linha do saco de moedas.
+                LocalTableWifi.current?.let { wifi -> com.gtranca.ui.tables.WifiButton(wifi.on, wifi.onToggle, tag = "table-wifi") }
             }
             Text(
                 stringResource(

@@ -1,5 +1,7 @@
 package com.gtranca
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
@@ -11,55 +13,48 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gtranca.ai.Difficulty
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
-import com.gtranca.multiplayer.MultiplayerTable
-import com.gtranca.net.MemoryNetwork
 import com.gtranca.net.TableRules
+import com.gtranca.ui.multiplayer.LocalSeatPicker
+import com.gtranca.ui.multiplayer.SeatPickerActions
 import com.gtranca.ui.multiplayer.SeatPickerScreen
+import com.gtranca.ui.multiplayer.SeatPickerUi
 import com.gtranca.ui.theme.GTrancaTheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** §16.2 "Escolha sua posição" (docs/telas.md 3.13) com a mesa no transporte em memória. */
+/** §16.2 "Escolha sua posição" (docs/telas.md 3.13) na mesa só com robôs (sem rede). */
 @RunWith(AndroidJUnit4::class)
 class SeatPickerScreenTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private val rules = TableRules("Mesa da família", GameMode.DUPLAS, RuleSet.CLASSICA, 3000, 50, Difficulty.MEDIO.id, listOf("jovem", "sobrio", "atleta"))
+    private val rules = TableRules("Mesa de Ana", GameMode.DUPLAS, RuleSet.CLASSICA, 3000, 50, Difficulty.MEDIO.id)
 
     @Test
-    fun anfitriao_fica_na_posicao_1_sem_rotacao_e_inicia() {
-        val network = MemoryNetwork()
-        val host = MultiplayerTable(network.transport(), CoroutineScope(SupervisorJob() + Dispatchers.Default))
-        runBlocking { host.host(rules, "Ana", "mesa-1") }
-        rule.setContent { GTrancaTheme { SeatPickerScreen(host, 1000, {}, {}) } }
-        rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag("seat-picker-start")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithTag("seat-slot-0").assertIsDisplayed()
-        rule.onNode(hasTestTag("seat-slot-0") and hasText("Ana", substring = true)).assertIsDisplayed()
-        rule.onNodeWithTag("seat-picker-rotate-left").assertIsDisplayed()
-        rule.onNodeWithTag("seat-picker-rules").assertIsDisplayed()
-    }
-
-    @Test
-    fun convidado_entra_no_primeiro_vago_confirma_e_aguarda() {
-        val network = MemoryNetwork()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val host = MultiplayerTable(network.transport(), scope)
-        val guest = MultiplayerTable(network.transport(), scope)
-        runBlocking {
-            host.host(rules, "Ana", "mesa-1")
-            guest.join("mesa-1", "Beto")
+    fun robos_ja_sentados_rotacao_troca_e_confirmar_trava() {
+        val picker = LocalSeatPicker(GameMode.DUPLAS, listOf("jovem"), seed = 1L, startDelayMillis = 60_000)
+        rule.setContent {
+            val seating by picker.seating.collectAsState()
+            GTrancaTheme {
+                SeatPickerScreen(
+                    SeatPickerUi(seating, LocalSeatPicker.ME, mapOf(LocalSeatPicker.ME to "Ana"), rules = rules),
+                    balance = 1000,
+                    actions = SeatPickerActions(picker::rotate, picker::confirm, {}, {}),
+                    initialName = "Ana",
+                )
+            }
         }
-        rule.setContent { GTrancaTheme { SeatPickerScreen(guest, 1000, {}, {}) } }
-        rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag("seat-picker-confirm")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNode(hasTestTag("seat-slot-1") and hasText("Beto", substring = true)).assertIsDisplayed()
+        // Sem VAGO: os 4 assentos ocupados; o jogador embaixo e o robô escolhido à direita dele.
+        rule.onNode(hasTestTag("seat-slot-0") and hasText("Ana", substring = true)).assertIsDisplayed()
+        rule.onNode(hasTestTag("seat-slot-1") and hasText("Bolt", substring = true)).assertIsDisplayed()
+        // Girar à direita troca com o robô da direita.
+        rule.onNodeWithTag("seat-picker-rotate-right").performClick()
+        rule.onNode(hasTestTag("seat-slot-1") and hasText("Ana", substring = true)).assertExists()
         rule.onNodeWithTag("seat-picker-confirm").performClick()
-        rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag("seat-picker-waiting")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("seat-picker-waiting").assertIsNotEnabled()
+        // Todos confirmados: as marcas aparecem também nos robôs.
+        rule.onNodeWithTag("seat-slot-0-confirmed", useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag("seat-slot-3-confirmed", useUnmergedTree = true).assertExists()
     }
 }

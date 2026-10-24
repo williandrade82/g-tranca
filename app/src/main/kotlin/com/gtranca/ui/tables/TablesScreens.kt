@@ -54,8 +54,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import com.gtranca.game.BotLevel
 import com.gtranca.ui.persona.BotMotto
-import com.gtranca.ui.theme.RecycleIcon
-import com.gtranca.ui.theme.RulesIcon
 import com.gtranca.ai.Difficulty
 import com.gtranca.engine.Coins
 import com.gtranca.engine.GroupRanks
@@ -63,7 +61,9 @@ import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
 import com.gtranca.game.Persona
-import com.gtranca.game.TableOffer
+import com.gtranca.game.BotCharacter
+import com.gtranca.game.BotProfile
+import androidx.compose.foundation.selection.toggleable
 import com.gtranca.ui.game.plainPoints
 import com.gtranca.ui.home.ModeCard
 import com.gtranca.ui.home.labelRes
@@ -135,9 +135,9 @@ fun rulesName(rules: RuleSet): String = when (rules.id) {
     else -> stringResource(R.string.rules_custom)
 }
 
-// ---------- Mesas disponíveis ----------
+// ---------- Mesas disponíveis (montagem da mesa) ----------
 
-/** §16 a parte multijogador de "Mesas disponíveis": o indicador do Wi-Fi do jogo (Perfil) e as mesas achadas por perto. */
+/** §16 a parte de rede de "Mesas disponíveis": o Wi-Fi do jogo (Perfil) e as mesas de outros anfitriões por perto. */
 class TablesMultiplayer(
     val wifiOn: Boolean,
     val onToggle: () -> Unit,
@@ -145,17 +145,21 @@ class TablesMultiplayer(
     val onOpen: (com.gtranca.net.TableAdvert) -> Unit,
 )
 
-/** §14.4 "Novo jogo": mesas abertas pelos jogadores virtuais + "Criar mesa"; §16 com o Wi-Fi, as mesas por perto. */
+/**
+ * §14.4 "Mesas disponíveis" (docs/telas.md 3.2): a montagem da mesa — participantes (o jogador, os jogadores próximos e os
+ * 4 robôs), as mesas de outros anfitriões por perto (pedido de entrada) e as opções; "Escolher posições" abre a escolha de
+ * posições ([onChooseSeats]).
+ */
 @Composable
 fun TablesScreen(
     viewModel: TablesViewModel,
-    onOpen: (TableOffer) -> Unit,
-    onCreate: () -> Unit,
+    self: Persona,
+    onChooseSeats: (ChosenTable) -> Unit,
+    onCustomize: () -> Unit,
     onBack: () -> Unit,
     multiplayer: TablesMultiplayer? = null,
 ) {
-    val tables by viewModel.tables.collectAsStateWithLifecycle()
-    val balance by viewModel.balance.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Tour guiado (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
     TourHost(Tours.TABLES, Tours.tablesSteps, autoStart = true) { startTour ->
     TableFrame(
@@ -163,7 +167,9 @@ fun TablesScreen(
         "tables-screen",
         bottom = {
             BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, onClick = onBack)
-            BottomButton(stringResource(R.string.tables_create), "tables-create", GButtonKind.Primary, onClick = onCreate)
+            BottomButton(stringResource(R.string.tables_choose_seats), "choose-seats", GButtonKind.Primary, enabled = state.canChoose) {
+                viewModel.onChooseSeats()?.let(onChooseSeats)
+            }
         },
         titleExtra = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -172,25 +178,21 @@ fun TablesScreen(
             }
         },
     ) {
-        Text(stringResource(R.string.tables_subtitle), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
-        Text(stringResource(R.string.coins_balance, balance), Modifier.testTag("coins-balance").tourTarget("coins-balance"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
-        if (multiplayer != null && multiplayer.wifiOn) {
-            // §16.2 mesas abertas por perto, acrescentadas à lista (aparecem e somem conforme a busca).
-            if (multiplayer.tables.isEmpty()) {
-                Text(stringResource(R.string.mp_searching), Modifier.testTag("tables-searching"), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
-            }
+        val wifiOn = multiplayer?.wifiOn == true
+        ParticipantsPill(state, self, wifiOn, viewModel::onToggle)
+        if (multiplayer != null && wifiOn) {
+            // §16.2 mesas de outros anfitriões por perto (aparecem e somem conforme a busca); tocar pede a entrada.
             multiplayer.tables.forEach { advert -> MultiplayerTableCard(advert) { multiplayer.onOpen(advert) } }
         }
-        tables.forEachIndexed { i, table ->
-            Box(if (i == 0) Modifier.tourTarget("tables-first") else Modifier) { TableCard(table, balance) { onOpen(table) } }
-        }
+        TableOptions(state, viewModel, onCustomize)
+        RulesSummary(state.rules, state.targetScore ?: state.rules.targetScore)
     }
     }
 }
 
-/** §16 botão do Wi-Fi do jogo (3.2): reflete e grava a configuração do Perfil; aceso, procurando mesas por perto. */
+/** §16 botão do Wi-Fi do jogo (3.2): reflete e grava a configuração do Perfil; aceso, procurando jogadores e mesas por perto. */
 @Composable
-private fun WifiButton(on: Boolean, onToggle: () -> Unit) {
+fun WifiButton(on: Boolean, onToggle: () -> Unit, tag: String = "tables-wifi") {
     val description = stringResource(if (on) R.string.mp_wifi_on_desc else R.string.mp_wifi_off_desc)
     val shape = RoundedCornerShape(Corner.sm)
     Box(
@@ -201,15 +203,165 @@ private fun WifiButton(on: Boolean, onToggle: () -> Unit) {
             .border(1.dp, GColors.Gold.copy(alpha = if (on) 0.9f else 0.5f), shape)
             .clickable(onClickLabel = description, role = Role.Switch, onClick = onToggle)
             .semantics { contentDescription = description }
-            .testTag("tables-wifi")
-            .tourTarget("tables-wifi"),
+            .testTag(tag)
+            .tourTarget(tag),
         contentAlignment = Alignment.Center,
     ) { com.gtranca.ui.theme.WifiIcon(if (on) GColors.Gold else GColors.Steel, crossed = !on, size = 28.dp) }
 }
 
 /**
- * §16 card de mesa multijogador, primeira versão (docs/telas.md 3.2): nome da mesa, anfitrião e "jogo em andamento"; no
- * lugar do retrato, o banner "Multi player". Regras, aposta e posições aparecem ao entrar (o anúncio é curto).
+ * §14.4 pílula de escolha dos participantes: o jogador (sempre o primeiro e marcado), os jogadores próximos (ou
+ * "Recrutando", só com o Wi-Fi ligado) e os 4 robôs; até 3 marcados além do jogador; mostra até 4 linhas e rola.
+ */
+@Composable
+private fun ParticipantsPill(state: TableSetupUiState, self: Persona, wifiOn: Boolean, onToggle: (Pick) -> Unit) {
+    val shape = RoundedCornerShape(Corner.md)
+    val level = BotLevel.of(state.difficulty)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(GColors.Indigo, shape)
+            .border(1.dp, GColors.Gold.copy(alpha = 0.6f), shape)
+            .heightIn(max = PARTICIPANT_ROW * PARTICIPANT_ROWS_VISIBLE)
+            .verticalScroll(rememberScrollState())
+            .testTag("participants")
+            .tourTarget("participants"),
+    ) {
+        ParticipantRow(self, self.firstName, checked = true, enabled = false, tag = "participant-self") {}
+        if (wifiOn) {
+            if (state.nearby.isEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = PARTICIPANT_ROW).padding(horizontal = Spacing.md).testTag("participant-recruiting"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp), color = GColors.Gold, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(Spacing.md))
+                    Text(stringResource(R.string.tables_recruiting), color = GColors.Steel, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+            state.nearby.forEach { player ->
+                val pick = Pick.Near(player.key)
+                ParticipantRow(
+                    Persona(player.name, color = player.key.hashCode().mod(Persona.COLORS)),
+                    player.name,
+                    checked = state.isPicked(pick),
+                    enabled = true,
+                    tag = "participant-near-${player.key}",
+                ) { onToggle(pick) }
+            }
+        }
+        BotProfile.entries.forEach { profile ->
+            val pick = Pick.Bot(profile)
+            ParticipantRow(
+                Persona(profile.botName, "", BotCharacter(profile, level)),
+                profile.botName,
+                checked = state.isPicked(pick),
+                enabled = true,
+                tag = "participant-bot-${profile.code}",
+            ) { onToggle(pick) }
+        }
+    }
+}
+
+/** Uma linha da pílula de participantes: medalhão, nome e a marca (caixa de seleção). */
+@Composable
+private fun ParticipantRow(avatar: Persona, name: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = PARTICIPANT_ROW)
+            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
+            .padding(horizontal = Spacing.md)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PersonaAvatar(avatar, 40.dp)
+        Spacer(Modifier.width(Spacing.md))
+        Text(name, Modifier.weight(1f), color = GColors.Champagne, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // A caixa só desenha: o toque é da linha toda (alvo maior).
+        androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = null, enabled = enabled || checked)
+    }
+}
+
+/** Altura de cada linha da pílula de participantes (alvo de toque ≥ 48 dp). */
+private val PARTICIPANT_ROW = 56.dp
+
+/** §14.4 a pílula mostra até 4 linhas e rola se houver mais. */
+private const val PARTICIPANT_ROWS_VISIBLE = 4
+
+/** §14.4 opções da mesa (as da antiga "Criar mesa"): modo, dificuldade dos robôs, aposta, regras e pontuação-alvo. */
+@Composable
+private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, onCustomize: () -> Unit) {
+    GPanel(Modifier.fillMaxWidth().tourTarget("table-options-panel")) {
+        Section(stringResource(R.string.home_mode)) {
+            // §14.4 com 3 ou 4 participantes o modo é duplas (Individual desabilitado).
+            ModeChoice(stringResource(R.string.mode_individual), state.effectiveMode == GameMode.INDIVIDUAL, !state.modeLocked, "mode-individual") {
+                viewModel.onModeChange(GameMode.INDIVIDUAL)
+            }
+            ModeChoice(stringResource(R.string.mode_duplas_short), state.effectiveMode == GameMode.DUPLAS, true, "mode-duplas") {
+                viewModel.onModeChange(GameMode.DUPLAS)
+            }
+        }
+        Section(stringResource(R.string.tables_difficulty)) {
+            Difficulty.entries.forEach { difficulty ->
+                Chip(stringResource(difficulty.labelRes()), state.difficulty == difficulty, "difficulty-${difficulty.id}") {
+                    viewModel.onDifficultyChange(difficulty)
+                }
+            }
+        }
+        Section(stringResource(R.string.create_stake)) {
+            // §14.6 apostas acima do saldo ficam desabilitadas (o saldo fica só no topo).
+            Coins.STAKES.forEach { stake ->
+                GChoiceChip(
+                    stake.toString(),
+                    state.stake == stake,
+                    { viewModel.onStakeChange(stake) },
+                    Modifier.weight(1f).testTag("stake-$stake"),
+                    enabled = Coins.canJoin(state.balance, stake),
+                )
+            }
+        }
+        if (!state.canAfford) {
+            Text(stringResource(R.string.stake_insufficient), Modifier.testTag("tables-insufficient"), style = MaterialTheme.typography.bodyMedium, color = GColors.Ruby)
+        }
+        Section(stringResource(R.string.create_rules)) {
+            Chip(RuleSet.CLASSICA.name, state.rulesChoice == RulesChoice.CLASSICA, "rules-classica") { viewModel.onRulesChange(RulesChoice.CLASSICA) }
+            Chip(RuleSet.PAULISTA.name, state.rulesChoice == RulesChoice.PAULISTA, "rules-paulista") { viewModel.onRulesChange(RulesChoice.PAULISTA) }
+            // §14.4 "Personalizada" sempre abre o editor; ao salvar, volta com ela escolhida.
+            Chip(stringResource(R.string.rules_custom), state.rulesChoice == RulesChoice.CUSTOM, "rules-custom", onCustomize)
+        }
+        OutlinedTextField(
+            value = state.targetText,
+            onValueChange = viewModel::onTargetChange,
+            label = { Text(stringResource(R.string.home_target)) },
+            isError = state.targetError != null,
+            supportingText = when (state.targetError) {
+                null -> null
+                TargetError.INVALID -> {
+                    { Text(stringResource(R.string.home_target_error)) }
+                }
+                TargetError.TOO_LARGE -> {
+                    { Text(stringResource(R.string.home_target_too_large, TableSetupUiState.MAX_TARGET)) }
+                }
+            },
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth().testTag("target-field"),
+        )
+    }
+}
+
+/** Escolha do modo (Individual / Duplas), desabilitável. */
+@Composable
+private fun RowScope.ModeChoice(text: String, selected: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
+    GChoiceChip(text, selected, onClick, Modifier.weight(1f).testTag(tag), enabled = enabled)
+}
+
+/**
+ * §16.2 card de mesa de outro anfitrião (docs/telas.md 3.2): banner "Multi player", "Mesa de <anfitrião>" e a marca
+ * "jogo em andamento"; tocar envia o pedido de entrada. Regras, aposta e nível aparecem na escolha de posições.
  */
 @Composable
 private fun MultiplayerTableCard(advert: com.gtranca.net.TableAdvert, onClick: () -> Unit) {
@@ -229,8 +381,7 @@ private fun MultiplayerTableCard(advert: com.gtranca.net.TableAdvert, onClick: (
     ) {
         MultiBanner(Modifier.width(96.dp).testTag("table-$id-multi-banner"))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(advert.tableName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GColors.Champagne, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(stringResource(R.string.mp_table_host, advert.hostName), style = MaterialTheme.typography.bodyMedium, color = GColors.Gold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(stringResource(R.string.tables_host, advert.hostName), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GColors.Champagne, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (advert.inProgress) {
                 Text(
                     stringResource(R.string.mp_in_progress),
@@ -242,7 +393,6 @@ private fun MultiplayerTableCard(advert: com.gtranca.net.TableAdvert, onClick: (
                     color = GColors.Ivory,
                 )
             }
-            Text(stringResource(R.string.mp_table_details_inside), style = MaterialTheme.typography.bodySmall, color = GColors.Steel)
         }
     }
 }
@@ -275,244 +425,7 @@ private fun MultiBanner(modifier: Modifier) {
     }
 }
 
-@Composable
-private fun TableCard(table: TableOffer, balance: Int, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(Corner.md)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(GColors.Indigo, shape)
-            .border(1.dp, GColors.Gold.copy(alpha = 0.5f), shape)
-            .clickable(onClick = onClick)
-            .padding(Spacing.md)
-            .testTag("table-${table.id}"),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-    ) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-    ) {
-        // §14.5 apresentação do personagem: retrato animado, nível e característica (no individual; em duplas, os três
-        // personagens da mesa aparecem em retratos pequenos logo abaixo).
-        val character = table.host.character
-        if (table.mode == GameMode.DUPLAS) {
-            // sem retrato à esquerda: os três vêm abaixo
-        } else if (character != null) {
-            Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                CharacterPortrait(character, Pose.APRESENTACAO, Modifier.fillMaxWidth().testTag("table-portrait-${table.id}"), description = table.host.fullName)
-                BotMotto(character.profile, fontSize = 10.sp)
-            }
-        } else {
-            PersonaAvatar(table.host, 52.dp)
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                stringResource(R.string.tables_host, table.host.fullName),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = GColors.Champagne,
-            )
-            if (character != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    LevelStars(character.level)
-                    // em duplas, o nível é o da mesa; a característica de cada um está nos retratos da tela da mesa
-                    Text(
-                        stringResource(if (table.mode == GameMode.DUPLAS) character.level.labelRes() else character.profile.tagRes()),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GColors.Steel,
-                    )
-                }
-            }
-            Text(rulesName(table.rules), style = MaterialTheme.typography.bodyMedium, color = GColors.Gold)
-            // §14.6 aposta da mesa; sem saldo, a mesa fica bloqueada (dá para ver as regras, não para entrar)
-            val affordable = Coins.canJoin(balance, table.stake)
-            Text(
-                stringResource(R.string.stake_line, table.stake) + if (affordable) "" else " · " + stringResource(R.string.stake_insufficient),
-                Modifier.testTag("table-${table.id}-stake"),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (affordable) GColors.Gold else GColors.Ruby,
-            )
-            Text(
-                stringResource(
-                    R.string.tables_line,
-                    modeLabel(table.mode),
-                    stringResource(table.difficulty.labelRes()),
-                    plainPoints(table.targetScore),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = GColors.Steel,
-            )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            RulesIcon(GColors.Gold, size = 26.dp)
-            Text(stringResource(R.string.tables_view_rules), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
-        }
-    }
-    if (table.mode == GameMode.DUPLAS) RosterStrip(table)
-    }
-}
-
-/** §14.4 os três personagens de uma mesa de duplas, em retratos de apresentação pequenos: adversário à esquerda, parceiro e adversário à direita. */
-@Composable
-private fun RosterStrip(table: TableOffer) {
-    Row(Modifier.fillMaxWidth().testTag("table-${table.id}-roster"), horizontalArrangement = Arrangement.SpaceEvenly) {
-        seatsInDisplayOrder(table).forEach { (persona, label) ->
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                // mesmo retrato de apresentação das mesas individuais, só menor
-                val c = persona.character
-                if (c != null) {
-                    CharacterPortrait(c, Pose.APRESENTACAO, Modifier.fillMaxWidth(0.9f), description = persona.fullName)
-                } else {
-                    PersonaAvatar(persona, 44.dp)
-                }
-                c?.let { BotMotto(it.profile, fontSize = 9.sp) }
-                Text(persona.shortName, style = MaterialTheme.typography.labelSmall, color = GColors.Ivory, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, maxLines = 1)
-            }
-        }
-    }
-}
-
-/** Personagens da mesa de duplas na ordem em que se sentam à vista do jogador (esquerda, parceiro, direita), com o rótulo de cada um. */
-private fun seatsInDisplayOrder(table: TableOffer): List<Pair<Persona, Int>> = listOf(
-    table.players[2] to R.string.seat_left_short,
-    table.players[1] to R.string.seat_partner,
-    table.players[0] to R.string.seat_right_short,
-)
-
-// ---------- Regras da mesa ----------
-
-/** §14.4 regras de uma mesa aberta: o jogador inicia o jogo ou volta. */
-@Composable
-fun TableRulesScreen(
-    table: TableOffer,
-    onStart: (GameConfig) -> Unit,
-    onBack: () -> Unit,
-    onReroll: (() -> Unit)? = null,
-    balance: Int = Int.MAX_VALUE,
-    /** §16.2 mesa multijogador: o nome dela vai no título e o botão é "Publicar mesa". */
-    multiplayerName: String? = null,
-) {
-    TableFrame(
-        multiplayerName?.let { "${stringResource(R.string.table_rules_title)} · $it" } ?: stringResource(R.string.table_rules_title),
-        "table-rules-screen",
-        bottom = {
-            BottomButton(stringResource(R.string.back), "table-rules-back", GButtonKind.Secondary, onClick = onBack)
-            BottomButton(
-                stringResource(if (multiplayerName != null) R.string.table_rules_publish else R.string.table_rules_start),
-                "table-rules-start",
-                GButtonKind.Primary,
-                enabled = Coins.canJoin(balance, table.stake),
-            ) { onStart(table.toConfig()) }
-        },
-    ) {
-        // §14.5 nível dos robôs (estrelas e nome) centralizado; à direita, sortear outros (só em mesa criada pelo jogador).
-        val level = BotLevel.of(table.difficulty)
-        Box(Modifier.fillMaxWidth().testTag("table-rules-level")) {
-            Row(
-                Modifier.align(Alignment.Center),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(stringResource(R.string.table_rules_level), style = MaterialTheme.typography.titleSmall, color = GColors.Steel)
-                LevelStars(level, size = 20.sp)
-                Text(stringResource(level.labelRes()), style = MaterialTheme.typography.titleSmall, color = GColors.Gold)
-            }
-            // Mesa multijogador: os robôs não são apresentados antes do início (docs/telas.md 3.3), então não há sorteio.
-            if (onReroll != null && multiplayerName == null) {
-                val rerollText = stringResource(R.string.table_rules_reroll)
-                Box(
-                    Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(48.dp)
-                        .clickable(onClickLabel = rerollText, role = Role.Button, onClick = onReroll)
-                        .semantics { contentDescription = rerollText }
-                        .testTag("table-rules-reroll"),
-                    contentAlignment = Alignment.Center,
-                ) { RecycleIcon(GColors.Gold, size = 28.dp) }
-            }
-        }
-        if (multiplayerName == null) GPanel(Modifier.fillMaxWidth()) {
-            val character = table.host.character
-            if (table.mode == GameMode.DUPLAS) {
-                // §14.4 a mesa de duplas já está formada: o parceiro em destaque (40% maior, sozinho na linha) e, abaixo,
-                // os adversários lado a lado, na posição em que ficam no jogo.
-                val (left, partner, right) = seatsInDisplayOrder(table).map { it.first }
-                Column(Modifier.fillMaxWidth().testTag("table-rules-roster"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    RulesBot(partner, Modifier.fillMaxWidth(), 0.6f, stringResource(R.string.seat_partner), "table-rules-partner")
-                    Text(
-                        stringResource(R.string.table_rules_opponents),
-                        Modifier.semantics { heading() },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GColors.Gold,
-                    )
-                    Row(Modifier.fillMaxWidth().testTag("table-rules-opponents"), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.Top) {
-                        RulesBot(left, Modifier.weight(1f), 0.85f, null, "table-rules-left")
-                        RulesBot(right, Modifier.weight(1f), 0.85f, null, "table-rules-right")
-                    }
-                    Text(
-                        "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
-                        Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GColors.Steel,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            } else if (character != null) {
-                // §14.5 painel de apresentação: o retrato em destaque, o nome, o bordão e o texto que apresenta o perfil.
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    RulesBot(table.host, Modifier.fillMaxWidth(), 0.8f, null, "table-rules-portrait", title = stringResource(R.string.tables_host, table.host.fullName))
-                    Text(
-                        "${modeLabel(table.mode)} · ${stringResource(table.difficulty.labelRes())}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GColors.Steel,
-                    )
-                }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    PersonaAvatar(table.host, 52.dp)
-                    Text(stringResource(R.string.tables_host, table.host.fullName), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
-                }
-            }
-        }
-        // §14.6 aposta da mesa e saldo; sem saldo para a aposta, não dá para começar
-        GPanel(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.stake_line, table.stake), Modifier.testTag("table-rules-stake"), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
-            if (balance != Int.MAX_VALUE) {
-                Text(stringResource(R.string.coins_balance, balance), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
-            }
-            if (!Coins.canJoin(balance, table.stake)) {
-                Text(stringResource(R.string.stake_insufficient), Modifier.testTag("table-rules-insufficient"), style = MaterialTheme.typography.bodyMedium, color = GColors.Ruby)
-            }
-        }
-        RulesSummary(table.rules, table.targetScore)
-    }
-}
-
-/**
- * §14.5 um robô na tela "Regras da mesa": retrato ocupando [portraitFraction] da largura, o rótulo da posição ([label],
- * só o parceiro), o nome (ou [title]), o bordão, o estilo de jogo e a descrição do estilo.
- */
-@Composable
-private fun RulesBot(persona: Persona, modifier: Modifier, portraitFraction: Float, label: String?, tag: String, title: String? = null) {
-    val c = persona.character
-    Column(modifier.testTag(tag), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        label?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = GColors.Gold, textAlign = TextAlign.Center) }
-        if (c == null) {
-            PersonaAvatar(persona, 52.dp)
-        } else {
-            CharacterPortrait(c, Pose.APRESENTACAO, Modifier.fillMaxWidth(portraitFraction), description = persona.fullName)
-        }
-        Text(title ?: persona.fullName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GColors.Champagne, textAlign = TextAlign.Center)
-        if (c != null) {
-            BotMotto(c.profile, fontSize = 13.sp)
-            Text(stringResource(c.profile.tagRes()), style = MaterialTheme.typography.labelLarge, color = GColors.Steel, textAlign = TextAlign.Center)
-            Text(stringResource(c.profile.pitchRes()), style = MaterialTheme.typography.bodySmall, color = GColors.Ivory, textAlign = TextAlign.Center)
-        }
-    }
-}
+// ---------- Resumo das regras ----------
 
 /** Lista dos parâmetros de regra (§14.2) com o valor de [rules]; os que diferem da Clássica ficam destacados. */
 @Composable
@@ -585,128 +498,6 @@ private fun RuleLine(label: String, value: String, differs: Boolean) {
         )
     }
 }
-
-// ---------- Criar mesa ----------
-
-/** §14, §14.4 configurar nova mesa: dificuldade, modo, regras e pontuação-alvo. */
-@Composable
-fun CreateTableScreen(
-    viewModel: CreateTableViewModel,
-    onCreate: (GameConfig) -> Unit,
-    onCustomize: () -> Unit,
-    onBack: () -> Unit,
-    /** §16.2 criar mesa multijogador (configuração e nome da mesa); `null` = sem o tipo Multijogador. */
-    onCreateMultiplayer: ((GameConfig, String) -> Unit)? = null,
-    /** §16 porta das permissões do Nearby (pedidas ao escolher o tipo Multijogador). */
-    accessGate: (@Composable (onReady: () -> Unit, onCancel: () -> Unit) -> Unit)? = null,
-    defaultTableName: String = "",
-) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var asking by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-    // Tipo Multijogador recarregado da última mesa: confere as permissões de novo (sem elas, volta a Contra robôs).
-    var checkedRestored by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-    val restoredState = viewModel.uiState.collectAsStateWithLifecycle().value
-    androidx.compose.runtime.LaunchedEffect(restoredState.loaded, restoredState.multiplayer) {
-        if (restoredState.loaded && !checkedRestored) {
-            checkedRestored = true
-            if (restoredState.multiplayer && accessGate != null) asking = true
-        }
-    }
-    if (asking && accessGate != null) {
-        accessGate({ asking = false; viewModel.onTypeChange(true) }, { asking = false; viewModel.onTypeChange(false) })
-    }
-    TableFrame(
-        stringResource(R.string.create_title),
-        "create-table-screen",
-        bottom = {
-            BottomButton(stringResource(R.string.back), "create-back", GButtonKind.Secondary, onClick = onBack)
-            BottomButton(stringResource(R.string.create_submit), "create-table", GButtonKind.Primary, enabled = state.canCreate) {
-                val config = viewModel.onCreate() ?: return@BottomButton
-                if (state.multiplayer && onCreateMultiplayer != null) {
-                    onCreateMultiplayer(config, state.tableName.trim().ifBlank { defaultTableName })
-                } else {
-                    onCreate(config)
-                }
-            }
-        },
-    ) {
-        GPanel(Modifier.fillMaxWidth()) {
-            if (onCreateMultiplayer != null) {
-                Section(stringResource(R.string.create_type)) {
-                    Chip(stringResource(R.string.create_type_bots), !state.multiplayer, "create-type-bots") { viewModel.onTypeChange(false) }
-                    Chip(stringResource(R.string.create_type_multi), state.multiplayer, "create-type-multi") {
-                        if (!state.multiplayer) asking = true
-                    }
-                }
-            }
-            if (state.multiplayer) {
-                OutlinedTextField(
-                    value = state.tableName,
-                    onValueChange = viewModel::onTableNameChange,
-                    label = { Text(stringResource(R.string.create_table_name)) },
-                    placeholder = { Text(defaultTableName) },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth().testTag("create-table-name"),
-                )
-            } else {
-                Section(stringResource(R.string.home_mode)) {
-                    ModeCard(stringResource(R.string.mode_individual), 1, state.mode == GameMode.INDIVIDUAL, "mode-individual") {
-                        viewModel.onModeChange(GameMode.INDIVIDUAL)
-                    }
-                    ModeCard(stringResource(R.string.mode_duplas_short), 2, state.mode == GameMode.DUPLAS, "mode-duplas") {
-                        viewModel.onModeChange(GameMode.DUPLAS)
-                    }
-                }
-            }
-            Section(stringResource(R.string.home_difficulty)) {
-                Difficulty.entries.forEach { difficulty ->
-                    Chip(stringResource(difficulty.labelRes()), state.difficulty == difficulty, "difficulty-${difficulty.id}") {
-                        viewModel.onDifficultyChange(difficulty)
-                    }
-                }
-            }
-            Section(stringResource(R.string.create_stake)) {
-                Coins.STAKES.forEach { stake ->
-                    Chip(stake.toString(), state.stake == stake, "stake-$stake") { viewModel.onStakeChange(stake) }
-                }
-            }
-            Text(
-                stringResource(R.string.coins_balance, state.balance) + if (state.canAfford) "" else " · " + stringResource(R.string.stake_insufficient),
-                Modifier.testTag("create-balance"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (state.canAfford) GColors.Steel else GColors.Ruby,
-            )
-            Section(stringResource(R.string.create_rules)) {
-                Chip(RuleSet.CLASSICA.name, state.rulesChoice == RulesChoice.CLASSICA, "rules-classica") { viewModel.onRulesChange(RulesChoice.CLASSICA) }
-                Chip(RuleSet.PAULISTA.name, state.rulesChoice == RulesChoice.PAULISTA, "rules-paulista") { viewModel.onRulesChange(RulesChoice.PAULISTA) }
-                // §14.4 "Personalizada" sempre abre o editor; ao salvar, volta com ela escolhida.
-                Chip(stringResource(R.string.rules_custom), state.rulesChoice == RulesChoice.CUSTOM, "rules-custom", onCustomize)
-            }
-            OutlinedTextField(
-                value = state.targetText,
-                onValueChange = viewModel::onTargetChange,
-                label = { Text(stringResource(R.string.home_target)) },
-                isError = state.targetError != null,
-                supportingText = when (state.targetError) {
-                    null -> null
-                    TargetError.INVALID -> {
-                        { Text(stringResource(R.string.home_target_error)) }
-                    }
-                    TargetError.TOO_LARGE -> {
-                        { Text(stringResource(R.string.home_target_too_large, CreateTableUiState.MAX_TARGET)) }
-                    }
-                },
-                singleLine = true,
-                shape = MaterialTheme.shapes.medium,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth().testTag("target-field"),
-            )
-        }
-        RulesSummary(state.rules, state.targetScore ?: state.rules.targetScore)
-    }
-}
-
 @Composable
 private fun Section(title: String, chips: @Composable RowScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
