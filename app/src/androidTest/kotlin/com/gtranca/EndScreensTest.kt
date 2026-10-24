@@ -41,8 +41,8 @@ import com.gtranca.game.RedThreeNotice
 import com.gtranca.game.Stage
 import com.gtranca.ui.game.GameOverScreen
 import com.gtranca.ui.game.GameUiState
-import com.gtranca.ui.game.GoOutOverlay
-import com.gtranca.ui.game.goOutBy
+import com.gtranca.ui.game.RoundEndOverlay
+import com.gtranca.ui.game.roundEnd
 import com.gtranca.ui.game.RoundSummaryScreen
 import com.gtranca.ui.game.TableEvents
 import com.gtranca.ui.game.TableScreen
@@ -194,10 +194,12 @@ class EndScreensTest {
         // §11.1 o assento 1 (adversário à direita) bateu: borda vermelha e "Sua dupla perdeu" (docs/telas.md 3.9).
         val snap = snapshot()
         var done = false
-        rule.setContent { GTrancaTheme { GoOutOverlay(goOutBy(snap)!!, snap.view.mode, animate = true) { done = true } } }
+        rule.setContent { GTrancaTheme { RoundEndOverlay(roundEnd(snap)!!, snap.view.mode, animate = true, onDone = { done = true }) } }
         rule.onNodeWithTag("go-out-message").assertIsDisplayed()
         rule.onNodeWithText("Sua dupla perdeu").assertIsDisplayed()
+        rule.onNodeWithTag("go-out-banner").assertIsDisplayed()
         rule.onNodeWithTag("go-out-overlay").performClick()
+        rule.waitForIdle()
         check(done) { "o toque não retirou a animação" }
     }
 
@@ -206,7 +208,7 @@ class EndScreensTest {
         val snap = snapshot()
         var done = false
         rule.mainClock.autoAdvance = false
-        rule.setContent { GTrancaTheme { GoOutOverlay(goOutBy(snap)!!, snap.view.mode, animate = false) { done = true } } }
+        rule.setContent { GTrancaTheme { RoundEndOverlay(roundEnd(snap)!!, snap.view.mode, animate = false, onDone = { done = true }) } }
         rule.mainClock.advanceTimeBy(2_100)
         check(done) { "a animação não sumiu em 2 s" }
     }

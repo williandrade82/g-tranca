@@ -237,9 +237,11 @@ fun TableScreen(
     hostSeat: Seat? = null,
     /** §16.15 qualidade da conexão com o anfitrião (1 a 3), na pílula dele; só no convidado. */
     hostLinkQuality: Int? = null,
+    /** docs/telas.md 3.9 banner de fim de partida minimizado, junto do "Seguir" da mesa final. */
+    reviewBanner: (@Composable () -> Unit)? = null,
 ) {
     CompositionLocalProvider(LocalHostSignal provides hostSeat?.takeIf { hostLinkQuality != null }?.let { it to hostLinkQuality!! }) {
-    TableScreenContent(state, events, modifier, onReviewContinue, headerExtra, hostSeat)
+    TableScreenContent(state, events, modifier, onReviewContinue, headerExtra, hostSeat, reviewBanner)
     }
 }
 
@@ -260,6 +262,7 @@ private fun TableScreenContent(
     onReviewContinue: (() -> Unit)?,
     headerExtra: (@Composable (close: () -> Unit) -> Unit)?,
     hostSeat: Seat?,
+    reviewBanner: (@Composable () -> Unit)? = null,
 ) {
     var showMatchInfo by rememberSaveable { mutableStateOf(false) }
     // Som da vez: uma vez quando a vez passa a ser deste jogador (nunca na revisão da mesa final).
@@ -423,7 +426,7 @@ private fun TableScreenContent(
                     }
                     HandArea(state, events) { detailSeat = snapshot.viewerSeat.index }
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
-                    if (onReviewContinue != null) ReviewContinueBar(onReviewContinue) else StatusAndActions(state, events)
+                    if (onReviewContinue != null) ReviewContinueBar(onReviewContinue, reviewBanner) else StatusAndActions(state, events)
                 }
                 FlightsLayer(state.flights, anchors, state.animationMillis, { readyFlights[it] == true }) { id ->
                     arrived[id] = true
@@ -1105,7 +1108,7 @@ private val HandGrowMargin = 6.dp
 
 /** Barra da revisão da mesa final: no mesmo lugar e estilo da barra de ações, só com "Continuar". */
 @Composable
-private fun ReviewContinueBar(onContinue: () -> Unit) {
+private fun ReviewContinueBar(onContinue: () -> Unit, banner: (@Composable () -> Unit)? = null) {
     val shape = RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md)
     Box(
         Modifier
@@ -1116,8 +1119,12 @@ private fun ReviewContinueBar(onContinue: () -> Unit) {
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = Spacing.sm),
     ) {
-        GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("final-table-continue")) {
-            Text(stringResource(R.string.table_review_continue))
+        androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            // docs/telas.md 3.9 o banner de fim de partida fica aqui, minimizado, enquanto a mesa final está aberta.
+            banner?.invoke()
+            GButton(onContinue, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("final-table-continue")) {
+                Text(stringResource(R.string.table_review_continue))
+            }
         }
     }
 }

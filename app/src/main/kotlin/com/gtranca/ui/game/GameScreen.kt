@@ -99,13 +99,20 @@ fun GameScreen(
     // §14.4 regras da mesa para os textos (sem coringa, §1: só "Canastra", sem limpa/suja).
     androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules) {
     if (state.endScreen == EndScreen.FINAL_TABLE) {
-        // docs/telas.md 3.12 a mesa final, só para olhar: "Seguir" vai direto aos pontos da partida.
-        androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
-            FinalTableReview(state, viewModel, viewModel::onEndNext)
-        }
-        val by = goOutBy(snapshot)
-        if (by != null && goOutSeen < finishedRounds) {
-            GoOutOverlay(by, snapshot.view.mode, state.animationMillis > 0) { goOutSeen = finishedRounds }
+        // docs/telas.md 3.9, 3.12 a mesa final, só para olhar: o banner de fim de partida grande por 2 s e, depois,
+        // minimizado junto do "Seguir", que vai direto aos pontos da partida. Numa caixa só, com a animação por cima.
+        val end = roundEnd(snapshot)
+        val showing = end != null && goOutSeen < finishedRounds
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
+                FinalTableReview(
+                    state, viewModel, viewModel::onEndNext,
+                    banner = if (end != null && !showing) {
+                        { RoundEndBanner(end, snapshot.view.mode, compact = true, Modifier.fillMaxWidth()) }
+                    } else null,
+                )
+            }
+            if (showing) RoundEndOverlay(end!!, snapshot.view.mode, state.animationMillis > 0, onDone = { goOutSeen = finishedRounds })
         }
     }
     else if (state.endScreen != null) {
@@ -166,9 +173,9 @@ fun GameScreen(
 
 /** Mesa final só para olhar; "Seguir" fica no lugar da barra de ações e vai aos pontos da partida. */
 @Composable
-private fun FinalTableReview(state: GameUiState, events: TableEvents, onContinue: () -> Unit) {
+private fun FinalTableReview(state: GameUiState, events: TableEvents, onContinue: () -> Unit, banner: (@Composable () -> Unit)? = null) {
     BackHandler(onBack = onContinue)
-    TableScreen(state, events, onReviewContinue = onContinue)
+    TableScreen(state, events, onReviewContinue = onContinue, reviewBanner = banner)
 }
 
 /** §13.1 confirmação da desistência; cancelar volta exatamente ao estado anterior. */

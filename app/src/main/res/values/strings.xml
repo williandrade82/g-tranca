@@ -352,9 +352,6 @@
     <string name="game_over_resigned_duplas">Você desistiu. A dupla adversária venceu.</string>
 
     <!-- Anúncios antes dos pontos -->
-    <string name="announce_team_won_round">Sua dupla bateu!</string>
-    <string name="announce_other_team_won_round">A dupla adversária bateu.</string>
-    <string name="announce_no_winner">Partida encerrada sem batida: o monte acabou.</string>
     <string name="announce_continue">Continuar</string>
     <string name="table_review_continue">Seguir</string>
     <string name="home_version">Versão %1$s</string>
@@ -553,4 +550,5 @@
     <string name="go_out_partner">Sua dupla bateu!</string>
     <string name="go_out_lost">Você perdeu</string>
     <string name="go_out_lost_team">Sua dupla perdeu</string>
+    <string name="round_end_stock_out">Fim das cartas do monte</string>
 </resources>
