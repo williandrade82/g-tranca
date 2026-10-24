@@ -59,6 +59,10 @@ import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.SideScore
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.Stage
+import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.Rank
+import com.gtranca.engine.model.Suit
+import androidx.compose.ui.semantics.contentDescription
 
 
 /**
@@ -135,7 +139,8 @@ fun RoundSummaryScreen(
                 val noCanasta = stringResource(R.string.score_red_threes_no_canasta)
                 ScoreRow(
                     stringResource(item.labelRes()),
-                    lines.mapIndexed { i, side ->
+                    examples = item.examples(),
+                    values = lines.mapIndexed { i, side ->
                         val line = side.getValue(item)
                         // §12.1 sem canastra na mesa, 3 vermelho vale −100: a célula diz o motivo.
                         line.cell(item, sides[i].index, note = noCanasta.takeIf { item == ScoreItem.RED_THREES && line.points < 0 })
@@ -224,7 +229,7 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
         val hidden = if (noWilds) setOf(ScoreItem.DIRTY_CANASTAS, ScoreItem.TABLE_WILDS, ScoreItem.HAND_WILDS) else emptySet()
         ScoreItem.entries.filter { it.section == section && it !in hidden }.forEach { item ->
             val label = if (noWilds && item == ScoreItem.CLEAN_CANASTAS) R.string.score_canastas else item.labelRes()
-            ScoreRow(stringResource(label), lines.mapIndexed { i, side -> side.getValue(item).cell(item, scores[i].side.index) })
+            ScoreRow(stringResource(label), lines.mapIndexed { i, side -> side.getValue(item).cell(item, scores[i].side.index) }, examples = item.examples())
         }
         HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
         ScoreRow(
@@ -254,12 +259,43 @@ private fun ScoreItem.labelRes(): Int = when (this) {
     ScoreItem.HAND_WILDS -> R.string.score_hand_wilds
 }
 
+/**
+ * Exemplos de cartas que mostram o item no lugar da descrição (docs/telas.md 3.10), com naipes variados; `null` = item
+ * sem cartas (batida, morto não pego), que continua com o texto.
+ */
+private fun ScoreItem.examples(): List<Card>? = when (this) {
+    ScoreItem.RED_THREES, ScoreItem.TABLE_RED_THREES, ScoreItem.HAND_RED_THREES ->
+        listOf(Card(Rank.THREE, Suit.HEARTS), Card(Rank.THREE, Suit.DIAMONDS))
+    ScoreItem.HAND_BLACK_THREES -> listOf(Card(Rank.THREE, Suit.SPADES), Card(Rank.THREE, Suit.CLUBS))
+    ScoreItem.CLEAN_CANASTAS -> listOf(Card(Rank.NINE, Suit.HEARTS), Card(Rank.TEN, Suit.HEARTS), Card(Rank.JACK, Suit.HEARTS), Card(Rank.QUEEN, Suit.HEARTS))
+    ScoreItem.DIRTY_CANASTAS -> listOf(Card(Rank.NINE, Suit.CLUBS), Card(Rank.TWO, Suit.DIAMONDS), Card(Rank.JACK, Suit.CLUBS), Card(Rank.QUEEN, Suit.CLUBS))
+    ScoreItem.TABLE_FOUR_TO_TEN, ScoreItem.HAND_FOUR_TO_TEN ->
+        listOf(Card(Rank.FOUR, Suit.CLUBS), Card(Rank.SEVEN, Suit.HEARTS), Card(Rank.TEN, Suit.SPADES))
+    ScoreItem.TABLE_FACES, ScoreItem.HAND_FACES -> listOf(Card(Rank.JACK, Suit.DIAMONDS), Card(Rank.KING, Suit.SPADES), Card(Rank.ACE, Suit.HEARTS))
+    ScoreItem.TABLE_WILDS, ScoreItem.HAND_WILDS -> listOf(Card(Rank.TWO, Suit.SPADES), Card(Rank.TWO, Suit.HEARTS))
+    ScoreItem.GO_OUT, ScoreItem.MORTO_NOT_TAKEN -> null
+}
+
+/** Cartas de exemplo em leque (sobrepostas); o leitor de tela lê a descrição do item. */
 @Composable
-private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = false, tag: String? = null, pill: Boolean = false) {
+private fun CardExamples(cards: List<Card>, description: String, modifier: Modifier = Modifier) {
+    Box(modifier.padding(vertical = 2.dp).semantics(mergeDescendants = true) { contentDescription = description }) {
+        cards.forEachIndexed { i, card ->
+            com.gtranca.ui.cards.PlayingCard(card, Modifier.padding(start = (13 * i).dp), size = com.gtranca.ui.cards.CardSize.MINI, describe = false)
+        }
+    }
+}
+
+@Composable
+private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = false, tag: String? = null, pill: Boolean = false, examples: List<Card>? = null) {
     val weight = if (bold) FontWeight.Bold else FontWeight.Normal
     val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums, fontWeight = weight, textAlign = TextAlign.End)
     Row(Modifier.fillMaxWidth().then(if (tag != null) Modifier.testTag(tag) else Modifier), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
+        if (examples != null) {
+            Box(Modifier.weight(LABEL_WEIGHT)) { CardExamples(examples, label) }
+        } else {
+            Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
+        }
         values.forEach { cell ->
             // Quantidade de cartas: coluna própria, sem parênteses (vazia quando a linha não tem quantidade).
             Box(Modifier.weight(COUNT_WEIGHT), contentAlignment = Alignment.CenterEnd) {
