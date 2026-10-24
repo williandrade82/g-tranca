@@ -2,6 +2,7 @@ package com.gtranca.net.nearby
 
 import com.gtranca.net.EndpointId
 import com.gtranca.net.LocalTransport
+import com.gtranca.net.PresenceAdvert
 import com.gtranca.net.TableAdvert
 import com.gtranca.net.TransportEvent
 import kotlinx.coroutines.CancellationException
@@ -63,8 +64,14 @@ class NearbyTransport(
     private val control = Mutex()
     private var advertised: ByteArray? = null
 
+    /** O que está anunciado agora é a presença (§16.2), não uma mesa: um aparelho anuncia uma coisa por vez. */
+    private var advertisingPresence = false
+
     /** Mesas achadas, por endpoint do Nearby (a mesma mesa pode reaparecer com outro endpoint depois de reanunciar). */
     private val found = MutableStateFlow<Map<String, TableAdvert>>(emptyMap())
+
+    /** §16.2 jogadores próximos achados (presença), por endpoint do Nearby. */
+    private val foundPresence = MutableStateFlow<Map<String, PresenceAdvert>>(emptyMap())
     private var subscribers = 0
     private var discovering = false
     private var discoveryStartedAt = 0L
@@ -92,11 +99,22 @@ class NearbyTransport(
 
     private val discoveryCallback = object : DiscoveryCallback {
         override fun onFound(endpointId: String, endpointInfo: ByteArray) {
+            // O primeiro byte distingue a presença (§16.2) do anúncio de mesa.
+            if (endpointInfo.firstOrNull()?.toInt() == AdvertCodec.PRESENCE_FORMAT) {
+                val presence = AdvertCodec.decodePresence(endpointInfo) ?: return
+                found.update { it - endpointId }
+                foundPresence.update { it + (endpointId to presence) }
+                return
+            }
             val advert = AdvertCodec.decode(endpointInfo) ?: return
+            foundPresence.update { it - endpointId }
             found.update { it + (endpointId to advert) }
         }
 
-        override fun onLost(endpointId: String) = found.update { it - endpointId }
+        override fun onLost(endpointId: String) {
+            found.update { it - endpointId }
+            foundPresence.update { it - endpointId }
+        }
     }
 
     private fun dropped(endpointId: String) {
@@ -106,8 +124,13 @@ class NearbyTransport(
 
     // ---- anúncio ----------------------------------------------------------------------------------------------------
 
-    override suspend fun advertise(advert: TableAdvert) {
-        val bytes = AdvertCodec.encode(advert)
+    override suspend fun advertise(advert: TableAdvert) = advertiseBytes(AdvertCodec.encode(advert), presence = false)
+
+    /** §16.2 anuncia a presença deste jogador (fora de um jogo); toma o lugar de qualquer anúncio anterior. */
+    override suspend fun advertisePresence(presence: PresenceAdvert) =
+        advertiseBytes(AdvertCodec.encodePresence(presence), presence = true)
+
+    private suspend fun advertiseBytes(bytes: ByteArray, presence: Boolean) {
         control.withLock {
             val current = advertised
             if (current != null && current.contentEquals(bytes)) return
@@ -122,12 +145,19 @@ class NearbyTransport(
                 return
             }
             advertised = bytes
+            advertisingPresence = presence
         }
     }
 
-    override suspend fun stopAdvertising() {
+    /** Para o anúncio da mesa (a presença, se for ela no ar, continua). */
+    override suspend fun stopAdvertising() = stopKind(presence = false)
+
+    /** §16.2 para a presença (a mesa, se for ela no ar, continua). */
+    override suspend fun stopPresence() = stopKind(presence = true)
+
+    private suspend fun stopKind(presence: Boolean) {
         control.withLock {
-            if (advertised == null) return
+            if (advertised == null || advertisingPresence != presence) return
             api.stopAdvertising()
             advertised = null
         }
@@ -146,6 +176,16 @@ class NearbyTransport(
         }
     }
 
+    /** §16.2 jogadores próximos achados (a mesma busca das mesas, sem o aquecimento: a lista vazia vale como "Recrutando"). */
+    override fun discoverPresence(): Flow<List<PresenceAdvert>> = flow {
+        acquireDiscovery()
+        try {
+            emitAll(foundPresence.map { it.values.toList() }.distinctUntilChanged())
+        } finally {
+            releaseDiscovery()
+        }
+    }
+
     /** Liga a busca se preciso; devolve quando ela foi ligada (para o aquecimento). */
     private suspend fun acquireDiscovery(): Long = control.withLock {
         subscribers++
@@ -153,6 +193,7 @@ class NearbyTransport(
         lingerJob = null
         if (!discovering) {
             found.value = emptyMap()
+            foundPresence.value = emptyMap()
             try {
                 api.startDiscovery(discoveryCallback)
             } catch (e: Exception) {
@@ -177,6 +218,7 @@ class NearbyTransport(
                             api.stopDiscovery()
                             discovering = false
                             found.value = emptyMap()
+                            foundPresence.value = emptyMap()
                         }
                     }
                 }
@@ -223,6 +265,7 @@ class NearbyTransport(
     /** Larga tudo (sair do modo multijogador). */
     suspend fun close() {
         stopAdvertising()
+        stopPresence()
         control.withLock {
             lingerJob?.cancel()
             if (discovering) api.stopDiscovery()

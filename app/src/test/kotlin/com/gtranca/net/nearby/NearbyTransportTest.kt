@@ -71,6 +71,34 @@ class NearbyTransportTest {
     }
 
     @Test
+    fun `§16_2 presenca e mesa usam o mesmo anuncio e a busca as separa pelo formato`() = runTest {
+        val (api, host) = node()
+        val (_, other) = node()
+        val presence = com.gtranca.net.PresenceAdvert("abc234", "Ana")
+        host.advertisePresence(presence)
+        other.discoverPresence().first { it.isNotEmpty() } shouldBe listOf(presence)
+        // Presença no ar: parar o anúncio de mesa não a derruba.
+        host.stopAdvertising()
+        api.advertInfo!!.contentEquals(AdvertCodec.encodePresence(presence)) shouldBe true
+        api.advertiseStops shouldBe 0
+        // A mesa toma o lugar da presença; a busca a vê como mesa, e a presença some.
+        host.advertise(advert)
+        runCurrent()
+        api.advertiseStops shouldBe 1
+        other.discover().first().single().tableId shouldBe advert.tableId
+        other.discoverPresence().first() shouldBe emptyList()
+        // Parar a presença com a mesa no ar não faz nada; parar a mesa sim.
+        host.stopPresence()
+        api.advertiseStops shouldBe 1
+        host.advertisePresence(presence)
+        runCurrent()
+        api.advertiseStops shouldBe 2
+        other.discoverPresence().first { it.isNotEmpty() } shouldBe listOf(presence)
+        host.stopPresence()
+        api.advertiseStops shouldBe 3
+    }
+
+    @Test
     fun `busca recem ligada nao emite a lista vazia antes do aquecimento`() = runTest {
         val (_, host) = node()
         val (_, guest) = node()
