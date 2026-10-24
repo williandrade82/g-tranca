@@ -536,6 +536,7 @@ flowchart TD
 - **Única exceção:** o **1º e o 2º sucessores** (§16.10) recebem, e mantêm **atualizado o tempo todo**, o estado completo do jogo (inclusive mãos, monte, mortos e a semente), para assumir se o anfitrião cair ou desistir. Os demais convidados **nunca** recebem isso. Salvaguardas: o estado do sucessor vive **só em memória** (nunca em disco, registro ou tela), o app **nunca o exibe**, e ele é **descartado** quando o jogador deixa de ser sucessor ou o jogo termina.
 - O **token** de cada jogador (§16.5) só é conhecido pelo dono, pelo anfitrião e pelos sucessores.
 - **Endurecimento futuro (fora do escopo):** o estado do sucessor poderia ir **cifrado**, com a chave liberada só na passagem do cargo. Registrado como ideia, no mesmo espírito do risco das moedas.
+- **Risco aceito (convite):** o anúncio da mesa em formação leva as **chaves de presença** dos convidados que ainda não se conectaram (§16.2); outro aparelho com o app poderia usar uma delas e ocupar o lugar do convidado, que veria "fora do alcance". Não expõe cartas, semente nem tokens. Endurecimento futuro, como acima.
 
 ### **16.5. Identidade e reconexão**
 - Cada jogador recebe um **token** ao entrar. O token identifica o jogador (não o aparelho nem a conexão) e dá o direito de **reingressar no mesmo assento**.
