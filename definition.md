@@ -564,7 +564,7 @@ flowchart TD
 - **Mesa reduzida com robô** (§16.3, anfitrião sozinho): o anfitrião pode liberar o assento do robô; quem entra faz da mesa um **1×1 entre humanos**.
 - **Anfitrião cai com pedido pendente:** as vagas abertas e a escolha já feita na pausa passam ao novo anfitrião (§16.10), e o candidato **refaz o pedido sozinho** ao novo anfitrião (o pedido em si não trafega no estado do sucessor: ele precisa da conexão do candidato).
 - Durante o jogo, quem entra **só pode ocupar o assento que o anfitrião abriu** para recrutamento (nunca escolhe outro).
-- **Wi-Fi ligado no meio de um jogo só com robôs:** o jogo não muda; o jogador **vira anfitrião** da mesa e pode liberar assentos de robô para entrada, como acima.
+- **Wi-Fi ligado no meio de um jogo só com robôs:** o jogo não muda; o jogador **vira anfitrião** da mesa e pode liberar assentos de robô para entrada, como acima. A partir desse momento o jogo passa a seguir §16.12: o **jogo salvo** ("Continuar") é **apagado** e deixa de ser gravado (o jogo continua normalmente; se o aplicativo fechar, ele não volta).
 - **Wi-Fi desligado no meio de um jogo com humanos** (só o anfitrião, depois de confirmar): o anfitrião se desconecta e **todos os humanos remotos são substituídos por robôs** (como na opção 2 de §16.8, com as mesmas regras de aposta); o jogo segue no aparelho dele. Se a mesa só tem robôs, o Wi-Fi desliga sem pergunta e o jogo continua normalmente. **Convidado:** desligar o Wi-Fi do jogo vale como **desistência** (§16.9) e passa pela mesma confirmação ("Desistir da mesa?"); cancelar mantém o Wi-Fi ligado e o jogo.
 
 ### **16.8. Queda de conexão**
