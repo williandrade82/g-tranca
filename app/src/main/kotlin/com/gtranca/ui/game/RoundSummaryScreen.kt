@@ -110,6 +110,7 @@ fun RoundSummaryScreen(
             val ownDeck = com.gtranca.ui.cards.LocalDeckColor.current
             Row(Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom), fontWeight = FontWeight.Bold)
+                Box(Modifier.weight(VALUE_WEIGHT))
                 sides.forEach { side ->
                     Column(Modifier.weight(COUNT_WEIGHT + POINTS_WEIGHT), horizontalAlignment = Alignment.End) {
                         AvatarRow(personasOfSide(view.mode, side, personas), 26.dp, pose = poses.getValue(side))
@@ -126,6 +127,7 @@ fun RoundSummaryScreen(
             }
             Row(Modifier.fillMaxWidth()) {
                 Box(Modifier.weight(LABEL_WEIGHT))
+                Text(stringResource(R.string.score_col_value), Modifier.weight(VALUE_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
                 sides.forEach { _ ->
                     Text(stringResource(R.string.score_col_count), Modifier.weight(COUNT_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
                     Text(stringResource(R.string.score_col_points), Modifier.weight(POINTS_WEIGHT), style = MaterialTheme.typography.labelSmall, color = GColors.Steel, textAlign = TextAlign.End)
@@ -140,6 +142,7 @@ fun RoundSummaryScreen(
                 ScoreRow(
                     stringResource(item.labelRes()),
                     examples = item.examples(),
+                    value = item.unitValue(LocalTableRules.current),
                     values = lines.mapIndexed { i, side ->
                         val line = side.getValue(item)
                         // §12.1 sem canastra na mesa, 3 vermelho vale −100: a célula diz o motivo.
@@ -147,9 +150,6 @@ fun RoundSummaryScreen(
                     },
                     tag = if (item == ScoreItem.RED_THREES) "red-threes-row" else null,
                 )
-                if (item == ScoreItem.RED_THREES && lines.any { it.getValue(item).points < 0 }) {
-                    Text(stringResource(R.string.score_red_threes_note), style = MaterialTheme.typography.bodySmall)
-                }
             }
             // §12.1 cartas na mesa e §12.2 cartas na mão: seções destacadas, com subtotal.
             ScoreSectionBox(ScoreSection.TABLE, scores, lines)
@@ -188,7 +188,8 @@ private data class ScoreCell(val count: String?, val points: String, val note: S
 private fun ScoreBreakdown.Line.cell(item: ScoreItem, side: Int, note: String? = null): ScoreCell =
     ScoreCell(count?.toString(), if (count == 0) "0" else signed(points), note, "count-${item.name}-$side")
 
-private const val LABEL_WEIGHT = 1.25f
+private const val LABEL_WEIGHT = 1.1f
+private const val VALUE_WEIGHT = 0.5f
 private const val COUNT_WEIGHT = 0.42f
 private const val POINTS_WEIGHT = 0.78f
 
@@ -229,7 +230,7 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
         val hidden = if (noWilds) setOf(ScoreItem.DIRTY_CANASTAS, ScoreItem.TABLE_WILDS, ScoreItem.HAND_WILDS) else emptySet()
         ScoreItem.entries.filter { it.section == section && it !in hidden }.forEach { item ->
             val label = if (noWilds && item == ScoreItem.CLEAN_CANASTAS) R.string.score_canastas else item.labelRes()
-            ScoreRow(stringResource(label), lines.mapIndexed { i, side -> side.getValue(item).cell(item, scores[i].side.index) }, examples = item.examples())
+            ScoreRow(stringResource(label), lines.mapIndexed { i, side -> side.getValue(item).cell(item, scores[i].side.index) }, examples = item.examples(), value = item.unitValue(LocalTableRules.current))
         }
         HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
         ScoreRow(
@@ -276,6 +277,26 @@ private fun ScoreItem.examples(): List<Card>? = when (this) {
     ScoreItem.GO_OUT, ScoreItem.MORTO_NOT_TAKEN -> null
 }
 
+/** §12 valor de cada carta (ou de cada canastra, batida e morto) pelas regras da mesa. */
+private fun ScoreItem.unitValue(rules: com.gtranca.engine.RuleSet): String = signed(
+    when (this) {
+        ScoreItem.RED_THREES -> rules.redThreePoints
+        ScoreItem.CLEAN_CANASTAS -> rules.cleanCanastaPoints
+        ScoreItem.DIRTY_CANASTAS -> rules.dirtyCanastaPoints
+        ScoreItem.GO_OUT -> rules.goOutPoints
+        ScoreItem.MORTO_NOT_TAKEN -> rules.mortoNotTakenPoints
+        ScoreItem.TABLE_RED_THREES -> rules.tableRedThreePoints
+        ScoreItem.TABLE_FOUR_TO_TEN -> rules.tableFourToTenPoints
+        ScoreItem.TABLE_FACES -> rules.tableFaceCardOrAcePoints
+        ScoreItem.TABLE_WILDS -> rules.tableWildPoints
+        ScoreItem.HAND_RED_THREES -> rules.handRedThreePoints
+        ScoreItem.HAND_BLACK_THREES -> rules.handBlackThreePoints
+        ScoreItem.HAND_FOUR_TO_TEN -> rules.handFourToTenPoints
+        ScoreItem.HAND_FACES -> rules.handFaceCardOrAcePoints
+        ScoreItem.HAND_WILDS -> rules.handWildPoints
+    },
+)
+
 /** Cartas de exemplo em leque (sobrepostas); o leitor de tela lê a descrição do item. */
 @Composable
 private fun CardExamples(cards: List<Card>, description: String, modifier: Modifier = Modifier) {
@@ -287,7 +308,7 @@ private fun CardExamples(cards: List<Card>, description: String, modifier: Modif
 }
 
 @Composable
-private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = false, tag: String? = null, pill: Boolean = false, examples: List<Card>? = null) {
+private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = false, tag: String? = null, pill: Boolean = false, examples: List<Card>? = null, value: String? = null) {
     val weight = if (bold) FontWeight.Bold else FontWeight.Normal
     val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums, fontWeight = weight, textAlign = TextAlign.End)
     Row(Modifier.fillMaxWidth().then(if (tag != null) Modifier.testTag(tag) else Modifier), verticalAlignment = Alignment.CenterVertically) {
@@ -295,6 +316,10 @@ private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = fal
             Box(Modifier.weight(LABEL_WEIGHT)) { CardExamples(examples, label) }
         } else {
             Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
+        }
+        // §12 valor de cada carta/item (vazio nos subtotais e totais).
+        Box(Modifier.weight(VALUE_WEIGHT), contentAlignment = Alignment.CenterEnd) {
+            value?.let { com.gtranca.ui.theme.FitText(it, numbers.copy(color = GColors.Champagne), minFontSp = 9) }
         }
         values.forEach { cell ->
             // Quantidade de cartas: coluna própria, sem parênteses (vazia quando a linha não tem quantidade).

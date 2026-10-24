@@ -41,6 +41,7 @@
     <string name="profile_tour">Tour guiado</string>
     <string name="profile_tour_hint">Ligado, cada tela mostra o tour na primeira vez (ao ligar, ele volta a aparecer). O ícone "i" das telas sempre mostra o tour.</string>
     <string name="score_col_count">Qtd</string>
+    <string name="score_col_value">Valor</string>
     <string name="score_col_points">Pontos</string>
     <string name="match_info_title">Informações do jogo</string>
     <string name="match_info_game">Jogo</string>
@@ -335,7 +336,6 @@
     <string name="score_hand_wilds">Coringas (−10)</string>
     <string name="score_hand_subtotal">Subtotal da mão</string>
     <string name="score_red_threes_no_canasta">sem canastra</string>
-    <string name="score_red_threes_note">Sem canastra na mesa, cada 3 vermelho vale −100 aqui e +5 em “Cartas na mesa”: −95 no total.</string>
     <string name="score_round_total">Total da partida</string>
     <string name="score_cumulative">Total acumulado</string>
     <string name="next_round">Próxima partida</string>
