@@ -395,7 +395,7 @@
         <item quantity="many">pegou o descarte (%1$d cartas para a mão)</item>
     </plurals>
     <!-- Mesas e regras (§14.2–§14.4) -->
-    <string name="tables_title">Mesas disponíveis</string>
+    <string name="tables_title">Iniciar novo jogo</string>
     <string name="tables_host">Mesa de %1$s</string>
     <string name="create_rules">Regras</string>
     <string name="table_rules_differs">Destacado: o que muda em relação à Clássica</string>
@@ -551,4 +551,6 @@
     <string name="go_out_lost">Você perdeu</string>
     <string name="go_out_lost_team">Sua dupla perdeu</string>
     <string name="round_end_stock_out">Fim das cartas do monte</string>
+    <string name="tour_table_pot">Total em jogo: a soma das apostas de todos na mesa; quem vence leva.</string>
+    <string name="tour_table_balance">Seu saldo de moedas.</string>
 </resources>

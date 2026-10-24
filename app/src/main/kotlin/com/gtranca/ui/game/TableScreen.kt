@@ -610,7 +610,8 @@ private fun HeaderStat(icon: Int, value: Int, description: String, tag: String) 
         Modifier
             .size(48.dp)
             .semantics(mergeDescendants = true) { contentDescription = description }
-            .testTag(tag),
+            .testTag(tag)
+            .tourTarget(tag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

@@ -94,6 +94,8 @@ object Tours {
 
     val tableSteps = listOf(
         TourStep("score", R.string.tour_table_score),
+        TourStep("table-pot", R.string.tour_table_pot),
+        TourStep("coin-balance", R.string.tour_table_balance),
         TourStep(BUTTON, R.string.tour_again),
         TourStep("table-options", R.string.tour_table_options),
         TourStep("seats", R.string.tour_table_seats),
