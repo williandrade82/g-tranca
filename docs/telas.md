@@ -58,7 +58,7 @@ Início ──► Mesas disponíveis (montagem; ⇄ Personalizar regra) ──Es
 Mesas disponíveis ──card de outro anfitrião──► pedido de entrada ──(aceito)──► Escolha sua posição ──► JOGO (multijogador)
 Início ──► Continuar (sessão multijogador) ──► reingresso na mesa ──► JOGO (multijogador)
 
-JOGO: mesa ─(batida: animação de 2 s)─► mesa final (Seguir) ─► pontos da partida ─► (próxima partida | fim de jogo) ─► Início
+JOGO: mesa ─(fim da partida: banner e animação de 2 s)─► mesa final (banner minimizado + Seguir) ─► pontos da partida ─► (próxima partida | fim de jogo) ─► Início
 ```
 
 Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/AppNavHost.kt`.
@@ -157,15 +157,15 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Regras:** §3 a §10 (jogada), §3.5 e §6.5 (3 vermelhos), §5 (lixo), §7 (canastras).
 **Tags:** `table-screen`, `table-scroll`, `score`, `seat-<n>`, `seat-hand-<n>`, `stock`, `mortos`, `discard-pile`, `discard-empty` (lixo vazio: lugar de uma carta com ícone de lixeira), `show-discard-pile` (contador sempre visível, mostra 0 com o lixo vazio), `action-bar`, `turn-status`, `hand`, `hand-card-<carta>`, `action-legend`, `action-resign`.
 
-### 3.9 Animação da batida (sobre a mesa de jogo)
-**Objetivo:** marcar a batida (§11.1) sem sair da mesa. Substitui o antigo anúncio da partida/do jogo (`AnnouncementScreen`, removido).
-**Conteúdo:** camada transparente sobre a mesa, que fica ao fundo um pouco escurecida; nada cobre a tela de forma opaca.
-- **Batida do lado do jogador** (ele ou o parceiro): confete caindo pela tela toda; mensagem **"Você bateu!"** (foi ele) ou **"Sua dupla bateu!"** (foi o parceiro, em duplas). Som de vitória.
-- **Batida do adversário:** a **borda da tela** pisca em vermelho, num pulso suave; mensagem **"Você perdeu"** (individual) ou **"Sua dupla perdeu"** (duplas). Som de derrota.
-- Dura **2 s** e some sozinha; um toque em qualquer lugar a retira antes. Com as animações do Android desligadas: sem movimento, só a mensagem e o escurecimento. Os sons respeitam o botão de som.
-- **Fim sem batida** (§11.2, monte esgotado ou recusa da compra): sem animação. **Desistência** (§13.1) vai ao fim de jogo como antes.
-- **Multijogador:** cada aparelho mostra no seu tempo (§16.11).
-**Tags:** `go-out-overlay`, `go-out-message`.
+### 3.9 Fim da partida sobre a mesa (animação e banner)
+**Objetivo:** marcar o fim da partida (§11) sem sair da mesa. Substitui o antigo anúncio da partida/do jogo (`AnnouncementScreen`, removido).
+**Conteúdo:** camada transparente sobre a mesa, que fica ao fundo um pouco escurecida por **2 s** (um toque encerra antes); nada cobre a tela de forma opaca. Sempre aparece, grande e centralizado, o **banner de fim de partida** (identidade da marca: azul royal/marinho, borda e brilho dourados, texto em Cinzel como o cabeçalho de marca):
+- **Seu lado bateu** (§11.1): **"Você bateu!"** (foi você) ou **"Sua dupla bateu!"** (foi o parceiro); confete caindo pela tela toda; som de vitória.
+- **O adversário bateu:** **"Você perdeu"** (individual) ou **"Sua dupla perdeu"** (duplas); toque discreto de vermelho na borda do banner e a **borda da tela** pulsando em vermelho, suave; som de derrota.
+- **Fim sem batida** (§11.2, monte esgotado ou recusa da compra): **"Fim das cartas do monte"**, banner neutro, só o escurecimento (sem confete nem borda vermelha).
+- Ao terminar, o banner é **minimizado** com animação (encolhe e desliza) até a barra de baixo, junto do botão **Seguir** (3.12), e **fica ali** enquanto a mesa final estiver aberta, sem cobrir a mão nem os jogos. Com as animações do Android desligadas: sem movimento (só a mensagem e o escurecimento; o banner troca direto para a forma minimizada). Os sons respeitam o botão de som.
+- **Desistência** (§13.1) vai ao fim de jogo como antes. **Multijogador:** cada aparelho mostra no seu tempo (§16.11).
+**Tags:** `go-out-overlay`, `go-out-message`, `go-out-banner` (grande), `go-out-banner-mini` (minimizado).
 
 ### 3.10 Pontos da partida (`RoundSummaryScreen`)
 **Objetivo:** detalhar a pontuação da partida (§12) por lado: cartas na mesa e na mão (3 vermelhos, canastras, batida, morto, cartas por valor), subtotais, total da partida e acumulado, com o rosto vencedor/perdedor/pensador por lado. **Colunas:** item | e, para cada lado, **Qtd** e **Pontos** (a quantidade de cartas numa coluna própria, sem parênteses; linhas sem quantidade — batida, morto não pego, subtotais e totais — deixam a de quantidade vazia). No título de cada lado, o avatar e, abaixo, o **ícone de 3 cartas** (na cor do baralho do perfil para o seu lado, cinza-claro para o adversário) junto do nome do lado ("Nós"/"Eles" ou o nome no individual). Números com largura fixa; cabe em 360 dp com fonte 1,3×. Tags: `count-<item>-<lado>`. Aviso de empate quando for o caso. Botão **Próxima partida** ou **Continuar** (fim do jogo: vai direto ao *Fim de jogo*, 3.11). Sem desistir (decisão do usuário).
@@ -177,7 +177,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Tags:** `game-over`, `outcome-ribbon`, `game-over-cast`, `coins-result`, `game-over-table`, `back-home`.
 
 ### 3.12 Revisão da mesa final
-Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jogo vendo a **mesa final**, "só para olhar": a barra de ações mostra só **Seguir**, que vai direto a *Pontos da partida* (3.10). Desistir continua pela engrenagem. No multijogador, o Seguir do anfitrião segue para os pontos e, de lá, a próxima partida, como antes (§16.11). Tag `final-table-continue`.
+Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jogo vendo a **mesa final**, "só para olhar": a barra de ações mostra o **banner de fim de partida minimizado** (3.9) e o botão **Seguir**, que vai direto a *Pontos da partida* (3.10). Desistir continua pela engrenagem. No multijogador, o Seguir do anfitrião segue para os pontos e, de lá, a próxima partida, como antes (§16.11). Tag `final-table-continue`.
 
 ### 3.13 Escolha sua posição (`SeatPickerScreen`)
 **Objetivo:** cada jogador escolhe o assento (§16.2) e o jogo começa quando todos confirmam. Imagem de referência: `docs/telas/escolha-posicao-multiplayer.png`.
