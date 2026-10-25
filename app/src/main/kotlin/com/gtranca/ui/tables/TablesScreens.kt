@@ -462,7 +462,7 @@ private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, o
         }
         Section(stringResource(R.string.create_stake)) {
             // §14.6 apostas acima do saldo ficam desabilitadas (o saldo fica só no topo).
-            Coins.STAKES.forEach { stake ->
+            Coins.stakesFor(state.difficulty.level).forEach { stake ->
                 GChoiceChip(
                     stake.toString(),
                     state.stake == stake,

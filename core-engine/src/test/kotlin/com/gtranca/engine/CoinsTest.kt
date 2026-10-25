@@ -15,7 +15,8 @@ class CoinsTest {
 
     @Test
     fun `§14_6 constantes - apostas 50 100 250 500, saldo inicial 1000 e ganho diario 200`() {
-        Coins.STAKES shouldBe listOf(50, 100, 250, 500)
+        // §14.6 três valores por nível dos robôs
+        Coins.STAKES_BY_LEVEL shouldBe listOf(listOf(50, 80, 100), listOf(100, 150, 200), listOf(200, 300, 500))
         Coins.DEFAULT_STAKE shouldBe 50
         Coins.INITIAL_BALANCE shouldBe 1_000
         Coins.DAILY_GAIN shouldBe 200
@@ -96,5 +97,31 @@ class CoinsTest {
         claimed.claimDaily(19_999) shouldBe null // relógio atrasado
         claimed.claimDaily(20_001)!!.balance shouldBe 430 // dia seguinte: +200
         claimed.claimDaily(20_010)!!.balance shouldBe 430 // dias sem resgatar não acumulam
+    }
+
+    @Test
+    fun `§14_6 aposta mantem o indice ao trocar de nivel e respeita o saldo`() {
+        Coins.stakesFor(0) shouldBe listOf(50, 80, 100)
+        Coins.stakesFor(2) shouldBe listOf(200, 300, 500)
+        // mesmo índice (o 2º) em cada nível
+        listOf(0, 1, 2).map { Coins.fitStake(it, 1, 10_000) } shouldBe listOf(80, 150, 300)
+        // o que passa do saldo vira o maior valor do nível que o saldo cobre
+        Coins.fitStake(2, 2, 350) shouldBe 300
+        Coins.fitStake(2, 2, 250) shouldBe 200
+        // nem o menor coberto: fica o menor (mesa bloqueada)
+        Coins.fitStake(2, 1, 120) shouldBe 200
+    }
+
+    @Test
+    fun `§14_6 aposta antiga vira o valor mais proximo da tabela do nivel (empate - o menor)`() {
+        Coins.nearestStake(0, 250) shouldBe 100
+        Coins.nearestStake(0, 500) shouldBe 100
+        Coins.nearestStake(1, 50) shouldBe 100
+        Coins.nearestStake(1, 250) shouldBe 200
+        Coins.nearestStake(2, 100) shouldBe 200
+        // 125 é equidistante de 100 e 150: o menor
+        Coins.nearestStake(1, 125) shouldBe 100
+        Coins.stakeIndexOf(1, 250) shouldBe 2
+        Coins.stakeIndexOf(0, 80) shouldBe 1
     }
 }

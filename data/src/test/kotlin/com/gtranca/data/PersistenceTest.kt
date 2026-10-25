@@ -148,7 +148,7 @@ class PersistenceTest {
         settings.setTourAuto(false)
         settings.settings.first().tourAuto shouldBe false
         settings.settings.first().tableSetup shouldBe null
-        val setup = TableSetup(GameMode.DUPLAS, "dificil", "PAULISTA", 50, "2000", listOf("zen", "jovem"))
+        val setup = TableSetup(GameMode.DUPLAS, "dificil", "PAULISTA", 300, "2000")
         settings.setTableSetup(setup)
         settings.settings.first().tableSetup shouldBe setup
     }
@@ -164,9 +164,15 @@ class PersistenceTest {
         }
         val settings = DataStoreSettingsRepository(store)
         settings.settings.first().tableSetup shouldBe TableSetup(GameMode.DUPLAS, "facil", "CUSTOM", 20, "1500")
-        settings.setTableSetup(TableSetup(robots = listOf("atleta")))
-        settings.settings.first().tableSetup shouldBe TableSetup(robots = listOf("atleta"))
+        settings.setTableSetup(TableSetup(stake = 80))
+        settings.settings.first().tableSetup shouldBe TableSetup(stake = 80)
         store.data.first().asMap().keys.map { it.name }.contains("create_table") shouldBe false
+    }
+
+    @Test
+    fun `§14_4 montagem gravada com robos por versao anterior le sem os robos`() {
+        val old = """{"mode":"DUPLAS","difficultyId":"facil","rules":"CLASSICA","stake":250,"target":"3000","robots":["zen","jovem"]}"""
+        TableSetup.decode(old) shouldBe TableSetup(GameMode.DUPLAS, "facil", "CLASSICA", 250, "3000")
     }
 
     @Test

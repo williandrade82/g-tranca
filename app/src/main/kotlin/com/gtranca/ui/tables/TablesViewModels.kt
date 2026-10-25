@@ -113,7 +113,7 @@ data class TableSetupUiState(
     /** Já leu a última montagem e as regras personalizadas. */
     val loaded: Boolean = true,
     /** §14.6 aposta escolhida e saldo da carteira. */
-    val stake: Int = Coins.DEFAULT_STAKE,
+    val stake: Int = Coins.stakesFor(1).first(),
     val balance: Int = Coins.INITIAL_BALANCE,
     /** §14.4 outros participantes marcados, na ordem da escolha (no máximo [MAX_PICKS]). */
     val picks: List<Pick> = emptyList(),
@@ -301,14 +301,20 @@ class TablesViewModel(
 
     fun onModeChange(mode: GameMode) = edit { if (it.modeLocked) it else it.copy(mode = mode) }
 
-    fun onDifficultyChange(difficulty: Difficulty) = edit { it.copy(difficulty = difficulty) }
+    /** §14.6 trocar o nível mantém o **mesmo índice** de aposta (limitado ao que o saldo cobre). */
+    fun onDifficultyChange(difficulty: Difficulty) = edit {
+        val index = Coins.stakeIndexOf(it.difficulty.level, it.stake)
+        it.copy(difficulty = difficulty, stake = Coins.fitStake(difficulty.level, index, it.balance))
+    }
 
     fun onRulesChange(choice: RulesChoice) = edit { it.copy(rulesChoice = choice) }
 
     fun onTargetChange(text: String) = edit { it.copy(targetText = text) }
 
-    /** §14.6 aposta da mesa (uma das [Coins.STAKES] que o saldo cobre; outro valor é ignorado). */
-    fun onStakeChange(stake: Int) = edit { if (stake in Coins.STAKES && Coins.canJoin(it.balance, stake)) it.copy(stake = stake) else it }
+    /** §14.6 aposta da mesa (um dos três valores do nível que o saldo cobre; outro valor é ignorado). */
+    fun onStakeChange(stake: Int) = edit {
+        if (stake in Coins.stakesFor(it.difficulty.level) && Coins.canJoin(it.balance, stake)) it.copy(stake = stake) else it
+    }
 
     /** "Escolher posições": grava a montagem (sem os jogadores próximos) e devolve a mesa, ou `null` se ainda não dá. */
     fun onChooseSeats(): ChosenTable? {
@@ -339,7 +345,6 @@ object TableSetupPrefs {
         rules = state.rulesChoice.name,
         stake = state.stake,
         target = state.targetText,
-        robots = state.picks.filterIsInstance<Pick.Bot>().map { it.profile.code },
     )
 
     /**
@@ -347,29 +352,25 @@ object TableSetupPrefs {
      * salvas, pontuação-alvo inválida volta ao padrão e Individual com mais de 2 marcados (contando o jogador) vira Duplas.
      */
     fun apply(state: TableSetupUiState, setup: TableSetup?, hasCustomRules: Boolean, balance: Int?): TableSetupUiState {
-        setup ?: return state.copy(stake = fitStake(state.stake, balance))
+        setup ?: return state.copy(stake = fitStake(state.difficulty.level, state.stake, balance))
         val difficulty = Difficulty.entries.firstOrNull { it.id == setup.difficultyId } ?: state.difficulty
         val rules = RulesChoice.entries.firstOrNull { it.name == setup.rules }
             ?.takeIf { it != RulesChoice.CUSTOM || hasCustomRules } ?: RulesChoice.CLASSICA
-        val stake = setup.stake.takeIf { it in Coins.STAKES } ?: state.stake
         val target = setup.target.takeIf { parseTargetScore(it) != null } ?: state.targetText
-        val robots = setup.robots.mapNotNull { code -> BotProfile.entries.firstOrNull { it.code == code } }.distinct()
-            .take(TableSetupUiState.MAX_PICKS).map { Pick.Bot(it) }
-        val mode = if (setup.mode == GameMode.INDIVIDUAL && 1 + robots.size > 2) GameMode.DUPLAS else setup.mode
         return state.copy(
-            mode = mode,
+            mode = setup.mode,
             difficulty = difficulty,
             rulesChoice = rules,
-            stake = fitStake(stake, balance),
+            // §14.6 aposta que não existe na tabela do nível vira o valor mais próximo (empate: o menor)
+            stake = fitStake(difficulty.level, setup.stake, balance),
             targetText = target,
-            picks = robots,
         )
     }
 
-    /** A aposta [stake] se o saldo a cobre; senão a maior que ele cobre (ou a menor, sem saldo). */
-    fun fitStake(stake: Int, balance: Int?): Int {
-        if (balance == null || stake <= balance) return stake
-        return Coins.STAKES.filter { it <= balance }.maxOrNull() ?: Coins.STAKES.min()
+    /** §14.6 a aposta [stake] ajustada à tabela do [level] e ao saldo (sem saldo lido, só à tabela). */
+    fun fitStake(level: Int, stake: Int, balance: Int?): Int {
+        val index = Coins.stakeIndexOf(level, stake)
+        return if (balance == null) Coins.stakesFor(level)[index] else Coins.fitStake(level, index, balance)
     }
 }
 
@@ -464,3 +465,6 @@ class RulesEditorViewModel(
         }
     }
 }
+
+/** §14.6 índice do nível dos robôs na tabela de apostas: 0 = Fácil (Iniciante), 1 = Médio (Maduro), 2 = Difícil (Sênior). */
+val Difficulty.level: Int get() = ordinal

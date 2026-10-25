@@ -54,7 +54,7 @@ class TablesViewModelsTest {
         vm.onModeChange(GameMode.DUPLAS)
         vm.onDifficultyChange(Difficulty.DIFICIL)
         vm.onRulesChange(RulesChoice.PAULISTA)
-        vm.onStakeChange(250)
+        vm.onStakeChange(300)
         vm.onTargetChange("2000")
         vm.onChooseSeats().shouldNotBeNull()
         advanceUntilIdle()
@@ -64,7 +64,7 @@ class TablesViewModelsTest {
             it.mode shouldBe GameMode.DUPLAS
             it.difficulty shouldBe Difficulty.DIFICIL
             it.rulesChoice shouldBe RulesChoice.PAULISTA
-            it.stake shouldBe 250
+            it.stake shouldBe 300
             it.targetText shouldBe "2000"
         }
     }
@@ -75,6 +75,7 @@ class TablesViewModelsTest {
         val vm = TablesViewModel(FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup.fromLegacy(saved))), wallet = FakeWallet(120))
         advanceUntilIdle()
         vm.uiState.value.let {
+            // 500 não existe no nível Iniciante (50/80/100): vira 100; o saldo (120) cobre
             it.stake shouldBe 100
             it.rulesChoice shouldBe RulesChoice.CLASSICA
             it.targetText shouldBe "3000"
@@ -112,19 +113,32 @@ class TablesViewModelsTest {
     }
 
     @Test
-    fun `§14_6 montagem - aposta padrao 50, escolhe entre as que o saldo cobre e so segue com saldo`() {
+    fun `§14_6 montagem - aposta padrao e o 1o valor do nivel, troca de nivel mantem o indice e o saldo limita`() {
         val vm = TablesViewModel()
-        vm.uiState.value.stake shouldBe 50
-        Coins.STAKES.forEach { vm.onStakeChange(it); vm.uiState.value.stake shouldBe it }
+        vm.uiState.value.difficulty shouldBe Difficulty.MEDIO
+        vm.uiState.value.stake shouldBe 100
+        Coins.stakesFor(1).forEach { vm.onStakeChange(it); vm.uiState.value.stake shouldBe it }
         vm.onStakeChange(77) // fora das opções: ignorada
+        vm.uiState.value.stake shouldBe 200
+        // mesmo índice (o 3º) ao trocar de nível
+        vm.onDifficultyChange(Difficulty.DIFICIL)
         vm.uiState.value.stake shouldBe 500
-        var state = vm.uiState.value
-        state.canAfford shouldBe true // saldo inicial 1000
-        state.toConfig()!!.stake shouldBe 500
-        state = state.copy(balance = 499)
-        state.canAfford shouldBe false
-        state.canChoose shouldBe false
-        state.copy(balance = 500).canChoose shouldBe true
+        vm.onDifficultyChange(Difficulty.FACIL)
+        vm.uiState.value.stake shouldBe 100
+        vm.onStakeChange(80)
+        vm.onDifficultyChange(Difficulty.MEDIO)
+        vm.uiState.value.stake shouldBe 150
+        // 500 do nível Sênior não é coberto por 400: vira o maior coberto do nível (300)
+        vm.onStakeChange(200)
+        var state = vm.uiState.value.copy(balance = 400)
+        state.canAfford shouldBe true
+        state = state.copy(difficulty = Difficulty.DIFICIL, stake = Coins.fitStake(2, 2, 400))
+        state.stake shouldBe 300
+        // sem saldo nem para o menor: bloqueada
+        val broke = vm.uiState.value.copy(balance = 99)
+        broke.canAfford shouldBe false
+        broke.canChoose shouldBe false
+        broke.copy(balance = 200).canChoose shouldBe true
     }
 
     @Test
@@ -134,7 +148,7 @@ class TablesViewModelsTest {
         state.rulesChoice shouldBe RulesChoice.CLASSICA
         state.targetScore shouldBe 3000
         state.canChoose shouldBe true
-        state.toConfig() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, RuleSet.CLASSICA, Coins.DEFAULT_STAKE)
+        state.toConfig() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, RuleSet.CLASSICA, 100)
     }
 
     @Test
@@ -154,7 +168,7 @@ class TablesViewModelsTest {
         vm.onDifficultyChange(Difficulty.DIFICIL)
         vm.onModeChange(GameMode.DUPLAS)
         vm.onRulesChange(RulesChoice.PAULISTA)
-        vm.onChooseSeats()?.config shouldBe GameConfig(GameMode.DUPLAS, Difficulty.DIFICIL, 1000, RuleSet.PAULISTA, Coins.DEFAULT_STAKE)
+        vm.onChooseSeats()?.config shouldBe GameConfig(GameMode.DUPLAS, Difficulty.DIFICIL, 1000, RuleSet.PAULISTA, 200)
     }
 
     @Test
@@ -207,32 +221,6 @@ class TablesViewModelsTest {
         chosen.nearby shouldBe listOf(NearbyPlayer("abc234", "Bia"))
         vm.onNearby(emptyList())
         vm.uiState.value.picks shouldBe listOf(Pick.Bot(com.gtranca.game.BotProfile.ATLETA))
-    }
-
-    @Test
-    fun `§14_4 grava os robos marcados e nao os jogadores proximos, e Individual com mais de 2 vira Duplas ao carregar`() = withMain {
-        val settings = FakeSettings()
-        val vm = TablesViewModel(settings)
-        advanceUntilIdle()
-        vm.onNearby(listOf(NearbyPlayer("abc234", "Bia")))
-        vm.onToggle(Pick.Near("abc234"))
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.ALTERNATIVO))
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.SOBRIO))
-        vm.onChooseSeats().shouldNotBeNull()
-        advanceUntilIdle()
-        settings.state.value.tableSetup!!.robots shouldBe listOf("alternativo", "sobrio")
-        val again = TablesViewModel(settings)
-        advanceUntilIdle()
-        again.uiState.value.picks shouldBe listOf(Pick.Bot(com.gtranca.game.BotProfile.ALTERNATIVO), Pick.Bot(com.gtranca.game.BotProfile.SOBRIO))
-        // Individual gravado com 2 robôs (3 participantes): carrega como Duplas.
-        val odd = TablesViewModel(FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup(GameMode.INDIVIDUAL, robots = listOf("jovem", "zen-desconhecido", "atleta")))))
-        advanceUntilIdle()
-        odd.uiState.value.mode shouldBe GameMode.DUPLAS
-        odd.uiState.value.picks.size shouldBe 2
-        // Individual com 1 robô continua Individual.
-        val one = TablesViewModel(FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup(GameMode.INDIVIDUAL, robots = listOf("jovem")))))
-        advanceUntilIdle()
-        one.uiState.value.mode shouldBe GameMode.INDIVIDUAL
     }
 
     @Test
