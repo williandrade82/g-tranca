@@ -37,6 +37,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,38 +86,64 @@ private const val COLLAPSE_MILLIS = 500
 
 private val LostRed = Color(0xFFD32F2F)
 
+/** Arte do banner de fim de partida (docs/telas.md 3.9). */
+@androidx.annotation.DrawableRes
+fun roundEndBannerArt(end: RoundEnd): Int = when (end) {
+    RoundEnd.YOU, RoundEnd.PARTNER -> R.drawable.banner_bateu
+    RoundEnd.OPPONENT -> R.drawable.banner_perdeu
+    RoundEnd.NO_WINNER -> R.drawable.banner_ninguem_bateu
+}
+
+/** Legenda sob a arte: só em duplas (quem bateu ou "Sua dupla perdeu"); no individual a arte basta. */
+fun roundEndCaptionRes(end: RoundEnd, mode: GameMode): Int? = when {
+    mode != GameMode.DUPLAS -> null
+    end == RoundEnd.YOU -> R.string.go_out_you
+    end == RoundEnd.PARTNER -> R.string.go_out_partner
+    end == RoundEnd.OPPONENT -> R.string.go_out_lost_team
+    else -> null
+}
+
 /**
- * Banner de fim de partida (docs/telas.md 3.9): azul royal/marinho com borda e brilho dourados e o texto em Cinzel
- * dourado; na derrota, um toque discreto de vermelho na borda; sem batida, neutro. [compact] = a forma minimizada, junto
- * do Seguir na mesa final.
+ * Banner de fim de partida (docs/telas.md 3.9): a arte pronta (Bateu! / Perdeu! / Ninguém Bateu) e, em duplas, uma legenda
+ * pequena. [compact] = a forma minimizada, junto do Seguir na mesa final; [artHeight] ajusta a arte nos outros usos.
  */
 @Composable
-fun RoundEndBanner(end: RoundEnd, mode: GameMode, compact: Boolean, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(if (compact) 12.dp else 20.dp)
-    val border = when (end) {
-        RoundEnd.OPPONENT -> Brush.horizontalGradient(listOf(GColors.Gold, LostRed.copy(alpha = 0.85f), GColors.Gold))
-        RoundEnd.NO_WINNER -> Brush.horizontalGradient(listOf(GColors.Steel, GColors.Gold.copy(alpha = 0.7f), GColors.Steel))
-        else -> Brush.horizontalGradient(listOf(GColors.GoldDeep, GColors.Gold, GColors.Champagne, GColors.Gold, GColors.GoldDeep))
-    }
-    val base = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineMedium
-    Box(
-        modifier
-            .shadow(if (compact) 4.dp else 16.dp, shape, ambientColor = GColors.Gold, spotColor = GColors.Gold)
-            .background(Brush.verticalGradient(listOf(GColors.RoyalStart, GColors.Midnight)), shape)
-            .border(if (compact) 1.5.dp else 3.dp, border, shape)
-            .padding(horizontal = if (compact) 16.dp else 28.dp, vertical = if (compact) 6.dp else 18.dp)
-            .testTag(if (compact) "go-out-banner-mini" else "go-out-banner"),
-        contentAlignment = Alignment.Center,
-    ) {
-        androidx.compose.material3.Text(
-            stringResource(roundEndMessageRes(end, mode)),
-            Modifier
-                .semantics { liveRegion = LiveRegionMode.Polite }
-                .then(if (compact) Modifier else Modifier.testTag("go-out-message")),
-            style = goldTitleStyle(base.copy(fontWeight = FontWeight.ExtraBold)),
-            textAlign = TextAlign.Center,
-            maxLines = 2,
+fun RoundEndBanner(end: RoundEnd, mode: GameMode, compact: Boolean, modifier: Modifier = Modifier, artHeight: androidx.compose.ui.unit.Dp? = null) {
+    val message = stringResource(roundEndMessageRes(end, mode))
+    val caption = roundEndCaptionRes(end, mode)?.let { stringResource(it) }
+    val art = Modifier.height(artHeight ?: if (compact) 44.dp else 150.dp)
+    val image = @Composable {
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(roundEndBannerArt(end)),
+            contentDescription = null,
+            modifier = if (compact) art else art.testTag("go-out-message"),
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
         )
+    }
+    val captionText = @Composable {
+        if (caption != null) {
+            androidx.compose.material3.Text(
+                caption,
+                style = goldTitleStyle((if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium).copy(fontWeight = FontWeight.ExtraBold)),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+        }
+    }
+    val semanticsMod = Modifier
+        .semantics(mergeDescendants = true) { contentDescription = message; liveRegion = LiveRegionMode.Polite }
+        .testTag(if (compact) "go-out-banner-mini" else "go-out-banner")
+    if (compact) {
+        androidx.compose.foundation.layout.Row(
+            modifier.then(semanticsMod),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { image(); captionText() }
+    } else {
+        androidx.compose.foundation.layout.Column(
+            modifier.then(semanticsMod),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) { image(); captionText() }
     }
 }
 

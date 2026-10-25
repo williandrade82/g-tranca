@@ -82,17 +82,7 @@ fun RoundSummaryScreen(
     val view = snapshot.view
     val sides = listOf(view.side) + view.mode.sides.filter { it != view.side }
     val scores = sides.map { side -> record.scores.first { it.side == side } }
-    val resultText = when (val result = record.result) {
-        RoundResult.NoWinner -> stringResource(R.string.round_result_no_winner)
-        // §11.1 quem bateu, pelo assento (em duplas: você, parceiro ou um dos adversários).
-        is RoundResult.GoOut -> stringResource(SeatRole.of(view.mode, result.seat, snapshot.viewerSeat).wentOutRes())
-    }
-    val role = (record.result as? RoundResult.GoOut)?.let { SeatRole.of(view.mode, it.seat, snapshot.viewerSeat) }
-    val (bannerColor, onBanner) = when {
-        role == null -> GColors.GoldDeep to GColors.Ivory
-        role == SeatRole.YOU || role == SeatRole.PARTNER -> GColors.RoyalEnd to GColors.Ivory
-        else -> GColors.Bordeaux to GColors.Ivory
-    }
+    val end = roundEnd(snapshot)
     // §14.5 o robô aparece feliz se o lado dele lidera o placar acumulado e frustrado se está perdendo; o jogador, sempre como é
     val poses = leaderPoses(snapshot.totals, sides)
     val rules = LocalTableRules.current
@@ -107,7 +97,11 @@ fun RoundSummaryScreen(
                 GTitle(stringResource(R.string.round_over_title, record.number), Modifier.weight(1f))
                 com.gtranca.ui.tour.TourButton(startTour)
             }
-            GBanner(resultText, bannerColor, onBanner)
+            if (end != null) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    RoundEndBanner(end, view.mode, compact = false, artHeight = 84.dp)
+                }
+            }
 
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = Spacing.sm)) {
             GPanel(Modifier.fillMaxWidth()) {

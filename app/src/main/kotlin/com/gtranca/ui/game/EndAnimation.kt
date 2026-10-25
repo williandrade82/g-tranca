@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -182,8 +183,8 @@ fun VictoryCrown(size: Dp, animate: Boolean, modifier: Modifier = Modifier) {
 }
 
 /**
- * Faixa de resultado: "VITÓRIA" em ouro com louros e coroa, descendo com um balanço; "DERROTA" em bordô,
- * sóbria e parada. Sem animação ([animate] falso), já aparece no lugar.
+ * Arte do resultado do jogo (docs/telas.md 3.11): "Venceu!" caindo com um balanço, "Perdeu!" sóbria e parada. Sem
+ * animação ([animate] falso), já aparece no lugar. [text] é lido pelo leitor de tela.
  */
 @Composable
 fun OutcomeRibbon(text: String, win: Boolean, animate: Boolean, modifier: Modifier = Modifier) {
@@ -197,58 +198,11 @@ fun OutcomeRibbon(text: String, win: Boolean, animate: Boolean, modifier: Modifi
         },
         contentAlignment = androidx.compose.ui.Alignment.Center,
     ) {
-        Canvas(Modifier.size(width = 300.dp, height = 96.dp)) {
-            val w = size.width
-            val h = size.height
-            val top = h * 0.3f
-            val bh = h * 0.5f
-            val fill = if (win) Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep), top, top + bh)
-                else Brush.verticalGradient(listOf(GColors.Bordeaux, Color(0xFF4A0D1D)), top, top + bh)
-            val edge = if (win) GColors.GoldDeep else GColors.GoldDeep.copy(alpha = 0.6f)
-            // Pontas da faixa (rabo de andorinha).
-            listOf(-1f, 1f).forEach { dir ->
-                val x0 = if (dir < 0) w * 0.04f else w * 0.96f
-                val x1 = if (dir < 0) w * 0.2f else w * 0.8f
-                val tail = Path().apply {
-                    moveTo(x1, top + bh * 0.25f); lineTo(x0, top + bh * 0.25f); lineTo(x0 + dir * -w * 0.04f, top + bh * 0.75f)
-                    lineTo(x0, top + bh * 1.25f); lineTo(x1, top + bh * 1.25f); close()
-                }
-                drawPath(tail, if (win) GColors.GoldDeep else Color(0xFF4A0D1D))
-            }
-            drawRoundRect(fill, Offset(w * 0.14f, top), Size(w * 0.72f, bh), CornerRadius(h * 0.06f))
-            drawRoundRect(edge, Offset(w * 0.14f, top), Size(w * 0.72f, bh), CornerRadius(h * 0.06f), style = Stroke(1.5.dp.toPx()))
-            if (win) {
-                // Coroa no alto.
-                val cx = w / 2
-                val crown = Path().apply {
-                    moveTo(cx - h * 0.2f, top - h * 0.02f); lineTo(cx - h * 0.24f, top - h * 0.26f); lineTo(cx - h * 0.1f, top - h * 0.14f)
-                    lineTo(cx, top - h * 0.3f); lineTo(cx + h * 0.1f, top - h * 0.14f); lineTo(cx + h * 0.24f, top - h * 0.26f)
-                    lineTo(cx + h * 0.2f, top - h * 0.02f); close()
-                }
-                drawPath(crown, Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold)))
-                // Louros dos dois lados.
-                listOf(-1f, 1f).forEach { dir ->
-                    for (i in 0 until 5) {
-                        val t = i / 4f
-                        val px = w / 2 + dir * (w * 0.4f + h * 0.05f * sin(t * PI.toFloat()))
-                        val py = top + bh * 1.2f - t * bh * 1.5f
-                        rotate(dir * (30f + t * 40f), Offset(px, py)) {
-                            drawOval(GColors.Gold, Offset(px - h * 0.035f, py - h * 0.08f), Size(h * 0.07f, h * 0.16f))
-                        }
-                    }
-                }
-            }
-        }
-        androidx.compose.material3.Text(
-            text,
-            style = androidx.compose.ui.text.TextStyle(
-                fontFamily = com.gtranca.ui.theme.Cinzel,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
-                fontSize = androidx.compose.ui.unit.TextUnit(26f, androidx.compose.ui.unit.TextUnitType.Sp),
-                letterSpacing = androidx.compose.ui.unit.TextUnit(3f, androidx.compose.ui.unit.TextUnitType.Sp),
-                color = if (win) GColors.OnGold else GColors.Ivory,
-            ),
-            modifier = Modifier.graphicsLayer { translationY = 7.dp.toPx() },
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(if (win) com.gtranca.R.drawable.banner_venceu else com.gtranca.R.drawable.banner_perdeu),
+            contentDescription = text,
+            modifier = Modifier.height(150.dp),
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
         )
     }
 }
