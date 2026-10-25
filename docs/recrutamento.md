@@ -1,64 +1,104 @@
-# Recrutamento imediato: máquina de estados e sincronização (§16.2, §16.15)
+# Recrutamento e seleção de jogadores: máquina de estados e sincronização (§14.4, §16.2, §16.15)
 
-Fonte da verdade das regras: `definition.md` §16.2 e §16.15. Este documento descreve **como** a tela "Iniciar novo jogo"
-fica sincronizada entre aparelhos. Código: `net/.../Recruitment.kt`, `PresencePhotos.kt`, `app/.../NearbyTransport.kt`.
+Fonte da verdade das regras: `definition.md` §14.4, §14.6, §16.2, §16.3 e §16.15. Este documento descreve **como** as duas
+telas (*Iniciar novo jogo* e *Seleção de jogadores*) e a tela do recrutado ficam sincronizadas entre aparelhos. Telas:
+`docs/telas.md` (3.2, 3.3, 3.13). Código: `net/.../TableLayout.kt` (lugares), `Recruitment.kt` (conexões),
+`PresencePhotos.kt`, `HostSession.kt` (entrada na mesa e início) e `app/.../NearbyTransport.kt`.
 
-## Princípios
+## Princípios (herdados, continuam valendo)
 
-1. **O anúncio de presença só descobre; a conexão decide.** O anúncio leva o essencial e muda pouco: chave, nome,
-   `hosting` (a montagem da mesa está aberta: quem estiver livre abre uma conexão de **espera**), `inviting` (reserva: chaves
-   marcadas que ainda não têm conexão) e `recruitedBy` (anfitrião que já recrutou o jogador, para os terceiros mostrarem
-   "Recrutado"). Todo o resto (convite, cancelamento, aceite, recusa,
-   montagem, saída, remoção, início) vai por **mensagens na conexão** do recrutado com o anfitrião (`ReliableLink`:
-   ordem, confirmação e reenvio).
-2. **Nada se decide pela ausência momentânea na busca.** A presença que some e volta (anunciante parou e reanunciou, busca
-   reiniciada) não cancela convite, não desmarca e não tira ninguém da lista: ver "Lista de presença".
+1. **O anúncio de presença só descobre; a conexão decide.** O anúncio leva o essencial e muda pouco: chave, nome, os
+   **estados** (`livre` e `recrutando`, abaixo), `inviting` (reserva: chaves chamadas que ainda não têm conexão) e
+   `recruitedBy` (recrutador que já chamou o jogador, para os outros mostrarem "Recrutado"). Todo o resto (convite,
+   cancelamento, aceite, recusa, lugares, saída, remoção, início) vai por **mensagens na conexão de espera** do jogador com
+   o recrutador (`ReliableLink`: ordem, confirmação e reenvio).
+2. **Nada se decide pela ausência momentânea na busca** (anunciante que para e reanuncia, busca reiniciada): a presença só
+   sai da lista como diz "Lista de presença".
 3. **O estado sobrevive** à recomposição da tela e ao reinício da presença: o `Recruitment` vive enquanto o Wi-Fi do jogo
-   está ligado (chave de presença) e é o mesmo objeto para a tela e para o transporte.
-4. **Montagem versionada:** o anfitrião envia sempre a montagem **completa** com um número de versão crescente; o
-   recrutado aplica só versão maior que a aplicada.
+   está ligado (chave de presença).
+4. **Lugares versionados:** o recrutador envia sempre o estado **completo** (config + lugares) com um número de versão
+   crescente; o chamado/recrutado aplica só versão maior que a aplicada. O convite, a resposta e a remoção **não esperam** o
+   debounce de 0,3 s; os arrastos (mudanças de lugar) esperam.
+5. **Só o recrutador decide quem está em cada lugar.** O recrutado só aceita, recusa ou sai.
 
-## Papéis e estados
+## Estados do aparelho (presença)
 
-### Anfitrião (por marcado)
-`Pendente` (marcado, sem resposta) -> `Aceito` (conectado) -> fora.
+| Estado | Quando | Aparece para os outros |
+|---|---|---|
+| **fora** | qualquer tela que não é a 1 nem a 2 (Início, Perfil...), Wi-Fi ligado | só a presença básica; **não** está nas listas e não pode ser chamado |
+| **livre** | tela 1 (*Iniciar novo jogo*) com o Wi-Fi ligado, sem estar chamado | na lista da tela 2 dos recrutadores |
+| **recrutando** | tela 2 (*Seleção de jogadores*) com o Wi-Fi ligado | na lista da tela 1 dos livres (só informativo) |
+| **chamado / recrutado** | convite pendente / aceito | "Recrutado" (não selecionável) para os outros recrutadores; deixa de estar `livre` |
+| **jogo** | num jogo | não anuncia |
+
+Quem está `livre` abre a **conexão de espera** com um recrutador (um por vez: `P2P_STAR`, spoke de um só centro); recrutador
+não recruta recrutador (nenhum abre conexão a outro). Dois aparelhos `recrutando` ignoram-se.
+
+## Modelo dos lugares (recrutador)
+
+`TableLayout` (puro, sem rede): lista de lugares `0..n-1` (`n` = 2 no individual, 4 em duplas).
+
+- Lugar **0**: o recrutador (`HOST`), **fixo**, embaixo. Lugar **2** (duplas): o parceiro; lugares 1 e 3: adversários;
+  individual: lugar 1 é o adversário. O rótulo **Parceiro/Adversário** de um lugar é calculado em relação ao lugar 0.
+- Cada lugar é `VACANT`, `HOST`, `ROBOT(persona)`, `CALLED(chave, nome)` ou `RECRUITED(chave, nome)`.
+- Operações: **chamar** (lugar `VACANT` + jogador livre → `CALLED`), **pôr robô** (lugar `VACANT` + persona não usada),
+  **remover** (lugar ≠ 0), **mover/trocar** (de ≠ 0 para ≠ 0; ocupado → troca; `VACANT` → move), **completar com robôs**
+  (sorteia, com a semente do recrutador, personas ainda não usadas nos `VACANT`), **aceitar** (`CALLED → RECRUITED`),
+  **recusar/sair/perder** (→ `VACANT`).
+- `canStart` = todos os lugares preenchidos **e** nenhum `CALLED`.
+
+## Recrutador (por jogador chamado)
+
+`Chamado` -> `Recrutado` -> fora (lugar volta a `VACANT`).
 
 | Evento | Efeito |
 |---|---|
-| montagem aberta (`setHosting`) | anuncia `hosting`; os jogadores próximos livres conectam (espera), no máximo 6 |
-| marcar | cria o marcado `Pendente`. **Se o jogador já está em espera**: `RecruitInvite` pela conexão na hora (sem mexer no anúncio). Senão: reserva, a chave vai em `inviting` e o convite sai quando ele conectar |
-| recrutado conecta e envia `RecruitHello` | se `Pendente`: responde `RecruitInvite` (nome do anfitrião + montagem); se `Aceito` sem conexão (reingresso): troca a conexão e reenvia `RecruitSync` completo; se não marcado: `RecruitEnd(CANCELLED)` |
-| `RecruitReply(aceito)` | `Aceito`; sai de `inviting`; envia a **todos os aceitos** a montagem completa com versão nova, já com o "aceitou" de cada um conferido pelo anfitrião (a montagem não espera o debounce) |
-| `RecruitReply(recusado)` | remove; aviso ao anfitrião com o motivo |
-| desmarcar | `Pendente`: `RecruitEnd(CANCELLED)` (se já conectado) e sai de `inviting`; `Aceito`: `RecruitEnd(REMOVED)` |
-| `RecruitLeave` | remove; aviso (sair da mesa, ou saldo insuficiente) |
-| conexão cai (`Aceito`) | marcado fica `Aceito` **sem conexão** por 8 s à espera do reingresso; passado o prazo, remove com aviso "fora do alcance" |
-| presença de `Pendente` ausente da lista por 10 s seguidos | remove com aviso "fora do alcance" |
-| mudança da montagem | espera 0,3 s sem novas mudanças (debounce), incrementa a versão e envia a montagem completa a todos os `Aceito` conectados |
-| Escolher posições | `RecruitStart(tableId)` a cada `Aceito` conectado (espera as confirmações até 2 s); `Pendente` vira robô; a mesa é aberta depois |
-| sair / Wi-Fi desligado | `RecruitEnd(CLOSED)` a todos os conectados, espera até 0,5 s pelas confirmações |
+| tela 2 aberta (`openTable`) | anuncia `recrutando`; os livres se ligam (espera), no máximo 6 |
+| chamar (lugar + jogador livre) | lugar `CALLED`. **Se o jogador já está em espera:** `RecruitInvite` na hora pela conexão (sem mexer no anúncio). Senão: reserva, a chave vai em `inviting` e o convite sai quando ele conectar |
+| `RecruitReply(aceito)` | `RECRUITED`; sai de `inviting`; envia a **todos** os chamados/recrutados o estado completo com versão nova (sem debounce) |
+| `RecruitReply(recusado)` / saldo insuficiente | lugar `VACANT`; aviso ao recrutador com o motivo; o jogador volta a aparecer livre |
+| remover `CALLED` | `RecruitEnd(CANCELLED)` (o modal some, sem aviso); lugar `VACANT` |
+| remover `RECRUITED` | `RecruitEnd(REMOVED)` ("tirou você da mesa"); lugar `VACANT` |
+| mover/trocar | estado novo (versão nova) a todos os chamados/recrutados, depois de 0,3 s; o convite pendente mostra a posição nova |
+| `RecruitLeave` ("Sair da mesa") | lugar `VACANT`; aviso |
+| conexão cai (`RECRUITED`) | continua `RECRUITED` **sem conexão** por 8 s à espera do reingresso; passado o prazo: `VACANT` + aviso "fora do alcance" |
+| `CALLED` sem conexão e ausente da lista por 10 s seguidos | `VACANT` + aviso "fora do alcance" |
+| Começar Partida | exige `canStart`; `RecruitStart(tableId, prepareMillis = 1500)` a cada `RECRUITED` conectado (espera as confirmações até 2 s); abre a mesa do jogo (`HostSession` com o plano de lugares); espera os recrutados entrarem, no mínimo 1,5 s e no máximo 10 s; quem não entrou vira robô sorteado (aviso) |
+| voltar à tela 1 / sair / Wi-Fi desligado | `CALLED`: `RecruitEnd(CANCELLED)`; `RECRUITED`: `RecruitEnd(CLOSED)` ("Mesa encerrada"); espera as confirmações até 0,5 s; lugares limpos (sempre `VACANT` ao abrir de novo) |
 
-### Recrutado
-`Livre` -> (vê um anfitrião com `hosting`, ou a própria chave em `inviting`) **Em espera** (interno; a tela mostra
-`Livre`) -> (recebe `RecruitInvite`) `Convidado` -> (Aceitar) `Aceito` -> fim.
+## Chamado / Recrutado (jogador livre)
 
-- **Em espera:** conecta ao anfitrião e envia `RecruitHello` e a foto; a conexão fica aberta, sem custo de anúncio. Falha:
-  nova tentativa depois de 0,3, 1, 2, 4 s (e a cada 8 s) enquanto o anfitrião continuar montando a mesa ou me listar.
-  Só uma espera por vez (STAR: um aparelho é "spoke" de um só centro); outro anfitrião que me liste em `inviting` toma o
-  lugar da espera. O anfitrião que parou de montar a mesa solta a espera. Dois aparelhos com a montagem aberta: só o de
-  **menor chave** abre a conexão (a conexão serve aos dois sentidos).
-- **Convidado**: o convite não tem prazo. `RecruitEnd(CANCELLED)` ou queda da conexão o desfaz. Reanunciar a presença
-  com `recruitedBy` (pendente ou aceito) marca "Recrutado" para os terceiros.
-- **Aceito**: recebe `RecruitSync` (versão maior que a aplicada). `RecruitEnd` (`REMOVED` = "tirou você da mesa";
-  `CLOSED` = "Mesa encerrada"), `RecruitStart` (entra na mesa com a própria chave) ou saída própria encerram. **Queda da
-  conexão** sem aviso: continua `Aceito` por até 8 s tentando reconectar (`RecruitHello` de reingresso ao anfitrião,
-  achado pela chave dele); o anfitrião reenvia a montagem completa. Passado o prazo: `Livre` + aviso "Mesa encerrada".
-- **Início perdido:** se a mensagem de início não chegou (queda no momento do toque), a mesa do anfitrião aparece na
-  busca com a chave do recrutado em `invited`: ele trata como início e entra.
+`Livre` -> (vê um recrutador `recrutando`, ou a própria chave em `inviting`) **em espera** (interno) -> (recebe
+`RecruitInvite`) `Chamado` -> (Aceitar) `Recrutado` -> fim.
 
-### Terceiro (outro anfitrião)
+- **Em espera:** conecta ao recrutador, envia `RecruitHello` e a foto; a conexão fica aberta. Falha: nova tentativa depois de
+  0,3, 1, 2, 4 s (e a cada 8 s) enquanto o recrutador continuar recrutando ou me listar. O recrutador que parou de recrutar
+  (e não me chama) solta a espera. Outro recrutador que me liste em `inviting` toma o lugar da espera.
+- **Chamado:** o modal *Convite* mostra recrutador, aposta, tipo, posição, título da regra; **sem prazo**. Cada
+  `RecruitSync` atualiza o modal (posição). Saldo menor que a aposta: recusa automática com motivo. Aceitar/Recusar vão pela
+  conexão. `RecruitEnd(CANCELLED)` ou queda da conexão desfazem o convite.
+- **Recrutado:** a tela do recrutado (só leitura) lê de `Recruited.table`: config + lugares, sem lista de jogadores
+  próximos; botão **Sair da mesa** (`RecruitLeave`). `RecruitEnd(REMOVED | CLOSED)`, `RecruitStart` ou a saída própria
+  encerram. **Queda** sem aviso: continua `Recrutado` por até 8 s tentando reconectar (`RecruitHello` de reingresso; o
+  recrutador reenvia o estado inteiro); passado o prazo: livre + aviso "Mesa encerrada".
+- **Início perdido:** se `RecruitStart` não chegou (queda no toque), a mesa do jogo aparece na busca com a chave do
+  recrutado em `invited`: ele trata como início e entra.
+- **Prepare-se:** ao receber `RecruitStart` (e o recrutador ao tocar), a tela mostra a imagem por **no mínimo** `prepareMillis`
+  e a mantém até o jogo começar (`GameStarted`).
+
+## Terceiro (outro recrutador)
+
 Vê o jogador com `recruitedBy` de outra chave como "Recrutado" (não selecionável). `recruitedBy` só existe enquanto o
-jogador está `Convidado` ou `Aceito`; recusa/saída/remoção o limpam.
+jogador está `Chamado` ou `Recrutado`; recusa/saída/remoção o limpam.
+
+## Entrada na mesa e início do jogo
+
+`HostSession` recebe o **plano de lugares** (`TablePlan`): ocupante de cada lugar (humano com a chave de presença, ou robô
+com a persona), a semente e as personas possíveis. Cada recrutado entra com `GuestSession.join(tableId, inviteKey)` e já
+fica no lugar planejado (`Welcome`, sem confirmação). `startGame(prepareMillis, waitMillis)`: espera `prepareMillis` (1,5 s)
+**e** todos os humanos do plano conectados, até `waitMillis` (10 s); quem faltou vira robô sorteado (aviso); envia
+`GameStarted` (com os robôs de cada lugar) e começa o jogo. Os robôs são exatamente os da tela 2 (nada é sorteado de novo,
+exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (testado varrendo os bytes).
 
 ## Lista de presença (NearbyTransport)
 
@@ -68,17 +108,17 @@ jogador está `Convidado` ou `Aceito`; recusa/saída/remoção o limpam.
 | `onLost` | a presença só sai se não reaparecer em 3 s (anunciante que para e reanuncia não pisca) |
 | aviso "saindo" | sai na hora (todas as entradas da chave) |
 | busca reiniciada a cada 8 s | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~20 s) |
-| chave **fixada** (marcada/recrutada/anfitrião do aceito) | a varredura não a remove; só `onLost` após a folga, "saindo" ou a queda da conexão |
-| pedido de conexão com um jogador próximo em andamento | a busca não reinicia até ele terminar (as conexões já abertas não são afetadas) |
+| chave **fixada** (chamada/recrutada/recrutador de quem aceitou) | a varredura não a remove; só `onLost` após a folga, "saindo" ou a queda da conexão |
+| pedido de conexão em andamento | a busca não reinicia até ele terminar (as conexões já abertas não são afetadas) |
 
 Cada remoção registra o motivo no log de depuração.
 
 ## Fotos
 
-As fotos dos jogadores próximos vão **pela conexão de espera do recrutamento** (`PresencePhoto` logo depois do
-`RecruitHello`, nos dois sentidos, uma vez por conexão), nunca por uma conexão avulsa: uma conexão avulsa para a foto e a
-de recrutamento usam o mesmo endpoint, e desconectar uma derrubava a outra. Jogador sem conexão de espera (fora da cota
-de esperas, ou montagem fechada) aparece com a inicial.
+As fotos vão **pela conexão de espera** (`PresencePhoto` logo depois do `RecruitHello`, nos dois sentidos, uma vez por
+conexão), nunca por uma conexão avulsa (a avulsa e a de recrutamento usam o mesmo endpoint, e desconectar uma derrubava a
+outra). Jogador sem conexão de espera (fora da cota, ou sem recrutador) aparece com a inicial. A foto dos **outros**
+recrutadores na lista da tela 1 sai como inicial (no `P2P_STAR` o livre mantém espera com um só recrutador).
 
 ## Tempos (§16.15)
 
@@ -86,25 +126,36 @@ de esperas, ou montagem fechada) aparece com a inicial.
 |---|---|
 | nova tentativa de conexão de espera | 0,3, 1, 2, 4 s (depois 8 s) |
 | `onLost` da presença até sair da lista | 3 s |
-| debounce da montagem | 0,3 s |
-| reingresso do recrutado aceito | 8 s |
-| marcado pendente sumido da lista | 10 s |
-| confirmações no Escolher posições | até 2 s |
-| confirmações no fechar / Wi-Fi desligado | até 0,5 s |
+| lugares enviados (debounce; convite, resposta e remoção não esperam) | 0,3 s |
+| reingresso do recrutado que perdeu a conexão | 8 s |
+| chamado sem conexão que sumiu da busca | 10 s |
+| "Prepare-se!" | no mínimo 1,5 s; até o jogo começar |
+| espera pelos recrutados entrarem na mesa após Começar | até 10 s |
+| confirmações no Começar Partida | até 2 s |
+| confirmações ao voltar / sair / Wi-Fi desligado | até 0,5 s |
+
+## Decisões provisórias (registradas; reabrir com o produto se não servirem)
+
+1. **Voltar da tela 2 à tela 1 encerra o recrutamento** (chamados cancelados, recrutados recebem "Mesa encerrada"); os
+   lugares nunca persistem.
+2. **O recrutado se vê embaixo** na mesa só de leitura (a mesa é girada para o lugar dele); o recrutador também.
+3. **O Wi-Fi fica também na tela 1** (botão no título), além da tela 2 e do Perfil, para quem só quer ficar disponível.
+4. **Mudança de modo só na tela 1**; a tela 2 não troca o modo nem altera as opções (por isso a configuração só é enviada
+   uma vez por convite/estado, e as mudanças que passam pelo debounce são as de lugares).
+5. **Aposta:** mesmo índice ao trocar de nível; acima do saldo vira o maior valor coberto (§14.6).
+6. **Recusa/saída/queda deixam o lugar VAGO** (sem robô sorteado sozinho); o sorteio só acontece em *Completar com robôs* e,
+   no início, para quem não entrou na mesa em 10 s.
+
+## Em aberto (perguntar ao produto)
+
+1. **§16.7 perdeu a porta de entrada:** a tela 1 não tem mais cards de mesa ("só se entra sendo chamado"). A entrada no meio
+   do jogo e "Wi-Fi ligado num jogo só com robôs vira anfitrião" dependiam do card com o pedido de entrada. Saídas: o
+   anfitrião em pausa **chama** um jogador livre (o mesmo mecanismo), ou o card de "jogo em andamento" volta. O `:net`
+   mantém o pedido de entrada do §16.7 como está.
+2. Trocar de duplas para individual com gente já nos lugares: hoje só é possível na tela 1 (sem lugares ocupados).
 
 ## Diagnóstico (build debug, tag `GTrancaNearby`)
 
-Sem nomes, fotos ou bytes; chaves abreviadas (2 caracteres). Linhas úteis: `rec state A->B` (transição do recrutado),
-`rec mark/unmark/accepted/removed <motivo>`, `rec cfg send v=N to=K` / `rec cfg apply v=N` / `rec cfg stale v=N`,
-`presence found/lost/dedupe/leaving/sweep miss N/remove <motivo>`, `restart ok/failed`.
-
-## Tela do recrutado (espelho)
-
-A tela lê só de `RecruitStatus.Joined.config` (nunca do estado local do jogador): o anfitrião é o primeiro participante
-(a foto vem pela chave dele), seguem os recrutados (com a chave de presença, para a foto, e o selo "aguardando" até
-aceitarem) e os robôs escolhidos. Sem montagem ainda, a tela mostra o indicador de espera; a montagem inicial perdida é
-reenviada pelo protocolo (1 s). Sair, remoção e mesa encerrada voltam à configuração do próprio jogador, que nunca foi
-alterada pelo espelho (a "última mesa" só é gravada em Escolher posições, no anfitrião).
-
-Log do aceite (debug): `rec accept sent` (recrutado) -> `rec host marked accepted K` e `rec cfg send v=N to=K` (anfitrião) ->
-`rec cfg apply v=N` (recrutado) -> `rec ui mirrored v=N config=true` (tela).
+Sem nomes, fotos ou bytes; chaves abreviadas (2 caracteres). Linhas úteis: `rec state A->B` (recrutado),
+`rec call/accepted/refused/removed/left <motivo>`, `rec seats v=N send/apply`, `rec invite sent via link in N ms`,
+`rec start prepare=N`, `presence found/lost/dedupe/leaving/sweep/remove <motivo>`, `restart ok/failed`.
