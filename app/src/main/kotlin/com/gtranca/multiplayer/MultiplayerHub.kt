@@ -40,12 +40,6 @@ object MultiplayerHub {
     private fun transport(context: Context): LocalTransport =
         transport ?: MultiplayerAccess.transport(context.applicationContext, scope).also { transport = it }
 
-    /** Mesas anunciadas por perto (§16.2); a busca para sozinha quando ninguém mais observa. */
-    fun discover(context: Context): Flow<List<TableAdvert>> = transport(context).discover()
-
-    /** §16.2 jogadores próximos (presença) achados por perto. */
-    fun discoverPresence(context: Context): Flow<List<PresenceAdvert>> = transport(context).discoverPresence()
-
     /** §16.2 chave de presença deste aparelho: nova a cada vez que o Wi-Fi do jogo liga. */
     @Volatile
     private var presenceKey: String? = null
@@ -96,6 +90,12 @@ object MultiplayerHub {
         presenceName = name
         val rec = _recruitment.value ?: return
         scope.launch { runCatching { rec.rename(name) } }
+    }
+
+    /** §16.2 encerra a mesa de lugares do recrutador (voltou à tela 1, saiu ou desligou o Wi-Fi): chamados cancelados, recrutados avisados. */
+    fun closeRecruiting() {
+        val rec = _recruitment.value ?: return
+        scope.launch { runCatching { rec.closeHosting() } }
     }
 
     /** Chave de presença atual deste aparelho (`null` com o Wi-Fi do jogo desligado). */

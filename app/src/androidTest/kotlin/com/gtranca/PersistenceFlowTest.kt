@@ -53,9 +53,11 @@ class PersistenceFlowTest {
         rule.onNodeWithTag("new-game").performClick()
         rule.waitUntil(10_000) { exists("tables-screen") }
         rule.onNodeWithTag("difficulty-facil").performClick()
-        rule.onNodeWithTag("choose-seats").performClick()
-        rule.waitUntil(10_000) { exists("seat-picker-confirm") }
-        rule.onNodeWithTag("seat-picker-confirm").performClick()
+        rule.onNodeWithTag("select-players").performClick()
+        rule.waitUntil(10_000) { exists("player-selection") }
+        rule.onNodeWithTag("fill-with-robots").performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag("start-match") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(30_000) {
             rule.onAllNodes(hasTestTag("action-draw") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
         }

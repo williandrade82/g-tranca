@@ -81,6 +81,7 @@ data class TourState(val size: Int, val index: Int = 0) {
 /** Os tours do app e quando a mesa de jogo pode mostrar o seu. */
 object Tours {
     const val TABLES = "tables"
+    const val SELECTION = "player-selection"
     const val TABLE = "table"
     const val SUMMARY = "round-summary"
     const val BUTTON = "tour-button"
@@ -123,9 +124,19 @@ object Tours {
     val tablesSteps = listOf(
         TourStep(BUTTON, R.string.tour_again),
         TourStep("tables-wifi", R.string.tour_tables_wifi),
-        TourStep("participants", R.string.tour_tables_participants),
+        TourStep("recruiters", R.string.tour_tables_recruiters),
         TourStep("table-options-panel", R.string.tour_tables_options),
-        TourStep("choose-seats", R.string.tour_tables_choose_seats),
+        TourStep("select-players", R.string.tour_tables_select_players),
+    )
+
+    /** Tour da Seleção de jogadores (docs/telas.md 3.3, 3.16). */
+    val selectionSteps = listOf(
+        TourStep(BUTTON, R.string.tour_again),
+        TourStep("seat-table", R.string.tour_sel_table),
+        TourStep("robot-row", R.string.tour_sel_robots),
+        TourStep("multiplayer-block", R.string.tour_sel_multiplayer),
+        TourStep("fill-with-robots", R.string.tour_sel_fill),
+        TourStep("start-match", R.string.tour_sel_start),
     )
 
     val tableSteps = listOf(

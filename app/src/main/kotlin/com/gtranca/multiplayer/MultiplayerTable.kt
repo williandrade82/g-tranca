@@ -361,23 +361,6 @@ class MultiplayerTable(
         (role as? MpRole.Guesting)?.session?.status ?: flowOf(null)
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
-    /** §16.7 pedidos de entrada no meio do jogo esperando este anfitrião (vazio no convidado). */
-    val joinRequests: StateFlow<List<com.gtranca.net.JoinRequest>> = _role.flatMapLatest { role ->
-        (role as? MpRole.Hosting)?.session?.joinRequests ?: flowOf(emptyList())
-    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
-
-    /** §16.2, §16.7 o anfitrião aceita o pedido de entrada [requestId] (na escolha de posições ou no jogo). */
-    suspend fun approveJoin(requestId: Int) {
-        val hosting = _role.value as? MpRole.Hosting ?: return
-        val host = hosting.host
-        if (host != null) host.approveJoin(requestId) else hosting.session.approveJoin(requestId)
-    }
-
-    /** §16.2, §16.7 o anfitrião recusa o pedido de entrada [requestId] (o candidato vê o motivo). */
-    suspend fun refuseJoin(requestId: Int) {
-        (_role.value as? MpRole.Hosting)?.session?.refuseJoin(requestId)
-    }
-
     /** Laço do jogo do anfitrião neste aparelho (parado para reabrir a mesa, §16.7). */
     @Volatile
     private var hostJob: Job? = null

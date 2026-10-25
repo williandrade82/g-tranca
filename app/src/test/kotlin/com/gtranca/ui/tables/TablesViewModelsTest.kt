@@ -47,7 +47,7 @@ class TablesViewModelsTest {
     }
 
     @Test
-    fun `§14_4 a montagem grava a configuracao ao escolher posicoes e a recarrega ao reabrir`() = withMain {
+    fun `§14_4 a configuracao grava o modo, nivel, aposta, regras e alvo ao selecionar jogadores e a recarrega ao reabrir`() = withMain {
         val settings = FakeSettings()
         val vm = TablesViewModel(settings)
         advanceUntilIdle()
@@ -56,7 +56,7 @@ class TablesViewModelsTest {
         vm.onRulesChange(RulesChoice.PAULISTA)
         vm.onStakeChange(300)
         vm.onTargetChange("2000")
-        vm.onChooseSeats().shouldNotBeNull()
+        vm.onSelectPlayers().shouldNotBeNull()
         advanceUntilIdle()
         val again = TablesViewModel(settings)
         advanceUntilIdle()
@@ -84,23 +84,6 @@ class TablesViewModelsTest {
         val broken = TablesViewModel(FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup.decode("lixo"))))
         advanceUntilIdle()
         broken.uiState.value.rulesChoice shouldBe RulesChoice.CLASSICA
-    }
-
-    @Test
-    fun `§16 o botao de Wi-Fi reflete e grava a configuracao do Perfil`() = withMain {
-        val settings = FakeSettings(Settings(wifiOn = true))
-        val vm = TablesViewModel(settings = settings)
-        advanceUntilIdle()
-        vm.wifiOn.value shouldBe true
-        // Tocar no botão grava no Perfil.
-        vm.setWifi(false)
-        advanceUntilIdle()
-        settings.state.value.wifiOn shouldBe false
-        vm.wifiOn.value shouldBe false
-        // Mudar no Perfil reflete no botão.
-        settings.setWifiOn(true)
-        advanceUntilIdle()
-        vm.wifiOn.value shouldBe true
     }
 
     private fun <T> withMain(block: suspend kotlinx.coroutines.test.TestScope.() -> T) = runTest {
@@ -137,8 +120,8 @@ class TablesViewModelsTest {
         // sem saldo nem para o menor: bloqueada
         val broke = vm.uiState.value.copy(balance = 99)
         broke.canAfford shouldBe false
-        broke.canChoose shouldBe false
-        broke.copy(balance = 200).canChoose shouldBe true
+        broke.canSelect shouldBe false
+        broke.copy(balance = 200).canSelect shouldBe true
     }
 
     @Test
@@ -147,7 +130,7 @@ class TablesViewModelsTest {
         state.difficulty shouldBe Difficulty.MEDIO
         state.rulesChoice shouldBe RulesChoice.CLASSICA
         state.targetScore shouldBe 3000
-        state.canChoose shouldBe true
+        state.canSelect shouldBe true
         state.toConfig() shouldBe GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, RuleSet.CLASSICA, 100)
     }
 
@@ -156,8 +139,8 @@ class TablesViewModelsTest {
         val vm = TablesViewModel()
         vm.onTargetChange("0")
         vm.uiState.value.targetError shouldBe TargetError.INVALID
-        vm.uiState.value.canChoose shouldBe false
-        vm.onChooseSeats().shouldBeNull()
+        vm.uiState.value.canSelect shouldBe false
+        vm.onSelectPlayers().shouldBeNull()
         vm.onTargetChange("15a0")
         vm.uiState.value.targetText shouldBe "15a0"
         vm.onTargetChange("1234567890123")
@@ -168,101 +151,23 @@ class TablesViewModelsTest {
         vm.onDifficultyChange(Difficulty.DIFICIL)
         vm.onModeChange(GameMode.DUPLAS)
         vm.onRulesChange(RulesChoice.PAULISTA)
-        vm.onChooseSeats()?.config shouldBe GameConfig(GameMode.DUPLAS, Difficulty.DIFICIL, 1000, RuleSet.PAULISTA, 200)
+        vm.onSelectPlayers() shouldBe GameConfig(GameMode.DUPLAS, Difficulty.DIFICIL, 1000, RuleSet.PAULISTA, 200)
     }
 
     @Test
-    fun `§14_4 participantes - ate 3 marcados alem do jogador, na ordem da escolha`() {
-        val vm = TablesViewModel()
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.ATLETA))
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.JOVEM))
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.SOBRIO))
-        // o 4º toque não marca
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.ALTERNATIVO))
-        vm.uiState.value.picks shouldBe listOf(
-            Pick.Bot(com.gtranca.game.BotProfile.ATLETA),
-            Pick.Bot(com.gtranca.game.BotProfile.JOVEM),
-            Pick.Bot(com.gtranca.game.BotProfile.SOBRIO),
+    fun `§14_4 configuracao antiga com robos gravados le sem eles e a aposta antiga vira a mais proxima do nivel`() = withMain {
+        val old = com.gtranca.data.TableSetup.decode(
+            """{"mode":"DUPLAS","difficultyId":"dificil","rules":"PAULISTA","stake":250,"target":"2000","robots":["zen","jovem"]}""",
         )
-        vm.uiState.value.participants shouldBe 4
-        // desmarcar tira da lista
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.JOVEM))
-        vm.uiState.value.picks.size shouldBe 2
-    }
-
-    @Test
-    fun `§14_4 com 3 ou 4 participantes o modo e duplas, com 1 ou 2 o jogador escolhe`() {
-        val vm = TablesViewModel()
-        vm.onModeChange(GameMode.INDIVIDUAL)
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.ATLETA))
-        vm.uiState.value.effectiveMode shouldBe GameMode.INDIVIDUAL
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.JOVEM))
-        vm.uiState.value.modeLocked shouldBe true
-        vm.uiState.value.effectiveMode shouldBe GameMode.DUPLAS
-        // Individual desabilitado: o toque não muda nada
-        vm.onModeChange(GameMode.INDIVIDUAL)
-        vm.uiState.value.effectiveMode shouldBe GameMode.DUPLAS
-        vm.onChooseSeats()!!.config.mode shouldBe GameMode.DUPLAS
-        // de volta a 2 participantes, vale a escolha anterior
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.JOVEM))
-        vm.uiState.value.effectiveMode shouldBe GameMode.INDIVIDUAL
-    }
-
-    @Test
-    fun `§16_2 jogadores proximos - so marca quem esta por perto e quem some deixa de estar marcado`() {
-        val vm = TablesViewModel()
-        vm.onToggle(Pick.Near("abc234")) // ainda não achado
-        vm.uiState.value.picks shouldBe emptyList()
-        vm.onNearby(listOf(NearbyPlayer("abc234", "Bia")))
-        vm.onToggle(Pick.Near("abc234"))
-        vm.onToggle(Pick.Bot(com.gtranca.game.BotProfile.ATLETA))
-        val chosen = vm.onChooseSeats()!!
-        chosen.picks shouldBe listOf(Pick.Near("abc234"), Pick.Bot(com.gtranca.game.BotProfile.ATLETA))
-        chosen.nearby shouldBe listOf(NearbyPlayer("abc234", "Bia"))
-        vm.onNearby(emptyList())
-        vm.uiState.value.picks shouldBe listOf(Pick.Bot(com.gtranca.game.BotProfile.ATLETA))
-    }
-
-    @Test
-    fun `§16_2 recrutamento - marcar convida na hora, recusado nao marca, Recrutado por outro nao seleciona e quem sai deixa de estar marcado`() = withMain {
-        val vm = TablesViewModel()
-        val marked = mutableListOf<String>()
-        val unmarked = mutableListOf<String>()
-        var accept = true
-        vm.recruiter = object : Recruiter {
-            override suspend fun mark(player: NearbyPlayer): Boolean { marked += player.key; return accept }
-            override suspend fun unmark(key: String) { unmarked += key }
+        val vm = TablesViewModel(FakeSettings(Settings(tableSetup = old)), wallet = FakeWallet(1_000))
+        advanceUntilIdle()
+        vm.uiState.value.let {
+            it.mode shouldBe GameMode.DUPLAS
+            it.difficulty shouldBe Difficulty.DIFICIL
+            // 250 no Sênior (200/300/500): empata entre 200 e 300, vale o menor
+            it.stake shouldBe 200
+            it.targetText shouldBe "2000"
         }
-        val notices = mutableListOf<TablesNotice>()
-        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) { vm.notices.collect { notices += it } }
-        vm.onNearby(listOf(NearbyPlayer("aaa222", "Bia"), NearbyPlayer("bbb333", "Caio"), NearbyPlayer("ccc444", "Duda", recruitedElsewhere = true)))
-        vm.onToggle(Pick.Near("aaa222"))
-        advanceUntilIdle()
-        marked shouldBe listOf("aaa222")
-        vm.uiState.value.picks shouldBe listOf(Pick.Near("aaa222"))
-        // Convite não aceito pelo recrutamento: não marca, com aviso.
-        accept = false
-        vm.onToggle(Pick.Near("bbb333"))
-        advanceUntilIdle()
-        vm.uiState.value.picks shouldBe listOf(Pick.Near("aaa222"))
-        notices shouldBe listOf(TablesNotice.MARK_FAILED)
-        // Recrutado por outro anfitrião: nem tenta.
-        vm.onToggle(Pick.Near("ccc444"))
-        advanceUntilIdle()
-        marked shouldBe listOf("aaa222", "bbb333")
-        notices.last() shouldBe TablesNotice.RECRUITED_ELSEWHERE
-        // Aceitou, e depois saiu (sumiu dos marcados do recrutamento): deixa de estar marcado.
-        vm.onRecruits(listOf(com.gtranca.net.Recruit("aaa222", "Bia", accepted = true)))
-        vm.uiState.value.accepted shouldBe setOf("aaa222")
-        vm.onRecruits(emptyList())
-        vm.uiState.value.picks shouldBe emptyList()
-        // Desmarcar cancela o convite.
-        accept = true
-        vm.onToggle(Pick.Near("bbb333"))
-        advanceUntilIdle()
-        vm.onToggle(Pick.Near("bbb333"))
-        advanceUntilIdle()
-        unmarked shouldBe listOf("bbb333")
     }
 
     @Test
@@ -277,14 +182,14 @@ class TablesViewModelsTest {
     }
 
     @Test
-    fun `§14 modo vem com o ultimo escolhido e e lembrado ao escolher posicoes`() = withMain {
+    fun `§14 modo vem com o ultimo escolhido e e lembrado ao selecionar jogadores`() = withMain {
         val settings = FakeSettings(Settings(lastMode = GameMode.DUPLAS))
         val vm = TablesViewModel(settings)
-        vm.uiState.value.canChoose shouldBe false
+        vm.uiState.value.canSelect shouldBe false
         advanceUntilIdle()
         vm.uiState.value.mode shouldBe GameMode.DUPLAS
         vm.onModeChange(GameMode.INDIVIDUAL)
-        vm.onChooseSeats()?.config?.mode shouldBe GameMode.INDIVIDUAL
+        vm.onSelectPlayers()?.mode shouldBe GameMode.INDIVIDUAL
         advanceUntilIdle()
         settings.state.value.lastMode shouldBe GameMode.INDIVIDUAL
     }
@@ -301,7 +206,7 @@ class TablesViewModelsTest {
         vm.reloadCustomRules(select = true)
         advanceUntilIdle()
         vm.uiState.value.rulesChoice shouldBe RulesChoice.CUSTOM
-        vm.onChooseSeats()?.config?.rules shouldBe edited
+        vm.onSelectPlayers()?.rules shouldBe edited
     }
 
     @Test
@@ -362,7 +267,7 @@ class TablesViewModelsTest {
         val editor = RulesEditorViewModel(broken)
         advanceUntilIdle()
         create.uiState.value.mode shouldBe GameMode.INDIVIDUAL
-        create.onChooseSeats()?.config?.rules shouldBe RuleSet.CLASSICA
+        create.onSelectPlayers()?.rules shouldBe RuleSet.CLASSICA
         editor.uiState.value.loaded shouldBe true
         advanceUntilIdle()
     }

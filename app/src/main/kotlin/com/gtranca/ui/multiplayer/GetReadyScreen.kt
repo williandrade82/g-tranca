@@ -1,53 +1,25 @@
 package com.gtranca.ui.multiplayer
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.gtranca.ui.selection.GetReadyImage
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.gtranca.R
 import com.gtranca.multiplayer.MpEnd
-import com.gtranca.ui.theme.GButton
-import com.gtranca.ui.theme.GButtonKind
-import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GMessage
 import com.gtranca.ui.theme.MessageIllustration
 import com.gtranca.ui.theme.MessageTone
 
 /**
- * §16.2 **provisório** ("Prepare-se! O jogo vai começar!", docs/telas.md 3.3 e 3.13): enquanto a mesa do jogo espera os
- * recrutados entrarem, mostra o aviso até o jogo começar; o android-ui-dev troca por a imagem pronta e a tela do recrutado
- * só leitura. [end] mostra o motivo se a mesa acabou antes do início; [onLeave] sai da mesa.
+ * §16.2 "Prepare-se! O jogo vai começar!" (docs/telas.md 4): a imagem em tela cheia enquanto a mesa do jogo espera os
+ * recrutados entrarem (no mínimo 1,5 s) até o jogo começar. [end] mostra o motivo se a mesa acabou antes do início.
  */
 @Composable
-fun PrepareScreen(end: MpEnd?, onLeave: () -> Unit) {
+fun GetReadyScreen(end: MpEnd?, onLeave: () -> Unit) {
     BackHandler(onBack = onLeave)
-    Column(
-        Modifier.fillMaxSize().background(GColors.Midnight).safeDrawingPadding().padding(24.dp).testTag("get-ready"),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            stringResource(R.string.mp_get_ready),
-            color = GColors.Gold,
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.headlineMedium,
-        )
-        CircularProgressIndicator(color = GColors.Gold)
-        GButton(onLeave, Modifier.testTag("selection-back"), kind = GButtonKind.Secondary) { Text(stringResource(R.string.mp_leave)) }
-    }
+    GetReadyImage()
     end?.let { reason -> MpEndMessage(reason, onLeave) }
 }
 
