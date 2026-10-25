@@ -74,7 +74,7 @@ não recruta recrutador (nenhum abre conexão a outro). Dois aparelhos `recrutan
 - **Em espera:** conecta ao recrutador, envia `RecruitHello` e a foto; a conexão fica aberta. Falha: nova tentativa depois de
   0,3, 1, 2, 4 s (e a cada 8 s) enquanto o recrutador continuar recrutando ou me listar. O recrutador que parou de recrutar
   (e não me chama) solta a espera. Outro recrutador que me liste em `inviting` toma o lugar da espera.
-- **Chamado:** o modal *Convite* mostra recrutador, aposta, tipo, posição, título da regra; **sem prazo**. Cada
+- **Chamado:** o modal *Convite* mostra recrutador, aposta, tipo, posição, título da regra; **25 s para responder** (relógio local de quem recebe, a partir da chegada; `Invited.deadlineMillis` e `remainingMillis()` para a contagem). Sem resposta: `RecruitReply(recusado, NO_RESPONSE)`, volta a `Livre`, o modal fecha e o recrutador devolve o lugar a VAGO; o recrutador também espera 25 s + 2 s e, se nada chegou, devolve o lugar sozinho. Um convite reenviado depois de uma queda leva o tempo que ainda resta. Cada
   `RecruitSync` atualiza o modal (posição). Saldo menor que a aposta: recusa automática com motivo. Aceitar/Recusar vão pela
   conexão. `RecruitEnd(CANCELLED)` ou queda da conexão desfazem o convite.
 - **Recrutado:** a tela do recrutado (só leitura) lê de `Recruited.table`: config + lugares, sem lista de jogadores
@@ -105,9 +105,12 @@ exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (t
 | Situação | Regra |
 |---|---|
 | mesma chave achada em outro endpoint | o endpoint antigo é descartado (a chave é a identidade; vale o mais recente) |
-| `onLost` | a presença só sai se não reaparecer em 3 s (anunciante que para e reanuncia não pisca) |
+| `onLost` | a presença só sai se não reaparecer em 3 s (1 s no modo ativo; anunciante que para e reanuncia não pisca) |
 | aviso "saindo" | sai na hora (todas as entradas da chave) |
-| busca reiniciada a cada 8 s | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~20 s) |
+| busca reiniciada a cada 8 s (modo econômico) | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~20 s) |
+| **modo ativo** (telas *Iniciar novo jogo* e *Seleção de jogadores* abertas, Wi-Fi ligado) | busca reiniciada a cada 1 s, folga de 0,5 s; sai quem não reaparece em 2 recomeços seguidos (queda silenciosa sem conexão: até ~3 s); fora dessas telas volta o modo econômico |
+| conexão aberta (espera/recrutamento) | mensagem de teste a cada 400 ms; sem nenhuma resposta por 1 s a conexão é dada como caída e o jogador sai das listas (~1 s) |
+| aviso explícito de saída (`RecruitBye`) | pela conexão aberta e pelo anúncio "saindo" (0,5 s); quem recebe tira o jogador da lista na hora (~1 s no rádio real) |
 | chave **fixada** (chamada/recrutada/recrutador de quem aceitou) | a varredura não a remove; só `onLost` após a folga, "saindo" ou a queda da conexão |
 | pedido de conexão em andamento | a busca não reinicia até ele terminar (as conexões já abertas não são afetadas) |
 
@@ -125,7 +128,10 @@ recrutadores na lista da tela 1 sai como inicial (no `P2P_STAR` o livre mantém 
 | O quê | Tempo |
 |---|---|
 | nova tentativa de conexão de espera | 0,3, 1, 2, 4 s (depois 8 s) |
-| `onLost` da presença até sair da lista | 3 s |
+| `onLost` da presença até sair da lista | 3 s (modo ativo: 1 s) |
+| convite sem resposta vale como recusa | 25 s (+ 2 s de folga no recrutador) |
+| mensagem de teste / queda da conexão aberta | a cada 400 ms / após 1 s sem resposta |
+| aviso de "saindo" (anúncio) e espera das confirmações | 0,5 s |
 | lugares enviados (debounce; convite, resposta e remoção não esperam) | 0,3 s |
 | reingresso do recrutado que perdeu a conexão | 8 s |
 | chamado sem conexão que sumiu da busca | 10 s |
