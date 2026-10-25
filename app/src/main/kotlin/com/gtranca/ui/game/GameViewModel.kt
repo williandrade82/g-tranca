@@ -24,6 +24,10 @@ import com.gtranca.game.HandPrefs
 import com.gtranca.game.HandSort
 import com.gtranca.game.Persona
 import com.gtranca.game.PersonaGenerator
+import kotlinx.coroutines.cancelAndJoin
+import com.gtranca.game.BotLevel
+import com.gtranca.game.BotProfile
+import com.gtranca.game.BotCharacter
 import com.gtranca.game.PlayerProfile
 import com.gtranca.game.HumanPlayer
 import com.gtranca.game.HumanTurnResolver
@@ -80,7 +84,8 @@ sealed interface UiMessage {
 data class RedThreeReveal(val notice: RedThreeNotice, val hiddenHandCards: Set<Card>)
 
 /** Telas depois de uma partida: anúncio do resultado, pontos (§12), anúncio do fim do jogo e tela final (§13). */
-enum class EndScreen { ANNOUNCE_ROUND, ROUND_POINTS, ANNOUNCE_GAME, FINAL }
+/** Etapas do fim da partida (docs/telas.md 3.9–3.12): mesa final com "Seguir", pontos da partida e, no fim do jogo, o resultado. */
+enum class EndScreen { FINAL_TABLE, ROUND_POINTS, FINAL }
 
 /**
  * Estado da tela de jogo. Derivado do [GameSnapshot] (vista do humano) e do estado local da tela; os
@@ -205,6 +210,13 @@ class GameViewModel(
      * as espera, §16.6) e a mesa indica a vez também dos humanos remotos.
      */
     private val multiplayer: Boolean = false,
+    /**
+     * §14.4, §14.5 personagem de cada assento de robô (índice → `BotProfile.code`) como a mesa foi montada (escolhidos e
+     * sorteados, na posição escolhida); vazio = sorteio pela semente do jogo (jogos salvos antes da mesa montada).
+     */
+    private val robots: Map<Int, String> = emptyMap(),
+    /** §16.7 o jogo continua de onde estava na tela (virou online no meio): a primeira vista não refaz animação. */
+    private val continuing: Boolean = false,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -212,6 +224,9 @@ class GameViewModel(
 
     /** O fim do jogo já foi para a fila: nenhuma gravação depois dele (recriaria o salvo apagado). */
     private val finishSent = AtomicBoolean(false)
+
+    /** Laço do controlador local (parado quando o jogo vira online, §16.7). */
+    private var runJob: kotlinx.coroutines.Job? = null
 
     /** Grava a foto do jogo (na fila, em ordem; falha só é registrada). */
     /**
@@ -227,7 +242,7 @@ class GameViewModel(
     private fun enqueueSave(snapshot: SaveSnapshot) {
         val store = persistence ?: return
         if (finishSent.get()) return
-        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName)) }
+        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName, robots)) }
     }
 
     private data class Local(
@@ -279,8 +294,14 @@ class GameViewModel(
 
     val personas: List<Persona> = run {
         val opponents = PersonaGenerator.opponents(gameSeed, config.mode.seatCount - 1, config.difficulty, drawnForName).iterator()
+        val level = BotLevel.of(config.difficulty)
         List(config.mode.seatCount) { index ->
-            if (index == humanSeat.index) playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto) else opponents.next()
+            val chosen = robots[index]?.let { code -> BotProfile.entries.firstOrNull { it.code == code } }
+            when {
+                index == humanSeat.index -> playerProfile.persona(PlayerProfile.DEFAULT_NAME, playerPhoto)
+                robots.isNotEmpty() && chosen != null -> Persona(chosen.botName, "", BotCharacter(chosen, level))
+                else -> opponents.next()
+            }
         }
     }
 
@@ -319,9 +340,9 @@ class GameViewModel(
                 separateSpecial = initialHand.separateSpecial,
                 speed = speedFor(slowAnimations),
                 animationScale = speedFor(slowAnimations),
-                endStep = if (restored != null && initial.stage == Stage.ROUND_OVER) 1 else 0,
+                endStep = if ((restored != null || continuing) && initial.stage == Stage.ROUND_OVER) 1 else 0,
             )
-            absorb(base, initial, previous = if (restored != null) initial else null)
+            absorb(base, initial, previous = if (restored != null || continuing) initial else null)
         },
     )
 
@@ -431,7 +452,22 @@ class GameViewModel(
                 }
             }
         }
-        viewModelScope.launch { controller.run() }
+        runJob = viewModelScope.launch { controller.run() }
+    }
+
+    /**
+     * §16.7, §16.12 "Wi-Fi ligado no meio de um jogo só com robôs": para o laço local e a gravação, apaga o jogo salvo e
+     * devolve o estado exato (mesma mão, vez, placar e aposta) para o jogo seguir hospedado. `null` se não é um jogo local
+     * em andamento.
+     */
+    suspend fun handOffToHost(): HandOff? {
+        val driver = controller as? LocalTableDriver ?: return null
+        if (driver.controller.state.value.stage == Stage.GAME_OVER || !finishSent.compareAndSet(false, true)) return null
+        runJob?.cancelAndJoin()
+        val snapshot = driver.controller.saveSnapshot()
+        persistence?.let { store -> writes.enqueue { store.discard() } }
+        val robots = personas.withIndex().mapNotNull { (i, p) -> p.character?.let { i to it.profile.code } }.toMap()
+        return HandOff(playedConfig.copy(rules = snapshot.match.rules), gameSeed, snapshot, robots)
     }
 
     /** A troca é do próprio humano: encenação com o botão "Baixar 3 vermelho". */
@@ -615,7 +651,7 @@ class GameViewModel(
     private fun endScreen(snapshot: GameSnapshot, step: Int): EndScreen? = when {
         snapshot.stage == Stage.PLAYING -> null
         snapshot.resigned -> EndScreen.FINAL
-        snapshot.stage == Stage.ROUND_OVER -> if (step == 0) EndScreen.ANNOUNCE_ROUND else EndScreen.ROUND_POINTS
+        snapshot.stage == Stage.ROUND_OVER -> if (step == 0) EndScreen.FINAL_TABLE else EndScreen.ROUND_POINTS
         else -> EndScreen.entries[step.coerceAtMost(EndScreen.entries.lastIndex)]
     }
 
@@ -874,3 +910,11 @@ class GameViewModel(
         }
     }
 }
+
+/** §16.7 o jogo local que vira online: configuração jogada, semente, estado salvo e o personagem de cada assento de robô. */
+data class HandOff(
+    val config: GameConfig,
+    val gameSeed: Long,
+    val snapshot: SaveSnapshot,
+    val robots: Map<Int, String>,
+)

@@ -25,7 +25,7 @@ fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(diff
 
 fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls, playerName)
 
-fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null): SavedGame = SavedGame(
+fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null, robots: Map<Int, String> = emptyMap()): SavedGame = SavedGame(
     gameId = gameId,
     config = config.toSaved(),
     gameSeed = gameSeed,
@@ -33,6 +33,7 @@ fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: Sa
     events = snapshot.events.map { it.toSaved() },
     botRandomCalls = snapshot.botRandomCalls,
     playerName = playerName,
+    robots = robots,
 )
 
 /** O que o jogo em andamento grava. Interface para os testes. */
@@ -51,6 +52,9 @@ interface GamePersistence {
 
     /** §14.6 debita da carteira a aposta de um jogo que começa; devolve se debitou (sem carteira: sempre). */
     suspend fun debitStake(stake: Int): Boolean = true
+
+    /** §16.7, §16.12 o jogo virou online: apaga o jogo salvo (sem estatística; o jogo segue na mesa). */
+    suspend fun discard() = Unit
 }
 
 /** Persistência real, no `:data`. */
@@ -72,6 +76,8 @@ class DataGamePersistence(
     }
 
     override suspend fun debitStake(stake: Int): Boolean = wallet?.debit(stake) ?: true
+
+    override suspend fun discard() = savedGames.clear()
 
     override suspend fun saveHandSort(id: String) = settings.setHandSort(id)
 }

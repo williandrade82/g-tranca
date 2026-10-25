@@ -55,7 +55,10 @@ object MultiplayerAccess {
      * O transporte real (Nearby `P2P_STAR`). Um por modo multijogador: [NearbyTransport.close] ao sair. Chame só depois
      * de [check] devolver `null`.
      */
-    fun transport(context: Context, scope: CoroutineScope): NearbyTransport = NearbyTransport(GmsNearbyApi(context), scope)
+    fun transport(context: Context, scope: CoroutineScope): NearbyTransport = NearbyTransport(
+        GmsNearbyApi(context), scope,
+        log = if (com.gtranca.BuildConfig.DEBUG) { message -> android.util.Log.d("GTrancaNearby", message) } else { _ -> },
+    )
 }
 
 /**

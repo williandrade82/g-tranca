@@ -48,6 +48,9 @@ class ReliableLink(
     private var closed = false
     private var requested: Long? = null
 
+    /** Tudo o que foi enviado já foi confirmado pelo outro lado (exige a [lock]). */
+    val allConfirmed: Boolean get() = unacked.isEmpty()
+
     /** Envia [payload] na sequência (será reenviado até ser confirmado). */
     suspend fun sendLocked(payload: Payload) {
         if (closed) return

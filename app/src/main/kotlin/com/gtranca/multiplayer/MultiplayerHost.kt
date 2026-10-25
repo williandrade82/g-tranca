@@ -85,7 +85,7 @@ data class HostDecision(val seat: Seat, val playerId: Int?, val reason: PauseRea
 class MultiplayerHost(
     private val session: HostSession,
     val config: GameConfig,
-    private val gameSeed: Long,
+    val gameSeed: Long,
     remoteSeats: Set<Seat>,
     private val botFactory: (Seat, Random) -> BotPlayer = { _, random -> createBot(config.difficulty, random) },
     computeDispatcher: CoroutineDispatcher = Dispatchers.Default,

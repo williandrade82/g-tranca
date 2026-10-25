@@ -51,42 +51,50 @@ class HomeToTableTest {
     private fun canDraw(): Boolean = rule.onAllNodes(hasTestTag("action-draw") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
 
     @Test
-    fun alvoInvalidoDesabilitaCriarMesa() {
-        openCreateTable()
+    fun alvoInvalidoDesabilitaEscolherPosicoes() {
+        openTables()
         rule.onNodeWithTag("target-field").performTextReplacement("0")
         rule.onNodeWithText("Informe um número inteiro positivo").assertExists()
-        rule.onNodeWithTag("create-table").assertIsNotEnabled()
+        rule.onNodeWithTag("choose-seats").assertIsNotEnabled()
         rule.onNodeWithTag("target-field").performTextReplacement("1500")
-        rule.onNodeWithTag("create-table").assertIsEnabled()
+        rule.onNodeWithTag("choose-seats").assertIsEnabled()
     }
 
-    /** §14.4 "Novo jogo" abre as mesas; "Criar mesa" abre a configuração. */
-    private fun openCreateTable() {
+    /** §14.4 "Novo jogo" abre a montagem da mesa ("Mesas disponíveis"). */
+    private fun openTables() {
         rule.onNodeWithTag("new-game").performClick()
         rule.waitUntil(10_000) { exists("tables-screen") }
-        rule.onNodeWithTag("tables-create").performClick()
-        rule.waitUntil(10_000) { exists("create-table-screen") }
+    }
+
+    /** §16.2 "Escolher posições" → a mesa só com robôs: confirmar e, 2 s depois, o jogo. */
+    private fun chooseSeatsAndStart() {
+        rule.onNodeWithTag("choose-seats").performClick()
+        rule.waitUntil(10_000) { exists("seat-picker-confirm") }
+        rule.onNodeWithTag("seat-picker-confirm").performClick()
+        rule.waitUntil(10_000) { exists("table-screen") }
     }
 
     @Test
-    fun mesaDeJogadorVirtualMostraAsRegrasEIniciaOJogo() {
-        rule.onNodeWithTag("new-game").performClick()
-        rule.waitUntil(10_000) { exists("tables-screen") }
-        rule.onNodeWithTag("table-0").performClick()
-        rule.waitUntil(10_000) { exists("table-rules-screen") }
-        rule.onNodeWithTag("rules-summary").assertExists()
-        rule.onNodeWithTag("table-rules-start").performClick()
+    fun montagemComRobosEscolhidosLevaAEscolhaDePosicoesEAoJogo() {
+        openTables()
+        rule.onNodeWithTag("participant-self").assertExists()
+        rule.onNodeWithTag("participant-bot-atleta").performClick()
+        rule.onNodeWithTag("participant-bot-jovem").performClick()
+        // 3 participantes: duplas, sem escolha.
+        rule.onNodeWithTag("mode-individual").assertIsNotEnabled()
+        rule.onNodeWithTag("choose-seats").performClick()
+        rule.waitUntil(10_000) { exists("seat-picker") }
+        rule.onNodeWithTag("seat-slot-1").assertExists()
+        rule.onNodeWithTag("seat-picker-confirm").performClick()
         rule.waitUntil(10_000) { exists("table-screen") }
     }
 
     @Test
     fun novoJogoAbreAMesaEOHumanoCompra() {
-        openCreateTable()
+        openTables()
+        rule.onNodeWithTag("mode-individual").performClick()
         rule.onNodeWithTag("difficulty-facil").performClick()
-        rule.onNodeWithTag("create-table").performClick()
-        rule.waitUntil(10_000) { exists("table-rules-start") }
-        rule.onNodeWithTag("table-rules-start").performClick()
-        rule.onNodeWithTag("table-screen").assertExists()
+        chooseSeatsAndStart()
 
         // A vez chega ao humano (o bot pode começar; trocas de 3 vermelho são encenadas antes).
         waitFor(30_000) { canDraw() }
@@ -99,13 +107,10 @@ class HomeToTableTest {
 
     @Test
     fun duplasAbreAMesaComParceiroEAdversariosEOHumanoJoga() {
-        openCreateTable()
+        openTables()
         rule.onNodeWithTag("mode-duplas").performClick()
         rule.onNodeWithTag("difficulty-facil").performClick()
-        rule.onNodeWithTag("create-table").performClick()
-        rule.waitUntil(10_000) { exists("table-rules-start") }
-        rule.onNodeWithTag("table-rules-start").performClick()
-        rule.onNodeWithTag("table-screen").assertExists()
+        chooseSeatsAndStart()
         rule.onNodeWithText("Parceiro").assertExists()
         rule.onNodeWithText("Adv. esq.").assertExists()
         rule.onNodeWithText("Adv. dir.").assertExists()
@@ -129,11 +134,9 @@ class HomeToTableTest {
 
     @Test
     fun desistirPedeConfirmacaoECancelarVoltaAoJogo() {
-        openCreateTable()
-        rule.onNodeWithTag("create-table").performClick()
-        rule.waitUntil(10_000) { exists("table-rules-start") }
-        rule.onNodeWithTag("table-rules-start").performClick()
-        rule.onNodeWithTag("table-screen").assertExists()
+        openTables()
+        rule.onNodeWithTag("mode-individual").performClick()
+        chooseSeatsAndStart()
         waitFor(30_000) { canDraw() }
 
         // §13.1 cancelar: o jogo continua exatamente como estava.

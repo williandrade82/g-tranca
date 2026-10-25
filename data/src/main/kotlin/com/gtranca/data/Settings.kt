@@ -39,8 +39,8 @@ data class Settings(
     val toursSeen: Set<String> = emptySet(),
     /** Tour guiado automático (Perfil): ligado, cada tela mostra o seu tour sozinha na primeira vez. */
     val tourAuto: Boolean = true,
-    /** Última configuração de "Criar mesa" (texto da interface), ou `null` se ainda não criou nenhuma. */
-    val createTable: String? = null,
+    /** §14.4 última montagem da mesa (docs/telas.md 3.2), ou `null` se ainda não montou nenhuma. */
+    val tableSetup: TableSetup? = null,
 )
 
 interface SettingsRepository {
@@ -70,7 +70,8 @@ interface SettingsRepository {
 
     suspend fun setTourAuto(on: Boolean) = Unit
 
-    suspend fun setCreateTable(text: String) = Unit
+    /** §14.4 grava a montagem da mesa (substitui a configuração antiga de "Criar mesa"). */
+    suspend fun setTableSetup(setup: TableSetup) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -91,7 +92,8 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             showSharedPhotos = prefs[SHOW_SHARED_PHOTOS] ?: true,
             toursSeen = prefs[TOURS_SEEN] ?: emptySet(),
             tourAuto = prefs[TOUR_AUTO] ?: true,
-            createTable = prefs[CREATE_TABLE],
+            // A configuração antiga de "Criar mesa" vale só enquanto não há montagem nova (tipo e nome da mesa ignorados).
+            tableSetup = prefs[TABLE_SETUP]?.let(TableSetup::decode) ?: prefs[CREATE_TABLE]?.let(TableSetup::fromLegacy),
         )
     }
 
@@ -119,8 +121,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[TOURS_SEEN] = (it[TOURS_SEEN] ?: emptySet()) + id }
     }
 
-    override suspend fun setCreateTable(text: String) {
-        store.edit { it[CREATE_TABLE] = text }
+    override suspend fun setTableSetup(setup: TableSetup) {
+        store.edit {
+            it[TABLE_SETUP] = setup.encode()
+            it.remove(CREATE_TABLE)
+        }
     }
 
     override suspend fun setTourAuto(on: Boolean) {
@@ -152,7 +157,9 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         val WIFI_ON = booleanPreferencesKey("wifi_on")
         val SHOW_SHARED_PHOTOS = booleanPreferencesKey("show_shared_photos")
         val TOUR_AUTO = booleanPreferencesKey("tour_auto")
+        /** Formato antigo (até a mesa montada): lido uma vez como [TableSetup.fromLegacy] e apagado ao gravar. */
         val CREATE_TABLE = stringPreferencesKey("create_table")
+        val TABLE_SETUP = stringPreferencesKey("table_setup")
         val TOURS_SEEN = androidx.datastore.preferences.core.stringSetPreferencesKey("tours_seen")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")
