@@ -456,6 +456,7 @@
     <string name="mp_wifi_on_desc">Desligar o Wi-Fi do jogo</string>
     <string name="mp_table_host">Anfitrião: %1$s</string>
     <string name="mp_seat_vacant">VAGO</string>
+    <string name="recruit_balance_table">Saldo insuficiente para esta mesa.</string>
     <string name="mp_get_ready">Prepare-se! O jogo vai começar!</string>
     <string name="mp_not_found">Mesa não encontrada por perto.</string>
     <string name="mp_seat_disconnected">%1$s (fora)</string>

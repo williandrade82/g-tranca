@@ -51,6 +51,9 @@ sealed interface RecruitEvent {
     /** "<recrutador> tirou você da mesa". */
     data class Removed(val hostName: String) : RecruitEvent
 
+    /** O convite foi recusado sozinho (§14.6, §16.2): saldo menor que a aposta. A tela avisa "Saldo insuficiente para esta mesa". */
+    data class Refused(val hostName: String, val reason: RefusalReason) : RecruitEvent
+
     /** "Mesa encerrada" (o recrutador voltou, saiu, desligou o Wi-Fi do jogo ou a conexão não voltou a tempo). */
     data class Closed(val hostName: String) : RecruitEvent
 
@@ -236,32 +239,8 @@ class Recruitment(
         }
     }
 
-    /**
-     * §16.2 as opções da mesa mudaram (a tela *Iniciar novo jogo* é a única que as altera): o recrutado vê a aposta e as regras
-     * novas ao vivo. Se o **modo** muda, o número de lugares muda e os lugares recomeçam VAGO (chamados têm o convite
-     * cancelado; recrutados recebem "Mesa encerrada").
-     */
-    suspend fun updateRules(newRules: TableRules) {
-        mutex.withLock {
-            val l = layoutState ?: return
-            if (rules == newRules) return
-            if (newRules.mode != l.mode) {
-                remotes.values.forEach { r ->
-                    val recruited = l.slots.any { it is Slot.Recruited && it.key == r.key }
-                    r.link?.sendLocked(RecruitEnd(if (recruited) RecruitEndReason.CLOSED else RecruitEndReason.CANCELLED))
-                    r.absentJob?.cancel()
-                    r.graceJob?.cancel()
-                }
-                remotes.clear()
-                layoutState = TableLayout.initial(newRules.mode)
-            }
-            rules = newRules
-            changedLocked()
-        }
-    }
-
-    /** O recrutador está montando a mesa e tem gente nos lugares (chamados ou recrutados). */
-    private fun tableLocked(): RecruitTable? = layoutState?.let { RecruitTable(hostDisplayName, rules!!, it) }
+    /** A mesa como o jogador [key] a vê: só a própria chave de presença nos lugares (§16.4). */
+    private fun tableFor(key: String): RecruitTable? = layoutState?.let { RecruitTable(hostDisplayName, rules!!, it.redactedFor(key)) }
 
     private suspend fun changedLocked(immediate: Boolean = false) {
         val l = layoutState ?: return
@@ -281,10 +260,10 @@ class Recruitment(
     }
 
     private suspend fun syncAllLocked() {
-        val table = tableLocked() ?: return
         remotes.values.forEach { r ->
             val link = r.link ?: return@forEach
-            val seat = table.layout.seatOf(r.key) ?: return@forEach
+            val table = tableFor(r.key) ?: return@forEach
+            val seat = layoutState?.seatOf(r.key) ?: return@forEach
             link.sendLocked(RecruitSync(version, table, seat))
             log("rec seats v=$version send to=${k(r.key)}")
         }
@@ -308,7 +287,7 @@ class Recruitment(
             r.link = link
             version++
             _layout.value = next
-            link.sendLocked(RecruitInvite(version, tableLocked()!!, seat))
+            link.sendLocked(RecruitInvite(version, tableFor(presence.key)!!, seat))
             log("rec call ${k(presence.key)} invite sent via link in ${clock() - r.calledAt} ms")
             debounceJob?.cancel()
             syncOthersLocked(except = presence.key)
@@ -321,9 +300,9 @@ class Recruitment(
     }
 
     private suspend fun syncOthersLocked(except: String) {
-        val table = tableLocked() ?: return
         remotes.values.filter { it.key != except }.forEach { r ->
-            val seat = table.layout.seatOf(r.key) ?: return@forEach
+            val table = tableFor(r.key) ?: return@forEach
+            val seat = layoutState?.seatOf(r.key) ?: return@forEach
             r.link?.sendLocked(RecruitSync(version, table, seat))
         }
     }
@@ -454,7 +433,8 @@ class Recruitment(
     }
 
     private suspend fun refuseLocked(reason: RefusalReason) {
-        if (_status.value !is RecruitStatus.Invited) return
+        val invited = _status.value as? RecruitStatus.Invited ?: return
+        if (reason != RefusalReason.INVITE_REFUSED) _events.tryEmit(RecruitEvent.Refused(invited.hostName, reason))
         hostLink?.sendLocked(RecruitReply(myKey, false, reason))
         transition(RecruitStatus.Free)
         advertiseLocked()
@@ -781,7 +761,7 @@ class Recruitment(
         r.name = hello.name.ifBlank { r.name }
         r.absentJob?.cancel()
         r.absentJob = null
-        val table = tableLocked()!!
+        val table = tableFor(hello.key)!!
         if (l.slots[inLayout] is Slot.Called) {
             link.sendLocked(RecruitInvite(version, table, inLayout))
             log("rec invite sent after hello in ${clock() - r.calledAt} ms")

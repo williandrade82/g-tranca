@@ -14,10 +14,10 @@ import org.junit.jupiter.api.assertThrows
 class CoinsTest {
 
     @Test
-    fun `§14_6 constantes - apostas 50 100 250 500, saldo inicial 1000 e ganho diario 200`() {
+    fun `§14_6 constantes - tres apostas por nivel, padrao 100, saldo inicial 1000 e ganho diario 200`() {
         // §14.6 três valores por nível dos robôs
         Coins.STAKES_BY_LEVEL shouldBe listOf(listOf(50, 80, 100), listOf(100, 150, 200), listOf(200, 300, 500))
-        Coins.DEFAULT_STAKE shouldBe 50
+        Coins.DEFAULT_STAKE shouldBe 100
         Coins.INITIAL_BALANCE shouldBe 1_000
         Coins.DAILY_GAIN shouldBe 200
     }

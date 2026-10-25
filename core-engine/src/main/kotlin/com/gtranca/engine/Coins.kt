@@ -11,8 +11,8 @@ object Coins {
      */
     val STAKES_BY_LEVEL: List<List<Int>> = listOf(listOf(50, 80, 100), listOf(100, 150, 200), listOf(200, 300, 500))
 
-    /** Aposta padrão (e a menor): o 1º valor do 1º nível. */
-    val DEFAULT_STAKE: Int = STAKES_BY_LEVEL.first().first()
+    /** Aposta padrão: o 1º valor do nível padrão (Maduro/Médio), 100. */
+    val DEFAULT_STAKE: Int = STAKES_BY_LEVEL[1].first()
 
     /** §14.6 os três valores do [level] (0..2). */
     fun stakesFor(level: Int): List<Int> = STAKES_BY_LEVEL[level.coerceIn(0, STAKES_BY_LEVEL.lastIndex)]

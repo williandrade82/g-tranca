@@ -183,6 +183,8 @@ class RecruitmentTest {
         ana.r.call(2, ana.presenceOf("kb"))
         runCurrent()
         bia.r.status.value shouldBe RecruitStatus.Free
+        // O recrutado vê o aviso (o convite não fica na tela nem um instante).
+        bia.events.single() shouldBe RecruitEvent.Refused("Ana", RefusalReason.INSUFFICIENT_BALANCE)
         ana.notices.single().reason shouldBe RefusalReason.INSUFFICIENT_BALANCE
         ana.r.layout.value!!.slots[2] shouldBe Slot.Vacant
         ana.scope.cancel()
@@ -499,6 +501,35 @@ class RecruitmentTest {
         ana.logs.none { it.startsWith("rec connected") || it.startsWith("rec standby") } shouldBe true
         caio.logs.none { it.startsWith("rec connected") || it.startsWith("rec standby") } shouldBe true
         ana.r.free.value shouldBe emptyList()
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_4 §16_2 a chave de presenca de um recrutado nunca chega aos outros nas mensagens de lugares`() = runTest {
+        val net = MemoryNetwork()
+        val sent = mutableListOf<Delivery>()
+        net.tap = { sent += it; listOf(it) }
+        val ana = device(net, "ka", "Ana", free = false)
+        val bia = device(net, "key-bia-123", "Bia")
+        val caio = device(net, "key-caio-456", "Caio")
+        runCurrent()
+        ana.r.openTable(rulesDuplas, "Ana")
+        runCurrent()
+        ana.r.call(1, ana.presenceOf("key-bia-123"))
+        ana.r.call(2, ana.presenceOf("key-caio-456"))
+        runCurrent()
+        bia.r.accept(); caio.r.accept()
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
+        runCurrent()
+        // Cada um vê o nome do outro e o estado, mas só a própria chave.
+        val seenByBia = (bia.r.status.value as RecruitStatus.Joined).table.layout.slots
+        seenByBia[1] shouldBe Slot.Recruited("key-bia-123", "Bia")
+        seenByBia[2] shouldBe Slot.Recruited("", "Caio")
+        // Nenhuma mensagem de lugares ao Bia traz a chave do Caio (e vice-versa).
+        sent.filter { it.to == bia.transport.id && ("recruitSync" in it.bytes.decodeToString() || "recruitInvite" in it.bytes.decodeToString()) }
+            .forEach { it.bytes.decodeToString() shouldNotContain "key-caio-456" }
+        sent.filter { it.to == caio.transport.id && ("recruitSync" in it.bytes.decodeToString() || "recruitInvite" in it.bytes.decodeToString()) }
+            .forEach { it.bytes.decodeToString() shouldNotContain "key-bia-123" }
         ana.scope.cancel()
     }
 }

@@ -79,6 +79,20 @@ data class TableLayout(val mode: GameMode, val slots: List<Slot>) {
 
     private fun validSeat(seat: Int) = seat in 0 until slots.size
 
+    /**
+     * §16.2, §16.4 a cópia que vai ao jogador [key]: só a **própria** chave de presença fica nos lugares; as dos outros
+     * chamados/recrutados saem (vazias), para ninguém usar a chave alheia e tomar o lugar de outro. Nome e estado seguem.
+     */
+    fun redactedFor(key: String): TableLayout = copy(
+        slots = slots.map {
+            when (it) {
+                is Slot.Called -> if (it.key == key) it else it.copy(key = "")
+                is Slot.Recruited -> if (it.key == key) it else it.copy(key = "")
+                else -> it
+            }
+        },
+    )
+
     /** §16.2 chama o jogador [key] para o lugar [seat] (VAGO); cada jogador ocupa um lugar só. */
     fun call(seat: Int, key: String, name: String): TableLayout? =
         if (validSeat(seat) && slots[seat] == Slot.Vacant && seatOf(key) == null) with(seat, Slot.Called(key, name)) else null

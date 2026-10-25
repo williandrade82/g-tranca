@@ -578,6 +578,7 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
             val text = when (event) {
                 is com.gtranca.net.RecruitEvent.Removed -> context.getString(com.gtranca.R.string.recruit_removed, event.hostName)
                 is com.gtranca.net.RecruitEvent.Closed -> context.getString(com.gtranca.R.string.mp_closed_title)
+                is com.gtranca.net.RecruitEvent.Refused -> context.getString(com.gtranca.R.string.recruit_balance_table)
                 is com.gtranca.net.RecruitEvent.Start -> null
             }
             text?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
