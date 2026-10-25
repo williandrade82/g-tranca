@@ -116,7 +116,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 ### 3.3 Seleção de jogadores (`PlayerSelectionScreen`)
 **Objetivo:** montar a mesa — quem ocupa cada lugar — e começar a partida (§14.4, §16.2). As opções (3.2) aparecem só como resumo e **não mudam** aqui.
 **De cima para baixo:**
-1. Título **"Seleção de jogadores"**, o ícone do tour e o botão de **voltar** (volta a *Iniciar novo jogo* e **encerra o recrutamento**: chamados cancelados, recrutados recebem "Mesa encerrada").
+1. Título **"Seleção de jogadores"** e o ícone do tour; um resumo das opções (tipo, nível, aposta, regras). O **Voltar** fica na barra fixa, ao lado de **Começar Partida** (volta a *Iniciar novo jogo* e **encerra o recrutamento**: chamados cancelados, recrutados recebem "Mesa encerrada").
 2. **Mesa de lugares:** 2 lugares (individual, um **em cima** e um **embaixo**) ou 4 (duplas). O **jogador fica sempre embaixo**, com o nome e a foto/inicial; os demais lugares começam **VAGO**. Um lugar pode estar: **VAGO**, com um **robô** (retrato e nome), com um **Chamado** (avatar esmaecido com o selo **Chamado**) ou com um **Recrutado** (avatar com o selo **Recrutado**). Em duplas, o lugar da frente é o do **parceiro**.
    - **Colocar:** tocar num lugar **VAGO** o seleciona; depois, tocar num **robô** da lista ou num **jogador próximo livre** o coloca ali. O robô escolhido fica **esmaecido** na lista e o avatar dele ocupa o lugar.
    - **Remover:** tocar num lugar preenchido (que não seja o do jogador) oferece **Remover**: o robô volta à lista; o **Chamado** tem o convite cancelado (some sem aviso); o **Recrutado** recebe "<nome> tirou você da mesa".
