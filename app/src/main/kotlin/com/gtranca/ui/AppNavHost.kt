@@ -290,6 +290,11 @@ fun AppNavHost() {
             val rec by com.gtranca.multiplayer.MultiplayerHub.recruitment.collectAsStateWithLifecycle()
             val recStatus by remember(rec) { rec?.status ?: kotlinx.coroutines.flow.flowOf(com.gtranca.net.RecruitStatus.Free) }
                 .collectAsStateWithLifecycle(com.gtranca.net.RecruitStatus.Free)
+            // §16.2 com a montagem aberta (ou o editor de regras, que volta a ela) os jogadores próximos mantêm a conexão de
+            // espera, e o convite chega na hora; ao sair da montagem, o recrutamento é encerrado.
+            val navEntryNow by navController.currentBackStackEntryAsState()
+            val onSetup = navEntryNow?.destination?.let { it.hasRoute<TablesRoute>() || it.hasRoute<RulesEditorRoute>() } == true
+            LaunchedEffect(rec, onSetup) { rec?.let { r -> runCatching { r.setHosting(onSetup) } } }
             LaunchedEffect(rec) {
                 val r = rec
                 tablesVm.recruiter = r?.let { live ->
@@ -790,11 +795,13 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
         .collectAsStateWithLifecycle(null)
     val name = profile?.name?.takeIf { it.isNotBlank() } ?: PlayerProfile.DEFAULT_NAME
     val presenceOn = wifiSetting && granted && !onGame && table == null && profile != null
-    LaunchedEffect(presenceOn, name) {
+    // §16.2 a presença (e o recrutamento) só reinicia quando liga ou desliga; trocar o nome só atualiza o anúncio.
+    LaunchedEffect(presenceOn) {
         if (!presenceOn) return@LaunchedEffect
         val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
         runCatching { com.gtranca.multiplayer.MultiplayerHub.runPresence(context, data, name, photo) }
     }
+    LaunchedEffect(name) { com.gtranca.multiplayer.MultiplayerHub.renamePresence(name) }
     // §16.2 recrutamento imediato: o convite (sem prazo) e os avisos ao recrutado, em qualquer tela fora de jogo.
     val rec by com.gtranca.multiplayer.MultiplayerHub.recruitment.collectAsStateWithLifecycle()
     val recStatus by remember(rec) { rec?.status ?: kotlinx.coroutines.flow.flowOf(com.gtranca.net.RecruitStatus.Free) }

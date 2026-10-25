@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 12
+const val PROTOCOL_VERSION: Int = 13
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -256,7 +256,20 @@ data class RecruitReply(val key: String, val accepted: Boolean, val reason: Refu
 /** §16.2 a montagem do anfitrião mudou (anfitrião → recrutados que aceitaram). */
 @Serializable
 @SerialName("recruitSync")
-data class RecruitSync(val config: RecruitConfig) : Payload
+data class RecruitSync(val version: Long, val config: RecruitConfig) : Payload
+
+/**
+ * §16.2 primeira mensagem do jogador próximo ao anfitrião que está montando a mesa (ou que o convidou): conexão de espera
+ * ("standby") que depois carrega o convite, a montagem, a saída e o início. [rejoin] = voltou depois de uma queda.
+ */
+@Serializable
+@SerialName("recruitHello")
+data class RecruitHello(val key: String, val name: String, val rejoin: Boolean = false) : Payload
+
+/** §16.2 convite imediato do anfitrião [hostName], sem prazo (a resposta é [RecruitReply]). */
+@Serializable
+@SerialName("recruitInvite")
+data class RecruitInvite(val hostName: String) : Payload
 
 /** §16.2 o recrutado saiu da mesa ("Sair da mesa", `null`) ou saiu sozinho ([RefusalReason.INSUFFICIENT_BALANCE]). */
 @Serializable
@@ -271,6 +284,9 @@ enum class RecruitEndReason {
 
     /** "Mesa encerrada": o anfitrião saiu da montagem ou desligou o Wi-Fi do jogo. */
     CLOSED,
+
+    /** O anfitrião desmarcou antes da resposta (ou não está recrutando): o convite some, sem aviso. */
+    CANCELLED,
 }
 
 /** §16.2 o anfitrião encerrou o recrutamento deste jogador. */

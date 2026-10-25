@@ -6,8 +6,9 @@ fica sincronizada entre aparelhos. Código: `net/.../Recruitment.kt`, `PresenceP
 ## Princípios
 
 1. **O anúncio de presença só descobre; a conexão decide.** O anúncio leva o essencial e muda pouco: chave, nome,
-   `inviting` (chaves marcadas e ainda sem resposta, só para o marcado achar o anfitrião) e `recruitedBy` (anfitrião que
-   já recrutou o jogador, para os terceiros mostrarem "Recrutado"). Todo o resto (convite, cancelamento, aceite, recusa,
+   `hosting` (a montagem da mesa está aberta: quem estiver livre abre uma conexão de **espera**), `inviting` (reserva: chaves
+   marcadas que ainda não têm conexão) e `recruitedBy` (anfitrião que já recrutou o jogador, para os terceiros mostrarem
+   "Recrutado"). Todo o resto (convite, cancelamento, aceite, recusa,
    montagem, saída, remoção, início) vai por **mensagens na conexão** do recrutado com o anfitrião (`ReliableLink`:
    ordem, confirmação e reenvio).
 2. **Nada se decide pela ausência momentânea na busca.** A presença que some e volta (anunciante parou e reanunciou, busca
@@ -24,7 +25,8 @@ fica sincronizada entre aparelhos. Código: `net/.../Recruitment.kt`, `PresenceP
 
 | Evento | Efeito |
 |---|---|
-| marcar | cria o marcado `Pendente`, reanuncia a presença com a chave em `inviting` |
+| montagem aberta (`setHosting`) | anuncia `hosting`; os jogadores próximos livres conectam (espera), no máximo 6 |
+| marcar | cria o marcado `Pendente`. **Se o jogador já está em espera**: `RecruitInvite` pela conexão na hora (sem mexer no anúncio). Senão: reserva, a chave vai em `inviting` e o convite sai quando ele conectar |
 | recrutado conecta e envia `RecruitHello` | se `Pendente`: responde `RecruitInvite` (nome do anfitrião + montagem); se `Aceito` sem conexão (reingresso): troca a conexão e reenvia `RecruitSync` completo; se não marcado: `RecruitEnd(CANCELLED)` |
 | `RecruitReply(aceito)` | `Aceito`; sai de `inviting`; envia a montagem completa |
 | `RecruitReply(recusado)` | remove; aviso ao anfitrião com o motivo |
@@ -37,12 +39,14 @@ fica sincronizada entre aparelhos. Código: `net/.../Recruitment.kt`, `PresenceP
 | sair / Wi-Fi desligado | `RecruitEnd(CLOSED)` a todos os conectados, espera até 0,5 s pelas confirmações |
 
 ### Recrutado
-`Livre` -> (vê a própria chave em `inviting` de um anfitrião) `Conectando` -> (recebe `RecruitInvite`) `Convidado` ->
-(Aceitar) `Aceito` -> fim.
+`Livre` -> (vê um anfitrião com `hosting`, ou a própria chave em `inviting`) **Em espera** (interno; a tela mostra
+`Livre`) -> (recebe `RecruitInvite`) `Convidado` -> (Aceitar) `Aceito` -> fim.
 
-- **Conectando** é interno (a tela mostra `Livre`): conecta ao anfitrião e envia `RecruitHello`; sem `RecruitInvite` em
-  10 s, desconecta e repete com espera de 1, 2, 4 e 8 s (e 8 s dali em diante) **enquanto o anfitrião continuar
-  listando a chave**. Sumiu a chave do anúncio: para.
+- **Em espera:** conecta ao anfitrião e envia `RecruitHello` e a foto; a conexão fica aberta, sem custo de anúncio. Falha:
+  nova tentativa depois de 0,3, 1, 2, 4 s (e a cada 8 s) enquanto o anfitrião continuar montando a mesa ou me listar.
+  Só uma espera por vez (STAR: um aparelho é "spoke" de um só centro); outro anfitrião que me liste em `inviting` toma o
+  lugar da espera. O anfitrião que parou de montar a mesa solta a espera. Dois aparelhos com a montagem aberta: só o de
+  **menor chave** abre a conexão (a conexão serve aos dois sentidos).
 - **Convidado**: o convite não tem prazo. `RecruitEnd(CANCELLED)` ou queda da conexão o desfaz. Reanunciar a presença
   com `recruitedBy` (pendente ou aceito) marca "Recrutado" para os terceiros.
 - **Aceito**: recebe `RecruitSync` (versão maior que a aplicada). `RecruitEnd` (`REMOVED` = "tirou você da mesa";
@@ -65,22 +69,22 @@ jogador está `Convidado` ou `Aceito`; recusa/saída/remoção o limpam.
 | aviso "saindo" | sai na hora (todas as entradas da chave) |
 | busca reiniciada a cada 8 s | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~20 s) |
 | chave **fixada** (marcada/recrutada/anfitrião do aceito) | a varredura não a remove; só `onLost` após a folga, "saindo" ou a queda da conexão |
-| conexão de presença aberta (fotos/recrutamento) | a busca não reinicia |
+| pedido de conexão com um jogador próximo em andamento | a busca não reinicia até ele terminar (as conexões já abertas não são afetadas) |
 
 Cada remoção registra o motivo no log de depuração.
 
 ## Fotos
 
-Troca de fotos fora de mesa: o de **menor chave** conecta, os dois enviam `PresencePhoto` e quem abriu desconecta.
-**Nunca** usa nem desconecta um endpoint de recrutamento: pares com conexão de recrutamento trocam as fotos **pela própria
-conexão de recrutamento** (`PresencePhoto` logo depois do aceite, nos dois sentidos).
+As fotos dos jogadores próximos vão **pela conexão de espera do recrutamento** (`PresencePhoto` logo depois do
+`RecruitHello`, nos dois sentidos, uma vez por conexão), nunca por uma conexão avulsa: uma conexão avulsa para a foto e a
+de recrutamento usam o mesmo endpoint, e desconectar uma derrubava a outra. Jogador sem conexão de espera (fora da cota
+de esperas, ou montagem fechada) aparece com a inicial.
 
 ## Tempos (§16.15)
 
 | O quê | Tempo |
 |---|---|
-| nova tentativa de conexão do convite | 1, 2, 4, 8 s (depois 8 s) |
-| espera do `RecruitInvite` por tentativa | 10 s |
+| nova tentativa de conexão de espera | 0,3, 1, 2, 4 s (depois 8 s) |
 | `onLost` da presença até sair da lista | 3 s |
 | debounce da montagem | 0,3 s |
 | reingresso do recrutado aceito | 8 s |

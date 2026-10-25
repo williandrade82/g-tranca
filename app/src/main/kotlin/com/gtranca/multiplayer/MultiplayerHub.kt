@@ -80,6 +80,21 @@ object MultiplayerHub {
         recruiting?.let { it.cancel(); it.join() }
     }
 
+    /** Diagnóstico (só no build debug): eventos do recrutamento e da presença, sem nomes, fotos nem bytes. */
+    private val debugLog: (String) -> Unit =
+        if (com.gtranca.BuildConfig.DEBUG) { message -> android.util.Log.d("GTrancaNearby", message) } else { _ -> }
+
+    @Volatile
+    private var presenceName: String = ""
+
+    /** §16.2 o nome do perfil mudou: o anúncio acompanha, sem reiniciar a presença nem perder o recrutamento. */
+    fun renamePresence(name: String) {
+        if (name == presenceName) return
+        presenceName = name
+        val rec = _recruitment.value ?: return
+        scope.launch { runCatching { rec.rename(name) } }
+    }
+
     /** Chave de presença atual deste aparelho (`null` com o Wi-Fi do jogo desligado). */
     val myPresenceKey: String? get() = presenceKey
 
@@ -92,16 +107,22 @@ object MultiplayerHub {
         if (_table.value != null) return
         val t = transport(context)
         val key = presenceKey ?: com.gtranca.net.newPresenceKey().also { presenceKey = it }
+        presenceName = name
         try {
             val start = kotlinx.coroutines.coroutineScope {
-                val photos = com.gtranca.net.PresencePhotos(t, key, photo, _presencePhotos)
+                var recRef: com.gtranca.net.Recruitment? = null
+                // §16.2 as fotos dos jogadores próximos vão pela conexão de espera do recrutamento (nunca por uma avulsa).
+                val photos = com.gtranca.net.PresencePhotos(t, key, photo, _presencePhotos, reserved = { recRef?.ownsEndpoint(it) == true }, log = debugLog)
+                // O estado do recrutamento vive no escopo do hub (não no desta função), então não se perde se a tela recompor.
                 val rec = com.gtranca.net.Recruitment(
-                    t, this, key, name, photos,
+                    t, scope, key, name, photos,
                     canAfford = { stake -> runCatching { com.gtranca.engine.Coins.canJoin(data.wallet.wallet.first().balance, stake) }.getOrDefault(true) },
+                    log = debugLog,
+                    clock = { System.nanoTime() / 1_000_000 },
                 )
+                recRef = rec
                 val running = launch { runCatching { rec.run() } }
                 recruiting = running
-                val fetching = launch { runCatching { photos.fetchAll(t.discoverPresence().catch { emit(emptyList()) }) } }
                 _recruitment.value = rec
                 try {
                     val events = launch {
@@ -112,11 +133,14 @@ object MultiplayerHub {
                     start
                 } finally {
                     _recruitment.value = null
-                    // Pára de ler os eventos antes de a sessão da mesa começar a ler.
-                    running.cancel()
-                    fetching.cancel()
-                    running.join()
-                    recruiting = null
+                    withContext(NonCancellable) {
+                        // Encerra as conexões de recrutamento (aviso de saída, até 0,5 s) e só então pára de ler os eventos,
+                        // antes de a sessão da mesa começar a ler.
+                        runCatching { rec.shutdown() }
+                        running.cancel()
+                        running.join()
+                        recruiting = null
+                    }
                 }
             }
             // §16.2 o anfitrião tocou em Escolher posições: entra direto, com a própria chave (sem novo convite).

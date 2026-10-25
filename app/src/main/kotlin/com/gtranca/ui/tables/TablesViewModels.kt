@@ -284,13 +284,19 @@ class TablesViewModel(
         }
     }
 
-    /** §16.2 jogadores próximos achados agora; quem sumiu deixa de estar marcado. */
+    /**
+     * §16.2 jogadores próximos achados agora. Com o recrutamento ativo, sumir da busca por um instante **não** desmarca
+     * ninguém: quem decide é o recrutamento (conexão caída, prazo de reingresso, "fora do alcance"), que avisa por
+     * [onRecruits]. Sem recrutamento, quem sumiu deixa de estar marcado.
+     */
     fun onNearby(players: List<NearbyPlayer>) {
         val keys = players.map { it.key }.toSet()
-        val gone = _uiState.value.picks.filterIsInstance<Pick.Near>().filter { it.key !in keys }
-        _uiState.update { state -> state.copy(nearby = players, picks = state.picks.filter { it !is Pick.Near || it.key in keys }) }
-        // §16.2 quem sumiu da busca deixa de estar marcado (o convite dele é cancelado).
-        recruiter?.let { rec -> gone.forEach { p -> viewModelScope.launch { safely { rec.unmark(p.key) } } } }
+        val live = recruiter != null
+        _uiState.update { state ->
+            // Marcado que sumiu da lista continua na grade (com o nome que já tinha) enquanto o recrutamento o mantém.
+            val kept = if (live) state.nearby.filter { old -> old.key !in keys && state.picks.any { it is Pick.Near && it.key == old.key } } else emptyList()
+            state.copy(nearby = players + kept, picks = if (live) state.picks else state.picks.filter { it !is Pick.Near || it.key in keys })
+        }
     }
 
     fun onModeChange(mode: GameMode) = edit { if (it.modeLocked) it else it.copy(mode = mode) }

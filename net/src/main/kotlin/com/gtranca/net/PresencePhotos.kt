@@ -28,13 +28,20 @@ class PresencePhotos(
     private val cache: MutableStateFlow<Map<String, String>> = MutableStateFlow(emptyMap()),
     private val codec: ProtocolCodec = ProtocolCodec(),
     private val timeoutMillis: Long = PHOTO_TIMEOUT_MILLIS,
+    /** §16.2 endpoint que o recrutamento usa: a troca de fotos não o toca nem o desconecta (as fotos vão por ele). */
+    private val reserved: (EndpointId) -> Boolean = { false },
+    private val log: (String) -> Unit = {},
 ) {
     /** Chave de presença → foto Base64 ("" = o jogador não tem foto). */
     val photos: StateFlow<Map<String, String>> = cache
 
     private val waiters = ConcurrentHashMap<EndpointId, CompletableDeferred<PresencePhoto?>>()
 
-    private fun mine() = PresencePhoto(myKey, myPhoto?.takeIf { it.length <= MAX_PHOTO_BASE64 })
+    /** A foto deste aparelho, para quem a envia por outro caminho (a conexão de recrutamento). */
+    fun mine() = PresencePhoto(myKey, myPhoto?.takeIf { it.length <= MAX_PHOTO_BASE64 })
+
+    /** Guarda a foto recebida por outro caminho (a conexão de recrutamento). */
+    fun store(photo: PresencePhoto) = remember(photo)
 
     private fun remember(photo: PresencePhoto) {
         if (photo.key.isEmpty() || photo.key == myKey) return
@@ -72,6 +79,10 @@ class PresencePhotos(
         if (presence.key in cache.value) return true
         if (!initiates(presence.key)) return false
         val endpoint = runCatching { transport.connectPresence(presence) }.getOrNull() ?: return false
+        if (reserved(endpoint)) {
+            log("photo skip: endpoint do recrutamento")
+            return false
+        }
         val waiter = CompletableDeferred<PresencePhoto?>()
         waiters[endpoint] = waiter
         try {

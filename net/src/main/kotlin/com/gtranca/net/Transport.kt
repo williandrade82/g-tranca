@@ -60,6 +60,8 @@ data class PresenceAdvert(
     val recruitedBy: String? = null,
     /** §16.2 chaves que este jogador (como anfitrião) marcou e ainda não responderam: o convite imediato (até 3). */
     val inviting: List<String> = emptyList(),
+    /** §16.2 este jogador está com a montagem da mesa aberta: aceita conexões de espera dos jogadores próximos. */
+    val hosting: Boolean = false,
 )
 
 /** §16.2 chave de presença nova (6 caracteres, cabe no anúncio). Não identifica o jogador fora desta sessão de busca. */
@@ -114,6 +116,12 @@ interface LocalTransport {
 
     /** §16.2 deixa de anunciar a presença (entrou num jogo ou desligou o Wi-Fi do jogo). */
     suspend fun stopPresence() {}
+
+    /**
+     * §16.2 chaves de presença que a busca não pode tirar da lista só por não terem sido revistas (marcadas, recrutadas ou
+     * anfitrião de quem aceitou): elas saem pelo aviso de perda (após a folga), por "saindo" ou pela queda da conexão.
+     */
+    fun pinPresence(keys: Set<String>) {}
 
     /** §16.2 conecta-se ao jogador próximo que anuncia [presence] (só para pedir a foto, [PresencePhotos]). */
     suspend fun connectPresence(presence: PresenceAdvert): EndpointId = error("Presença não encontrada")

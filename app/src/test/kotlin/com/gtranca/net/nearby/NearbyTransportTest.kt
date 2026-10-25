@@ -38,7 +38,7 @@ class NearbyTransportTest {
 
     private fun TestScope.node(): Pair<FakeNearbyApi, NearbyTransport> {
         val api = network.api()
-        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job())
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job(backgroundScope.coroutineContext[Job]))
         return api to NearbyTransport(api, scope, clock = { testScheduler.currentTime })
     }
 
@@ -275,21 +275,19 @@ class NearbyTransportTest {
     }
 
     @Test
-    fun `§16_2 a busca nao recomeca com conexao de presenca aberta`() = runTest {
+    fun `§16_2 reiniciar a busca nao derruba a conexao de espera ja aberta`() = runTest {
         val (_, other) = node()
         val (api, me) = node()
         val bia = com.gtranca.net.PresenceAdvert("kbia", "Bia")
         other.advertisePresence(bia)
+        val events = events(me)
         backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect {} }
         runCurrent()
-        val endpoint = me.connectPresence(bia)
+        me.connectPresence(bia)
         advanceTimeBy(wait * 3)
         runCurrent()
-        api.discoveryStarts shouldBe 1
-        me.disconnect(endpoint)
-        advanceTimeBy(wait + 1_500)
-        runCurrent()
         (api.discoveryStarts > 1) shouldBe true
+        events.filterIsInstance<TransportEvent.Disconnected>() shouldBe emptyList()
     }
 
     @Test
@@ -308,6 +306,137 @@ class NearbyTransportTest {
         runCurrent()
         biaPhotos.photos.value shouldBe mapOf("kana" to "FOTO")
         anaPhotos.photos.value shouldBe mapOf("kbia" to "")
+        scope.cancel()
+    }
+
+    private fun presence(key: String, name: String = key, hosting: Boolean = false) = com.gtranca.net.PresenceAdvert(key, name, hosting = hosting)
+
+    @Test
+    fun `§16_2 a mesma chave em dois endpoints aparece uma vez so`() = runTest {
+        val (_, a1) = node()
+        val (_, a2) = node()
+        val (_, me) = node()
+        a1.advertisePresence(presence("kx", "Xis"))
+        a2.advertisePresence(presence("kx", "Xis"))
+        runCurrent()
+        me.discoverPresence().first { it.isNotEmpty() }.map { it.key } shouldBe listOf("kx")
+    }
+
+    @Test
+    fun `§16_2 §16_15 quem para e reanuncia dentro da folga nao some da lista dos outros`() = runTest {
+        val (hostApi, host) = node()
+        val (_, me) = node()
+        val bytes = AdvertCodec.encodePresence(presence("kx", "Xis"))
+        host.advertisePresence(presence("kx", "Xis"))
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        lists.last().map { it.key } shouldBe listOf("kx")
+        // Parar e voltar a anunciar (como a presença faz a cada mudança), com um intervalo de 2 s.
+        hostApi.stopAdvertising()
+        advanceTimeBy(2_000)
+        hostApi.startAdvertising(bytes, object : ConnectionCallback {
+            override fun onInitiated(endpointId: String) {}
+            override fun onResult(endpointId: String, success: Boolean) {}
+            override fun onDisconnected(endpointId: String) {}
+        })
+        advanceTimeBy(NearbyTransport.PRESENCE_LOST_GRACE_MILLIS * 2)
+        runCurrent()
+        lists.drop(1).none { it.isEmpty() } shouldBe true // nunca piscou
+        lists.last().map { it.key } shouldBe listOf("kx")
+        // Parou de vez: sai depois da folga.
+        hostApi.stopAdvertising()
+        advanceTimeBy(NearbyTransport.PRESENCE_LOST_GRACE_MILLIS - 1)
+        runCurrent()
+        lists.last().map { it.key } shouldBe listOf("kx")
+        advanceTimeBy(2)
+        runCurrent()
+        lists.last() shouldBe emptyList()
+    }
+
+    @Test
+    fun `§16_2 chave fixada pelo recrutamento nao e tirada pela varredura`() = runTest {
+        network.silentStop = true
+        val (goneApi, gone) = node()
+        val (_, me) = node()
+        gone.advertisePresence(presence("kx", "Xis"))
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        me.pinPresence(setOf("kx"))
+        goneApi.stopAdvertising() // sumiu sem aviso
+        advanceTimeBy(wait * 6)
+        runCurrent()
+        lists.last().map { it.key } shouldBe listOf("kx") // fixada: fica
+        me.pinPresence(emptySet())
+        advanceTimeBy(wait * 3)
+        runCurrent()
+        lists.last() shouldBe emptyList()
+    }
+
+    private fun TestScope.recruiter(transport: NearbyTransport, key: String, name: String, scope: CoroutineScope, logs: MutableList<String>): com.gtranca.net.Recruitment {
+        val rec = com.gtranca.net.Recruitment(transport, scope, key, name, com.gtranca.net.PresencePhotos(transport, key, null), log = { logs += it }, clock = { testScheduler.currentTime })
+        scope.launch { rec.run() }
+        return rec
+    }
+
+    @Test
+    fun `§16_2 o convite chega pela conexao de espera sem reanunciar a presenca e sobrevive ao reinicio da busca`() = runTest {
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job(backgroundScope.coroutineContext[Job]))
+        val (hostApi, hostT) = node()
+        val (bobApi, bobT) = node()
+        val hostLogs = mutableListOf<String>()
+        val bobLogs = mutableListOf<String>()
+        val ana = recruiter(hostT, "ka", "Ana", scope, hostLogs)
+        val bia = recruiter(bobT, "kb", "Bia", scope, bobLogs)
+        ana.setHosting(true)
+        runCurrent()
+        advanceTimeBy(1_000)
+        runCurrent()
+        // Bia já está ligada ao anfitrião (espera); o convite não depende do anúncio.
+        hostLogs.any { it.startsWith("rec standby") } shouldBe true
+        val advertsBefore = hostApi.advertiseStarts
+        ana.mark(com.gtranca.net.PresenceAdvert("kb", "Bia")) shouldBe true
+        runCurrent()
+        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
+        hostApi.advertiseStarts shouldBe advertsBefore // nada foi reanunciado para entregar o convite
+        hostLogs.any { "invite sent via link" in it } shouldBe true
+        // Reinício da busca (a cada 8 s) durante o recrutamento: convite e conexão intactos.
+        advanceTimeBy(wait * 4)
+        runCurrent()
+        (bobApi.discoveryStarts > 1) shouldBe true
+        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
+        ana.recruits.value.map { it.key } shouldBe listOf("kb")
+        bia.accept() shouldBe true
+        runCurrent()
+        advanceTimeBy(wait * 3)
+        runCurrent()
+        bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Joined>()
+        ana.recruits.value.single().accepted shouldBe true
+        scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 o anfitriao reanunciar a presenca ao marcar outro nao cancela o convite do primeiro`() = runTest {
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job(backgroundScope.coroutineContext[Job]))
+        val (_, hostT) = node()
+        val (_, bobT) = node()
+        val (_, caioT) = node()
+        val ana = recruiter(hostT, "ka", "Ana", scope, mutableListOf())
+        val bia = recruiter(bobT, "kb", "Bia", scope, mutableListOf())
+        val caio = recruiter(caioT, "kc", "Caio", scope, mutableListOf())
+        // Sem a montagem aberta: o convite vai pela reserva do anúncio (o caminho que reanuncia a cada marcação).
+        runCurrent()
+        advanceTimeBy(1_000)
+        ana.mark(com.gtranca.net.PresenceAdvert("kb", "Bia")) shouldBe true
+        advanceTimeBy(2_000)
+        runCurrent()
+        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
+        ana.mark(com.gtranca.net.PresenceAdvert("kc", "Caio")) shouldBe true
+        advanceTimeBy(NearbyTransport.PRESENCE_LOST_GRACE_MILLIS * 2)
+        runCurrent()
+        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana") // não piscou
+        caio.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
         scope.cancel()
     }
 }
