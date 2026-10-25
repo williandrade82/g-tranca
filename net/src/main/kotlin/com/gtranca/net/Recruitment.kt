@@ -30,7 +30,7 @@ sealed interface RecruitStatus {
     data class Invited(val hostKey: String, val hostName: String) : RecruitStatus
 
     /** Aceitou: vê a montagem do anfitrião ([config], `null` até a primeira sincronização) só para leitura. */
-    data class Joined(val hostKey: String, val hostName: String, val config: RecruitConfig? = null) : RecruitStatus
+    data class Joined(val hostKey: String, val hostName: String, val config: RecruitConfig? = null, val version: Long = 0) : RecruitStatus
 }
 
 /** §16.2 acontecimentos do lado do recrutado (avisos e o início da escolha de posições). */
@@ -259,9 +259,14 @@ class Recruitment(
         marked.values.filter { it.accepted }.forEach { sendSyncLocked(it) }
     }
 
+    /** A montagem com o "aceitou" de cada recrutado conferido aqui (o anfitrião só sabe quem aceitou de fato). */
+    private fun effectiveConfig(): RecruitConfig? = config?.let { c ->
+        c.copy(participants = c.participants.map { p -> p.key?.let { key -> p.copy(accepted = marked[key]?.accepted == true) } ?: p })
+    }
+
     private suspend fun sendSyncLocked(m: Marked) {
         val link = m.link ?: return
-        val c = config ?: return
+        val c = effectiveConfig() ?: return
         link.sendLocked(RecruitSync(version, c))
         log("rec cfg send v=$version to=${k(m.key)}")
     }
@@ -332,8 +337,9 @@ class Recruitment(
         val link = hostLink ?: return@withLock false
         link.sendLocked(RecruitReply(myKey, true))
         appliedVersion = 0
+        log("rec accept sent")
         transition(RecruitStatus.Joined(invited.hostKey, invited.hostName))
-        link.sendLocked(photos?.mine() ?: PresencePhoto(myKey))
+        advertiseLocked()
         true
     }
 
@@ -543,9 +549,10 @@ class Recruitment(
                 if (payload.accepted) {
                     flushConfigLocked() // a montagem pendente vai só aos que já estavam; este recebe uma versão nova abaixo
                     m.accepted = true
-                    log("rec accepted ${k(m.key)}")
+                    log("rec host marked accepted ${k(m.key)}")
+                    // Todos os aceitos recebem a montagem inteira de novo, já com este jogador como "aceitou".
                     version++
-                    sendSyncLocked(m)
+                    marked.values.filter { it.accepted }.forEach { sendSyncLocked(it) }
                 } else {
                     marked.remove(m.key)
                     log("rec refused ${k(m.key)}")
@@ -583,7 +590,7 @@ class Recruitment(
                 }
                 appliedVersion = payload.version
                 log("rec cfg apply v=${payload.version}")
-                _status.value = s.copy(config = payload.config)
+                _status.value = s.copy(config = payload.config, version = payload.version)
                 val stake = payload.config.stake
                 scope.launch {
                     // §14.6, §16.2 a aposta passou do saldo: sai sozinho com o motivo (o anfitrião é avisado).

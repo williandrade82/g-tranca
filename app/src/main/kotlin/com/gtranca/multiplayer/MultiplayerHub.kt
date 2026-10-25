@@ -84,6 +84,9 @@ object MultiplayerHub {
     private val debugLog: (String) -> Unit =
         if (com.gtranca.BuildConfig.DEBUG) { message -> android.util.Log.d("GTrancaNearby", message) } else { _ -> }
 
+    /** Registra um evento de diagnóstico (só no build debug; sem nomes, fotos nem bytes). */
+    fun debug(message: String) = debugLog(message)
+
     @Volatile
     private var presenceName: String = ""
 

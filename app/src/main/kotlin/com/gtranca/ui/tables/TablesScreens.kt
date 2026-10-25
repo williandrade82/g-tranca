@@ -163,8 +163,10 @@ fun TablesScreen(
     joined: com.gtranca.net.RecruitStatus.Joined? = null,
     /** §16.2 "Sair da mesa" do recrutado. */
     onLeaveTable: () -> Unit = {},
+    /** §16.2 fotos dos jogadores próximos por chave de presença (só em memória; vazio = iniciais). */
+    joinedPhotos: Map<String, ByteArray> = emptyMap(),
 ) {
-    if (joined != null) return JoinedTableScreen(joined, onLeaveTable)
+    if (joined != null) return JoinedTableScreen(joined, joinedPhotos, onLeaveTable)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Tour guiado (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
     TourHost(Tours.TABLES, Tours.tablesSteps, autoStart = true) { startTour ->
@@ -350,7 +352,7 @@ private fun RowScope.ParticipantTile(avatar: Persona, name: String, checked: Boo
  * e só para leitura; "Escolher posições" vira "Aguardando..." (desabilitado) e "Voltar" vira "Sair da mesa".
  */
 @Composable
-private fun JoinedTableScreen(joined: com.gtranca.net.RecruitStatus.Joined, onLeave: () -> Unit) {
+private fun JoinedTableScreen(joined: com.gtranca.net.RecruitStatus.Joined, photos: Map<String, ByteArray>, onLeave: () -> Unit) {
     androidx.activity.compose.BackHandler(onBack = onLeave)
     TableFrame(
         stringResource(R.string.tables_title),
@@ -379,7 +381,10 @@ private fun JoinedTableScreen(joined: com.gtranca.net.RecruitStatus.Joined, onLe
         ) {
             config.participants.forEachIndexed { i, p ->
                 val profile = p.persona?.let { code -> BotProfile.entries.firstOrNull { it.code == code } }
-                val persona = if (profile != null) Persona(profile.botName, "", BotCharacter(profile, level)) else Persona(p.name, color = i.mod(Persona.COLORS))
+                // O primeiro é o anfitrião (a chave dele vem do status); os jogadores próximos trazem a própria chave.
+                val key = if (i == 0) joined.hostKey else p.key
+                val persona = if (profile != null) Persona(profile.botName, "", BotCharacter(profile, level))
+                else Persona(p.name, color = (key ?: p.name).hashCode().mod(Persona.COLORS), photoBytes = key?.let { photos[it] })
                 ParticipantTile(
                     persona, p.name, checked = true, enabled = false, tag = "participant-joined-$i",
                     badge = if (!p.accepted) stringResource(R.string.recruit_waiting) else null,

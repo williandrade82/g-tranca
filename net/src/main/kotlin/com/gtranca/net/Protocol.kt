@@ -231,7 +231,13 @@ data class PresencePhoto(val key: String, val photo: String? = null) : Payload {
 
 /** §16.2 participante da montagem do anfitrião, como o recrutado o vê (só nome; [persona] para robô). */
 @Serializable
-data class RecruitParticipant(val name: String, val persona: String? = null, val accepted: Boolean = true)
+data class RecruitParticipant(
+    val name: String,
+    val persona: String? = null,
+    val accepted: Boolean = true,
+    /** Chave de presença do jogador próximo (para a foto e para o anfitrião marcar quem já aceitou); `null` = anfitrião ou robô. */
+    val key: String? = null,
+)
 
 /**
  * §16.2 a montagem do anfitrião, sincronizada ao vivo com quem aceitou o recrutamento (só para leitura): modo, nível dos

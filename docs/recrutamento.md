@@ -28,7 +28,7 @@ fica sincronizada entre aparelhos. Código: `net/.../Recruitment.kt`, `PresenceP
 | montagem aberta (`setHosting`) | anuncia `hosting`; os jogadores próximos livres conectam (espera), no máximo 6 |
 | marcar | cria o marcado `Pendente`. **Se o jogador já está em espera**: `RecruitInvite` pela conexão na hora (sem mexer no anúncio). Senão: reserva, a chave vai em `inviting` e o convite sai quando ele conectar |
 | recrutado conecta e envia `RecruitHello` | se `Pendente`: responde `RecruitInvite` (nome do anfitrião + montagem); se `Aceito` sem conexão (reingresso): troca a conexão e reenvia `RecruitSync` completo; se não marcado: `RecruitEnd(CANCELLED)` |
-| `RecruitReply(aceito)` | `Aceito`; sai de `inviting`; envia a montagem completa |
+| `RecruitReply(aceito)` | `Aceito`; sai de `inviting`; envia a **todos os aceitos** a montagem completa com versão nova, já com o "aceitou" de cada um conferido pelo anfitrião (a montagem não espera o debounce) |
 | `RecruitReply(recusado)` | remove; aviso ao anfitrião com o motivo |
 | desmarcar | `Pendente`: `RecruitEnd(CANCELLED)` (se já conectado) e sai de `inviting`; `Aceito`: `RecruitEnd(REMOVED)` |
 | `RecruitLeave` | remove; aviso (sair da mesa, ou saldo insuficiente) |
@@ -97,3 +97,14 @@ de esperas, ou montagem fechada) aparece com a inicial.
 Sem nomes, fotos ou bytes; chaves abreviadas (2 caracteres). Linhas úteis: `rec state A->B` (transição do recrutado),
 `rec mark/unmark/accepted/removed <motivo>`, `rec cfg send v=N to=K` / `rec cfg apply v=N` / `rec cfg stale v=N`,
 `presence found/lost/dedupe/leaving/sweep miss N/remove <motivo>`, `restart ok/failed`.
+
+## Tela do recrutado (espelho)
+
+A tela lê só de `RecruitStatus.Joined.config` (nunca do estado local do jogador): o anfitrião é o primeiro participante
+(a foto vem pela chave dele), seguem os recrutados (com a chave de presença, para a foto, e o selo "aguardando" até
+aceitarem) e os robôs escolhidos. Sem montagem ainda, a tela mostra o indicador de espera; a montagem inicial perdida é
+reenviada pelo protocolo (1 s). Sair, remoção e mesa encerrada voltam à configuração do próprio jogador, que nunca foi
+alterada pelo espelho (a "última mesa" só é gravada em Escolher posições, no anfitrião).
+
+Log do aceite (debug): `rec accept sent` (recrutado) -> `rec host marked accepted K` e `rec cfg send v=N to=K` (anfitrião) ->
+`rec cfg apply v=N` (recrutado) -> `rec ui mirrored v=N config=true` (tela).

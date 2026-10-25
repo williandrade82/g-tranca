@@ -389,7 +389,7 @@ fun AppNavHost() {
                     when (pick) {
                         is com.gtranca.ui.tables.Pick.Bot -> com.gtranca.net.RecruitParticipant(pick.profile.botName, pick.profile.code)
                         is com.gtranca.ui.tables.Pick.Near -> com.gtranca.net.RecruitParticipant(
-                            s.nearby.firstOrNull { it.key == pick.key }?.name.orEmpty(), accepted = pick.key in s.accepted,
+                            s.nearby.firstOrNull { it.key == pick.key }?.name.orEmpty(), accepted = pick.key in s.accepted, key = pick.key,
                         )
                     }
                 }
@@ -401,9 +401,15 @@ fun AppNavHost() {
                     )
                 }
             }
+            val joinedNow = recStatus as? com.gtranca.net.RecruitStatus.Joined
+            // §16.2 diagnóstico: a tela do recrutado espelhou a montagem do anfitrião (versão, sem nomes).
+            LaunchedEffect(joinedNow?.version, joinedNow?.config != null) {
+                if (joinedNow != null) com.gtranca.multiplayer.MultiplayerHub.debug("rec ui mirrored v=${joinedNow.version} config=${joinedNow.config != null}")
+            }
             TablesScreen(
                 tablesVm,
-                joined = recStatus as? com.gtranca.net.RecruitStatus.Joined,
+                joinedPhotos = if (seePhotos) decoded else emptyMap(),
+                joined = joinedNow,
                 onLeaveTable = { rec?.let { r -> navScope.launch { runCatching { r.leave() } } } },
                 self = self,
                 onChooseSeats = { chosen ->

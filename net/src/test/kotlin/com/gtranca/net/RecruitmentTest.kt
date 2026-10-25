@@ -411,4 +411,76 @@ class RecruitmentTest {
         runCurrent()
         bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
     }
+
+    private fun mirrored(vararg keys: String) = RecruitConfig(
+        "Ana", GameMode.DUPLAS, "facil", 0, RuleSet.DEFAULT, 3000,
+        listOf(RecruitParticipant("Ana")) + keys.map { RecruitParticipant(it.uppercase(), accepted = false, key = it) },
+    )
+
+    @Test
+    fun `§16_2 aceitar - a primeira montagem ja chega inteira, numerada e com o proprio aceite`() = runTest {
+        val net = MemoryNetwork()
+        val ana = device(net, "ka", "Ana")
+        val bia = device(net, "kb", "Bia")
+        ana.r.setHosting(true)
+        ana.r.updateConfig(mirrored("kb"))
+        runCurrent()
+        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1) // a montagem do anfitrião já estava definida antes do convite
+        ana.r.mark(ana.presenceOf("kb"))
+        runCurrent()
+        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
+        bia.r.accept()
+        runCurrent() // sem esperar o debounce: a montagem não depende dele
+        val joined = bia.r.status.value as RecruitStatus.Joined
+        joined.version shouldBe 2
+        joined.config!!.participants.map { it.name to it.accepted } shouldBe listOf("Ana" to true, "KB" to true)
+        listOf("rec accept sent", "rec host marked accepted kb", "rec cfg send v=2 to=kb", "rec cfg apply v=2").let { expected ->
+            expected.dropLast(2).all { e -> bia.logs.any { it == e } || ana.logs.any { it == e } } shouldBe true
+            ana.logs.contains("rec cfg send v=2 to=kb") shouldBe true
+            bia.logs.contains("rec cfg apply v=2") shouldBe true
+        }
+    }
+
+    @Test
+    fun `§16_2 aceitar - a montagem inicial perdida e reenviada pelo protocolo, sem ficar na tela de espera`() = runTest {
+        val net = MemoryNetwork()
+        val ana = device(net, "ka", "Ana")
+        val bia = device(net, "kb", "Bia")
+        ana.r.setHosting(true)
+        ana.r.updateConfig(mirrored("kb"))
+        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
+        runCurrent()
+        ana.r.mark(ana.presenceOf("kb"))
+        runCurrent()
+        var dropped = 0
+        net.tap = { d -> if ("recruitSync" in d.bytes.decodeToString() && dropped++ == 0) emptyList() else listOf(d) }
+        bia.r.accept()
+        runCurrent()
+        (bia.r.status.value as RecruitStatus.Joined).config shouldBe null // ainda não chegou
+        advanceTimeBy(ReliableLink.RESEND_AFTER_MILLIS + 100)
+        runCurrent()
+        (bia.r.status.value as RecruitStatus.Joined).config.shouldNotBeNull().participants.last().accepted shouldBe true
+    }
+
+    @Test
+    fun `§16_2 dois recrutados - quem aceita primeiro passa a ver o outro aceito na montagem`() = runTest {
+        val net = MemoryNetwork()
+        val ana = device(net, "ka", "Ana")
+        val bia = device(net, "kb", "Bia")
+        val caio = device(net, "kc", "Caio")
+        ana.r.setHosting(true)
+        ana.r.updateConfig(mirrored("kb", "kc"))
+        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
+        runCurrent()
+        ana.r.mark(ana.presenceOf("kb"))
+        ana.r.mark(ana.presenceOf("kc"))
+        runCurrent()
+        bia.r.accept()
+        runCurrent()
+        (bia.r.status.value as RecruitStatus.Joined).config!!.participants.map { it.accepted } shouldBe listOf(true, true, false)
+        caio.r.accept()
+        runCurrent()
+        (bia.r.status.value as RecruitStatus.Joined).config!!.participants.map { it.accepted } shouldBe listOf(true, true, true)
+        (caio.r.status.value as RecruitStatus.Joined).config!!.participants.map { it.accepted } shouldBe listOf(true, true, true)
+    }
 }
