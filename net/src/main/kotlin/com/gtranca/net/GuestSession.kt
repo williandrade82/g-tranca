@@ -23,10 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 sealed interface GuestStatus {
     data object Connecting : GuestStatus
 
-    /** §16.2 recebeu o convite ([GuestSession.invite]); aceito sozinho em 10 s sem resposta. */
-    data object Invited : GuestStatus
-
-    /** Na sala, antes do início (§16.2). */
+    /** §16.2 recrutado já na mesa do jogo, esperando o início ("Prepare-se!"). */
     data object Lobby : GuestStatus
 
     /** §16.7 pediu para entrar no meio do jogo; aguardando a aprovação do anfitrião. */
@@ -73,8 +70,7 @@ class GuestSession(
     private val absentLimitMillis: Long = ABSENT_LIMIT_MILLIS,
     /** §16.2 foto do perfil deste jogador (Base64, JPEG pequeno), enviada no [Hello]; `null` = sem foto. */
     private val photo: String? = null,
-    /** §14.6, §16.2 o saldo local cobre a [TableRules.stake]? Não: o convite é recusado sozinho ("saldo insuficiente"). */
-    private val canAfford: suspend (stake: Int) -> Boolean = { true },
+
 ) {
     private val mutex = Mutex()
     private lateinit var scope: CoroutineScope
@@ -234,61 +230,8 @@ class GuestSession(
         connectAndHello(advert, seat)
     }
 
-    /** §16.2 chave de presença com que este aparelho foi convidado (vai no [Hello]). */
+    /** §16.2 chave de presença com que este aparelho foi recrutado (vai no [Hello]). */
     private var inviteKey: String? = null
-
-    private val _invite = MutableStateFlow<Invite?>(null)
-
-    /** §16.2 convite recebido (anfitrião, participantes, regras); `null` depois de respondido. */
-    val invite: StateFlow<Invite?> = _invite.asStateFlow()
-
-    private val _seating = MutableStateFlow<SeatingState?>(null)
-
-    /** §16.2 escolha de posições (ocupantes, confirmações, trava). */
-    val seating: StateFlow<SeatingState?> = _seating.asStateFlow()
-
-    private val _startsIn = MutableStateFlow<Long?>(null)
-
-    /** §16.2 posições travadas: o jogo começa daqui a este tempo (ms); `null` enquanto não travou. */
-    val startsIn: StateFlow<Long?> = _startsIn.asStateFlow()
-
-    /** §16.2 aceita o convite (vai à escolha de posições). */
-    suspend fun acceptInvite() = replyInvite(InviteReply(true))
-
-    /** §16.2 recusa o convite (um robô assume o lugar). */
-    suspend fun refuseInvite() = replyInvite(InviteReply(false, RefusalReason.INVITE_REFUSED))
-
-    private suspend fun replyInvite(reply: InviteReply) {
-        mutex.withLock { replyInviteLocked(reply) }
-    }
-
-    private fun replyInviteLocked(reply: InviteReply) {
-        if (_status.value != GuestStatus.Invited) return
-        _invite.value = null
-        if (reply.accepted) _status.value = GuestStatus.Lobby
-        link?.let { scope.launch { mutex.withLock { it.sendLocked(reply) } } }
-    }
-
-    /**
-     * §14.6, §16.2 confere o saldo (pode esperar a leitura da carteira); sem saldo para a [stake], sai sozinho com o motivo
-     * "saldo insuficiente", informado aos dois lados (o anfitrião põe um robô no lugar).
-     */
-    private fun checkBalance(stake: Int) {
-        val current = link ?: return
-        scope.launch {
-            if (canAfford(stake)) return@launch
-            mutex.withLock {
-                if (link !== current) return@withLock
-                if (_status.value != GuestStatus.Invited && _status.value != GuestStatus.Lobby) return@withLock
-                _status.value = GuestStatus.Refused(refusalMessage(RefusalReason.INSUFFICIENT_BALANCE), RefusalReason.INSUFFICIENT_BALANCE)
-                _invite.value = null
-                current.sendLocked(InviteReply(false, RefusalReason.INSUFFICIENT_BALANCE))
-            }
-        }
-    }
-
-    /** §16.2 rotaciona a mesa (troca com o próximo não confirmado na [direction]). */
-    suspend fun rotate(direction: RotateDirection) = send(RotateSeat(direction))
 
     /**
      * A mesa [tableId] na busca (o anúncio preferido, §16.10), esperando até [FIND_TABLE_MILLIS]: no rádio real a busca
@@ -336,12 +279,6 @@ class GuestSession(
     private var handedTo: Int? = null
 
     private val held = ArrayDeque<Payload>()
-
-    /** Troca para um assento vago (§16.2), mesmo depois de confirmar; só na sala de espera. */
-    suspend fun chooseSeat(seat: Seat) = send(ChooseSeat(seat))
-
-    /** §16.2 confirma a posição ("Aguardando início do jogo"). */
-    suspend fun confirmSeat() = send(ConfirmSeat)
 
     /** §16.9 desiste (a qualquer momento): o jogo acaba para este jogador. */
     suspend fun resign() {
@@ -528,11 +465,8 @@ class GuestSession(
             is Welcome -> {
                 token = payload.token
                 playerId = payload.you
-                payload.rules?.let { _rules.value = it }
+                _rules.value = payload.rules
                 _roster.value = payload.roster
-                payload.seating?.let { _seating.value = it }
-                // §14.6, §16.2 entrada aprovada na escolha de posições: o mesmo teste de saldo do convite.
-                if (!payload.started && payload.seating != null && payload.rules != null) checkBalance(payload.rules.stake)
                 if (payload.started && payload.robots.isNotEmpty()) _robots.value = payload.robots
                 if (payload.started) {
                     // §16.5, §16.7 reingresso ou entrada no meio: a vista completa vem em seguida (e antes dela o fim de
@@ -551,29 +485,7 @@ class GuestSession(
                 // §16.5 recusado ou substituído por outra conexão (sessão duplicada): não volta nem assume, e o estado
                 // completo (se era sucessor) é descartado.
                 _status.value = GuestStatus.Refused(payload.message, payload.reason)
-                _invite.value = null
                 successorState = null
-            }
-            is Invite -> {
-                // §16.2 as regras vão uma única vez, aqui.
-                playerId = payload.you
-                _rules.value = payload.rules
-                _roster.value = payload.roster
-                _seating.value = payload.seating
-                _invite.value = payload
-                _status.value = GuestStatus.Invited
-                // §14.6, §16.2 saldo menor que a aposta: recusa automática (espera a leitura do saldo).
-                checkBalance(payload.rules.stake)
-                // §16.2, §16.15 sem resposta em 10 s, aceita sozinho.
-                scope.launch {
-                    delay(payload.timeoutMillis)
-                    mutex.withLock { replyInviteLocked(InviteReply(true)) }
-                }
-            }
-            is SeatingUpdate -> _seating.value = payload.seating
-            is SeatsLocked -> {
-                _seating.value = payload.seating
-                _startsIn.value = payload.startsInMillis
             }
             is TableClosed -> {
                 // §16.2, §16.7 o anfitrião encerrou: nada a reingressar nem a assumir (§16.10).

@@ -466,6 +466,7 @@
     <string name="mp_rotate_right">Rotacionar à direita</string>
     <string name="mp_confirm_seat">Confirmar posição</string>
     <string name="mp_leave">Sair</string>
+    <string name="mp_get_ready">Prepare-se! O jogo vai começar!</string>
     <string name="mp_your_name">Seu nome</string>
     <string name="mp_connecting">Entrando na mesa…</string>
     <string name="mp_team">Dupla %1$d</string>

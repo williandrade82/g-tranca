@@ -6,6 +6,8 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Seat
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CoroutineScope
@@ -14,7 +16,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 
@@ -58,74 +62,41 @@ class SessionTest {
 
     @Test
     fun `§16_1 anfitriao recusa convidado de outra versao com mensagem clara`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val guest = GuestSession(network.transport(), "Bia", codec = ProtocolCodec(version = PROTOCOL_VERSION + 1))
-        guest.join(sessionScope, "m")
-        advanceUntilIdle()
+        val t = plannedTable(mapOf(1 to "Bia"), guestCodec = ProtocolCodec(version = PROTOCOL_VERSION + 1))
         // A resposta do anfitrião vem na versão dele: o convidado mostra as duas versões.
-        guest.status.value shouldBe GuestStatus.Refused(versionMismatchMessage(PROTOCOL_VERSION, PROTOCOL_VERSION + 1))
-        host.roster.value.size shouldBe 1
+        t.guests.getValue(1).status.value shouldBe GuestStatus.Refused(versionMismatchMessage(PROTOCOL_VERSION, PROTOCOL_VERSION + 1))
+        t.host.roster.value.map { it.name } shouldBe listOf("Anfitrião") // o recrutado nunca entrou: um robô assume no início
     }
 
     @Test
     fun `§16_1 convidado recusa anfitriao de outra versao com mensagem clara`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião", codec = ProtocolCodec(version = PROTOCOL_VERSION + 1))
-        host.open(sessionScope)
-        val guest = GuestSession(network.transport(), "Bia")
-        guest.join(sessionScope, "m")
-        advanceUntilIdle()
-        guest.status.value shouldBe GuestStatus.Refused(versionMismatchMessage(PROTOCOL_VERSION + 1, PROTOCOL_VERSION))
-        guest.rules.value shouldBe null
+        val t = plannedTable(mapOf(1 to "Bia"), hostCodec = ProtocolCodec(version = PROTOCOL_VERSION + 1))
+        t.guests.getValue(1).status.value shouldBe GuestStatus.Refused(versionMismatchMessage(PROTOCOL_VERSION + 1, PROTOCOL_VERSION))
+        t.guests.getValue(1).rules.value shouldBe null
     }
 
     @Test
-    fun `§16_2 §16_5 sala com token so para o dono, assento automatico, troca so para vago e nomes repetidos`() = runTest {
-        val network = MemoryNetwork()
+    fun `§16_2 §16_5 token so para o dono, lugares do plano e depois do inicio ninguem entra sem vaga aberta`() = runTest {
         val sent = mutableListOf<Delivery>()
+        val network = MemoryNetwork()
         network.tap = { sent += it; listOf(it) }
         var n = -1 // o anfitrião também recebe um token (o 0), para voltar como jogador comum (§16.12)
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião", newToken = { "token-${++n}-secreto" })
-        host.open(sessionScope)
-        val ana = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        val ana2 = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        ana.status.value shouldBe GuestStatus.Lobby
-        ana.rules.value shouldBe rules
-        ana.token shouldBe "token-1-secreto"
-        ana2.token shouldBe "token-2-secreto"
-        // §16.2 cada um ocupa automaticamente o primeiro assento livre.
-        ana.roster.value.map { it.name to it.seat } shouldBe listOf("Anfitrião" to Seat(0), "Ana" to Seat(1), "Ana" to Seat(2))
-
-        // §16.2 só troca para assento vago: nunca com outro jogador nem para o do anfitrião.
-        ana.chooseSeat(Seat(2))
-        ana2.chooseSeat(Seat(0))
-        advanceUntilIdle()
-        ana.roster.value.map { it.seat } shouldBe listOf(Seat(0), Seat(1), Seat(2))
-        ana.chooseSeat(Seat(3))
-        advanceUntilIdle()
-        ana2.chooseSeat(Seat(3)) // já ocupado
-        advanceUntilIdle()
-        ana.roster.value.map { it.name to it.seat } shouldBe listOf("Anfitrião" to Seat(0), "Ana" to Seat(3), "Ana" to Seat(2))
+        val t = plannedTable(mapOf(3 to "Ana", 2 to "Ana"), network = network, newToken = { "token-${++n}-secreto" }, start = false)
+        runCurrent()
+        val ana = t.guests.getValue(2)
+        val ana2 = t.guests.getValue(3)
+        // §16.2 cada recrutado já está no lugar que o recrutador deu a ele (a ordem de entrada segue a dos lugares); nomes repetidos valem.
+        ana.roster.value.map { it.name to it.seat } shouldBe listOf("Anfitrião" to Seat(0), "Ana" to Seat(2), "Ana" to Seat(3))
         ana.roster.value.map { it.joinOrder } shouldBe listOf(0, 1, 2)
-
+        ana.token shouldNotBe ana2.token
         // O token de cada um só vai a ele mesmo (no Welcome); a sala nunca o traz.
-        sent.filter { it.to.value != "e1" }.forEach { d ->
+        val owner = mapOf(ana.token!! to ana.playerId, ana2.token!! to ana2.playerId)
+        sent.forEach { d ->
             val text = d.bytes.decodeToString()
-            val own = if (d.to.value == "e2") "token-1-secreto" else "token-2-secreto"
-            listOf("token-1-secreto", "token-2-secreto").filter { it != own }.forEach { text shouldNotContain it }
+            owner.forEach { (tk, id) -> if (text.contains(tk)) text shouldContain "\"you\":$id" }
         }
-
-        ana.confirmSeat()
-        ana2.confirmSeat()
         advanceUntilIdle()
-        host.roster.value.all { it.confirmed } shouldBe true
-        host.startGame() shouldBe mapOf(Seat(3) to ana.playerId, Seat(2) to ana2.playerId)
-        advanceUntilIdle()
-        host.droppedAtStart.value.shouldBeEmpty()
+        t.host.gameStart.value shouldBe mapOf(Seat(2) to ana.playerId, Seat(3) to ana2.playerId)
         ana.status.value shouldBe GuestStatus.Playing
         // §16.7 depois do início a mesa segue anunciada (para o reingresso), mas fora da lista, e sem vaga aberta ninguém entra.
         network.adverts().single().listed shouldBe false
@@ -136,90 +107,89 @@ class SessionTest {
     }
 
     @Test
-    fun `§16_2 quem esta na mesa ocupa o assento e a quinta pessoa recebe mesa cheia`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val guests = (1..3).map { GuestSession(network.transport(), "G$it").also { g -> g.join(sessionScope, "m"); advanceUntilIdle() } }
-        guests.map { it.status.value } shouldBe List(3) { GuestStatus.Lobby }
-        host.roster.value.map { it.seat } shouldBe listOf(Seat(0), Seat(1), Seat(2), Seat(3))
-        // O último a entrar não tem para onde trocar.
-        guests.last().chooseSeat(Seat(1))
-        advanceUntilIdle()
-        host.roster.value.last().seat shouldBe Seat(3)
-        // Ninguém confirmou ainda, mas a mesa está cheia.
-        val fifth = GuestSession(network.transport(), "Quinto").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        fifth.status.value shouldBe GuestStatus.Refused("Mesa cheia.")
+    fun `§16_2 antes do inicio so entra quem foi recrutado`() = runTest {
+        val t = plannedTable(mapOf(1 to "Bia"), start = false)
+        val stranger = GuestSession(t.network.transport(), "Intruso")
+        stranger.join(sessionScope, "m")
+        runCurrent()
+        stranger.status.value.shouldBeInstanceOf<GuestStatus.Refused>()
+        val wrongKey = GuestSession(t.network.transport(), "Outro")
+        wrongKey.join(sessionScope, "m", inviteKey = "k9")
+        runCurrent()
+        (wrongKey.status.value as GuestStatus.Refused).reason shouldBe RefusalReason.OUT_OF_RANGE
+        t.host.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Bia")
     }
 
     @Test
     fun `§16_2 nome em branco vira Jogador N`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val a = GuestSession(network.transport(), "   ").also { it.join(sessionScope, "m") }
+        val t = plannedTable(mapOf(1 to "   ", 2 to "Bia"))
+        val bia = t.guests.getValue(2)
+        bia.rename(" ")
         advanceUntilIdle()
-        val b = GuestSession(network.transport(), "Bia").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        b.rename(" ")
-        advanceUntilIdle()
-        host.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Jogador ${a.playerId}", "Jogador ${b.playerId}")
+        t.host.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Jogador ${t.guests.getValue(1).playerId}", "Jogador ${bia.playerId}")
     }
 
     @Test
-    fun `§16_2 quem nao confirmou a posicao e desconectado no inicio e o anfitriao e avisado`() = runTest {
+    fun `§16_2 §16_15 recrutado que nao entra em 10 s vira robo sorteado e o anfitriao e avisado`() = runTest {
+        val notices = mutableListOf<TableNotice>()
         val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
+        val plan = planFor(GameMode.DUPLAS, mapOf(1 to "Ana", 3 to "Bia"))
+        val host = HostSession(network.transport(), "m", testRules(), "Anfitrião", plan = plan)
         host.open(sessionScope)
-        val ok = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        val late = GuestSession(network.transport(), "Bia").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        ok.confirmSeat()
-        advanceUntilIdle()
-        host.startGame() shouldBe mapOf(Seat(1) to ok.playerId)
-        advanceUntilIdle()
-        host.droppedAtStart.value.map { it.name to it.id } shouldBe listOf("Bia" to late.playerId)
-        late.status.value shouldBe GuestStatus.Closed
-        ok.status.value shouldBe GuestStatus.Playing
-        ok.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Ana")
+        val job = sessionScope.launch { host.lobbyNotices.collect { notices += it } }
+        // Só a Ana entra; a Bia nunca se conecta.
+        val ana = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m", inviteKey = "k1") }
+        advanceTimeBy(plan.waitMillis - 1)
+        runCurrent()
+        host.gameStart.value shouldBe null
+        advanceTimeBy(2)
+        runCurrent()
+        host.gameStart.value shouldBe mapOf(Seat(1) to ana.playerId)
+        host.roster.value.map { it.name } shouldBe listOf("Anfitrião", "Ana")
+        host.robots.keys shouldBe setOf(2, 3)
+        host.robots.values.toSet().size shouldBe 2
+        notices.single().let { it.seat to it.refusal } shouldBe (Seat(3) to RefusalReason.OUT_OF_RANGE)
+        ana.robots.value shouldBe host.robots
+        job.cancel()
     }
 
     @Test
-    fun `§16_2 troca para assento vago depois de confirmar so na sala de espera`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val ana = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
+    fun `§16_2 §16_15 todos entram - o jogo comeca depois do Prepare-se de 1,5 s, nao antes`() = runTest {
+        val t = plannedTable(mapOf(1 to "Ana"), start = false)
+        advanceTimeBy(PREPARE_MILLIS - 1)
+        runCurrent()
+        t.host.gameStart.value shouldBe null
+        t.guests.getValue(1).status.value shouldBe GuestStatus.Lobby
+        advanceTimeBy(2)
+        runCurrent()
+        t.host.gameStart.value shouldBe mapOf(Seat(1) to t.guests.getValue(1).playerId)
+        t.guests.getValue(1).status.value shouldBe GuestStatus.Playing
+    }
+
+    @Test
+    fun `§16_2 sair antes do inicio deixa o lugar para um robo sorteado`() = runTest {
+        val t = plannedTable(mapOf(1 to "Ana", 2 to "Bia"), start = false)
+        t.guests.getValue(1).leave()
         advanceUntilIdle()
-        ana.confirmSeat()
-        advanceUntilIdle()
-        // Confirmada, ainda troca para um assento vago (e segue confirmada).
-        ana.chooseSeat(Seat(3))
-        advanceUntilIdle()
-        host.roster.value.single { it.id == ana.playerId }.let { it.seat to it.confirmed } shouldBe (Seat(3) to true)
-        host.startGame() shouldBe mapOf(Seat(3) to ana.playerId)
-        advanceUntilIdle()
-        // Depois do início ninguém troca de assento.
-        ana.chooseSeat(Seat(1))
-        advanceUntilIdle()
-        host.roster.value.single { it.id == ana.playerId }.seat shouldBe Seat(3)
-        ana.seat shouldBe Seat(3)
+        t.host.gameStart.value shouldBe mapOf(Seat(2) to t.guests.getValue(2).playerId)
+        t.host.robots.keys shouldBe setOf(1, 3)
+    }
+
+    @Test
+    fun `§16_2 o anfitriao que sai antes do inicio desfaz a mesa e o recrutado ve Mesa encerrada`() = runTest {
+        val t = plannedTable(mapOf(1 to "Ana"), start = false)
+        t.host.disband()
+        runCurrent()
+        t.guests.getValue(1).status.value shouldBe GuestStatus.TableEnded(CloseReason.HOST_LEFT)
+        t.network.adverts() shouldBe emptyList()
     }
 
     /** §16.4, §16.10 quem acabou de deixar de ser sucessor nunca recebe outro estado completo. */
     @Test
     fun `§16_10 sucessor rebaixado nao recebe mais o estado completo`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val a = GuestSession(network.transport(), "A").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        a.confirmSeat()
-        advanceUntilIdle()
-        host.startGame()
-        advanceUntilIdle()
+        val t = plannedTable(mapOf(1 to "A"))
+        val host = t.host
+        val a = t.guests.getValue(1)
         host.successors.value shouldBe listOf(a.playerId)
         val match = com.gtranca.engine.startMatch(GameMode.DUPLAS, 1000, kotlin.random.Random(1), RuleSet.DEFAULT)
         val state = SuccessorState(1, match, emptyList(), emptyList(), host.membersForSuccessor(), null, host.nextPlayerId())
@@ -239,20 +209,13 @@ class SessionTest {
     /** §16.10 quem foi marcado indisponível volta a contar como sucessor ao reingressar. */
     @Test
     fun `§16_10 indisponivel volta a ser sucessor no reingresso`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val transport = network.transport()
-        val a = GuestSession(transport, "A").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        a.confirmSeat()
-        advanceUntilIdle()
-        host.startGame()
-        advanceUntilIdle()
+        val t = plannedTable(mapOf(1 to "A"))
+        val host = t.host
+        val a = t.guests.getValue(1)
         host.markUnavailable(a.playerId)
         host.successors.value.shouldBeEmpty()
         // A conexão cai e ele volta sozinho pelo token (a mesa segue anunciada, §16.7).
-        network.drop(transport.id)
+        t.network.drop(t.transports.getValue(1).id)
         advanceTimeBy(3_000)
         a.status.value shouldBe GuestStatus.Playing
         host.successors.value shouldBe listOf(a.playerId)
@@ -261,24 +224,18 @@ class SessionTest {
     /** §16.2 os robôs vão do anfitrião a todos, por assento: no início e a quem volta com o jogo em andamento. */
     @Test
     fun `§16_2 robos por assento no inicio e no reingresso`() = runTest {
-        val network = MemoryNetwork()
-        val host = HostSession(network.transport(), "m", rules.copy(robots = listOf("atleta", "zen", "sobrio")), "Anfitrião")
-        host.open(sessionScope)
-        val transport = network.transport()
-        val a = GuestSession(transport, "A").also { it.join(sessionScope, "m") }
-        advanceUntilIdle()
-        a.confirmSeat()
-        advanceUntilIdle()
-        host.startGame()
-        advanceUntilIdle()
-        // Convidado no assento 1: robôs nos assentos 2 e 3, na ordem do anfitrião.
-        host.robots shouldBe mapOf(2 to "atleta", 3 to "zen")
+        val t = plannedTable(mapOf(1 to "A"))
+        val host = t.host
+        val a = t.guests.getValue(1)
+        // Os robôs são exatamente os do plano (nada é sorteado de novo): lugares 2 e 3.
+        host.robots shouldBe t.plan.layout.robots
+        host.robots.keys shouldBe setOf(2, 3)
         a.robots.value shouldBe host.robots
         // O anfitrião troca um robô (§16.8) e o convidado volta pelo token: recebe a lista atual.
-        host.robots = mapOf(2 to "atleta", 3 to "sobrio")
-        network.drop(transport.id)
+        host.robots = mapOf(2 to host.robots.getValue(2), 3 to "sobrio")
+        t.network.drop(t.transports.getValue(1).id)
         advanceTimeBy(3_000)
         a.status.value shouldBe GuestStatus.Playing
-        a.robots.value shouldBe mapOf(2 to "atleta", 3 to "sobrio")
+        a.robots.value shouldBe mapOf(2 to t.plan.layout.robots.getValue(2), 3 to "sobrio")
     }
 }

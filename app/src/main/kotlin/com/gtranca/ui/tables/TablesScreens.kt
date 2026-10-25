@@ -363,12 +363,9 @@ private fun JoinedTableScreen(joined: com.gtranca.net.RecruitStatus.Joined, phot
         },
     ) {
         Text(stringResource(R.string.tables_host, joined.hostName), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
-        val config = joined.config
-        if (config == null) {
-            androidx.compose.material3.CircularProgressIndicator(color = GColors.Gold)
-            return@TableFrame
-        }
-        val level = BotLevel.of(Difficulty.fromId(config.difficulty))
+        // §16.2 a mesa do recrutador, só leitura: as opções (rules) e os lugares (layout), sincronizados ao vivo.
+        val table = joined.table
+        val level = BotLevel.of(Difficulty.fromId(table.rules.difficulty))
         val shape = RoundedCornerShape(Corner.md)
         Row(
             Modifier
@@ -379,23 +376,34 @@ private fun JoinedTableScreen(joined: com.gtranca.net.RecruitStatus.Joined, phot
                 .padding(Spacing.sm)
                 .testTag("participants"),
         ) {
-            config.participants.forEachIndexed { i, p ->
-                val profile = p.persona?.let { code -> BotProfile.entries.firstOrNull { it.code == code } }
-                // O primeiro é o anfitrião (a chave dele vem do status); os jogadores próximos trazem a própria chave.
-                val key = if (i == 0) joined.hostKey else p.key
-                val persona = if (profile != null) Persona(profile.botName, "", BotCharacter(profile, level))
-                else Persona(p.name, color = (key ?: p.name).hashCode().mod(Persona.COLORS), photoBytes = key?.let { photos[it] })
+            table.layout.slots.forEachIndexed { i, slot ->
+                val key = when (slot) {
+                    is com.gtranca.net.Slot.Host -> joined.hostKey
+                    is com.gtranca.net.Slot.Called -> slot.key
+                    is com.gtranca.net.Slot.Recruited -> slot.key
+                    else -> null
+                }
+                val name = when (slot) {
+                    is com.gtranca.net.Slot.Host -> table.hostName
+                    is com.gtranca.net.Slot.Called -> slot.name
+                    is com.gtranca.net.Slot.Recruited -> slot.name
+                    is com.gtranca.net.Slot.Robot -> BotProfile.entries.firstOrNull { it.code == slot.persona }?.botName.orEmpty()
+                    com.gtranca.net.Slot.Vacant -> stringResource(R.string.mp_seat_vacant)
+                }
+                val robot = (slot as? com.gtranca.net.Slot.Robot)?.let { r -> BotProfile.entries.firstOrNull { it.code == r.persona } }
+                val persona = if (robot != null) Persona(robot.botName, "", BotCharacter(robot, level))
+                else Persona(name, color = (key ?: name).hashCode().mod(Persona.COLORS), photoBytes = key?.let { photos[it] })
                 ParticipantTile(
-                    persona, p.name, checked = true, enabled = false, tag = "participant-joined-$i",
-                    badge = if (!p.accepted) stringResource(R.string.recruit_waiting) else null,
+                    persona, name, checked = slot != com.gtranca.net.Slot.Vacant, enabled = false, tag = "participant-joined-$i",
+                    badge = if (slot is com.gtranca.net.Slot.Called) stringResource(R.string.recruit_waiting) else null,
                 ) {}
             }
         }
         GPanel(Modifier.fillMaxWidth()) {
-            Text("${modeLabel(config.mode)} · ${stringResource(R.string.tables_difficulty)}: ${stringResource(level.labelRes())}", color = GColors.Champagne)
-            Text(stringResource(R.string.stake_line, config.stake), color = GColors.Gold)
+            Text("${modeLabel(table.rules.mode)} · ${stringResource(R.string.tables_difficulty)}: ${stringResource(level.labelRes())}", color = GColors.Champagne)
+            Text(stringResource(R.string.stake_line, table.rules.stake), color = GColors.Gold)
         }
-        RulesSummary(config.rules, config.targetScore)
+        RulesSummary(table.rules.rules, table.rules.targetScore)
     }
 }
 

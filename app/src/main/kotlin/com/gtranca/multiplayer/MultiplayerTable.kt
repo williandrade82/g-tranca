@@ -241,12 +241,12 @@ class MultiplayerTable(
     // ---- sala de espera (§16.2) ------------------------------------------------------------------------------------
 
     /**
-     * §14.4, §16.2 abre a mesa montada: os jogadores próximos de [lobby] recebem o convite e todos passam à escolha de
-     * posições; o jogo começa sozinho 2 s depois que todos confirmam ([HostSession.gameStart]).
+     * §14.4, §16.2 abre a mesa do jogo com o plano de lugares da *Seleção de jogadores*: os recrutados entram nos lugares
+     * planejados e o jogo começa sozinho depois do "Prepare-se!" ([HostSession.gameStart]).
      */
-    suspend fun host(rules: TableRules, playerName: String, tableId: String, lobby: com.gtranca.net.LobbySetup) {
+    suspend fun host(rules: TableRules, playerName: String, tableId: String, plan: com.gtranca.net.TablePlan) {
         name = playerName
-        val session = HostSession(transport, tableId, rules, playerName, hostPhoto = myPhoto, lobby = lobby)
+        val session = HostSession(transport, tableId, rules, playerName, hostPhoto = myPhoto, plan = plan)
         session.open(scope)
         _rules.value = rules
         setRole(MpRole.Hosting(session))
@@ -258,7 +258,7 @@ class MultiplayerTable(
      */
     suspend fun join(tableId: String, playerName: String, inviteKey: String? = null) {
         name = playerName
-        val session = GuestSession(transport, playerName, photo = myPhoto, canAfford = coins::canAfford)
+        val session = GuestSession(transport, playerName, photo = myPhoto)
         setRole(MpRole.Guesting(session, tableId))
         session.join(scope, tableId, inviteKey = inviteKey)
     }
@@ -334,11 +334,11 @@ class MultiplayerTable(
     }
 
     /** [host] sem esperar. */
-    fun hostAsync(rules: TableRules, playerName: String, tableId: String, lobby: com.gtranca.net.LobbySetup) {
+    fun hostAsync(rules: TableRules, playerName: String, tableId: String, plan: com.gtranca.net.TablePlan) {
         scope.launch {
             after?.join()
             try {
-                host(rules, playerName, tableId, lobby)
+                host(rules, playerName, tableId, plan)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -356,42 +356,15 @@ class MultiplayerTable(
         }
     }
 
-    /** §16.2 escolha de posições (ocupantes, confirmações, trava), do papel atual; `null` antes de entrar. */
-    val seating: StateFlow<com.gtranca.net.SeatingState?> = _role.flatMapLatest { role ->
-        when (role) {
-            is MpRole.Hosting -> role.session.seating
-            is MpRole.Guesting -> role.session.seating
-            null -> flowOf(null)
-        }
-    }.stateIn(scope, SharingStarted.Eagerly, null)
-
     /** §16.2 situação do convidado (`null` no anfitrião). */
     val guestStatus: StateFlow<GuestStatus?> = _role.flatMapLatest { role ->
         (role as? MpRole.Guesting)?.session?.status ?: flowOf(null)
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
-    /** §16.2, §16.7 pedidos de entrada esperando este anfitrião (vazio no convidado). */
+    /** §16.7 pedidos de entrada no meio do jogo esperando este anfitrião (vazio no convidado). */
     val joinRequests: StateFlow<List<com.gtranca.net.JoinRequest>> = _role.flatMapLatest { role ->
         (role as? MpRole.Hosting)?.session?.joinRequests ?: flowOf(emptyList())
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
-
-    /** §16.2 rotaciona a mesa (troca com o próximo ocupante não confirmado na [direction]). */
-    suspend fun rotate(direction: com.gtranca.net.RotateDirection) {
-        when (val role = _role.value) {
-            is MpRole.Hosting -> role.session.rotate(direction)
-            is MpRole.Guesting -> role.session.rotate(direction)
-            null -> Unit
-        }
-    }
-
-    /** §16.2 confirma a posição (trava o lugar). */
-    suspend fun confirmSeat() {
-        when (val role = _role.value) {
-            is MpRole.Hosting -> role.session.confirmPosition()
-            is MpRole.Guesting -> role.session.confirmSeat()
-            null -> Unit
-        }
-    }
 
     /** §16.2, §16.7 o anfitrião aceita o pedido de entrada [requestId] (na escolha de posições ou no jogo). */
     suspend fun approveJoin(requestId: Int) {
@@ -479,7 +452,7 @@ class MultiplayerTable(
             is MpRole.Hosting -> if (role.host == null) role.session.disband() else role.session.close()
             is MpRole.Guesting -> {
                 val status = role.session.status.value
-                if (status == GuestStatus.Lobby || status == GuestStatus.Connecting || status == GuestStatus.Invited ||
+                if (status == GuestStatus.Lobby || status == GuestStatus.Connecting ||
                     status == GuestStatus.WaitingApproval
                 ) {
                     role.session.leave()
@@ -670,7 +643,7 @@ class MultiplayerTable(
     /** Na escolha de posições (o jogo ainda não começou neste aparelho). */
     private fun inLobby(): Boolean = when (val role = _role.value) {
         is MpRole.Hosting -> role.host == null
-        is MpRole.Guesting -> role.session.status.value.let { it == GuestStatus.Lobby || it == GuestStatus.Invited || it == GuestStatus.Connecting }
+        is MpRole.Guesting -> role.session.status.value.let { it == GuestStatus.Lobby || it == GuestStatus.Connecting }
         null -> false
     }
 

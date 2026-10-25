@@ -1,8 +1,8 @@
 package com.gtranca.net
 
-import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
-import io.kotest.matchers.collections.shouldContain
+import com.gtranca.engine.model.Seat
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
@@ -14,11 +14,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 
-/** §16.2 recrutamento imediato: convite pela conexão de espera, "Recrutado", montagem versionada, queda, saída e início. */
+/** §16.2 recrutamento: lugares, convite pela conexão de espera, Chamado/Recrutado, mover, remover e Começar Partida. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecruitmentTest {
 
@@ -39,6 +40,7 @@ class RecruitmentTest {
         scope: CoroutineScope = sessionScope,
         canAfford: suspend (Int) -> Boolean = { true },
         photo: String? = null,
+        free: Boolean = true,
     ): Device {
         val t = network.transport()
         val logs = mutableListOf<String>()
@@ -51,161 +53,236 @@ class RecruitmentTest {
         scope.launch { r.run() }
         scope.launch { r.events.collect { events += it } }
         scope.launch { r.notices.collect { notices += it } }
+        if (free) scope.launch { r.setFree(true) }
         return Device(t, r, events, notices, logs, scope, photos)
     }
 
-    private fun config(stake: Int = 0, target: Int = 3000) =
-        RecruitConfig("Ana", GameMode.DUPLAS, "facil", stake, RuleSet.DEFAULT, target, listOf(RecruitParticipant("Ana"), RecruitParticipant("Bia", accepted = false)))
+    private val rulesDuplas = testRules(GameMode.DUPLAS, stake = 100)
 
     private suspend fun Device.presenceOf(key: String) = transport.discoverPresence().first { l -> l.any { it.key == key } }.single { it.key == key }
 
     private val TestScope.currentTime get() = testScheduler.currentTime
 
-    @Test
-    fun `§16_2 o convite chega na hora pela conexao de espera, sem reanunciar a presenca, e sem prazo`() = runTest {
-        val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
+    /** Ana abre a seleção de jogadores; os demais ficam livres na tela 1. */
+    private suspend fun TestScope.recruiter(network: MemoryNetwork, vararg others: Pair<String, String>): Pair<Device, List<Device>> {
+        val ana = device(network, "ka", "Ana", free = false)
+        val rest = others.map { (k, n) -> device(network, k, n) }
         runCurrent()
-        // Bia já está ligada ao anfitrião (espera) antes de ser marcada.
-        ana.logs.any { "standby" in it } shouldBe true
-        val before = currentTime
-        ana.r.mark(ana.presenceOf("kb")) shouldBe true
+        ana.r.openTable(rulesDuplas, "Ana")
         runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
-        currentTime shouldBe before // nenhum tempo virtual: nada esperou busca nem anúncio
-        ana.logs.any { it.startsWith("rec mark kb") && "invite sent via link" in it } shouldBe true
-        advanceTimeBy(60_000)
-        runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana") // sem prazo
-        ana.scope.cancel()
+        return ana to rest
     }
 
     @Test
-    fun `§16_2 sem conexao de espera o convite vai pela reserva do anuncio`() = runTest {
+    fun `§16_2 a lista da tela 1 mostra so quem esta recrutando e a da tela 2 so quem esta livre, sem o proprio jogador`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        runCurrent() // ana não está com a montagem aberta: ninguém conecta
-        ana.r.mark(ana.presenceOf("kb")) shouldBe true
-        runCurrent()
-        ana.logs.any { "advert fallback" in it } shouldBe true
-        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
-        ana.scope.cancel()
-    }
-
-    @Test
-    fun `§16_2 marcado aparece Recrutado para os outros anfitrioes e desmarcar cancela o convite`() = runTest {
-        val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
+        val ana = device(net, "ka", "Ana", free = false)
         val bia = device(net, "kb", "Bia")
         val caio = device(net, "kc", "Caio")
-        ana.r.setHosting(true)
+        val fora = device(net, "kf", "Fora", free = false) // em outra tela (Início, Perfil...)
         runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        ana.r.recruiters.value shouldBe emptyList()
+        ana.r.free.value.map { it.key }.toSet() shouldBe setOf("kb", "kc")
+        ana.r.openTable(rulesDuplas, "Ana")
         runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
+        // Ana recruta: aparece para os livres, e ela passa a ver só os livres (Fora não aparece).
+        bia.r.recruiters.value.map { it.key } shouldBe listOf("ka")
+        caio.r.recruiters.value.map { it.key } shouldBe listOf("ka")
+        ana.r.free.value.map { it.key }.toSet() shouldBe setOf("kb", "kc")
+        fora.r.recruiters.value.map { it.key } shouldBe listOf("ka")
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 chamar - o convite chega na hora pela conexao de espera, sem reanunciar, com aposta, tipo e posicao`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.logs.any { "standby" in it } shouldBe true
+        val before = currentTime
+        ana.r.call(2, ana.presenceOf("kb")) shouldBe true
+        runCurrent()
+        val invited = bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>()
+        currentTime shouldBe before // nada esperou busca nem anúncio
+        invited.hostName shouldBe "Ana"
+        invited.table.rules.stake shouldBe 100
+        invited.table.rules.mode shouldBe GameMode.DUPLAS
+        invited.table.rules.rulesTitle shouldBe "Clássica"
+        invited.you shouldBe 2
+        invited.table.layout.relationOf(invited.you) shouldBe SeatRelation.PARTNER // o lugar da frente
+        // Na lista da Ana o lugar já mostra o Chamado.
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Called("kb", "Bia")
+        ana.r.layout.value!!.canStart shouldBe false
+        ana.logs.any { it.startsWith("rec call kb invite sent via link") } shouldBe true
+        advanceTimeBy(60_000)
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>() // sem prazo
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 posicao do convite - Adversario nos lugares 1 e 3 e no individual`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia", "kc" to "Caio")
+        ana.r.call(1, ana.presenceOf("kb"))
+        ana.r.call(3, ana.presenceOf("kc"))
+        runCurrent()
+        val bia = others[0].r.status.value as RecruitStatus.Invited
+        bia.table.layout.relationOf(bia.you) shouldBe SeatRelation.OPPONENT
+        val caio = others[1].r.status.value as RecruitStatus.Invited
+        caio.table.layout.relationOf(caio.you) shouldBe SeatRelation.OPPONENT
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 chamado aparece Recrutado para os outros recrutadores e nao pode ser chamado por eles`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val caio = device(net, "kc", "Caio", free = false)
+        caio.r.openTable(rulesDuplas, "Caio")
+        runCurrent()
+        ana.r.call(1, ana.presenceOf("kb")) shouldBe true
+        runCurrent()
         caio.presenceOf("kb").recruitedBy shouldBe "ka"
-        caio.r.mark(caio.presenceOf("kb")) shouldBe false
-        ana.r.unmark("kb")
+        caio.r.call(1, caio.presenceOf("kb")) shouldBe false
+        ana.r.removeSeat(1) shouldBe true // cancela o convite
         runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Free
-        bia.events shouldBe emptyList() // cancelar não gera aviso
+        others.single().r.status.value shouldBe RecruitStatus.Free
+        others.single().events shouldBe emptyList() // cancelar não gera aviso
         caio.presenceOf("kb").recruitedBy shouldBe null
         ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 recusar volta a ficar disponivel e o anfitriao e avisado com o motivo`() = runTest {
+    fun `§16_2 recusar - o lugar volta a VAGO, o recrutador e avisado com o motivo e o jogador pode ser chamado de novo`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(3, ana.presenceOf("kb"))
         runCurrent()
         bia.r.refuse()
         runCurrent()
         bia.r.status.value shouldBe RecruitStatus.Free
-        ana.r.recruits.value shouldBe emptyList()
+        ana.r.layout.value!!.slots[3] shouldBe Slot.Vacant
         ana.notices.single() shouldBe RecruitNotice("kb", "Bia", refused = true, reason = RefusalReason.INVITE_REFUSED)
         ana.presenceOf("kb").recruitedBy shouldBe null
-        // Pode ser marcado de novo, ainda pela mesma conexão.
-        ana.r.mark(ana.presenceOf("kb")) shouldBe true
+        ana.r.call(1, ana.presenceOf("kb")) shouldBe true
         runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
+        (bia.r.status.value as RecruitStatus.Invited).you shouldBe 1
         ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 aceitou - ve a montagem ao vivo, so leitura, e sair da mesa avisa o anfitriao`() = runTest {
+    fun `§16_2 §14_6 saldo menor que a aposta - recusa automatica com o motivo e o lugar volta a VAGO`() = runTest {
+        val net = MemoryNetwork()
+        val ana = device(net, "ka", "Ana", free = false)
+        val bia = device(net, "kb", "Bia", canAfford = { it <= 50 })
+        runCurrent()
+        ana.r.openTable(rulesDuplas, "Ana")
+        runCurrent()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        bia.r.status.value shouldBe RecruitStatus.Free
+        ana.notices.single().reason shouldBe RefusalReason.INSUFFICIENT_BALANCE
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Vacant
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 aceitar - vira Recrutado nos dois lados, ve os lugares ao vivo e Sair da mesa devolve o lugar`() = runTest {
         val net = MemoryNetwork()
         val sent = mutableListOf<Delivery>()
         net.tap = { sent += it; listOf(it) }
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        ana.r.updateConfig(config())
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
         runCurrent()
         bia.r.accept() shouldBe true
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
         runCurrent()
-        ana.r.recruits.value shouldBe listOf(Recruit("kb", "Bia", accepted = true))
-        (bia.r.status.value as RecruitStatus.Joined).config shouldBe config()
-        ana.r.updateConfig(config(target = 1500))
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
-        runCurrent()
-        (bia.r.status.value as RecruitStatus.Joined).config!!.targetScore shouldBe 1500
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Recruited("kb", "Bia")
+        val joined = bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Joined>()
+        joined.table.layout.slots[2] shouldBe Slot.Recruited("kb", "Bia")
         ana.presenceOf("kb").recruitedBy shouldBe "ka" // continua Recrutado para os outros
+        // O recrutador põe um robô: aparece ao vivo no recrutado (depois do debounce).
+        ana.r.placeRobot(1, "bolt") shouldBe true
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
+        runCurrent()
+        (bia.r.status.value as RecruitStatus.Joined).table.layout.slots[1] shouldBe Slot.Robot("bolt")
+        ana.logs.any { it.startsWith("rec seats v=") } shouldBe true
+        bia.logs.any { it.startsWith("rec seats v=") && it.endsWith("apply") } shouldBe true
         bia.r.leave()
         runCurrent()
         bia.r.status.value shouldBe RecruitStatus.Free
         ana.notices.single() shouldBe RecruitNotice("kb", "Bia", refused = false, reason = null)
-        ana.r.recruits.value shouldBe emptyList()
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Vacant
         sent.forEach { it.bytes.decodeToString() shouldNotContain "token" }
         ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 montagem numerada - varias mudancas seguidas viram um envio e a versao so avanca`() = runTest {
+    fun `§16_2 mover e remover - so o recrutador move, o Chamado acompanha a posicao e Recrutado removido ve tirou voce da mesa`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
+        val (ana, others) = recruiter(net, "kb" to "Bia", "kc" to "Caio")
+        val (bia, caio) = others
+        ana.r.call(1, ana.presenceOf("kb"))
+        ana.r.call(2, ana.presenceOf("kc"))
         runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        caio.r.accept()
         runCurrent()
-        bia.r.accept()
+        // Mover o Chamado (Bia, lugar 1) para o lugar da frente (3 -> vago): a posição do convite acompanha.
+        ana.r.move(1, 3) shouldBe true
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
         runCurrent()
-        ana.logs.clear()
-        // Digitando a pontuação-alvo: 5 mudanças em 100 ms.
-        listOf(1, 15, 150, 1500, 15000).forEach { ana.r.updateConfig(config(target = it)); advanceTimeBy(20) }
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
+        (bia.r.status.value as RecruitStatus.Invited).you shouldBe 3
+        ana.r.move(0, 1) shouldBe false // o recrutador não se move
+        ana.r.move(3, 2) shouldBe true // troca com o Recrutado
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
         runCurrent()
-        ana.logs.count { it.startsWith("rec cfg send") } shouldBe 1
-        (bia.r.status.value as RecruitStatus.Joined).config!!.targetScore shouldBe 15000
-        bia.logs.any { it.startsWith("rec cfg apply") } shouldBe true
+        (caio.r.status.value as RecruitStatus.Joined).you shouldBe 3
+        (bia.r.status.value as RecruitStatus.Invited).table.layout.relationOf((bia.r.status.value as RecruitStatus.Invited).you) shouldBe SeatRelation.PARTNER
+        // Remover o Recrutado.
+        ana.r.removeSeat(3) shouldBe true
+        runCurrent()
+        caio.r.status.value shouldBe RecruitStatus.Free
+        caio.events.single() shouldBe RecruitEvent.Removed("Ana")
+        ana.r.removeSeat(0) shouldBe false
         ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 montagem perdida ou fora de ordem - o recrutado termina com a mais nova`() = runTest {
+    fun `§16_2 montagem numerada - varias mudancas seguidas viram um envio e o recrutado so aplica versao maior`() = runTest {
         val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        bia.r.accept()
+        runCurrent()
+        ana.logs.clear()
+        ana.r.placeRobot(1, "bolt")
+        advanceTimeBy(20)
+        ana.r.placeRobot(3, "zen")
+        advanceTimeBy(20)
+        ana.r.move(1, 3) // troca os dois robôs
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
+        runCurrent()
+        ana.logs.count { it.startsWith("rec seats v=") && "send" in it } shouldBe 1
+        (bia.r.status.value as RecruitStatus.Joined).table.layout.robots shouldBe mapOf(1 to "zen", 3 to "bolt")
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 sincronizacao perdida ou fora de ordem - o recrutado termina com a mais nova`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        bia.r.accept()
+        runCurrent()
         val held = mutableListOf<Delivery>()
         var holdFirst = true
         var dropOnce = true
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
-        runCurrent()
-        bia.r.accept()
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
-        runCurrent()
         net.tap = { d ->
             val text = d.bytes.decodeToString()
             when {
@@ -214,100 +291,58 @@ class RecruitmentTest {
                 else -> listOf(d)
             }
         }
-        ana.r.updateConfig(config(target = 1000))
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
-        ana.r.updateConfig(config(target = 2000))
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
+        ana.r.placeRobot(1, "bolt")
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
+        ana.r.placeRobot(3, "zen")
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
         runCurrent()
         held.size shouldBe 1
         net.deliver(held.single()) // chega depois da mais nova
         advanceTimeBy(ReliableLink.RESEND_AFTER_MILLIS * 3)
         runCurrent()
-        (bia.r.status.value as RecruitStatus.Joined).config!!.targetScore shouldBe 2000
+        (bia.r.status.value as RecruitStatus.Joined).table.layout.robots shouldBe mapOf(1 to "bolt", 3 to "zen")
         ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 desmarcar quem aceitou - tirou voce da mesa`() = runTest {
+    fun `§16_2 o recrutador volta, sai ou desliga o Wi-Fi - Chamado cancela sem aviso e Recrutado ve Mesa encerrada`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
+        val (ana, others) = recruiter(net, "kb" to "Bia", "kc" to "Caio")
+        val (bia, caio) = others
+        ana.r.call(1, ana.presenceOf("kb"))
+        ana.r.call(2, ana.presenceOf("kc"))
         runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
-        runCurrent()
-        bia.r.accept()
-        runCurrent()
-        ana.r.unmark("kb")
-        runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Free
-        bia.events.single() shouldBe RecruitEvent.Removed("Ana")
-        ana.scope.cancel()
-    }
-
-    @Test
-    fun `§16_2 §14_6 aposta acima do saldo do recrutado - sai sozinho e o anfitriao e avisado`() = runTest {
-        val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia", canAfford = { it <= 50 })
-        ana.r.setHosting(true)
-        ana.r.updateConfig(config(stake = 10))
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
-        runCurrent()
-        bia.r.accept()
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
-        runCurrent()
-        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Joined>()
-        ana.r.updateConfig(config(stake = 100))
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
-        runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Free
-        bia.events.single() shouldBe RecruitEvent.InsufficientBalance("Ana")
-        ana.notices.single().reason shouldBe RefusalReason.INSUFFICIENT_BALANCE
-        ana.scope.cancel()
-    }
-
-    @Test
-    fun `§16_2 anfitriao sai ou desliga o Wi-Fi - mesa encerrada e o recrutado fica livre`() = runTest {
-        val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
-        runCurrent()
-        bia.r.accept()
+        caio.r.accept()
         runCurrent()
         ana.r.closeHosting()
         runCurrent()
         bia.r.status.value shouldBe RecruitStatus.Free
-        bia.events.single() shouldBe RecruitEvent.Closed("Ana")
+        bia.events shouldBe emptyList()
+        caio.r.status.value shouldBe RecruitStatus.Free
+        caio.events.single() shouldBe RecruitEvent.Closed("Ana")
+        ana.r.layout.value.shouldBeNull() // sempre VAGO ao abrir de novo
+        ana.r.openTable(rulesDuplas, "Ana")
+        ana.r.layout.value!!.slots.drop(1).all { it == Slot.Vacant } shouldBe true
         ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 queda da conexao - o recrutado continua na mesa, reconecta e recebe a montagem inteira de novo`() = runTest {
+    fun `§16_2 queda da conexao - o recrutado continua, reconecta e recebe os lugares inteiros de novo`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        ana.r.updateConfig(config())
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
         runCurrent()
         bia.r.accept()
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
         runCurrent()
-        bia.logs.count { it.startsWith("rec cfg apply") } shouldBe 1
         net.drop(bia.transport.id)
         runCurrent()
         bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Joined>() // não saiu
         advanceTimeBy(Recruitment.CONTACT_BACKOFF_MILLIS[0] + 100)
         runCurrent()
         bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Joined>()
-        bia.logs.count { it.startsWith("rec cfg apply") } shouldBe 2 // reenviada inteira, com versão nova
-        ana.r.recruits.value shouldBe listOf(Recruit("kb", "Bia", accepted = true))
+        bia.logs.count { it.startsWith("rec seats v=") && it.endsWith("apply") } shouldBe 2 // a do aceite e a reenviada inteira, versão nova
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Recruited("kb", "Bia")
         advanceTimeBy(Recruitment.REJOIN_MILLIS * 2)
         runCurrent()
         bia.events shouldBe emptyList()
@@ -315,13 +350,11 @@ class RecruitmentTest {
     }
 
     @Test
-    fun `§16_2 §16_15 queda sem volta - depois de 8 s o recrutado sai com mesa encerrada e o anfitriao e avisado`() = runTest {
+    fun `§16_2 §16_15 queda sem volta - depois de 8 s o lugar volta a VAGO e os dois sao avisados`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
         runCurrent()
         bia.r.accept()
         runCurrent()
@@ -336,151 +369,136 @@ class RecruitmentTest {
         bia.r.status.value shouldBe RecruitStatus.Free
         bia.events.single() shouldBe RecruitEvent.Closed("Ana")
         ana.notices.single().reason shouldBe RefusalReason.OUT_OF_RANGE
-        ana.r.recruits.value shouldBe emptyList()
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Vacant
         ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 Escolher posicoes - quem aceitou entra direto, o pendente vira robo`() = runTest {
+    fun `§16_2 Comecar Partida - so com tudo preenchido e sem Chamado, Completar com robos e deterministico`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        val caio = device(net, "kc", "Caio")
-        ana.r.setHosting(true)
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.start("mesa1", TEST_PERSONAS, 1).shouldBeNull() // lugares VAGO
+        ana.r.call(2, ana.presenceOf("kb"))
         runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
-        ana.r.mark(ana.presenceOf("kc"))
+        ana.r.fillWithRobots(TEST_PERSONAS, seed = 5)
         runCurrent()
+        ana.r.layout.value!!.isFull shouldBe true
+        ana.r.start("mesa1", TEST_PERSONAS, 1).shouldBeNull() // Chamado pendente
         bia.r.accept()
         runCurrent()
-        val accepted = ana.r.start("mesa1")
+        val robots = ana.r.layout.value!!.robots
+        robots.keys shouldBe setOf(1, 3)
+        robots.values.toSet().size shouldBe 2
+        val plan = ana.r.start("mesa1", TEST_PERSONAS, 1).shouldNotBeNull()
         runCurrent()
-        accepted shouldBe listOf(PresenceAdvert("kb", "Bia"))
-        bia.events.single() shouldBe RecruitEvent.Start("mesa1", "kb")
-        caio.r.status.value shouldBe RecruitStatus.Free // convite cancelado
+        plan.layout.robots shouldBe robots // os robôs do início são exatamente os da tela
+        bia.events.single() shouldBe RecruitEvent.Start("mesa1", "kb", PREPARE_MILLIS)
         ana.scope.cancel()
-        val host = HostSession(
-            ana.transport, "mesa1", TableRules("Mesa de Ana", GameMode.DUPLAS, RuleSet.DEFAULT, 3000, 0, "facil"), "Ana",
-            lobby = LobbySetup(accepted.map { Participant.Nearby(it) }, listOf("bolt", "domino", "turbo", "zen"), seed = 1),
-        )
-        host.open(sessionScope)
-        val guest = GuestSession(bia.transport, "Bia")
-        guest.join(sessionScope, "mesa1", inviteKey = "kb")
+    }
+
+    @Test
+    fun `§16_2 de ponta a ponta - chamar, aceitar, mover, completar e comecar termina em GameStarted com os lugares da tela`() = runTest {
+        val net = MemoryNetwork()
+        val sent = mutableListOf<Delivery>()
+        net.tap = { sent += it; listOf(it) }
+        val (ana, others) = recruiter(net, "kb" to "Bia", "kc" to "Caio")
+        val (bia, caio) = others
+        ana.r.call(1, ana.presenceOf("kb"))
+        ana.r.call(2, ana.presenceOf("kc"))
         runCurrent()
-        guest.status.value shouldBe GuestStatus.Lobby
-        guest.seating.value.shouldNotBeNull().humans.size shouldBe 2
+        bia.r.accept(); caio.r.accept()
+        runCurrent()
+        ana.r.move(1, 3) // Bia vai ao lugar 3
+        ana.r.fillWithRobots(TEST_PERSONAS, seed = 987654321987L)
+        advanceTimeBy(Recruitment.SYNC_DEBOUNCE_MILLIS + 1)
+        runCurrent()
+        val layout = ana.r.layout.value!!
+        layout.slots[3] shouldBe Slot.Recruited("kb", "Bia")
+        layout.slots[2] shouldBe Slot.Recruited("kc", "Caio")
+        layout.slots[1].shouldBeInstanceOf<Slot.Robot>()
+        val plan = ana.r.start("mesa1", TEST_PERSONAS, seed = 987654321987L).shouldNotBeNull()
+        runCurrent()
+        val startBia = bia.events.filterIsInstance<RecruitEvent.Start>().single()
+        val startCaio = caio.events.filterIsInstance<RecruitEvent.Start>().single()
+        // A mesa do jogo: o anfitrião abre, os recrutados entram com a própria chave e o início sai depois do "Prepare-se!".
+        // O recrutamento pára de ler os eventos antes de a sessão da mesa começar a ler (um leitor por transporte).
+        ana.scope.cancel(); bia.scope.cancel(); caio.scope.cancel()
+        runCurrent()
+        val host = HostSession(ana.transport, startBia.tableId, rulesDuplas, "Ana", plan = plan)
+        host.open(sessionScope)
+        val gb = GuestSession(bia.transport, "Bia").also { it.join(sessionScope, startBia.tableId, inviteKey = startBia.inviteKey) }
+        val gc = GuestSession(caio.transport, "Caio").also { it.join(sessionScope, startCaio.tableId, inviteKey = startCaio.inviteKey) }
+        runCurrent()
+        host.gameStart.value.shouldBeNull()
+        advanceTimeBy(PREPARE_MILLIS + 1)
+        runCurrent()
+        runCurrent()
+        host.gameStart.value shouldBe mapOf(Seat(3) to gb.playerId, Seat(2) to gc.playerId)
+        gb.status.value shouldBe GuestStatus.Playing
+        gb.robots.value shouldBe layout.robots
+        gc.robots.value shouldBe layout.robots
+        // Nem a semente nem o token de outro jogador viajam nas mensagens.
+        val tokens = listOfNotNull(gb.token, gc.token)
+        sent.forEach { d ->
+            val text = d.bytes.decodeToString()
+            text shouldNotContain "987654321987"
+            tokens.forEach { tk -> if (text.contains(tk)) text.contains("\"you\":${if (tk == gb.token) gb.playerId else gc.playerId}") shouldBe true }
+        }
     }
 
     @Test
     fun `§16_2 inicio perdido - o recrutado entra quando a mesa aparece com a chave dele`() = runTest {
         val net = MemoryNetwork()
         net.tap = { d -> if ("recruitStart" in d.bytes.decodeToString()) emptyList() else listOf(d) } // o início nunca chega
-        val ana = device(net, "ka", "Ana", scope = sessionScope)
-        val bia = device(net, "kb", "Bia", scope = sessionScope)
-        ana.r.setHosting(true)
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
         runCurrent()
         bia.r.accept()
         runCurrent()
-        val accepted = ana.r.start("mesa1")
+        ana.r.fillWithRobots(TEST_PERSONAS, 1)
+        val plan = ana.r.start("mesa1", TEST_PERSONAS, 1).shouldNotBeNull()
         runCurrent()
         bia.events shouldBe emptyList()
         ana.scope.cancel()
-        val host = HostSession(
-            ana.transport, "mesa1", TableRules("Mesa de Ana", GameMode.DUPLAS, RuleSet.DEFAULT, 3000, 0, "facil"), "Ana",
-            lobby = LobbySetup(accepted.map { Participant.Nearby(it) }, listOf("bolt", "domino", "turbo", "zen"), seed = 1),
-        )
+        val host = HostSession(ana.transport, "mesa1", rulesDuplas, "Ana", plan = plan)
         host.open(sessionScope)
         runCurrent()
-        bia.events shouldContain RecruitEvent.Start("mesa1", "kb")
+        bia.events shouldBe listOf(RecruitEvent.Start("mesa1", "kb", PREPARE_MILLIS))
     }
 
     @Test
     fun `§16_2 as fotos vao pela conexao de espera, nos dois sentidos, antes do convite`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana", photo = "FOTOANA")
+        val ana = device(net, "ka", "Ana", photo = "FOTOANA", free = false)
         val bia = device(net, "kb", "Bia", photo = "FOTOBIA")
-        ana.r.setHosting(true)
+        runCurrent()
+        ana.r.openTable(rulesDuplas, "Ana")
         runCurrent()
         ana.photos.photos.value shouldBe mapOf("kb" to "FOTOBIA")
         bia.photos.photos.value shouldBe mapOf("ka" to "FOTOANA")
-        // A conexão segue de pé (nenhuma troca de fotos avulsa a desconecta) e o convite chega por ela.
         advanceTimeBy(60_000)
-        ana.r.mark(ana.presenceOf("kb"))
+        ana.r.call(1, ana.presenceOf("kb"))
         runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
-    }
-
-    private fun mirrored(vararg keys: String) = RecruitConfig(
-        "Ana", GameMode.DUPLAS, "facil", 0, RuleSet.DEFAULT, 3000,
-        listOf(RecruitParticipant("Ana")) + keys.map { RecruitParticipant(it.uppercase(), accepted = false, key = it) },
-    )
-
-    @Test
-    fun `§16_2 aceitar - a primeira montagem ja chega inteira, numerada e com o proprio aceite`() = runTest {
-        val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        ana.r.updateConfig(mirrored("kb"))
-        runCurrent()
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1) // a montagem do anfitrião já estava definida antes do convite
-        ana.r.mark(ana.presenceOf("kb"))
-        runCurrent()
-        bia.r.status.value shouldBe RecruitStatus.Invited("ka", "Ana")
-        bia.r.accept()
-        runCurrent() // sem esperar o debounce: a montagem não depende dele
-        val joined = bia.r.status.value as RecruitStatus.Joined
-        joined.version shouldBe 2
-        joined.config!!.participants.map { it.name to it.accepted } shouldBe listOf("Ana" to true, "KB" to true)
-        listOf("rec accept sent", "rec host marked accepted kb", "rec cfg send v=2 to=kb", "rec cfg apply v=2").let { expected ->
-            expected.dropLast(2).all { e -> bia.logs.any { it == e } || ana.logs.any { it == e } } shouldBe true
-            ana.logs.contains("rec cfg send v=2 to=kb") shouldBe true
-            bia.logs.contains("rec cfg apply v=2") shouldBe true
-        }
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>()
+        ana.scope.cancel()
     }
 
     @Test
-    fun `§16_2 aceitar - a montagem inicial perdida e reenviada pelo protocolo, sem ficar na tela de espera`() = runTest {
+    fun `§16_2 recrutador nao recruta recrutador - dois na Selecao de jogadores nao se conectam`() = runTest {
         val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        ana.r.setHosting(true)
-        ana.r.updateConfig(mirrored("kb"))
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
+        val ana = device(net, "ka", "Ana", free = false)
+        val caio = device(net, "kc", "Caio", free = false)
         runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
+        ana.r.openTable(rulesDuplas, "Ana")
+        caio.r.openTable(rulesDuplas, "Caio")
         runCurrent()
-        var dropped = 0
-        net.tap = { d -> if ("recruitSync" in d.bytes.decodeToString() && dropped++ == 0) emptyList() else listOf(d) }
-        bia.r.accept()
+        advanceTimeBy(30_000)
         runCurrent()
-        (bia.r.status.value as RecruitStatus.Joined).config shouldBe null // ainda não chegou
-        advanceTimeBy(ReliableLink.RESEND_AFTER_MILLIS + 100)
-        runCurrent()
-        (bia.r.status.value as RecruitStatus.Joined).config.shouldNotBeNull().participants.last().accepted shouldBe true
-    }
-
-    @Test
-    fun `§16_2 dois recrutados - quem aceita primeiro passa a ver o outro aceito na montagem`() = runTest {
-        val net = MemoryNetwork()
-        val ana = device(net, "ka", "Ana")
-        val bia = device(net, "kb", "Bia")
-        val caio = device(net, "kc", "Caio")
-        ana.r.setHosting(true)
-        ana.r.updateConfig(mirrored("kb", "kc"))
-        advanceTimeBy(Recruitment.CONFIG_DEBOUNCE_MILLIS + 1)
-        runCurrent()
-        ana.r.mark(ana.presenceOf("kb"))
-        ana.r.mark(ana.presenceOf("kc"))
-        runCurrent()
-        bia.r.accept()
-        runCurrent()
-        (bia.r.status.value as RecruitStatus.Joined).config!!.participants.map { it.accepted } shouldBe listOf(true, true, false)
-        caio.r.accept()
-        runCurrent()
-        (bia.r.status.value as RecruitStatus.Joined).config!!.participants.map { it.accepted } shouldBe listOf(true, true, true)
-        (caio.r.status.value as RecruitStatus.Joined).config!!.participants.map { it.accepted } shouldBe listOf(true, true, true)
+        ana.logs.none { it.startsWith("rec connected") || it.startsWith("rec standby") } shouldBe true
+        caio.logs.none { it.startsWith("rec connected") || it.startsWith("rec standby") } shouldBe true
+        ana.r.free.value shouldBe emptyList()
+        ana.scope.cancel()
     }
 }

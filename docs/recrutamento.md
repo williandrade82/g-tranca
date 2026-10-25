@@ -93,11 +93,11 @@ jogador está `Chamado` ou `Recrutado`; recusa/saída/remoção o limpam.
 
 ## Entrada na mesa e início do jogo
 
-`HostSession` recebe o **plano de lugares** (`TablePlan`): ocupante de cada lugar (humano com a chave de presença, ou robô
-com a persona), a semente e as personas possíveis. Cada recrutado entra com `GuestSession.join(tableId, inviteKey)` e já
-fica no lugar planejado (`Welcome`, sem confirmação). `startGame(prepareMillis, waitMillis)`: espera `prepareMillis` (1,5 s)
-**e** todos os humanos do plano conectados, até `waitMillis` (10 s); quem faltou vira robô sorteado (aviso); envia
-`GameStarted` (com os robôs de cada lugar) e começa o jogo. Os robôs são exatamente os da tela 2 (nada é sorteado de novo,
+`HostSession` recebe o **plano de lugares** (`TablePlan`): o layout (humano = Recrutado com a chave de presença; robô com a persona),
+as personas possíveis e a semente. Cada recrutado entra com `GuestSession.join(tableId, inviteKey)` e já fica no lugar
+planejado (`Welcome` com `started = false`, sem confirmação). Ao abrir (`HostSession.open`), a sessão espera `prepareMillis`
+(1,5 s) **e** todos os humanos do plano conectados, até `waitMillis` (10 s); quem faltou vira robô sorteado (aviso em
+`lobbyNotices`); envia `GameStarted` (com os robôs de cada lugar) e preenche `gameStart`. Os robôs são exatamente os da tela 2 (nada é sorteado de novo,
 exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (testado varrendo os bytes).
 
 ## Lista de presença (NearbyTransport)

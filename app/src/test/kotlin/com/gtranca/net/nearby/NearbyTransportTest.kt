@@ -188,12 +188,15 @@ class NearbyTransportTest {
         val (_, guestTransport) = node()
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job())
         val rules = TableRules("Mesa", GameMode.DUPLAS, RuleSet(), 1000, stake = 0, difficulty = "facil")
-        val host = HostSession(hostTransport, newTableId(), rules, "Ana")
+        // §16.2 plano de lugares: a Bia recrutada no lugar 1 e robôs nos demais.
+        var layout = com.gtranca.net.TableLayout.initial(GameMode.DUPLAS).call(1, "kbia", "Bia")!!.accept("kbia")!!
+        layout = layout.fillWithRobots(listOf("bolt", "domino", "turbo", "zen"), kotlin.random.Random(1))
+        val host = HostSession(hostTransport, newTableId(), rules, "Ana", plan = com.gtranca.net.TablePlan(layout, listOf("bolt", "domino", "turbo", "zen"), 1))
         host.open(scope)
         val guest = GuestSession(guestTransport, "Bia")
-        guest.join(scope, host.tableId)
+        guest.join(scope, host.tableId, inviteKey = "kbia")
         advanceUntilIdle()
-        guest.status.value shouldBe GuestStatus.Lobby
+        guest.status.value shouldBe GuestStatus.Playing // depois do "Prepare-se!" o jogo começa sozinho
         host.roster.value.map { it.name } shouldContainExactly listOf("Ana", "Bia")
         scope.cancel()
     }
@@ -389,35 +392,36 @@ class NearbyTransportTest {
         val bobLogs = mutableListOf<String>()
         val ana = recruiter(hostT, "ka", "Ana", scope, hostLogs)
         val bia = recruiter(bobT, "kb", "Bia", scope, bobLogs)
-        ana.setHosting(true)
+        bia.setFree(true)
+        ana.openTable(com.gtranca.net.TableRules("Mesa", com.gtranca.engine.model.GameMode.DUPLAS, com.gtranca.engine.RuleSet.DEFAULT, 1000, 0, "facil"), "Ana")
         runCurrent()
         advanceTimeBy(1_000)
         runCurrent()
         // Bia já está ligada ao anfitrião (espera); o convite não depende do anúncio.
         hostLogs.any { it.startsWith("rec standby") } shouldBe true
         val advertsBefore = hostApi.advertiseStarts
-        ana.mark(com.gtranca.net.PresenceAdvert("kb", "Bia")) shouldBe true
+        ana.call(2, com.gtranca.net.PresenceAdvert("kb", "Bia")) shouldBe true
         runCurrent()
-        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
+        bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>().hostName shouldBe "Ana"
         hostApi.advertiseStarts shouldBe advertsBefore // nada foi reanunciado para entregar o convite
         hostLogs.any { "invite sent via link" in it } shouldBe true
         // Reinício da busca (a cada 8 s) durante o recrutamento: convite e conexão intactos.
         advanceTimeBy(wait * 4)
         runCurrent()
         (bobApi.discoveryStarts > 1) shouldBe true
-        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
-        ana.recruits.value.map { it.key } shouldBe listOf("kb")
+        bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>()
+        ana.layout.value!!.seatOf("kb") shouldBe 2
         bia.accept() shouldBe true
         runCurrent()
         advanceTimeBy(wait * 3)
         runCurrent()
         bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Joined>()
-        ana.recruits.value.single().accepted shouldBe true
+        ana.layout.value!!.slots[2] shouldBe com.gtranca.net.Slot.Recruited("kb", "Bia")
         scope.cancel()
     }
 
     @Test
-    fun `§16_2 o anfitriao reanunciar a presenca ao marcar outro nao cancela o convite do primeiro`() = runTest {
+    fun `§16_2 o recrutador reanunciar a presenca ao chamar outro nao cancela o convite do primeiro`() = runTest {
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job(backgroundScope.coroutineContext[Job]))
         val (_, hostT) = node()
         val (_, bobT) = node()
@@ -425,18 +429,21 @@ class NearbyTransportTest {
         val ana = recruiter(hostT, "ka", "Ana", scope, mutableListOf())
         val bia = recruiter(bobT, "kb", "Bia", scope, mutableListOf())
         val caio = recruiter(caioT, "kc", "Caio", scope, mutableListOf())
-        // Sem a montagem aberta: o convite vai pela reserva do anúncio (o caminho que reanuncia a cada marcação).
+        bia.setFree(true)
+        caio.setFree(true)
         runCurrent()
         advanceTimeBy(1_000)
-        ana.mark(com.gtranca.net.PresenceAdvert("kb", "Bia")) shouldBe true
+        ana.openTable(com.gtranca.net.TableRules("Mesa", com.gtranca.engine.model.GameMode.DUPLAS, com.gtranca.engine.RuleSet.DEFAULT, 1000, 0, "facil"), "Ana")
+        runCurrent()
+        ana.call(1, com.gtranca.net.PresenceAdvert("kb", "Bia")) shouldBe true
         advanceTimeBy(2_000)
         runCurrent()
-        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
-        ana.mark(com.gtranca.net.PresenceAdvert("kc", "Caio")) shouldBe true
+        bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>()
+        ana.call(3, com.gtranca.net.PresenceAdvert("kc", "Caio")) shouldBe true
         advanceTimeBy(NearbyTransport.PRESENCE_LOST_GRACE_MILLIS * 2)
         runCurrent()
-        bia.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana") // não piscou
-        caio.status.value shouldBe com.gtranca.net.RecruitStatus.Invited("ka", "Ana")
+        bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>() // não piscou
+        caio.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>()
         scope.cancel()
     }
 }

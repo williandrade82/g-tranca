@@ -60,8 +60,10 @@ data class PresenceAdvert(
     val recruitedBy: String? = null,
     /** §16.2 chaves que este jogador (como anfitrião) marcou e ainda não responderam: o convite imediato (até 3). */
     val inviting: List<String> = emptyList(),
-    /** §16.2 este jogador está com a montagem da mesa aberta: aceita conexões de espera dos jogadores próximos. */
+    /** §16.2 **recrutando**: este jogador está na *Seleção de jogadores* e aceita conexões de espera dos jogadores livres. */
     val hosting: Boolean = false,
+    /** §16.2 **livre**: na tela *Iniciar novo jogo* (ou já chamado/recrutado), com o Wi-Fi ligado: pode ser chamado. */
+    val free: Boolean = false,
 )
 
 /** §16.2 chave de presença nova (6 caracteres, cabe no anúncio). Não identifica o jogador fora desta sessão de busca. */
