@@ -612,4 +612,14 @@
     <string name="invite_countdown_a11y">Restam %1$d segundos para responder</string>
     <string name="refresh_players_desc">Atualizar jogadores por perto</string>
     <string name="tour_refresh">Procura de novo, por alguns segundos, quem está por perto.</string>
+    <string name="home_continue_table">Continuar mesa</string>
+    <string name="home_continue_table_info">Mesa de %1$s · lugar %2$d</string>
+    <string name="rejoin_searching">Procurando a mesa…</string>
+    <string name="rejoin_cancel">Cancelar</string>
+    <string name="rejoin_not_found">Mesa não encontrada por perto. Confira se o anfitrião está com o jogo aberto e o Wi-Fi do jogo ligado, e tente de novo.</string>
+    <string name="rejoin_taken">A vaga foi preenchida.</string>
+    <string name="rejoin_closed">Mesa encerrada.</string>
+    <string name="rejoin_wifi_title">Ligar o Wi-Fi do jogo?</string>
+    <string name="rejoin_wifi_text">Para voltar à mesa de %1$s o Wi-Fi do jogo precisa estar ligado.</string>
+    <string name="rejoin_wifi_on">Ligar</string>
 </resources>

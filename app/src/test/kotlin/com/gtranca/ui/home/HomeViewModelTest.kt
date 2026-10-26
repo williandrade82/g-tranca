@@ -140,4 +140,36 @@ class HomeViewModelTest {
             Dispatchers.resetMain()
         }
     }
+
+    private class FakeSessions(var session: com.gtranca.data.MultiplayerSession? = null) : com.gtranca.data.MultiplayerSessionStore {
+        override suspend fun load() = session
+        override suspend fun save(session: com.gtranca.data.MultiplayerSession) { this.session = session }
+        override suspend fun clear() { session = null }
+    }
+
+    @Test
+    fun `§16_12 Continuar mesa aparece ao lado do jogo salvo contra robos, cada um no seu botao, sem expor o token`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val sessions = FakeSessions(com.gtranca.data.MultiplayerSession("mesa-1", seat = 2, token = "segredo", playerName = "Bia", hostName = "Ana"))
+            val vm = HomeViewModel(FakeStore(saved()), sessions = sessions)
+            advanceUntilIdle()
+            vm.uiState.value.saved.shouldNotBeNull()
+            vm.uiState.value.session shouldBe SessionSummary("Ana", seat = 3, wasHost = false)
+            vm.uiState.value.session.toString().contains("segredo") shouldBe false
+            // a sessão apagada (jogo entregue, mesa encerrada...) some do Início ao voltar para a tela
+            sessions.clear()
+            vm.refresh()
+            advanceUntilIdle()
+            vm.uiState.value.session.shouldBeNull()
+            vm.uiState.value.saved.shouldNotBeNull()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `§16_12 sem sessao guardada nao ha botao Continuar mesa`() {
+        HomeViewModel().uiState.value.session.shouldBeNull()
+    }
 }

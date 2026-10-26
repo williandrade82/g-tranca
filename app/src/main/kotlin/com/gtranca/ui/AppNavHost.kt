@@ -81,6 +81,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import com.gtranca.ui.tables.TablesViewModel
 
@@ -115,6 +116,10 @@ data class SelectionRoute(
         fun of(config: GameConfig) = GameRoute.of(config).let { SelectionRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, it.stake) }
     }
 }
+
+/** §16.5, §16.12 *Voltar à mesa*: reingressa na mesa da sessão guardada (docs/telas.md 3.17). */
+@Serializable
+object RejoinRoute
 
 /** §16.2 *Mesa do recrutado* (docs/telas.md 3.13): a mesa de quem chamou, só para leitura. */
 @Serializable
@@ -257,9 +262,10 @@ fun AppNavHost() {
                 null -> Unit
                 true -> com.gtranca.ui.home.WelcomeScreen { navController.navigateFromHome(ProfileRoute) }
                 false -> HomeScreen(
-                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet) },
+                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet, sessions = data.multiplayerSession) },
                 onNewGame = { navController.navigateFromHome(TablesRoute) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
+                onContinueSession = { navController.navigateFromHome(RejoinRoute) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
             )
@@ -302,6 +308,7 @@ fun AppNavHost() {
             val route = entry.toRoute<SelectionRoute>()
             PlayerSelectionDestination(route, data, navController)
         }
+        composable<RejoinRoute> { RejoinDestination(data, navController) }
         composable<RecruitedRoute> {
             RecruitedDestination(data, navController)
         }
@@ -591,7 +598,7 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
     val current = table ?: return
     val end by current.end.collectAsStateWithLifecycle()
     // A mesa encerrada aparece na própria tela de seleção ou do recrutado (que a mostram); aqui, nas outras.
-    val onOwnScreen = entry?.destination?.let { it.hasRoute<SelectionRoute>() || it.hasRoute<RecruitedRoute>() } == true
+    val onOwnScreen = entry?.destination?.let { it.hasRoute<SelectionRoute>() || it.hasRoute<RecruitedRoute>() || it.hasRoute<RejoinRoute>() } == true
     val reason = end
     if (reason != null && !onOwnScreen && !onGame) {
         com.gtranca.ui.multiplayer.MpEndMessage(reason) { com.gtranca.multiplayer.MultiplayerHub.leave() }
@@ -986,4 +993,126 @@ private fun GetReadyEffect(table: com.gtranca.multiplayer.MultiplayerTable, onSt
         if (left > 0) kotlinx.coroutines.delay(left)
         onStarted()
     }
+}
+
+/**
+ * §16.5, §16.12 *Voltar à mesa* (docs/telas.md 3.17): reingressa, como jogador comum, na mesa da sessão guardada. Com o
+ * Wi-Fi do jogo desligado, pede confirmação para ligá-lo (com o modal de permissões); depois mostra "Procurando a
+ * mesa…" (até 30 s, com Cancelar) e, com o assento de volta, abre a mesa de jogo.
+ */
+@Composable
+private fun RejoinDestination(data: GameData, navController: NavHostController) {
+    val context = LocalContext.current
+    // `null` = ainda lendo; Optional vazio = não há sessão (sumiu ou expirou entre o Início e aqui).
+    val loaded by produceState<java.util.Optional<com.gtranca.data.MultiplayerSession>?>(null, data) {
+        value = java.util.Optional.ofNullable(data.multiplayerSession.load())
+    }
+    val wifiSetting by remember(data) { data.settings.settings.map { it.wifiOn }.catch { emit(false) } }.collectAsStateWithLifecycle(null)
+    val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
+    var granted by remember { mutableStateOf(com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) }
+    var asking by remember { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    val leave: () -> Unit = {
+        com.gtranca.multiplayer.MultiplayerHub.leaveKeepingSession()
+        navController.popBackStack()
+    }
+    val current = loaded?.orElse(null)
+    val wifi = wifiSetting
+    if (loaded?.isPresent == false) {
+        LaunchedEffect(Unit) { navController.popBackStack() }
+        return
+    }
+    if (current == null || wifi == null) {
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().testTag("rejoin"), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    // 1. Wi-Fi do jogo desligado (ou sem permissão): confirmação antes de ligar.
+    if (!searching && (!wifi || !granted)) {
+        if (asking) {
+            com.gtranca.net.nearby.MultiplayerAccessGate(
+                onReady = { granted = true; WriteQueue.app.enqueue { data.settings.setWifiOn(true) }; asking = false; searching = true },
+                onCancel = { asking = false; navController.popBackStack() },
+            )
+        } else {
+            com.gtranca.ui.theme.GMessage(
+                modifier = Modifier.testTag("rejoin-wifi"),
+                title = androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_wifi_title),
+                text = androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_wifi_text, current.hostName),
+                illustration = com.gtranca.ui.theme.MessageIllustration.Question,
+                confirmText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_wifi_on),
+                confirmTag = "rejoin-wifi-on",
+                onConfirm = { asking = true },
+                dismissText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.cancel),
+                onDismissRequest = { navController.popBackStack() },
+            )
+        }
+        return
+    }
+    // 2. Procurando a mesa e reingressando com o token.
+    LaunchedEffect(Unit) {
+        if (!searching) searching = true
+        if (com.gtranca.multiplayer.MultiplayerHub.table.value == null) {
+            val profile = data.settings.settings.catch { emit(Settings()) }.first().let { PlayerProfile.decode(it.profileId) }
+            val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
+            com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).rejoinAsync(current)
+        }
+    }
+    val mine = table
+    val status = mine?.guestStatus?.collectAsStateWithLifecycle()?.value
+    val end = mine?.end?.collectAsStateWithLifecycle()?.value
+    LaunchedEffect(status) {
+        if (status == com.gtranca.net.GuestStatus.Playing) {
+            navController.navigate(MultiplayerGameRoute) {
+                popUpTo(HomeRoute) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxSize().padding(24.dp).testTag("rejoin"),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(color = com.gtranca.ui.theme.GColors.Gold)
+        androidx.compose.material3.Text(
+            androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_searching),
+            Modifier.testTag("rejoin-searching"),
+            color = com.gtranca.ui.theme.GColors.Ivory,
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+        )
+        androidx.compose.material3.Text(
+            androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, current.hostName),
+            color = com.gtranca.ui.theme.GColors.Steel,
+        )
+        com.gtranca.ui.theme.GButton(leave, Modifier.heightIn(min = 48.dp).testTag("rejoin-cancel"), kind = com.gtranca.ui.theme.GButtonKind.Secondary) {
+            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_cancel))
+        }
+    }
+    // 3. Falhas: mesa não encontrada, vaga preenchida, mesa encerrada (ou a mensagem do anfitrião, ex.: outra versão).
+    end?.let { reason ->
+        val failure = rejoinFailure(reason)
+        com.gtranca.ui.theme.GMessage(
+            modifier = Modifier.testTag("rejoin-failed"),
+            title = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_closed_title),
+            text = failure.res?.let { androidx.compose.ui.res.stringResource(it) } ?: failure.text,
+            illustration = com.gtranca.ui.theme.MessageIllustration.Info,
+            tone = com.gtranca.ui.theme.MessageTone.Warning,
+            confirmText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_ok_short),
+            onConfirm = leave,
+            onDismissRequest = leave,
+        )
+    }
+}
+
+/** O texto de uma falha ao voltar à mesa: um texto do app ([res]) ou a mensagem do anfitrião ([text]). */
+data class RejoinFailure(val res: Int?, val text: String? = null)
+
+/** §16.5, §16.12 a mensagem de cada fim de "Voltar à mesa": mesa não encontrada, vaga preenchida ou mesa encerrada. */
+internal fun rejoinFailure(end: com.gtranca.multiplayer.MpEnd): RejoinFailure = when (end) {
+    com.gtranca.multiplayer.MpEnd.NotFound -> RejoinFailure(com.gtranca.R.string.rejoin_not_found)
+    com.gtranca.multiplayer.MpEnd.Closed, is com.gtranca.multiplayer.MpEnd.Ended -> RejoinFailure(com.gtranca.R.string.rejoin_closed)
+    // O anfitrião recusou o token: o assento já foi ocupado (ou substituído). Outra versão do jogo traz a própria mensagem.
+    is com.gtranca.multiplayer.MpEnd.Refused ->
+        if (end.message.contains("ocupado") || end.message.contains("preenchida")) RejoinFailure(com.gtranca.R.string.rejoin_taken)
+        else RejoinFailure(null, end.message)
 }

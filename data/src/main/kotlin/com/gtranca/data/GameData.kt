@@ -21,6 +21,9 @@ class GameData private constructor(context: Context, isKnownDifficulty: (String)
 
     val savedGames: SavedGameStore = FileSavedGameStore(File(context.filesDir, SAVED_GAME_FILE), isKnownDifficulty)
 
+    /** §16.12 a sessão multijogador do jogador comum (espaço separado do jogo salvo contra robôs). */
+    val multiplayerSession: MultiplayerSessionStore = FileMultiplayerSessionStore(File(context.filesDir, MULTIPLAYER_SESSION_FILE))
+
     val settings: SettingsRepository = DataStoreSettingsRepository(preferencesStore(context.preferencesDataStoreFile(SETTINGS_FILE)))
 
     private val statsAndWallet = DataStoreStatsRepository(preferencesStore(context.preferencesDataStoreFile(STATS_FILE)))
@@ -32,6 +35,7 @@ class GameData private constructor(context: Context, isKnownDifficulty: (String)
 
     companion object {
         const val SAVED_GAME_FILE = "saved_game.json"
+        const val MULTIPLAYER_SESSION_FILE = "multiplayer_session.json"
         private const val SETTINGS_FILE = "settings"
         private const val STATS_FILE = "stats"
 

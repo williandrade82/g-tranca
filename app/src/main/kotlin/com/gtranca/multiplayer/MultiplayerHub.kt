@@ -170,7 +170,7 @@ object MultiplayerHub {
      */
     fun newTable(context: Context, data: GameData, photo: String? = null): MultiplayerTable {
         val leaving = _table.value?.let { old -> scope.launch { old.leave() } }
-        return MultiplayerTable(transport(context), scope, DataMpCoins(data, scope), after = leaving).also {
+        return MultiplayerTable(transport(context), scope, DataMpCoins(data, scope), after = leaving, sessions = DataMpSessions(data)).also {
             it.myPhoto = photo
             _table.value = it
         }
@@ -185,10 +185,18 @@ object MultiplayerHub {
         }
     }
 
-    /** Sai da sala de espera (ou desiste de entrar, ou recusa o convite). */
+    /** Solta a mesa **sem** apagar a sessão guardada (§16.12): cancelar o "Voltar à mesa" não perde o direito de tentar de novo. */
+    fun leaveKeepingSession() {
+        val table = _table.value ?: return
+        _table.value = null
+        scope.launch { table.leave() }
+    }
+
+    /** Sai da sala de espera (ou desiste de entrar, ou recusa o convite): a sessão guardada (§16.12) é apagada. */
     fun leave() {
         val table = _table.value ?: return
         _table.value = null
+        table.forgetSession()
         scope.launch { table.leave() }
     }
 }
@@ -204,4 +212,11 @@ private class DataMpCoins(private val data: GameData, scope: CoroutineScope) : M
     override suspend fun settle(gameId: String, rules: TableRules, result: GameResult, stake: Int, received: Int) {
         runCatching { data.stats.recordBet(gameId, rules.mode, rules.difficulty, result, stake, received) }
     }
+}
+
+/** §16.12 a sessão do jogador comum no `:data` (arquivo próprio, separado do jogo salvo contra robôs). */
+private class DataMpSessions(private val data: GameData) : MpSessions {
+    override suspend fun save(session: com.gtranca.data.MultiplayerSession) = data.multiplayerSession.save(session)
+
+    override suspend fun clear() = data.multiplayerSession.clear()
 }

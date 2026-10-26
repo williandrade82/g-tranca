@@ -106,6 +106,24 @@ interface MpCoins {
 }
 
 /**
+ * §16.12 a sessão do jogador comum (mesa, assento, token, nome), gravada para o "Continuar" da tela Início; nunca o jogo.
+ * Quem usa a mesa apaga a sessão nos fins previstos (jogo entregue, desistência sem volta, mesa encerrada, vaga preenchida,
+ * sair pelo botão).
+ */
+interface MpSessions {
+    suspend fun save(session: com.gtranca.data.MultiplayerSession)
+
+    suspend fun clear()
+
+    companion object {
+        val None: MpSessions = object : MpSessions {
+            override suspend fun save(session: com.gtranca.data.MultiplayerSession) = Unit
+            override suspend fun clear() = Unit
+        }
+    }
+}
+
+/**
  * A mesa multijogador deste aparelho (§16), viva enquanto o jogador estiver nela (sala de espera, jogo e telas de
  * resultado). Guarda o papel atual ([role]) e o troca na sucessão: o convidado que assume vira anfitrião
  * ([MultiplayerHost.takeOver]) e o anfitrião superado volta como convidado pelo token (§16.10). Nunca valida regra e
@@ -122,6 +140,8 @@ class MultiplayerTable(
     private val newSeed: () -> Long = { Random.nextLong() },
     /** Saída da mesa anterior no mesmo transporte: entrar ou publicar só depois dela (um leitor por transporte). */
     private val after: Job? = null,
+    /** §16.12 onde a sessão do jogador comum é gravada (e apagada). */
+    private val sessions: MpSessions = MpSessions.None,
 ) {
     private val _role = MutableStateFlow<MpRole?>(null)
     val role: StateFlow<MpRole?> = _role.asStateFlow()
@@ -333,6 +353,79 @@ class MultiplayerTable(
         }
     }
 
+    // ---- sessão (§16.12) -----------------------------------------------------------------------------------------
+
+    /** Este aparelho já foi anfitrião nesta mesa (volta como jogador comum, §16.12). */
+    @Volatile
+    private var wasHost = false
+
+    private var lastSaved: com.gtranca.data.MultiplayerSession? = null
+
+    private fun hostNameNow(): String = roster.value.firstOrNull { it.isHost }?.name.orEmpty()
+
+    /** §16.12 grava a sessão se mudou (mesa, assento, token ou nome). */
+    private fun saveSession(tableId: String, seat: Seat, token: String) {
+        val next = com.gtranca.data.MultiplayerSession(tableId, seat.index, token, name, hostNameNow().ifBlank { name }, wasHost)
+        if (lastSaved == next) return
+        lastSaved = next
+        scope.launch { runCatching { sessions.save(next) } }
+    }
+
+    /**
+     * §16.12 apaga a sessão guardada (jogo entregue, desistência sem volta, mesa encerrada, vaga preenchida ou sair da mesa
+     * pelo botão). Devolve o trabalho para quem precisa esperar.
+     */
+    fun forgetSession(): Job {
+        lastSaved = null
+        return scope.launch { runCatching { sessions.clear() } }
+    }
+
+    /**
+     * §16.5, §16.12 "Continuar": volta à mesa [tableId] como jogador comum, com o [token] e o [seat] guardados. Procura a
+     * mesa por até [timeoutMillis] (a busca do rádio é repetida); sem achar, o fim é [MpEnd.NotFound]. A resposta do
+     * anfitrião (assento de volta ou recusa) chega em [guestStatus]/[end]; token recusado ("A vaga foi preenchida.") e mesa
+     * encerrada apagam a sessão.
+     */
+    suspend fun rejoin(tableId: String, playerName: String, token: String, seat: Seat, wasHost: Boolean, timeoutMillis: Long = REJOIN_TIMEOUT_MILLIS): Boolean {
+        name = playerName
+        this.wasHost = wasHost
+        val joined = kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
+            while (true) {
+                val session = GuestSession(transport, playerName, photo = myPhoto)
+                setRole(MpRole.Guesting(session, tableId))
+                try {
+                    session.join(scope, tableId, token = token, seat = seat)
+                    return@withTimeoutOrNull true
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    session.release()
+                    throw e
+                } catch (_: Exception) {
+                    // A mesa ainda não apareceu na busca: tenta de novo até o prazo.
+                    session.release()
+                }
+            }
+            @Suppress("UNREACHABLE_CODE")
+            false
+        }
+        if (joined == true) return true
+        _end.value = MpEnd.NotFound
+        return false
+    }
+
+    /** [rejoin] sem esperar. */
+    fun rejoinAsync(session: com.gtranca.data.MultiplayerSession) {
+        scope.launch {
+            after?.join()
+            try {
+                rejoin(session.tableId, session.playerName, session.token, Seat(session.seat), session.wasHost)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _end.value = MpEnd.NotFound
+            }
+        }
+    }
+
     /** [host] sem esperar. */
     fun hostAsync(rules: TableRules, playerName: String, tableId: String, plan: com.gtranca.net.TablePlan) {
         scope.launch {
@@ -481,6 +574,8 @@ class MultiplayerTable(
         if (_resigned.value && _received.value == null && rules != null) {
             coins.settle(gameId(), rules, GameResult.RESIGNATION, rules.stake, 0)
         }
+        // §16.12 desistência sem volta: a sessão não serve mais (quem sai antes do prêmio chegar a mantém para receber depois).
+        if (_resigned.value) forgetSession()
         when (val role = _role.value) {
             is MpRole.Guesting -> {
                 // §16.13 quem sai das telas antes de o prêmio chegar continua esperando por ele (em segundo plano).
@@ -568,6 +663,15 @@ class MultiplayerTable(
         val guest = role.session
         return listOf(
             scope.launch { guest.rules.collect { r -> if (r != null) _rules.value = r } },
+            // §16.12 a sessão do jogador comum: grava ao entrar (mesa, assento, token) e a cada mudança do assento ou do token.
+            scope.launch {
+                combine(guest.status, guest.roster) { st, list -> st to list }.collect { (st, list) ->
+                    val seat = list.firstOrNull { it.id == guest.playerId }?.seat
+                    val token = guest.token
+                    val inTable = st == GuestStatus.Lobby || st == GuestStatus.Playing || st == GuestStatus.Reconnecting
+                    if (inTable && seat != null && token != null) saveSession(role.tableId, seat, token)
+                }
+            },
             scope.launch {
                 var was: GuestStatus? = null
                 guest.status.collect { status ->
@@ -581,9 +685,14 @@ class MultiplayerTable(
                             if (was == GuestStatus.Reconnecting || was == GuestStatus.Resigned) _resigned.value = false
                         }
                         GuestStatus.Resigned -> _resigned.value = true
-                        is GuestStatus.Refused -> _end.value = MpEnd.Refused(status.message, status.reason)
-                        is GuestStatus.TableEnded -> if (_received.value == null) _end.value = MpEnd.Ended(status.reason)
-                        GuestStatus.Closed -> if (_received.value == null) _end.value = MpEnd.Closed
+                        is GuestStatus.Refused -> {
+                            _end.value = MpEnd.Refused(status.message, status.reason)
+                            // §16.12 token recusado ("A vaga foi preenchida."): a sessão não serve mais (a conexão substituída por
+                            // outra do mesmo jogador não é fim da sessão).
+                            if (status.message != com.gtranca.net.REPLACED_MESSAGE) forgetSession()
+                        }
+                        is GuestStatus.TableEnded -> if (_received.value == null) { _end.value = MpEnd.Ended(status.reason); forgetSession() }
+                        GuestStatus.Closed -> if (_received.value == null) { _end.value = MpEnd.Closed; forgetSession() }
                         GuestStatus.TakingOver -> Unit
                         else -> Unit
                     }
@@ -604,6 +713,7 @@ class MultiplayerTable(
                 guest.payout.collect { payout ->
                     if (payout != null) {
                         _received.value = payout.received
+                        forgetSession() // §16.11 resultado e prêmio entregues: a sessão acabou
                         settle(payout.stake, payout.received, guest.view.value?.winner, guest.view.value?.side)
                     }
                 }
@@ -668,6 +778,14 @@ class MultiplayerTable(
         )
         return listOf(
             scope.launch { host.robotPersonas.collect { robots.value = it } },
+            // §16.12 o anfitrião grava só a sessão (volta como jogador comum com o token dele), nunca o estado do jogo.
+            scope.launch {
+                wasHost = true
+                role.session.roster.collect { list ->
+                    val seat = list.firstOrNull { it.id == role.session.hostId }?.seat ?: host.hostSeat
+                    saveSession(role.session.tableId, seat, role.session.hostToken)
+                }
+            },
             scope.launch { role.session.photos.collect(::mergePhotos) },
             scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
                 host.controller.updatesOf(host.hostSeat).collect { _feed.trySend(it) }
@@ -678,6 +796,7 @@ class MultiplayerTable(
                     if (payouts != null && !_resigned.value) {
                         val received = payouts[role.session.hostId] ?: 0
                         _received.value = received
+                        forgetSession() // §16.11 resultado entregue: a sessão acabou
                         val view = host.controller.state.value
                         settle(host.config.stake, received, view.winner, view.viewerSide)
                     }
@@ -773,6 +892,9 @@ class MultiplayerTable(
     companion object {
         /** Espera técnica pelo prêmio de quem sai das telas antes de ele chegar (não é regra de §16.15). */
         const val PAYOUT_WAIT_MILLIS: Long = 30_000
+
+        /** §16.12 quanto tempo "Continuar" procura a mesa antes de desistir. */
+        const val REJOIN_TIMEOUT_MILLIS: Long = 30_000
 
         fun configOf(rules: TableRules): GameConfig =
             GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake)
