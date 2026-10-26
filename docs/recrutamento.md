@@ -93,6 +93,8 @@ jogador está `Chamado` ou `Recrutado`; recusa/saída/remoção o limpam.
 
 ## Entrada na mesa e início do jogo
 
+**Rádio (§16.15):** `GmsNearbyApi` anuncia e conecta com `NON_DISRUPTIVE` e `disruptiveUpgrade = false` (sem Wi-Fi Direct/hotspot; `lowPower` desligado por causa dos anúncios de até 100 bytes). `NearbyTransport` dá prazo de 5 s a cada chamada ao Nearby (`api timeout <nome>` no log; `api <nome> <ms> ms` com a duração), separa a trava do anúncio da trava da busca e deixa o aviso de "saindo" e as desconexões fora do caminho do início (`Recruitment.shutdown` não espera confirmações depois do início).
+
 `HostSession` recebe o **plano de lugares** (`TablePlan`): o layout (humano = Recrutado com a chave de presença; robô com a persona),
 as personas possíveis e a semente. Cada recrutado entra com `GuestSession.join(tableId, inviteKey)` e já fica no lugar
 planejado (`Welcome` com `started = false`) e responde `Ready` (**protocolo versão 16**; o anfitrião conta o recrutado como presente só com ele). Enquanto algum recrutado não confirmou, o anfitrião reafirma o anúncio da mesa a cada 2 s. Quem procura a mesa (`GuestSession.join`) repete a busca (rajada de recomeços dentro do orçamento de §16.15) e a conexão por até 30 s, com espera crescente; a falha final é tipada (`NOT_FOUND`, `CONNECT_FAILED`, `TIMEOUT`) e cada tipo tem o seu texto no modal *Mesa encerrada*. Ao abrir (`HostSession.open`), a sessão espera `prepareMillis`
