@@ -2,6 +2,7 @@ package com.gtranca.net
 
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.Seat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -49,6 +50,9 @@ sealed interface GuestStatus {
 
     /** Conexão encerrada. */
     data object Closed : GuestStatus
+
+    /** §16.2 não conseguiu entrar na mesa; [kind] diz por quê (cada causa tem o seu texto na tela). */
+    data class Failed(val kind: JoinFailureKind) : GuestStatus
 }
 
 /**
@@ -70,7 +74,12 @@ class GuestSession(
     private val absentLimitMillis: Long = ABSENT_LIMIT_MILLIS,
     /** §16.2 foto do perfil deste jogador (Base64, JPEG pequeno), enviada no [Hello]; `null` = sem foto. */
     private val photo: String? = null,
-
+    /** §16.2 quanto o recrutado procura a mesa (busca e conexão repetidas) antes de desistir. */
+    private val joinWaitMillis: Long = JOIN_WAIT_MILLIS,
+    /** §16.2 quanto o recrutado espera a resposta do anfitrião depois de conectar. */
+    private val replyWaitMillis: Long = REPLY_WAIT_MILLIS,
+    /** Diagnóstico (só no build debug): passos da entrada, sem nomes, cartas nem tokens. */
+    private val log: (String) -> Unit = {},
 ) {
     private val mutex = Mutex()
     private lateinit var scope: CoroutineScope
@@ -226,9 +235,69 @@ class GuestSession(
         this.requestedSeat = seat
         this.inviteKey = inviteKey
         collector = scope.launch { transport.events.collect { handle(it) } }
-        val advert = findTable() ?: error("Mesa não encontrada")
-        connectAndHello(advert, seat)
+        locateAndConnect(seat)
     }
+
+    /**
+     * §16.2, §16.15 acha a mesa e conecta, **repetindo** até o prazo ([joinWaitMillis] do recrutado; [FIND_TABLE_MILLIS] nos
+     * outros): a busca fica "viva" ([LocalTransport.holdSearch]) para ver o anúncio novo, e a conexão que falha é refeita
+     * com espera crescente (1 s, 2 s, 3 s... até 5 s). A falha diz a causa ([JoinFailure]): a mesa nunca apareceu
+     * ([JoinFailureKind.NOT_FOUND]) ou apareceu e a conexão não deu certo ([JoinFailureKind.CONNECT_FAILED]).
+     */
+    private suspend fun locateAndConnect(seat: Seat?) {
+        val window = if (inviteKey != null) joinWaitMillis else FIND_TABLE_MILLIS
+        var seenTable = false
+        var attempt = 0
+        var lastError: Throwable? = null
+        transport.holdSearch(true)
+        try {
+            var joined = false
+            withTimeoutOrNull(window) {
+                var backoff = 1_000L
+                while (!joined) {
+                    attempt++
+                    log("join attempt $attempt")
+                    val advert = transport.discover().mapNotNull { it.preferred(tableId) }.first()
+                    seenTable = true
+                    try {
+                        connectAndHello(advert, seat)
+                        joined = true
+                        log("join ok attempt=$attempt")
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        lastError = e
+                        log("connect failed ${e.message?.take(40)}")
+                        delay(backoff)
+                        backoff = minOf(backoff + 1_000, 5_000)
+                    }
+                }
+            }
+            if (!joined) {
+                val kind = if (seenTable) JoinFailureKind.CONNECT_FAILED else JoinFailureKind.NOT_FOUND
+                log("join failed $kind")
+                throw JoinFailure(kind, if (seenTable) "Não foi possível conectar à mesa" else "Mesa não encontrada", lastError)
+            }
+        } finally {
+            transport.holdSearch(false)
+        }
+        // §16.2 recrutado: o anfitrião tem de responder (Welcome ou recusa); sem resposta a entrada falha por TIMEOUT.
+        if (inviteKey != null) {
+            replyWatch = scope.launch {
+                delay(replyWaitMillis)
+                mutex.withLock {
+                    if (_status.value == GuestStatus.Connecting) {
+                        log("join failed ${JoinFailureKind.TIMEOUT}")
+                        link?.close()
+                        link = null
+                        _status.value = GuestStatus.Failed(JoinFailureKind.TIMEOUT)
+                    }
+                }
+            }
+        }
+    }
+
+    private var replyWatch: Job? = null
 
     /** §16.2 chave de presença com que este aparelho foi recrutado (vai no [Hello]). */
     private var inviteKey: String? = null
@@ -478,6 +547,11 @@ class GuestSession(
                     _status.value = GuestStatus.Playing
                 } else {
                     _status.value = GuestStatus.Lobby
+                    // §16.2, §16.15 Pronto: o recrutado confirma que está na mesa.
+                    if (inviteKey != null) {
+                        log("ready sent")
+                        scope.launch { mutex.withLock { link?.sendLocked(Ready) } }
+                    }
                 }
             }
             JoinWaiting -> _status.value = GuestStatus.WaitingApproval
@@ -549,5 +623,11 @@ class GuestSession(
 
         /** Espera técnica pela mesa na busca ao entrar ou voltar (não é regra de §16.15: só o tempo do rádio achar). */
         const val FIND_TABLE_MILLIS: Long = 10_000
+
+        /** §16.2, §16.15 quanto o recrutado procura a mesa do jogo depois do início. */
+        const val JOIN_WAIT_MILLIS: Long = 30_000
+
+        /** §16.2, §16.15 quanto o recrutado espera a resposta do anfitrião depois de conectar. */
+        const val REPLY_WAIT_MILLIS: Long = 20_000
     }
 }

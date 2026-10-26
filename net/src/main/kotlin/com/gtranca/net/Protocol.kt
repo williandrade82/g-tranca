@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 15
+const val PROTOCOL_VERSION: Int = 16
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -416,6 +416,32 @@ data class Rename(val name: String) : Payload
 @Serializable
 @SerialName("leave")
 data object Leave : Payload
+
+/**
+ * §16.2, §16.15 Pronto: o recrutado recebeu o [Welcome] e está na mesa. O anfitrião só conta o recrutado como presente
+ * (e só deixa de esperá-lo para virar robô) depois dele.
+ */
+@Serializable
+@SerialName("ready")
+data object Ready : Payload
+
+/** §16.2 por que o convidado não conseguiu entrar na mesa (cada causa tem o seu texto na tela). */
+enum class JoinFailureKind {
+    /** O anúncio da mesa não apareceu na busca dentro do prazo. */
+    NOT_FOUND,
+
+    /** A mesa apareceu, mas a conexão falhou em todas as tentativas do prazo. */
+    CONNECT_FAILED,
+
+    /** Conectou, mas o anfitrião não respondeu. */
+    TIMEOUT,
+}
+
+/** Falha ao entrar na mesa, com a causa ([kind]). */
+class JoinFailure(val kind: JoinFailureKind, message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** §16.2, §16.15 texto ao recrutado que chega depois de o lugar ter passado para um robô. */
+const val SEAT_LOST_MESSAGE: String = "O lugar passou para um robô porque você não chegou a tempo."
 
 /** Sala atualizada, redistribuída a todos a cada alteração (§16.2). */
 @Serializable

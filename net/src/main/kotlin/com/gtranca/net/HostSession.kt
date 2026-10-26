@@ -62,7 +62,7 @@ data class TablePlan(
 }
 
 /** §16.15 espera pelos recrutados entrarem na mesa depois de Começar Partida. */
-const val ENTRY_WAIT_MILLIS: Long = 10_000
+const val ENTRY_WAIT_MILLIS: Long = 30_000
 
 /** Para um sucessor que assume (§16.10): a sala que ele herda. */
 data class ResumedTable(
@@ -110,9 +110,14 @@ class HostSession(
      * os recrutados entram nos lugares planejados e o jogo começa sozinho (veja [gameStart]).
      */
     plan: TablePlan? = null,
+    /** Diagnóstico (só no build debug): passos do início, sem nomes, cartas nem tokens. */
+    private val log: (String) -> Unit = {},
 ) {
     private class Member(val token: String, var info: PlayerInfo) {
         var link: ReliableLink? = null
+
+        /** §16.2, §16.15 o recrutado confirmou [Ready] na mesa (só vale com o jogo por começar). */
+        var ready: Boolean = false
 
         /** §16.2 chave de presença do recrutado enquanto ele ainda não entrou na mesa. */
         var inviteKey: String? = null
@@ -327,6 +332,7 @@ class HostSession(
         mutex.withLock {
             if (started) refreshSuccessorsLocked()
             advertiseLocked(force = true)
+            log("table advertised")
         }
         // §16.2 "Prepare-se!": no mínimo prepareMillis; depois espera os recrutados entrarem (até waitMillis) e começa.
         plan?.let { scope.launch { beginPlan(it) } }
@@ -385,15 +391,27 @@ class HostSession(
         delay(plan.prepareMillis)
         val rest = (plan.waitMillis - plan.prepareMillis).coerceAtLeast(0)
         var waited = 0L
-        while (waited < rest && mutex.withLock { members.values.any { it.inviteKey != null && it.link == null && it.info.id != hostId } }) {
+        var sinceAdvert = 0L
+        while (waited < rest && mutex.withLock { members.values.any { it.inviteKey != null && !it.ready && it.info.id != hostId } }) {
             delay(ENTRY_POLL_MILLIS)
             waited += ENTRY_POLL_MILLIS
+            sinceAdvert += ENTRY_POLL_MILLIS
+            if (sinceAdvert >= ADVERT_REASSERT_MILLIS) {
+                sinceAdvert = 0
+                // §16.2, §16.15 enquanto falta recrutado, a mesa continua no ar (uma falha do rádio não a apaga).
+                mutex.withLock {
+                    if (!started && !closed) {
+                        log("table advertised (reassert)")
+                        runCatching { transport.advertise(advertLocked()) }
+                    }
+                }
+            }
         }
         val seats = mutex.withLock {
             if (started || closed) return
             val random = kotlin.random.Random(plan.seed)
             val used = plan.layout.usedPersonas.toMutableSet()
-            members.values.filter { it.inviteKey != null && it.link == null && it.info.id != hostId }.toList().forEach { m ->
+            members.values.filter { it.inviteKey != null && !it.ready && it.info.id != hostId }.toList().forEach { m ->
                 val free = plan.personaPool.filter { it !in used }
                 val persona = (free.ifEmpty { plan.personaPool }).random(random)
                 used += persona
@@ -401,6 +419,9 @@ class HostSession(
                 if (seat != null) robots = robots + (seat.index to persona)
                 val notice = TableNotice(NoticeKind.REPLACED_BY_ROBOT, seat, m.info.id, persona, RefusalReason.OUT_OF_RANGE)
                 _lobbyNotices.tryEmit(notice)
+                log("replaced by robot")
+                // §16.2, §16.15 o recrutado que ainda chegar sabe que perdeu o lugar (a recusa sai antes de fechar a conexão).
+                m.link?.sendLocked(Rejected(SEAT_LOST_MESSAGE))
                 m.inviteKey = null
                 removeMemberLocked(m, disconnect = true)
             }
@@ -562,6 +583,8 @@ class HostSession(
         member.link?.let { old -> old.close(); transport.disconnect(old.endpoint) }
         pending.remove(p.link.endpoint)
         member.link = p.link
+        member.ready = false
+        log("entry hello")
         updateLocked(member) { it.copy(connected = true) }
         publishRosterLocked(broadcast = true)
         p.link.sendLocked(Welcome(member.token, member.info.id, rules, _roster.value, started = false, robots = robots))
@@ -766,6 +789,8 @@ class HostSession(
             val key = payload.inviteKey ?: return refuseLocked(p, "A mesa está sendo montada: só entra quem foi recrutado.")
             return entryHelloLocked(p, payload, key)
         }
+        // §16.2, §16.15 recrutado que chega depois de o lugar ter passado para um robô: o aviso diz isso.
+        if (payload.inviteKey != null) return refuseLocked(p, SEAT_LOST_MESSAGE)
         // §16.7 durante o jogo só se entra no assento que o anfitrião abriu (o pedido diz qual, se houver mais de um) ou,
         // enquanto ele decide a pausa, no assento da vez (aprovar = abrir a vaga e aprovar).
         val open = if (finished) emptySet() else _openSeats.value + listOfNotNull(awaitingSeat)
@@ -849,6 +874,11 @@ class HostSession(
             // §16.9 sair durante o jogo vale como desistência.
             Leave -> if (!started) leaveBeforeStartLocked(member) else resignLocked(member)
             Resign -> resignLocked(member)
+            // §16.2, §16.15 o recrutado confirmou que está na mesa.
+            Ready -> if (!started) {
+                member.ready = true
+                log("ready recv")
+            }
             is ProposeAction -> {
                 val seat = player.seat
                 val port = game
@@ -1026,6 +1056,9 @@ class HostSession(
 
         /** Intervalo da espera pelos recrutados (técnico, não é regra). */
         const val ENTRY_POLL_MILLIS: Long = 50
+
+        /** §16.15 enquanto falta algum recrutado, a mesa reafirma o anúncio a cada tanto (técnico). */
+        const val ADVERT_REASSERT_MILLIS: Long = 2_000
 
         /** Intervalo da verificação da entrega do aviso de Wi-Fi desligado (técnico, não é regra). */
         const val OFFLINE_POLL_MILLIS: Long = 100

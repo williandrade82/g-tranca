@@ -141,6 +141,12 @@ interface LocalTransport {
      */
     fun burst(durationMillis: Long = 5_000) {}
 
+    /**
+     * §16.2, §16.15 quem procura uma mesa ([discover]) para entrar nela pede a busca "viva" enquanto espera: no rádio real
+     * o anúncio novo só é visto quando a busca recomeça (dentro do orçamento de buscas). `true` liga, `false` solta.
+     */
+    suspend fun holdSearch(on: Boolean) {}
+
     /** §16.2 tira da lista a presença de [key] (aviso explícito de saída ou conexão caída); reaparece se for vista de novo. */
     fun forgetPresence(key: String) {}
 

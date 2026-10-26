@@ -214,6 +214,10 @@ class Recruitment(
     @Volatile
     private var closed = false
 
+    /** §16.15 o início foi enviado ou recebido: o anúncio é da mesa do jogo e a presença não o toca mais. */
+    @Volatile
+    private var yielded = false
+
     /** Recrutado sem conexÃ£o e recusado no reingresso: o inÃ­cio se perdeu; espera a mesa aparecer. */
     private var awaitingStart = false
     private var appliedVersion = 0L
@@ -254,6 +258,11 @@ class Recruitment(
 
     private suspend fun advertiseLocked() {
         transport.setActiveMode(!closed && (freeFlag || recruiting()))
+        // §16.2, §16.15 a mesa do jogo já tem o anúncio (ou está para ter): a presença nunca anuncia por cima dela.
+        if (yielded) {
+            log("rec presence advert skipped (table has priority)")
+            return
+        }
         val recruitedBy = if (_status.value == RecruitStatus.Free) null else hostKey
         val inviting = remotes.values.filter { it.link == null }.map { it.key }.take(AdvertCodecLimits.MAX_INVITED)
         runCatching {
@@ -436,28 +445,46 @@ class Recruitment(
      * plano de lugares para a mesa do jogo, ou `null` se ainda nÃ£o dÃ¡.
      */
     suspend fun start(tableId: String, personaPool: List<String>, seed: Long): TablePlan? {
-        val (plan, all) = mutex.withLock {
-            val l = layoutState ?: return null
-            val r = rules ?: return null
-            if (!l.canStart) return null
+        val plan = plan(personaPool, seed) ?: return null
+        sendStart(tableId, plan)
+        return plan
+    }
+
+    /** §16.2 o plano de lugares da mesa do jogo, ou `null` se ainda não dá para começar. Não envia nada. */
+    suspend fun plan(personaPool: List<String>, seed: Long): TablePlan? = mutex.withLock {
+        val l = layoutState ?: return@withLock null
+        if (rules == null || !l.canStart) return@withLock null
+        // Daqui em diante o único passo válido é [sendStart]: encerrar a mesa de lugares agora avisaria os recrutados de "Mesa encerrada".
+        yielded = true
+        log("rec start planned")
+        TablePlan(l, personaPool, seed)
+    }
+
+    /**
+     * §16.2, §16.15 envia o início aos recrutados. Quem chama já deixou a mesa do jogo **no ar** (o anúncio da mesa vem
+     * antes) e largou a leitura dos eventos. A partir daqui a presença não anuncia mais por cima da mesa
+     * ([advertiseLocked]).
+     */
+    suspend fun sendStart(tableId: String, plan: TablePlan) {
+        val all = mutex.withLock {
+            yielded = true
             debounceJob?.cancel()
             remotes.values.forEach { it.link?.sendLocked(RecruitStart(tableId, PREPARE_MILLIS)) }
-            log("rec start prepare=$PREPARE_MILLIS remotes=${remotes.size}")
+            log("rec start sent prepare=$PREPARE_MILLIS remotes=${remotes.size}")
             remotes.values.forEach { it.absentJob?.cancel(); it.graceJob?.cancel() }
-            val plan = TablePlan(l, personaPool, seed)
             remotes.clear()
             layoutState = null
             _layout.value = null
             advertiseLocked()
-            plan to links.values.toList()
+            links.values.toList()
         }
         closeAfterConfirm(all, START_CONFIRM_MILLIS)
-        return plan
     }
 
     /** Â§16.2 o recrutador voltou Ã  tela 1, saiu ou desligou o Wi-Fi: chamados tÃªm o convite cancelado; recrutados, "Mesa encerrada". */
     suspend fun closeHosting() {
         val all = mutex.withLock {
+            if (yielded) return
             if (layoutState == null && remotes.isEmpty() && links.isEmpty()) return
             debounceJob?.cancel()
             remotes.values.forEach { r ->
@@ -678,6 +705,8 @@ class Recruitment(
 
     private suspend fun startedLocked(tableId: String, prepareMillis: Long) {
         rejoinJob?.cancel()
+        yielded = true
+        log("rec start received")
         transition(RecruitStatus.Free)
         _events.tryEmit(RecruitEvent.Start(tableId, myKey, prepareMillis))
         hostLink?.let { dropLinkLocked(it) }
