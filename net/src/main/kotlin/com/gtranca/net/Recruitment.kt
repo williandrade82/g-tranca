@@ -16,7 +16,7 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
-/** §16.2 aviso ao recrutador: o chamado recusou, saiu da mesa ou sumiu ([reason] `null` = "Sair da mesa"). */
+/** Â§16.2 aviso ao recrutador: o chamado recusou, saiu da mesa ou sumiu ([reason] `null` = "Sair da mesa"). */
 data class RecruitNotice(val key: String, val name: String, val refused: Boolean, val reason: RefusalReason?)
 
 /** Jogador chamado (`accepted = false`) ou recrutado deste recrutador, na ordem dos lugares. */
@@ -31,14 +31,14 @@ fun TableLayout.recruits(): List<Recruit> = slots.mapNotNull {
     }
 }
 
-/** §16.2 situação deste aparelho como chamado/recrutado por outro recrutador. */
+/** Â§16.2 situaÃ§Ã£o deste aparelho como chamado/recrutado por outro recrutador. */
 sealed interface RecruitStatus {
     /** Livre: pode ser chamado. */
     data object Free : RecruitStatus
 
     /**
      * Convite imediato recebido do recrutador [hostKey] (sem prazo): Aceitar ou Recusar. [table] traz aposta, tipo, regras e
-     * lugares; [you] é o lugar do chamado (a posição vem de `table.layout.relationOf(you)`). Atualizado a cada [RecruitSync].
+     * lugares; [you] Ã© o lugar do chamado (a posiÃ§Ã£o vem de `table.layout.relationOf(you)`). Atualizado a cada [RecruitSync].
      */
     data class Invited(
         val hostKey: String,
@@ -47,8 +47,8 @@ sealed interface RecruitStatus {
         val you: Int,
         val version: Long = 0,
         /**
-         * §16.15 limite para responder, no relógio local ([Recruitment.nowMillis]) de quem recebeu o convite: o aparelho desenha
-         * a contagem com [remainingMillis]. Sem resposta até ele, o convite vale como recusa.
+         * Â§16.15 limite para responder, no relÃ³gio local ([Recruitment.nowMillis]) de quem recebeu o convite: o aparelho desenha
+         * a contagem com [remainingMillis]. Sem resposta atÃ© ele, o convite vale como recusa.
          */
         val deadlineMillis: Long = 0,
     ) : RecruitStatus {
@@ -56,36 +56,36 @@ sealed interface RecruitStatus {
         fun remainingMillis(now: Long): Long = (deadlineMillis - now).coerceAtLeast(0)
     }
 
-    /** Aceitou: vê a mesa do recrutador ([table], com os lugares) ao vivo e só para leitura. */
+    /** Aceitou: vÃª a mesa do recrutador ([table], com os lugares) ao vivo e sÃ³ para leitura. */
     data class Joined(val hostKey: String, val hostName: String, val table: RecruitTable, val you: Int, val version: Long = 0) : RecruitStatus
 }
 
-/** §16.2 acontecimentos do lado do chamado/recrutado (avisos e o início). */
+/** Â§16.2 acontecimentos do lado do chamado/recrutado (avisos e o inÃ­cio). */
 sealed interface RecruitEvent {
-    /** "<recrutador> tirou você da mesa". */
+    /** "<recrutador> tirou vocÃª da mesa". */
     data class Removed(val hostName: String) : RecruitEvent
 
-    /** O convite foi recusado sozinho (§14.6, §16.2): saldo menor que a aposta. A tela avisa "Saldo insuficiente para esta mesa". */
+    /** O convite foi recusado sozinho (Â§14.6, Â§16.2): saldo menor que a aposta. A tela avisa "Saldo insuficiente para esta mesa". */
     data class Refused(val hostName: String, val reason: RefusalReason) : RecruitEvent
 
-    /** "Mesa encerrada" (o recrutador voltou, saiu, desligou o Wi-Fi do jogo ou a conexão não voltou a tempo). */
+    /** "Mesa encerrada" (o recrutador voltou, saiu, desligou o Wi-Fi do jogo ou a conexÃ£o nÃ£o voltou a tempo). */
     data class Closed(val hostName: String) : RecruitEvent
 
-    /** O recrutador tocou em Começar Partida: mostrar "Prepare-se!" por no mínimo [prepareMillis] e entrar na mesa [tableId]. */
+    /** O recrutador tocou em ComeÃ§ar Partida: mostrar "Prepare-se!" por no mÃ­nimo [prepareMillis] e entrar na mesa [tableId]. */
     data class Start(val tableId: String, val inviteKey: String, val prepareMillis: Long = PREPARE_MILLIS) : RecruitEvent
 }
 
 /**
- * §16.2 recrutamento (chamar jogadores próximos para os lugares da mesa). Máquina de estados e regras de sincronização:
+ * Â§16.2 recrutamento (chamar jogadores prÃ³ximos para os lugares da mesa). MÃ¡quina de estados e regras de sincronizaÃ§Ã£o:
  * `docs/recrutamento.md`.
  *
- * - **Estado na presença:** [setFree] (tela *Iniciar novo jogo*, pode ser chamado) e [openTable] (tela *Seleção de jogadores*,
- *   recrutando). Quem está livre abre a conexão de **espera** com um recrutador; recrutadores não se conectam entre si.
+ * - **Estado na presenÃ§a:** [setFree] (tela *Iniciar novo jogo*, pode ser chamado) e [openTable] (tela *SeleÃ§Ã£o de jogadores*,
+ *   recrutando). Quem estÃ¡ livre abre a conexÃ£o de **espera** com um recrutador; recrutadores nÃ£o se conectam entre si.
  * - **Recrutador:** [call], [placeRobot], [removeSeat], [move], [fillWithRobots] mexem em [layout]; o convite sai pela
- *   conexão na hora; o estado completo e numerado ([RecruitSync]) vai a chamados e recrutados 0,3 s depois da última
- *   mudança; [start] devolve o [TablePlan] para a mesa do jogo.
+ *   conexÃ£o na hora; o estado completo e numerado ([RecruitSync]) vai a chamados e recrutados 0,3 s depois da Ãºltima
+ *   mudanÃ§a; [start] devolve o [TablePlan] para a mesa do jogo.
  * - **Chamado/recrutado:** [status], [events], [accept], [refuse], [leave].
- * - Enquanto [run] roda, é o único leitor dos eventos do transporte (as fotos vão a [photos]).
+ * - Enquanto [run] roda, Ã© o Ãºnico leitor dos eventos do transporte (as fotos vÃ£o a [photos]).
  */
 class Recruitment(
     private val transport: LocalTransport,
@@ -93,31 +93,31 @@ class Recruitment(
     val myKey: String,
     myName: String,
     private val photos: PresencePhotos? = null,
-    /** §14.6 o saldo cobre a aposta? (pode esperar a leitura da carteira). */
+    /** Â§14.6 o saldo cobre a aposta? (pode esperar a leitura da carteira). */
     private val canAfford: suspend (stake: Int) -> Boolean = { true },
     private val codec: ProtocolCodec = ProtocolCodec(),
-    /** Diagnóstico (só no build debug): eventos e versões, sem nomes, fotos nem bytes. */
+    /** DiagnÃ³stico (sÃ³ no build debug): eventos e versÃµes, sem nomes, fotos nem bytes. */
     private val log: (String) -> Unit = {},
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     private val mutex = Mutex()
     private var myName: String = myName
 
-    /** Todas as conexões de recrutamento (deste aparelho como recrutador ou como chamado). */
+    /** Todas as conexÃµes de recrutamento (deste aparelho como recrutador ou como chamado). */
     private val links = ConcurrentHashMap<EndpointId, ReliableLink>()
     private val peerKey = mutableMapOf<EndpointId, String>()
     private val photoSent = mutableSetOf<EndpointId>()
 
     private fun k(key: String) = key.take(2)
 
-    /** Relógio monotônico local (ms) em que os prazos ([RecruitStatus.Invited.deadlineMillis]) são medidos. */
+    /** RelÃ³gio monotÃ´nico local (ms) em que os prazos ([RecruitStatus.Invited.deadlineMillis]) sÃ£o medidos. */
     fun nowMillis(): Long = clock()
 
     private val lastHeard = mutableMapOf<EndpointId, Long>()
     private var heartbeatJob: Job? = null
     private var inviteTimer: Job? = null
 
-    /** §16.15 liga a mensagem de teste das conexões abertas (só roda enquanto há conexão). */
+    /** Â§16.15 liga a mensagem de teste das conexÃµes abertas (sÃ³ roda enquanto hÃ¡ conexÃ£o). */
     private fun ensureHeartbeatLocked() {
         if (heartbeatJob != null) return
         heartbeatJob = scope.launch {
@@ -128,7 +128,7 @@ class Recruitment(
         }
     }
 
-    /** Devolve se acabou (sem conexões). Conexão muda por mais de [DEAD_AFTER_MILLIS] é dada como caída. */
+    /** Devolve se acabou (sem conexÃµes). ConexÃ£o muda por mais de [DEAD_AFTER_MILLIS] Ã© dada como caÃ­da. */
     private suspend fun heartbeatTickLocked(): Boolean {
         if (links.isEmpty()) {
             heartbeatJob = null
@@ -152,20 +152,20 @@ class Recruitment(
         return false
     }
 
-    // ---- presença -----------------------------------------------------------------------------------------------
+    // ---- presenÃ§a -----------------------------------------------------------------------------------------------
     private var freeFlag = false
     private var presences: List<PresenceAdvert> = emptyList()
 
     private val _recruiters = MutableStateFlow<List<PresenceAdvert>>(emptyList())
 
-    /** §16.2 outros jogadores **recrutando** (para a lista da tela *Iniciar novo jogo*; só informativa). */
+    /** Â§16.2 outros jogadores **recrutando** (para a lista da tela *Iniciar novo jogo*; sÃ³ informativa). */
     val recruiters: StateFlow<List<PresenceAdvert>> = _recruiters.asStateFlow()
 
     private val _free = MutableStateFlow<List<PresenceAdvert>>(emptyList())
 
     /**
-     * §16.2 jogadores próximos **livres** (para a *Seleção de jogadores*); `recruitedBy` diferente de nulo e de [myKey] =
-     * "Recrutado" por outro (não selecionável).
+     * Â§16.2 jogadores prÃ³ximos **livres** (para a *SeleÃ§Ã£o de jogadores*); `recruitedBy` diferente de nulo e de [myKey] =
+     * "Recrutado" por outro (nÃ£o selecionÃ¡vel).
      */
     val free: StateFlow<List<PresenceAdvert>> = _free.asStateFlow()
 
@@ -185,36 +185,36 @@ class Recruitment(
 
     private val _layout = MutableStateFlow<TableLayout?>(null)
 
-    /** §16.2 os lugares da mesa (`null` = a *Seleção de jogadores* não está aberta). */
+    /** Â§16.2 os lugares da mesa (`null` = a *SeleÃ§Ã£o de jogadores* nÃ£o estÃ¡ aberta). */
     val layout: StateFlow<TableLayout?> = _layout.asStateFlow()
 
     private val _notices = MutableSharedFlow<RecruitNotice>(extraBufferCapacity = 64)
 
-    /** §16.2 recusas, saídas e quedas dos chamados/recrutados (com o motivo). */
+    /** Â§16.2 recusas, saÃ­das e quedas dos chamados/recrutados (com o motivo). */
     val notices: SharedFlow<RecruitNotice> = _notices.asSharedFlow()
 
     // ---- chamado/recrutado --------------------------------------------------------------------------------------
     private val _status = MutableStateFlow<RecruitStatus>(RecruitStatus.Free)
 
-    /** §16.2 situação deste aparelho como chamado/recrutado. */
+    /** Â§16.2 situaÃ§Ã£o deste aparelho como chamado/recrutado. */
     val status: StateFlow<RecruitStatus> = _status.asStateFlow()
 
     private val _events = MutableSharedFlow<RecruitEvent>(extraBufferCapacity = 64)
 
-    /** §16.2 avisos ao chamado/recrutado e o início. */
+    /** Â§16.2 avisos ao chamado/recrutado e o inÃ­cio. */
     val events: SharedFlow<RecruitEvent> = _events.asSharedFlow()
 
-    /** Conexão que este aparelho abriu a um recrutador (espera, convite ou reingresso). */
+    /** ConexÃ£o que este aparelho abriu a um recrutador (espera, convite ou reingresso). */
     private var outLink: ReliableLink? = null
 
-    /** Conexão que trouxe o convite: vale para aceite, lugares, saída e início. */
+    /** ConexÃ£o que trouxe o convite: vale para aceite, lugares, saÃ­da e inÃ­cio. */
     private var hostLink: ReliableLink? = null
     private var hostKey: String? = null
 
     @Volatile
     private var closed = false
 
-    /** Recrutado sem conexão e recusado no reingresso: o início se perdeu; espera a mesa aparecer. */
+    /** Recrutado sem conexÃ£o e recusado no reingresso: o inÃ­cio se perdeu; espera a mesa aparecer. */
     private var awaitingStart = false
     private var appliedVersion = 0L
     private var contacting: Job? = null
@@ -223,10 +223,10 @@ class Recruitment(
     private fun recruiting() = layoutState != null
     private fun isFree() = freeFlag && !recruiting()
 
-    /** O endpoint é uma conexão de recrutamento (a troca de fotos não deve tocá-lo). */
+    /** O endpoint Ã© uma conexÃ£o de recrutamento (a troca de fotos nÃ£o deve tocÃ¡-lo). */
     fun ownsEndpoint(endpoint: EndpointId): Boolean = links.containsKey(endpoint)
 
-    /** Anuncia a presença e atende o recrutamento até ser cancelado. */
+    /** Anuncia a presenÃ§a e atende o recrutamento atÃ© ser cancelado. */
     suspend fun run() = coroutineScope {
         mutex.withLock { advertiseLocked() }
         launch { transport.discoverPresence().collect { list -> mutex.withLock { presencesLocked(list) } } }
@@ -234,12 +234,16 @@ class Recruitment(
         transport.events.collect { handle(it) }
     }
 
-    private fun transition(to: RecruitStatus) {
+    /** VersÃ£o do Ãºltimo convite que o usuÃ¡rio jÃ¡ respondeu (por recrutador): o reenvio dele nÃ£o reabre o modal. */
+    private val answeredVersion = mutableMapOf<String, Long>()
+    private var inviteLossJob: Job? = null
+
+    private fun transition(to: RecruitStatus, reason: String = "") {
         val from = _status.value
         if (from::class == to::class && from !is RecruitStatus.Invited && from !is RecruitStatus.Joined) return
         _status.value = to
         if (to == RecruitStatus.Free) awaitingStart = false
-        if (from::class != to::class) log("rec state ${from::class.simpleName}->${to::class.simpleName}")
+        if (from::class != to::class) log("rec state ${from::class.simpleName}->${to::class.simpleName}${if (reason.isEmpty()) "" else " reason=$reason"}")
         if (to !is RecruitStatus.Invited) {
             inviteTimer?.cancel()
             inviteTimer = null
@@ -260,13 +264,13 @@ class Recruitment(
         }
     }
 
-    /** §16.2, §16.15 "atualizar": rajada de busca de 5 s a cada 1 s (os toques repetidos durante a rajada são ignorados). */
+    /** Â§16.2, Â§16.15 "atualizar": rajada de busca de 5 s a cada 1 s (os toques repetidos durante a rajada sÃ£o ignorados). */
     fun refreshNow() {
         log("rec refreshNow")
         transport.burst()
     }
 
-    /** O nome do perfil mudou: o anúncio acompanha (o estado do recrutamento não muda). */
+    /** O nome do perfil mudou: o anÃºncio acompanha (o estado do recrutamento nÃ£o muda). */
     suspend fun rename(name: String) {
         mutex.withLock {
             if (myName == name) return
@@ -275,7 +279,7 @@ class Recruitment(
         }
     }
 
-    /** §16.2 a tela *Iniciar novo jogo* está aberta (`true`) ou fechou: só quem está livre pode ser chamado. */
+    /** Â§16.2 a tela *Iniciar novo jogo* estÃ¡ aberta (`true`) ou fechou: sÃ³ quem estÃ¡ livre pode ser chamado. */
     suspend fun setFree(on: Boolean) {
         mutex.withLock {
             if (freeFlag == on) return
@@ -289,8 +293,8 @@ class Recruitment(
     // ---- API do recrutador --------------------------------------------------------------------------------------
 
     /**
-     * §16.2 abre a *Seleção de jogadores*: os lugares começam VAGO ([TableLayout.initial]) e a presença passa a dizer
-     * "recrutando". [rules] traz modo, aposta, dificuldade, regras, alvo e o título da regra.
+     * Â§16.2 abre a *SeleÃ§Ã£o de jogadores*: os lugares comeÃ§am VAGO ([TableLayout.initial]) e a presenÃ§a passa a dizer
+     * "recrutando". [rules] traz modo, aposta, dificuldade, regras, alvo e o tÃ­tulo da regra.
      */
     suspend fun openTable(rules: TableRules, hostName: String) {
         mutex.withLock {
@@ -306,7 +310,7 @@ class Recruitment(
         }
     }
 
-    /** A mesa como o jogador [key] a vê: só a própria chave de presença nos lugares (§16.4). */
+    /** A mesa como o jogador [key] a vÃª: sÃ³ a prÃ³pria chave de presenÃ§a nos lugares (Â§16.4). */
     private fun tableFor(key: String): RecruitTable? = layoutState?.let { RecruitTable(hostDisplayName, rules!!, it.redactedFor(key)) }
 
     private suspend fun changedLocked(immediate: Boolean = false) {
@@ -337,8 +341,8 @@ class Recruitment(
     }
 
     /**
-     * §16.2 chama o jogador [presence] para o lugar [seat] (VAGO): o convite chega na hora, pela conexão de espera se ela
-     * existe (senão pela reserva do anúncio). `false` se o lugar não está VAGO, o jogador já está em outro lugar ou foi
+     * Â§16.2 chama o jogador [presence] para o lugar [seat] (VAGO): o convite chega na hora, pela conexÃ£o de espera se ela
+     * existe (senÃ£o pela reserva do anÃºncio). `false` se o lugar nÃ£o estÃ¡ VAGO, o jogador jÃ¡ estÃ¡ em outro lugar ou foi
      * recrutado por outro recrutador.
      */
     suspend fun call(seat: Int, presence: PresenceAdvert): Boolean = mutex.withLock {
@@ -349,7 +353,7 @@ class Recruitment(
         layoutState = next
         val r = Remote(presence.key, presence.name, clock())
         remotes[presence.key] = r
-        // §16.2, §16.15 o chamado tem 25 s (+ folga): sem resposta, o lugar volta a VAGO e o jogador pode ser chamado de novo.
+        // Â§16.2, Â§16.15 o chamado tem 25 s (+ folga): sem resposta, o lugar volta a VAGO e o jogador pode ser chamado de novo.
         scope.launch {
             delay(INVITE_TIMEOUT_MILLIS + INVITE_HOST_GRACE_MILLIS)
             mutex.withLock {
@@ -384,17 +388,17 @@ class Recruitment(
         }
     }
 
-    /** §14.5, §16.2 põe o robô [persona] no lugar [seat] (VAGO). */
+    /** Â§14.5, Â§16.2 pÃµe o robÃ´ [persona] no lugar [seat] (VAGO). */
     suspend fun placeRobot(seat: Int, persona: String): Boolean = mutate { it.placeRobot(seat, persona) }
 
-    /** §16.2 "Completar com robôs": sorteia (semente do recrutador) robôs ainda não usados nos lugares VAGO. */
+    /** Â§16.2 "Completar com robÃ´s": sorteia (semente do recrutador) robÃ´s ainda nÃ£o usados nos lugares VAGO. */
     suspend fun fillWithRobots(pool: List<String>, seed: Long) {
         mutate { it.fillWithRobots(pool, Random(seed)) }
     }
 
     /**
-     * §16.2 remove quem está no lugar [seat] (nunca o do recrutador): robô volta à lista; Chamado tem o convite cancelado
-     * (sem aviso); Recrutado recebe "tirou você da mesa".
+     * Â§16.2 remove quem estÃ¡ no lugar [seat] (nunca o do recrutador): robÃ´ volta Ã  lista; Chamado tem o convite cancelado
+     * (sem aviso); Recrutado recebe "tirou vocÃª da mesa".
      */
     suspend fun removeSeat(seat: Int): Boolean = mutex.withLock {
         val l = layoutState ?: return@withLock false
@@ -407,7 +411,7 @@ class Recruitment(
         true
     }
 
-    /** §16.2 só o recrutador move gente: [from] -> [to] (ocupado troca, VAGO move; o lugar do recrutador não se move). */
+    /** Â§16.2 sÃ³ o recrutador move gente: [from] -> [to] (ocupado troca, VAGO move; o lugar do recrutador nÃ£o se move). */
     suspend fun move(from: Int, to: Int): Boolean = mutate(immediate = false) { it.move(from, to) }
 
     private suspend fun mutate(immediate: Boolean = false, change: (TableLayout) -> TableLayout?): Boolean = mutex.withLock {
@@ -427,9 +431,9 @@ class Recruitment(
     }
 
     /**
-     * §16.2 Começar Partida: exige [TableLayout.canStart]. Os recrutados recebem [RecruitStart] (mostrar "Prepare-se!" por
-     * no mínimo [PREPARE_MILLIS] e entrar na mesa [tableId] com a própria chave); a presença volta a "livre". Devolve o
-     * plano de lugares para a mesa do jogo, ou `null` se ainda não dá.
+     * Â§16.2 ComeÃ§ar Partida: exige [TableLayout.canStart]. Os recrutados recebem [RecruitStart] (mostrar "Prepare-se!" por
+     * no mÃ­nimo [PREPARE_MILLIS] e entrar na mesa [tableId] com a prÃ³pria chave); a presenÃ§a volta a "livre". Devolve o
+     * plano de lugares para a mesa do jogo, ou `null` se ainda nÃ£o dÃ¡.
      */
     suspend fun start(tableId: String, personaPool: List<String>, seed: Long): TablePlan? {
         val (plan, all) = mutex.withLock {
@@ -451,7 +455,7 @@ class Recruitment(
         return plan
     }
 
-    /** §16.2 o recrutador voltou à tela 1, saiu ou desligou o Wi-Fi: chamados têm o convite cancelado; recrutados, "Mesa encerrada". */
+    /** Â§16.2 o recrutador voltou Ã  tela 1, saiu ou desligou o Wi-Fi: chamados tÃªm o convite cancelado; recrutados, "Mesa encerrada". */
     suspend fun closeHosting() {
         val all = mutex.withLock {
             if (layoutState == null && remotes.isEmpty() && links.isEmpty()) return
@@ -472,11 +476,11 @@ class Recruitment(
         closeAfterConfirm(all, CLOSE_CONFIRM_MILLIS)
     }
 
-    /** Larga tudo (Wi-Fi do jogo desligado ou o aparelho entrou numa mesa/jogo): encerra o recrutamento nos dois papéis. */
+    /** Larga tudo (Wi-Fi do jogo desligado ou o aparelho entrou numa mesa/jogo): encerra o recrutamento nos dois papÃ©is. */
     suspend fun shutdown() {
         mutex.withLock {
             closed = true
-            // §16.2 aviso explícito de saída: quem recebe me tira das listas na hora (as confirmações esperam até 0,5 s).
+            // Â§16.2 aviso explÃ­cito de saÃ­da: quem recebe me tira das listas na hora (as confirmaÃ§Ãµes esperam atÃ© 0,5 s).
             links.values.forEach { it.sendLocked(RecruitBye(myKey)) }
             advertiseLocked()
         }
@@ -498,18 +502,20 @@ class Recruitment(
 
     // ---- API do chamado/recrutado -------------------------------------------------------------------------------
 
-    /** §16.2 aceita o convite: passa a ver a mesa do recrutador. Devolve se havia convite e conexão. */
+    /** Â§16.2 aceita o convite: passa a ver a mesa do recrutador. Devolve se havia convite e conexÃ£o. */
     suspend fun accept(): Boolean = mutex.withLock {
         val invited = _status.value as? RecruitStatus.Invited ?: return@withLock false
         val link = hostLink ?: return@withLock false
         link.sendLocked(RecruitReply(myKey, true))
+        answeredVersion[invited.hostKey] = maxOf(answeredVersion[invited.hostKey] ?: 0, invited.version)
+        inviteLossJob?.cancel()
         log("rec accept sent")
         transition(RecruitStatus.Joined(invited.hostKey, invited.hostName, invited.table, invited.you, invited.version))
         advertiseLocked()
         true
     }
 
-    /** §16.2 recusa o convite (volta a ficar disponível para todos). */
+    /** Â§16.2 recusa o convite (volta a ficar disponÃ­vel para todos). */
     suspend fun refuse() {
         mutex.withLock { refuseLocked(RefusalReason.INVITE_REFUSED) }
     }
@@ -518,11 +524,13 @@ class Recruitment(
         val invited = _status.value as? RecruitStatus.Invited ?: return
         if (reason != RefusalReason.INVITE_REFUSED) _events.tryEmit(RecruitEvent.Refused(invited.hostName, reason))
         hostLink?.sendLocked(RecruitReply(myKey, false, reason))
-        transition(RecruitStatus.Free)
+        answeredVersion[invited.hostKey] = maxOf(answeredVersion[invited.hostKey] ?: 0, invited.version)
+        inviteLossJob?.cancel()
+        transition(RecruitStatus.Free, "refused:$reason")
         advertiseLocked()
     }
 
-    /** §16.2 "Sair da mesa": o lugar volta a VAGO e este aparelho fica livre. */
+    /** Â§16.2 "Sair da mesa": o lugar volta a VAGO e este aparelho fica livre. */
     suspend fun leave() {
         mutex.withLock {
             if (_status.value !is RecruitStatus.Joined) return
@@ -534,7 +542,7 @@ class Recruitment(
 
     // ---- descoberta ---------------------------------------------------------------------------------------------
 
-    /** Devo me ligar a [host]? Só quem está livre, e a um recrutador (ou a quem me lista em `inviting`). */
+    /** Devo me ligar a [host]? SÃ³ quem estÃ¡ livre, e a um recrutador (ou a quem me lista em `inviting`). */
     private fun wants(host: PresenceAdvert): Boolean = !closed && !host.leaving && host.key != myKey && !recruiting() &&
         (myKey in host.inviting || (host.hosting && freeFlag))
 
@@ -543,7 +551,7 @@ class Recruitment(
         _recruiters.value = presences.filter { it.hosting && !it.leaving && it.key != myKey }
         _free.value = presences.filter { it.free && !it.hosting && !it.leaving && it.key != myKey }
         val keys = presences.map { it.key }.toSet()
-        // Recrutador: chamado sem conexão que sumiu da busca por 10 s volta a VAGO ("fora do alcance").
+        // Recrutador: chamado sem conexÃ£o que sumiu da busca por 10 s volta a VAGO ("fora do alcance").
         remotes.values.forEach { r ->
             val called = layoutState?.slots?.any { it is Slot.Called && it.key == r.key } == true
             if (!called || r.key in keys || r.link != null) {
@@ -563,7 +571,7 @@ class Recruitment(
         evaluateContactLocked()
     }
 
-    /** O jogador [key] deixa o lugar (recusa, saída, queda): o lugar volta a VAGO e o recrutador é avisado. */
+    /** O jogador [key] deixa o lugar (recusa, saÃ­da, queda): o lugar volta a VAGO e o recrutador Ã© avisado. */
     private suspend fun vacateLocked(key: String, notice: RecruitNotice?, why: String) {
         val l = layoutState ?: return
         val next = l.vacate(key) ?: return
@@ -660,7 +668,7 @@ class Recruitment(
         scope.launch { runCatching { transport.disconnect(l.endpoint) } }
     }
 
-    /** O início se perdeu: a mesa do recrutador apareceu com a minha chave em `invited`. */
+    /** O inÃ­cio se perdeu: a mesa do recrutador apareceu com a minha chave em `invited`. */
     private suspend fun tablesLocked(list: List<TableAdvert>) {
         if (_status.value !is RecruitStatus.Joined) return
         val table = list.firstOrNull { myKey in it.invited } ?: return
@@ -697,7 +705,7 @@ class Recruitment(
         if (forPhotos) photos?.handle(event)
     }
 
-    /** Devolve se o evento é da troca de fotos. */
+    /** Devolve se o evento Ã© da troca de fotos. */
     private suspend fun receiveLocked(event: TransportEvent.Received): Boolean {
         val envelope = (codec.decode(event.bytes) as? Decoded.Ok)?.envelope ?: return false
         var link = links[event.endpoint]
@@ -743,8 +751,22 @@ class Recruitment(
             }
             // ---- chamado/recrutado ----
             is RecruitInvite -> {
-                if (_status.value != RecruitStatus.Free || recruiting()) return
                 val host = peerKey[link.endpoint] ?: return
+                val current = _status.value
+                if (current is RecruitStatus.Invited && current.hostKey == host) {
+                    // Convite reenviado depois de uma queda: atualiza no lugar, sem reabrir o modal e SEM renovar o prazo.
+                    inviteLossJob?.cancel()
+                    hostLink = link
+                    appliedVersion = maxOf(appliedVersion, payload.version)
+                    _status.value = current.copy(table = payload.table, you = payload.you, version = maxOf(current.version, payload.version))
+                    log("rec invite resent: kept deadline, remaining=${current.remainingMillis(clock())} ms")
+                    return
+                }
+                if (current != RecruitStatus.Free || recruiting()) return
+                if (payload.version <= (answeredVersion[host] ?: 0)) {
+                    log("rec invite ignored: already answered v=${payload.version}")
+                    return
+                }
                 hostLink = link
                 hostKey = host
                 if (!canAffordNow(payload.table.rules.stake)) {
@@ -756,7 +778,7 @@ class Recruitment(
                 appliedVersion = payload.version
                 val deadline = clock() + payload.timeoutMillis
                 transition(RecruitStatus.Invited(host, payload.table.hostName, payload.table, payload.you, payload.version, deadline))
-                // §16.15 sem resposta no prazo vale como recusa (nunca aceita sozinho).
+                // Â§16.15 sem resposta no prazo vale como recusa (nunca aceita sozinho).
                 inviteTimer?.cancel()
                 inviteTimer = scope.launch {
                     delay(payload.timeoutMillis)
@@ -791,7 +813,7 @@ class Recruitment(
                 val name = (s as? RecruitStatus.Joined)?.hostName ?: (s as? RecruitStatus.Invited)?.hostName ?: ""
                 if (s == RecruitStatus.Free) return
                 if (s is RecruitStatus.Joined && payload.reason == RecruitEndReason.CANCELLED) {
-                    // O recrutador já não tem este aceite (ex.: começou a partida e o início se perdeu): espera a mesa aparecer.
+                    // O recrutador jÃ¡ nÃ£o tem este aceite (ex.: comeÃ§ou a partida e o inÃ­cio se perdeu): espera a mesa aparecer.
                     log("rec cancelled while joined: awaiting table")
                     awaitingStart = true
                     dropLinkLocked(link)
@@ -808,7 +830,8 @@ class Recruitment(
                     }
                     return
                 }
-                transition(RecruitStatus.Free)
+                inviteLossJob?.cancel()
+                transition(RecruitStatus.Free, "end:${payload.reason}")
                 advertiseLocked()
                 when (payload.reason) {
                     RecruitEndReason.REMOVED -> _events.tryEmit(RecruitEvent.Removed(name))
@@ -826,7 +849,7 @@ class Recruitment(
             is RecruitBye -> {
                 log("rec bye ${k(payload.key)}")
                 transport.forgetPresence(payload.key)
-                // Quem estava na minha mesa e saiu de propósito: o lugar volta a VAGO na hora.
+                // Quem estava na minha mesa e saiu de propÃ³sito: o lugar volta a VAGO na hora.
                 if (layoutState?.seatOf(payload.key) != null) {
                     val r = remotes[payload.key]
                     vacateLocked(payload.key, RecruitNotice(payload.key, r?.name.orEmpty(), refused = false, reason = null), "bye")
@@ -840,10 +863,10 @@ class Recruitment(
         }
     }
 
-    /** §14.6 o saldo cobre a aposta? (a leitura da carteira é rápida; sem ela, o convite é aceito para a tela decidir). */
+    /** Â§14.6 o saldo cobre a aposta? (a leitura da carteira Ã© rÃ¡pida; sem ela, o convite Ã© aceito para a tela decidir). */
     private suspend fun canAffordNow(stake: Int): Boolean = runCatching { canAfford(stake) }.getOrDefault(true)
 
-    /** Recrutador: um jogador próximo conectou (espera, convite pendente pela reserva ou reingresso). */
+    /** Recrutador: um jogador prÃ³ximo conectou (espera, convite pendente pela reserva ou reingresso). */
     private suspend fun helloLocked(link: ReliableLink, hello: RecruitHello) {
         val l = layoutState
         val inLayout = l?.seatOf(hello.key)
@@ -884,7 +907,7 @@ class Recruitment(
         advertiseLocked()
     }
 
-    /** A conexão caiu: o recrutador dá o prazo de reingresso a quem aceitou; o chamado/recrutado tenta voltar. */
+    /** A conexÃ£o caiu: o recrutador dÃ¡ o prazo de reingresso a quem aceitou; o chamado/recrutado tenta voltar. */
     private suspend fun lostLocked(endpoint: EndpointId, link: ReliableLink) {
         peerKey.remove(endpoint)
         photoSent -= endpoint
@@ -926,8 +949,19 @@ class Recruitment(
                     }
                 }
                 is RecruitStatus.Invited -> {
-                    transition(RecruitStatus.Free)
-                    advertiseLocked()
+                    // Â§16.15 queda de conexÃ£o: o modal fica 1,5 s Ã  espera de a conexÃ£o voltar (o convite reenviado atualiza no lugar).
+                    log("rec invite link lost: keeping modal ${INVITE_LOSS_GRACE_MILLIS} ms")
+                    inviteLossJob?.cancel()
+                    inviteLossJob = scope.launch {
+                        delay(INVITE_LOSS_GRACE_MILLIS)
+                        mutex.withLock {
+                            val cur = _status.value
+                            if (cur is RecruitStatus.Invited && cur.deadlineMillis == s.deadlineMillis && hostLink == null) {
+                                transition(RecruitStatus.Free, "link lost")
+                                advertiseLocked()
+                            }
+                        }
+                    }
                 }
                 RecruitStatus.Free -> hostKey = null
             }
@@ -935,7 +969,7 @@ class Recruitment(
         }
     }
 
-    /** Espera a confirmação (até [maxMillis]) e desconecta. */
+    /** Espera a confirmaÃ§Ã£o (atÃ© [maxMillis]) e desconecta. */
     private suspend fun closeAfterConfirm(sent: List<ReliableLink>, maxMillis: Long) {
         var waited = 0L
         while (waited < maxMillis && !mutex.withLock { sent.all { it.allConfirmed } }) {
@@ -959,28 +993,31 @@ class Recruitment(
     }
 
     companion object {
-        /** Conexões de espera aceitas além dos chamados (limite de rádio). */
+        /** ConexÃµes de espera aceitas alÃ©m dos chamados (limite de rÃ¡dio). */
         const val MAX_STANDBY: Int = 6
 
-        /** §16.15 os lugares só vão aos chamados/recrutados 0,3 s depois da última mudança (convite e resposta não esperam). */
+        /** Â§16.15 os lugares sÃ³ vÃ£o aos chamados/recrutados 0,3 s depois da Ãºltima mudanÃ§a (convite e resposta nÃ£o esperam). */
         const val SYNC_DEBOUNCE_MILLIS: Long = 300
 
-        /** §16.15 reingresso de quem aceitou e perdeu a conexão. */
+        /** Â§16.15 reingresso de quem aceitou e perdeu a conexÃ£o. */
         const val REJOIN_MILLIS: Long = 8_000
 
-        /** §16.15 chamado sem conexão que sumiu da busca. */
+        /** Â§16.15 chamado sem conexÃ£o que sumiu da busca. */
         const val PENDING_ABSENT_MILLIS: Long = 10_000
 
-        /** §16.15 tentativas de conexão ao recrutador: 0,3 s, 1 s, 2 s, 4 s e, daí em diante, 8 s. */
+        /** Â§16.15 tentativas de conexÃ£o ao recrutador: 0,3 s, 1 s, 2 s, 4 s e, daÃ­ em diante, 8 s. */
         val CONTACT_BACKOFF_MILLIS: List<Long> = listOf(300, 1_000, 2_000, 4_000, 8_000)
 
-        /** §16.15 confirmações antes de desconectar: no Começar Partida e ao fechar / desligar o Wi-Fi. */
+        /** Â§16.15 confirmaÃ§Ãµes antes de desconectar: no ComeÃ§ar Partida e ao fechar / desligar o Wi-Fi. */
         const val START_CONFIRM_MILLIS: Long = 2_000
         const val CLOSE_CONFIRM_MILLIS: Long = 500
         const val POLL_MILLIS: Long = 50
 
-        /** §16.15 mensagem de teste das conexões abertas a cada 400 ms; sem resposta por 1 s a conexão é dada como caída. */
+        /** Â§16.15 mensagem de teste das conexÃµes abertas a cada 400 ms; sem resposta por 1 s a conexÃ£o Ã© dada como caÃ­da. */
         const val HEARTBEAT_MILLIS: Long = 400
-        const val DEAD_AFTER_MILLIS: Long = 1_000
+        const val DEAD_AFTER_MILLIS: Long = 4_000
+
+        /** Â§16.15 convite que perde a conexÃ£o continua na tela por este tempo Ã  espera de ela voltar. */
+        const val INVITE_LOSS_GRACE_MILLIS: Long = 1_500
     }
 }

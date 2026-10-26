@@ -624,4 +624,112 @@ class RecruitmentTest {
         ana.logs.any { it.startsWith("rec bye kb") } shouldBe true
         ana.scope.cancel()
     }
+
+    /** Segura as mensagens entre os dois aparelhos por [millis] (jitter do rádio) e as entrega depois, em ordem. */
+    private suspend fun TestScope.jitter(net: MemoryNetwork, millis: Long, a: MemoryTransport, b: MemoryTransport) {
+        val held = mutableListOf<Delivery>()
+        var holding = true
+        net.tap = { d ->
+            if (holding && ((d.from == a.id && d.to == b.id) || (d.from == b.id && d.to == a.id))) { held += d; emptyList() } else listOf(d)
+        }
+        advanceTimeBy(millis)
+        holding = false
+        held.forEach { net.deliver(it) }
+        runCurrent()
+    }
+
+    @Test
+    fun `§16_2 §16_15 atraso de 2 s do radio nao derruba a conexao viva - o convite nao some e reaparece`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        val states = mutableListOf<RecruitStatus>()
+        sessionScope.launch { bia.r.status.collect { states += it } }
+        runCurrent()
+        jitter(net, 2_000, ana.transport, bia.transport)
+        advanceTimeBy(1_000)
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>()
+        states.none { it == RecruitStatus.Free } shouldBe true // nunca fechou no meio
+        ana.logs.none { it.startsWith("heartbeat dead") } shouldBe true
+        bia.logs.none { it.startsWith("heartbeat dead") } shouldBe true
+        ana.r.layout.value!!.slots[2].shouldBeInstanceOf<Slot.Called>()
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 atraso de 2 s do radio nao derruba o recrutado nem os lugares`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        bia.r.accept()
+        runCurrent()
+        val states = mutableListOf<RecruitStatus>()
+        sessionScope.launch { bia.r.status.collect { states += it } }
+        runCurrent()
+        jitter(net, 2_000, ana.transport, bia.transport)
+        advanceTimeBy(1_000)
+        runCurrent()
+        states.none { it == RecruitStatus.Free } shouldBe true
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Recruited("kb", "Bia")
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 §16_15 conexao do convite que cai de verdade mantem o modal 1,5 s e o convite reenviado atualiza no lugar`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        val states = mutableListOf<RecruitStatus>()
+        sessionScope.launch { bia.r.status.collect { states += it } }
+        runCurrent()
+        net.drop(bia.transport.id) // a conexão cai e o rádio logo volta a conectar
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>() // ainda na tela
+        advanceTimeBy(Recruitment.CONTACT_BACKOFF_MILLIS[0] + 200)
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>()
+        states.none { it == RecruitStatus.Free } shouldBe true // não piscou
+        // Se a conexão não volta, o convite fecha depois de 1,5 s.
+        net.block(bia.transport.id)
+        net.drop(bia.transport.id)
+        advanceTimeBy(Recruitment.INVITE_LOSS_GRACE_MILLIS - 1)
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>()
+        advanceTimeBy(2)
+        runCurrent()
+        bia.r.status.value shouldBe RecruitStatus.Free
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_15 convite reenviado depois da queda mantem o prazo original e nao reabre um modal ja respondido`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        val first = bia.r.status.value as RecruitStatus.Invited
+        advanceTimeBy(10_000)
+        net.drop(bia.transport.id)
+        advanceTimeBy(Recruitment.CONTACT_BACKOFF_MILLIS[0] + 200)
+        runCurrent()
+        val again = bia.r.status.value as RecruitStatus.Invited
+        again.deadlineMillis shouldBe first.deadlineMillis // o prazo não renova
+        again.remainingMillis(bia.r.nowMillis()) shouldBe INVITE_TIMEOUT_MILLIS - 10_000 - Recruitment.CONTACT_BACKOFF_MILLIS[0] - 200
+        // Recusou: um reenvio atrasado do mesmo convite não reabre o modal.
+        bia.r.refuse()
+        runCurrent()
+        bia.r.status.value shouldBe RecruitStatus.Free
+        advanceTimeBy(3_000)
+        runCurrent()
+        bia.r.status.value shouldBe RecruitStatus.Free
+        ana.scope.cancel()
+    }
 }
