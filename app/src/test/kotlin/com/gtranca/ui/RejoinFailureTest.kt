@@ -10,6 +10,8 @@ class RejoinFailureTest {
     @Test
     fun `cada fim de Voltar a mesa tem a sua mensagem`() {
         rejoinFailure(MpEnd.NotFound) shouldBe RejoinFailure(R.string.rejoin_not_found)
+        rejoinFailure(MpEnd.ConnectFailed) shouldBe RejoinFailure(R.string.rejoin_not_found)
+        rejoinFailure(MpEnd.Timeout) shouldBe RejoinFailure(R.string.rejoin_not_found)
         rejoinFailure(MpEnd.Closed) shouldBe RejoinFailure(R.string.rejoin_closed)
         rejoinFailure(MpEnd.Ended(com.gtranca.net.CloseReason.HOST_LEFT)) shouldBe RejoinFailure(R.string.rejoin_closed)
         // o token recusado pelo anfitrião: a vaga foi ocupada

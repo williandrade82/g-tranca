@@ -16,7 +16,11 @@ class FakeNearbyNetwork {
 
     internal fun advertisers() = nodes.values.filter { it.advertInfo != null }
 
+    /** O rádio perde o aviso de um anúncio novo (a busca só o vê quando recomeça). */
+    var suppressFound = false
+
     internal fun announce(from: FakeNearbyApi) {
+        if (suppressFound) return
         val info = from.advertInfo ?: return
         nodes.values.filter { it !== from }.forEach { it.discovery?.onFound(from.id, info) }
     }
@@ -76,7 +80,7 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
         }
         discoveryStarts++
         discovery = callback
-        network.advertisers().filter { it !== this }.forEach { callback.onFound(it.id, it.advertInfo!!) }
+        if (!network.suppressFound) network.advertisers().filter { it !== this }.forEach { callback.onFound(it.id, it.advertInfo!!) }
     }
 
     override fun stopDiscovery() {

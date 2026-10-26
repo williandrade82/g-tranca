@@ -835,4 +835,19 @@ class MultiplayerTableTest {
         again.end.value shouldBe MpEnd.NotFound
         guestSessions.clears shouldBe 0
     }
+
+    @Test
+    fun `§16_2 §16_15 recrutado sem achar a mesa em 30 s termina em Mesa nao encontrada (e nao antes)`() = runTest {
+        val t = setup(116L)
+        advanceUntilIdle()
+        t.guest.leave()
+        t.dropGuest()
+        advanceUntilIdle()
+        val again = t.again(false)
+        again.joinAsync("mesa-que-nao-existe", "Bia", inviteKey = "kz")
+        advanceTimeBy(29_000)
+        again.end.value shouldBe null
+        advanceTimeBy(2_000)
+        again.end.value shouldBe MpEnd.NotFound
+    }
 }

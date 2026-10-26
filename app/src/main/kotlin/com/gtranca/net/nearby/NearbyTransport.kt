@@ -123,7 +123,28 @@ class NearbyTransport(
     }
 
     private fun bursting() = active && burstLeft > 0
-    private fun refreshInterval() = if (bursting()) burstRefreshMillis else if (active) activeRefreshMillis else refreshMillis
+    private fun refreshInterval() =
+        if (bursting()) burstRefreshMillis else if (searchHolds > 0) SEARCH_HOLD_REFRESH_MILLIS else if (active) activeRefreshMillis else refreshMillis
+
+    /** Quantos aparelhos pedem a busca "viva" para entrar numa mesa ([holdSearch]); o laço de recomeço roda enquanto houver. */
+    private var searchHolds = 0
+
+    /**
+     * §16.2, §16.15 quem procura a mesa para entrar nela: a busca recomeça a cada [SEARCH_HOLD_REFRESH_MILLIS] (dentro do
+     * orçamento de buscas), porque o anúncio novo só é visto quando a busca recomeça.
+     */
+    override suspend fun holdSearch(on: Boolean) {
+        control.withLock {
+            if (on) {
+                log("search hold on")
+                if (searchHolds++ == 0 && refresher == null) refresher = scope.launch { refreshPresence() }
+            } else if (searchHolds > 0 && --searchHolds == 0 && presenceSubscribers == 0) {
+                refresher?.cancel()
+                refresher = null
+            }
+        }
+        modeChanged.trySend(Unit)
+    }
     private fun sweepGrace() = if (bursting()) burstSweepGraceMillis else if (active) activeSweepGraceMillis else sweepGraceMillis
 
     /**
@@ -275,6 +296,12 @@ class NearbyTransport(
         control.withLock {
             val current = advertised
             if (current != null && current.contentEquals(bytes)) return
+            // §16.2, §16.15 a mesa do jogo tem prioridade: a presença nunca a substitui (só o fim da mesa libera o anúncio).
+            if (presence && current != null && !advertisingPresence) {
+                log("advertise presence skipped: table on air")
+                return
+            }
+            if (!presence) log("advertise table")
             if (current != null) api.stopAdvertising()
             advertised = null
             try {
@@ -344,12 +371,12 @@ class NearbyTransport(
     override fun discoverPresence(): Flow<List<PresenceAdvert>> = flow {
         acquireDiscovery()
         control.withLock {
-            if (presenceSubscribers++ == 0) refresher = scope.launch { refreshPresence() }
+            if (presenceSubscribers++ == 0 && refresher == null) refresher = scope.launch { refreshPresence() }
         }
         try {
             emitAll(foundPresence.map { it.values.toList() }.distinctUntilChanged())
         } finally {
-            scope.launch { control.withLock { if (--presenceSubscribers == 0) { refresher?.cancel(); refresher = null } } }
+            scope.launch { control.withLock { if (--presenceSubscribers == 0 && searchHolds == 0) { refresher?.cancel(); refresher = null } } }
             releaseDiscovery()
         }
     }
@@ -438,7 +465,8 @@ class NearbyTransport(
      */
     private fun presenceConnectionBusy(): Boolean {
         val presenceEndpoints = foundPresence.value.keys
-        return synchronized(lock) { pending.keys.any { it in presenceEndpoints } }
+        // Com a busca pedida para entrar numa mesa, qualquer conexão pendente (a da mesa) também adia o recomeço.
+        return synchronized(lock) { pending.keys.any { it in presenceEndpoints } || (searchHolds > 0 && pending.isNotEmpty()) }
     }
 
     /** Liga a busca se preciso; devolve quando ela foi ligada (para o aquecimento). */
@@ -556,6 +584,9 @@ class NearbyTransport(
 
         /** §16.15 a busca recomeça a cada 8 s enquanto alguém observa os jogadores próximos. */
         const val PRESENCE_REFRESH_MILLIS: Long = 15_000
+
+        /** §16.2, §16.15 intervalo de recomeço da busca de quem procura a mesa para entrar (cabe no orçamento de buscas). */
+        const val SEARCH_HOLD_REFRESH_MILLIS: Long = 6_000
 
         /** §16.15 folga depois de cada recomeço para o Nearby reportar de novo quem continua no ar. */
         const val PRESENCE_SWEEP_GRACE_MILLIS: Long = 3_000

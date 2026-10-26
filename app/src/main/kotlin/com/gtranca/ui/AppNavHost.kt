@@ -873,7 +873,9 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
             if (live != null && vm.hasRemotes) {
                 // §16.2 em rede: os recrutados entram direto; a camada "Prepare-se!" cobre a tela até o jogo começar.
                 val tableId = com.gtranca.net.nearby.newTableId()
-                val plan = live.start(tableId, com.gtranca.game.Tables.personaPool, vm.seed)
+                // §16.2, §16.15 ordem do início: 1) plano; 2) larga a leitura dos eventos; 3) abre a mesa e ANUNCIA; 4) só então envia
+                // o início aos recrutados (assim o anúncio da mesa já está no ar quando eles a procuram).
+                val plan = live.plan(com.gtranca.game.Tables.personaPool, vm.seed)
                 if (plan == null) {
                     starting = false
                     return@launch
@@ -881,7 +883,10 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
                 started = true
                 com.gtranca.multiplayer.MultiplayerHub.stopRecruiting()
                 val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
-                com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).hostAsync(rules, selfName, tableId, plan)
+                com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).hostAsync(rules, selfName, tableId, plan) {
+                    com.gtranca.multiplayer.MultiplayerHub.debug("start: table advertised, sending start")
+                    live.sendStart(tableId, plan)
+                }
             } else {
                 // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede, depois de no mínimo 1,5 s de "Prepare-se!".
                 started = true
@@ -1109,7 +1114,8 @@ data class RejoinFailure(val res: Int?, val text: String? = null)
 
 /** §16.5, §16.12 a mensagem de cada fim de "Voltar à mesa": mesa não encontrada, vaga preenchida ou mesa encerrada. */
 internal fun rejoinFailure(end: com.gtranca.multiplayer.MpEnd): RejoinFailure = when (end) {
-    com.gtranca.multiplayer.MpEnd.NotFound -> RejoinFailure(com.gtranca.R.string.rejoin_not_found)
+    com.gtranca.multiplayer.MpEnd.NotFound, com.gtranca.multiplayer.MpEnd.ConnectFailed, com.gtranca.multiplayer.MpEnd.Timeout ->
+        RejoinFailure(com.gtranca.R.string.rejoin_not_found)
     com.gtranca.multiplayer.MpEnd.Closed, is com.gtranca.multiplayer.MpEnd.Ended -> RejoinFailure(com.gtranca.R.string.rejoin_closed)
     // O anfitrião recusou o token: o assento já foi ocupado (ou substituído). Outra versão do jogo traz a própria mensagem.
     is com.gtranca.multiplayer.MpEnd.Refused ->

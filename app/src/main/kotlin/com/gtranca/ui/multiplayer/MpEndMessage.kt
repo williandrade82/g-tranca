@@ -35,6 +35,8 @@ fun MpEndMessage(reason: MpEnd, onClose: () -> Unit) {
             is MpEnd.Refused -> reason.message
             MpEnd.Closed -> stringResource(R.string.mp_closed_text)
             MpEnd.NotFound -> stringResource(R.string.mp_not_found)
+            MpEnd.ConnectFailed -> stringResource(R.string.mp_connect_failed)
+            MpEnd.Timeout -> stringResource(R.string.mp_join_timeout)
             is MpEnd.Ended -> stringResource(
                 if (reason.reason == com.gtranca.net.CloseReason.HOST_LEFT) R.string.mp_closed_host_left else R.string.mp_closed_host_offline,
             )

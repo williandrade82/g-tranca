@@ -66,6 +66,12 @@ sealed interface MpEnd {
     /** A mesa sumiu da busca ou fechou. */
     data object Closed : MpEnd
 
+    /** §16.2 a mesa apareceu, mas a conexão com ela falhou em todas as tentativas do prazo (entrada de recrutado). */
+    data object ConnectFailed : MpEnd
+
+    /** §16.2 conectou, mas o anfitrião não respondeu a tempo (entrada de recrutado). */
+    data object Timeout : MpEnd
+
     /** A mesa procurada n�o apareceu na busca ao entrar. */
     data object NotFound : MpEnd
 }
@@ -266,7 +272,7 @@ class MultiplayerTable(
      */
     suspend fun host(rules: TableRules, playerName: String, tableId: String, plan: com.gtranca.net.TablePlan) {
         name = playerName
-        val session = HostSession(transport, tableId, rules, playerName, hostPhoto = myPhoto, plan = plan)
+        val session = HostSession(transport, tableId, rules, playerName, hostPhoto = myPhoto, plan = plan, log = log)
         session.open(scope)
         _rules.value = rules
         setRole(MpRole.Hosting(session))
@@ -278,12 +284,21 @@ class MultiplayerTable(
      */
     suspend fun join(tableId: String, playerName: String, inviteKey: String? = null) {
         name = playerName
-        val session = GuestSession(transport, playerName, photo = myPhoto)
+        val session = GuestSession(transport, playerName, photo = myPhoto, log = log)
         setRole(MpRole.Guesting(session, tableId))
         session.join(scope, tableId, inviteKey = inviteKey)
     }
 
-    /** [join] sem esperar: a mesa não achada vira [MpEnd.NotFound]. */
+    /** Diagnóstico (só no build debug): passos da entrada e do início, sem nomes, cartas nem tokens. */
+    var log: (String) -> Unit = {}
+
+    private fun failureEnd(kind: com.gtranca.net.JoinFailureKind): MpEnd = when (kind) {
+        com.gtranca.net.JoinFailureKind.NOT_FOUND -> MpEnd.NotFound
+        com.gtranca.net.JoinFailureKind.CONNECT_FAILED -> MpEnd.ConnectFailed
+        com.gtranca.net.JoinFailureKind.TIMEOUT -> MpEnd.Timeout
+    }
+
+    /** [join] sem esperar: a falha vira o fim com a sua causa (mesa não achada, conexão que falhou, sem resposta). */
     fun joinAsync(tableId: String, playerName: String, inviteKey: String? = null) {
         scope.launch {
             after?.join()
@@ -291,8 +306,13 @@ class MultiplayerTable(
                 join(tableId, playerName, inviteKey)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (e: com.gtranca.net.JoinFailure) {
+                log("join failed ${e.kind}")
+                _end.value = failureEnd(e.kind)
             } catch (e: Exception) {
-                _end.value = MpEnd.NotFound
+                // Outra falha ao conectar: nunca vira "Mesa não encontrada".
+                log("connect failed ${e.message?.take(40)}")
+                _end.value = MpEnd.ConnectFailed
             }
         }
     }
@@ -427,11 +447,19 @@ class MultiplayerTable(
     }
 
     /** [host] sem esperar. */
-    fun hostAsync(rules: TableRules, playerName: String, tableId: String, plan: com.gtranca.net.TablePlan) {
+    fun hostAsync(
+        rules: TableRules,
+        playerName: String,
+        tableId: String,
+        plan: com.gtranca.net.TablePlan,
+        /** §16.2, §16.15 o que vem depois de a mesa estar no ar: enviar o início aos recrutados. */
+        afterOpen: suspend () -> Unit = {},
+    ) {
         scope.launch {
             after?.join()
             try {
                 host(rules, playerName, tableId, plan)
+                afterOpen()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -690,6 +718,10 @@ class MultiplayerTable(
                             // §16.12 token recusado ("A vaga foi preenchida."): a sessão não serve mais (a conexão substituída por
                             // outra do mesmo jogador não é fim da sessão).
                             if (status.message != com.gtranca.net.REPLACED_MESSAGE) forgetSession()
+                        }
+                        is GuestStatus.Failed -> {
+                            log("join failed ${status.kind}")
+                            _end.value = failureEnd(status.kind)
                         }
                         is GuestStatus.TableEnded -> if (_received.value == null) { _end.value = MpEnd.Ended(status.reason); forgetSession() }
                         GuestStatus.Closed -> if (_received.value == null) { _end.value = MpEnd.Closed; forgetSession() }

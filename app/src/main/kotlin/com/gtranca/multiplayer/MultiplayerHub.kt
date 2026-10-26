@@ -172,6 +172,7 @@ object MultiplayerHub {
         val leaving = _table.value?.let { old -> scope.launch { old.leave() } }
         return MultiplayerTable(transport(context), scope, DataMpCoins(data, scope), after = leaving, sessions = DataMpSessions(data)).also {
             it.myPhoto = photo
+            it.log = debugLog
             _table.value = it
         }
     }

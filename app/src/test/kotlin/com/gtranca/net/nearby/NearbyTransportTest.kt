@@ -52,6 +52,45 @@ class NearbyTransportTest {
     }
 
     @Test
+    fun `§16_2 §16_15 a presenca nao substitui nem apaga o anuncio da mesa no ar`() = runTest {
+        val (hostApi, host) = node()
+        host.advertise(advert)
+        hostApi.advertiseStarts shouldBe 1
+        host.advertisePresence(com.gtranca.net.PresenceAdvert("kkkkkk", "Ana"))
+        hostApi.advertiseStarts shouldBe 1
+        hostApi.advertiseStops shouldBe 0
+        AdvertCodec.decode(hostApi.advertInfo!!)?.tableId shouldBe advert.tableId
+        host.stopPresence()
+        hostApi.advertiseStops shouldBe 0
+        AdvertCodec.decode(hostApi.advertInfo!!)?.tableId shouldBe advert.tableId
+        // Sem mesa no ar, a presença volta a anunciar.
+        host.stopAdvertising()
+        host.advertisePresence(com.gtranca.net.PresenceAdvert("kkkkkk", "Ana"))
+        AdvertCodec.decodePresence(hostApi.advertInfo!!)?.key shouldBe "kkkkkk"
+    }
+
+    @Test
+    fun `§16_2 §16_15 o recrutado acha a mesa mesmo se o primeiro aviso do radio se perder (busca viva recomeca e ve o anuncio, 12 s depois)`() = runTest {
+        val (hostApi, host) = node()
+        val (guestApi, guest) = node()
+        network.suppressFound = true
+        host.advertise(advert)
+        guest.holdSearch(true)
+        var seen: TableAdvert? = null
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { seen = guest.discover().first { it.isNotEmpty() }.single() }
+        advanceTimeBy(12_000)
+        runCurrent()
+        seen shouldBe null
+        network.suppressFound = false
+        advanceTimeBy(6_000)
+        runCurrent()
+        seen?.tableId shouldBe advert.tableId
+        (guestApi.discoveryStarts > 1) shouldBe true
+        guest.holdSearch(false)
+        hostApi.advertiseStarts shouldBe 1
+    }
+
+    @Test
     fun `anuncio igual nao reanuncia e anuncio novo para e reanuncia sem derrubar conexoes`() = runTest {
         val (hostApi, host) = node()
         val (_, guest) = node()
@@ -88,9 +127,13 @@ class NearbyTransportTest {
         api.advertiseStops shouldBe 1
         other.discover().first().single().tableId shouldBe advert.tableId
         other.discoverPresence().first() shouldBe emptyList()
-        // Parar a presença com a mesa no ar não faz nada; parar a mesa sim.
+        // Parar a presença com a mesa no ar não faz nada, e anunciar presença não toma o lugar da mesa (§16.15); parar a mesa sim.
         host.stopPresence()
         api.advertiseStops shouldBe 1
+        host.advertisePresence(presence)
+        runCurrent()
+        api.advertiseStops shouldBe 1
+        host.stopAdvertising()
         host.advertisePresence(presence)
         runCurrent()
         api.advertiseStops shouldBe 2
