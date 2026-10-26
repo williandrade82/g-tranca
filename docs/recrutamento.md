@@ -110,7 +110,7 @@ exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (t
 | busca reiniciada a cada 8 s (modo econômico) | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~20 s) |
 | **modo ativo** (telas *Iniciar novo jogo* e *Seleção de jogadores* abertas, Wi-Fi ligado) | busca reiniciada a cada **3 s**, folga de 1 s; sai quem não reaparece em 2 recomeços seguidos (queda silenciosa sem conexão: até ~7 s); fora dessas telas volta o modo econômico (8 s) |
 | **rajada** (`refreshNow()`, botão atualizar ou puxar para atualizar) | busca reiniciada a cada 1 s (folga 0,5 s) por 5 s e volta aos 3 s; novo pedido durante a rajada é ignorado; só vale no modo ativo |
-| conexão aberta (espera/recrutamento) | mensagem de teste a cada 400 ms; sem nenhuma resposta por 1 s a conexão é dada como caída e o jogador sai das listas (~1 s) |
+| conexão aberta (espera/recrutamento) | mensagem de teste a cada 400 ms; qualquer byte recebido conta como vida; sem **nenhum** byte por 4 s a conexão é dada como caída e o jogador sai das listas (~4 s). O aviso explícito é o caminho rápido (~1 s). Convite (`Invited`) que perde a conexão continua na tela por 1,5 s: se a conexão volta e o convite é reenviado, o status é atualizado no lugar, sem piscar |
 | aviso explícito de saída (`RecruitBye`) | pela conexão aberta e pelo anúncio "saindo" (0,5 s); quem recebe tira o jogador da lista na hora (~1 s no rádio real) |
 | chave **fixada** (chamada/recrutada/recrutador de quem aceitou) | a varredura não a remove; só `onLost` após a folga, "saindo" ou a queda da conexão |
 | pedido de conexão em andamento | a busca não reinicia até ele terminar (as conexões já abertas não são afetadas) |
@@ -131,7 +131,8 @@ recrutadores na lista da tela 1 sai como inicial (no `P2P_STAR` o livre mantém 
 | nova tentativa de conexão de espera | 0,3, 1, 2, 4 s (depois 8 s) |
 | `onLost` da presença até sair da lista | 3 s (modo ativo: 1 s) |
 | convite sem resposta vale como recusa | 25 s (+ 2 s de folga no recrutador) |
-| mensagem de teste / queda da conexão aberta | a cada 400 ms / após 1 s sem resposta |
+| mensagem de teste / queda da conexão aberta | a cada 400 ms / após 4 s sem nenhum byte |
+| convite que perdeu a conexão continua na tela | 1,5 s |
 | aviso de "saindo" (anúncio) e espera das confirmações | 0,5 s |
 | lugares enviados (debounce; convite, resposta e remoção não esperam) | 0,3 s |
 | reingresso do recrutado que perdeu a conexão | 8 s |
