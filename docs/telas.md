@@ -97,7 +97,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 **Objetivo:** escolher as **opções da mesa** (§14.4): modo, dificuldade dos robôs, aposta, regras e pontuação-alvo; os jogadores são escolhidos na tela seguinte (3.3). Substitui a antiga *Mesas disponíveis*: a grade de participantes, os cards de mesas de outros anfitriões e o pedido de entrada deixaram de existir; **só se entra numa mesa sendo chamado** (§16.2).
 **De cima para baixo (rola):**
 1. Título **"Iniciar novo jogo"**, o ícone do tour e o **botão de Wi-Fi** (configuração **Wi-Fi do jogo**, a mesma do Perfil: tocar alterna e grava; ao ligar, passa pelo modal *Procurar mesas por perto*; recusar deixa desligado). É ele que torna o jogador **livre** para ser chamado (§16.2). Sem linha de saldo (só o do topo, seção 0).
-2. **Lista de recrutadores** (só com o Wi-Fi ligado): título "Jogadores recrutando" e os **avatares de jogador próximo** dos outros jogadores que estão na *Seleção de jogadores* (sem o próprio jogador). **Só informativa:** tocar não faz nada. Vazia, mostra só uma legenda discreta ("Ninguém recrutando por perto"). A lista acompanha a busca: quem desliga o Wi-Fi do jogo some na hora (aviso de "saindo"), quem some sem avisar sai em até cerca de 20 s (§16.15), quem continua não pisca. A foto dos recrutadores aparece como **inicial** (limitação do `P2P_STAR`, §16.2).
+2. **Lista de recrutadores** (só com o Wi-Fi ligado): título "Jogadores recrutando" e os **avatares de jogador próximo** dos outros jogadores que estão na *Seleção de jogadores* (sem o próprio jogador). **Só informativa:** tocar não faz nada. Vazia, mostra só uma legenda discreta ("Ninguém recrutando por perto"). A lista acompanha a busca: quem desliga o Wi-Fi do jogo some na hora (aviso de "saindo"), quem some sem avisar sai em até cerca de 20 s (§16.15), quem continua não pisca. A foto dos recrutadores aparece como **inicial** (limitação do `P2P_STAR`, §16.2). À direita do título da lista fica o **botão de atualizar** (ícone discreto de duas setas em círculo, alvo de 48 dp, descrição "Atualizar jogadores por perto", tag `refresh-players`): faz a busca em rajada (5 s, a cada 1 s, §16.15); enquanto a rajada roda o ícone **gira** e fica desabilitado. Só aparece com o Wi-Fi ligado. "Puxar para atualizar" não existe (conflita com a rolagem da tela).
 3. **Quadro de opções** (sempre preenchido com a última configuração gravada):
    - **Modo** (Individual / Duplas): define 2 ou 4 lugares na tela 3.3.
    - **Dificuldade dos Robôs** (Iniciante / Maduro / Sênior).
@@ -111,7 +111,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 **Lembra a última mesa:** ao carregar, o que ficou inválido é ajustado sem aviso: aposta que não existe na tabela do nível vira o valor mais próximo (empate: o menor); aposta acima do saldo vira a maior que o saldo cobre; "Personalizada" sem regras salvas vira Clássica; pontuação-alvo inválida volta ao padrão.
 **Wi-Fi ligado sem permissão:** ao abrir, aparece o modal *Procurar mesas por perto*; **Agora não** desliga a configuração. Se o Nearby recusar a busca, um aviso explica e a configuração é desligada.
 **Regras:** §14.4, §14.6, §16.2.
-**Tags:** `tables-screen`, `tables-wifi`, `recruiters`, `recruiter-<id>`, `recruiters-empty`, `mode-individual`, `mode-duplas`, `difficulty-<nível>`, `stake-<valor>`, `rules-classic`, `rules-paulista`, `rules-custom`, `rules-details`, `target-score`, `select-players`, `tables-back`.
+**Tags:** `tables-screen`, `tables-wifi`, `recruiters`, `recruiter-<id>`, `recruiters-empty`, `refresh-players`, `mode-individual`, `mode-duplas`, `difficulty-<nível>`, `stake-<valor>`, `rules-classic`, `rules-paulista`, `rules-custom`, `rules-details`, `target-score`, `select-players`, `tables-back`.
 
 ### 3.3 Seleção de jogadores (`PlayerSelectionScreen`)
 **Objetivo:** montar a mesa — quem ocupa cada lugar — e começar a partida (§14.4, §16.2). As opções (3.2) aparecem só como resumo e **não mudam** aqui.
@@ -123,12 +123,12 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
    - **Retirar:** escolher primeiro um **robô ou jogador que já está na mesa** e depois **qualquer item da lista de baixo** (robô ou jogador) **retira** o da mesa: o robô volta à lista; o **Chamado** tem o convite cancelado (some sem aviso); o **Recrutado** recebe "<nome> tirou você da mesa". O item tocado na lista **não** entra no lugar: só retira.
    - **Arrastar e soltar** continua valendo: arrastar o avatar para outro lugar **troca** (ocupado) ou **move** (VAGO), pelas mesmas regras de Trocar. O menu "Remover / Mover" do lugar deixou de existir (substituído por Trocar e Retirar). Cada avatar tem descrição para o leitor de tela ("Bolt, robô, disponível", "Ana, chamado", "Ana, recrutado").
 3. **Lista de robôs:** os 4 robôs (**foto de apresentação em círculo** e o nome embaixo), numa fileira horizontal.
-4. **Bloco Multiplayer:** "Multiplayer" à esquerda e o **sinal de Wi-Fi** à direita (reflete a configuração do Perfil; ligar e desligar **não trava** a tela). Com o Wi-Fi ligado o jogador é **recrutador**: aparece na lista da tela 3.2 dos outros e, **abaixo do título "Multiplayer"**, aparece a lista de **jogadores próximos livres** (os que estão em *Iniciar novo jogo* com o Wi-Fi ligado). Recrutar: escolher o jogador remoto e o lugar (em qualquer ordem); ele fica **esmaecido com o selo Chamado** na lista (e o lugar na mesa ganha o avatar dele com o selo); tocar nele não faz mais nada. Jogador já chamado/recrutado por **outro** recrutador aparece como **Recrutado** e não é selecionável. O selo **Chamado** leva um **anel fino de contagem regressiva** (25 s, o prazo do convite, §16.15); sem resposta, vale como recusa. Recusou ou não respondeu: modal do recrutado fecha, o recrutador é avisado (toast com o motivo), o lugar volta a **VAGO**, o avatar perde o selo e pode ser chamado de novo. Aceitou: o selo vira **Recrutado** e o avatar perde o esmaecimento.
+4. **Bloco Multiplayer:** "Multiplayer" à esquerda e o **sinal de Wi-Fi** à direita (reflete a configuração do Perfil; ligar e desligar **não trava** a tela). Com o Wi-Fi ligado o jogador é **recrutador**: aparece na lista da tela 3.2 dos outros e, **abaixo do título "Multiplayer"**, aparece a lista de **jogadores próximos livres** (os que estão em *Iniciar novo jogo* com o Wi-Fi ligado). Recrutar: escolher o jogador remoto e o lugar (em qualquer ordem); ele fica **esmaecido com o selo Chamado** na lista (e o lugar na mesa ganha o avatar dele com o selo); tocar nele não faz mais nada. Jogador já chamado/recrutado por **outro** recrutador aparece como **Recrutado** e não é selecionável. O selo **Chamado** leva um **anel fino de contagem regressiva** (25 s, o prazo do convite, §16.15); sem resposta, vale como recusa. Recusou ou não respondeu: modal do recrutado fecha, o recrutador é avisado (toast com o motivo), o lugar volta a **VAGO**, o avatar perde o selo e pode ser chamado de novo. Aceitou: o selo vira **Recrutado** e o avatar perde o esmaecimento. Ao lado do título "Multiplayer", o mesmo **botão de atualizar** (tag `selection-refresh`) refaz a busca dos jogadores próximos; só com o Wi-Fi ligado.
 5. **Completar com robôs:** atalho (botão secundário) que sorteia robôs **ainda não usados** nos lugares VAGO.
 6. **Começar Partida** (botão dourado no fim): **desabilitado** até todos os lugares estarem preenchidos **e** sem nenhum **Chamado** pendente. Ao tocar, a camada **"Prepare-se! O jogo vai começar!"** aparece **sobre a própria tela, esmaecida,** em **todos** os celulares por **no mínimo 1,5 s** (sem apagar a tela de baixo), e então o jogo começa.
 **Sem Wi-Fi (ou ninguém por perto):** a mesma tela, sem a lista de jogadores; só com robôs, e o jogo começa no próprio aparelho.
 **Regras:** §14.4, §14.5, §16.2, §16.3.
-**Tags:** `player-selection`, `seat-<n>` (`seat-<n>-vacant`, `seat-<n>-called`, `seat-<n>-recruited`), `seat-hint`, `seat-<n>-timer`, `robot-<perfil>`, `selection-wifi`, `nearby-free-<id>`, `fill-with-robots`, `start-match`, `get-ready`, `selection-back`.
+**Tags:** `player-selection`, `seat-<n>` (`seat-<n>-vacant`, `seat-<n>-called`, `seat-<n>-recruited`), `seat-hint`, `seat-<n>-timer`, `robot-<perfil>`, `selection-wifi`, `selection-refresh`, `nearby-free-<id>`, `fill-with-robots`, `start-match`, `get-ready`, `selection-back`.
 
 ### 3.5 Personalizar regra (`RulesEditorScreen`)
 **Objetivo:** editar o perfil de regras personalizado do jogador (§14.2, §14.4). Hoje se chega por **Iniciar novo jogo** ("Personalizada") e pelo **Perfil** ("Minhas regras").
@@ -244,15 +244,17 @@ Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jo
 1. Ícone do tour: "Toque aqui para rever este tour quando quiser."
 2. Botão de Wi-Fi: "Wi-Fi do jogo: ligado, outros jogadores por perto podem te chamar para jogar junto."
 3. Lista de recrutadores: "Jogadores por perto que estão montando uma mesa. Eles podem te chamar; você aceita ou recusa."
-4. Quadro de opções: "Modo, nível dos robôs, aposta, regras e pontuação-alvo. A última escolha fica guardada."
-5. Selecionar jogadores: "Pronto? Escolha quem joga com você: robôs ou jogadores por perto."
+4. Atualizar: "Procura de novo, por alguns segundos, quem está por perto."
+5. Quadro de opções: "Modo, nível dos robôs, aposta, regras e pontuação-alvo. A última escolha fica guardada."
+6. Selecionar jogadores: "Pronto? Escolha quem joga com você: robôs ou jogadores por perto."
 **Seleção de jogadores (3.3)** — aparece ao abrir a tela pela primeira vez:
 1. Ícone do tour: "Toque aqui para rever este tour quando quiser."
 2. Mesa de lugares: "A mesa: você fica embaixo. Toque num robô ou jogador e depois num lugar, ou ao contrário; toque em dois lugares para trocar. A dica embaixo da mesa explica cada passo."
 3. Lista de robôs: "Os robôs que podem ocupar os lugares. O que já está sentado fica esmaecido. Para tirar alguém da mesa, toque nele e depois num item desta lista."
 4. Bloco Multiplayer: "Com o Wi-Fi ligado, você chama jogadores por perto. Eles aparecem aqui; quem você chamou fica com o selo Chamado até responder."
-5. Completar com robôs: "Preenche os lugares vagos com robôs."
-6. Começar Partida: "Fica ativo quando todos os lugares estão preenchidos e ninguém está sendo chamado."
+5. Atualizar: "Procura de novo, por alguns segundos, quem está por perto."
+6. Completar com robôs: "Preenche os lugares vagos com robôs."
+7. Começar Partida: "Fica ativo quando todos os lugares estão preenchidos e ninguém está sendo chamado."
 **Mesa de jogo (3.8)** — aparece **só na primeira vez em que é a vez do jogador**, depois das animações iniciais (distribuição e trocas de 3 vermelho) e com a vez já liberada; vale contra robôs e no multijogador:
 (passos na ordem da tela, de cima para baixo e, na mesma linha, da esquerda para a direita)
 1. Placar: "O placar: os pontos de cada lado no jogo."
