@@ -39,28 +39,39 @@ interface SeatRecruiter {
 }
 
 /** Avisos breves da *Seleção de jogadores*. */
-enum class SelectionNotice { PICK_SEAT_FIRST, CANNOT_CALL }
+enum class SelectionNotice { CANNOT_CALL }
 
-/** O que a tela desenha, além dos lugares: o lugar escolhido, o que está sendo movido e o menu aberto. */
+/** O que está escolhido, à espera do passo seguinte (docs/telas.md 3.3): um lugar, um robô da lista ou um jogador da lista. */
+sealed interface Selection {
+    data class Seat(val index: Int) : Selection
+
+    data class Robot(val persona: String) : Selection
+
+    data class Player(val presence: PresenceAdvert) : Selection
+}
+
+/** O que a tela desenha, além dos lugares: a seleção pendente e quando cada Chamado recebeu o convite. */
 data class SelectionUi(
     val layout: TableLayout,
-    /** Lugar VAGO escolhido, à espera de um robô ou jogador. */
-    val selectedSeat: Int? = null,
-    /** Alternativa ao arrastar: o lugar de origem de um "Mover" à espera do destino. */
-    val movingFrom: Int? = null,
-    /** Lugar preenchido com o menu (Remover / Mover) aberto. */
-    val menuSeat: Int? = null,
+    val selected: Selection? = null,
+    /** Relógio local (ms) em que cada jogador Chamado passou a estar nos lugares: o anel de contagem do convite (§16.15). */
+    val calledAt: Map<String, Long> = emptyMap(),
 )
 
 /**
- * *Seleção de jogadores* (§14.4, §16.2, docs/telas.md 3.3): a mesa de lugares — o jogador no lugar 0 e os demais VAGO —
- * que se preenche tocando num lugar e depois num robô ou jogador próximo livre, remove, move/troca (arrastar ou o Mover
- * por toque) e completa com robôs. Com o Wi-Fi do jogo ligado os lugares vivem no `Recruitment` ([attach]); sem ele, aqui.
+ * *Seleção de jogadores* (§14.4, §16.2, docs/telas.md 3.3): a mesa de lugares — o jogador no lugar 0 e os demais VAGO.
+ *
+ * A interação é por **seleção em dois toques, nos dois sentidos**: um item da lista (robô ou jogador próximo livre) e um
+ * lugar VAGO — em qualquer ordem — colocam o robô ou chamam o jogador (o convite só sai com os dois escolhidos); dois
+ * lugares trocam de lugar (VAGO ↔ ocupado move; nunca o do jogador); um lugar ocupado e depois um item da lista **retira**
+ * quem estava no lugar (sem pôr o item no lugar). Arrastar e soltar um avatar faz o mesmo que escolher dois lugares.
+ * Com o Wi-Fi do jogo ligado os lugares vivem no `Recruitment` ([attach]); sem ele, aqui.
  */
 class PlayerSelectionViewModel(
     val config: GameConfig,
     /** Semente da mesa: sorteio de "Completar com robôs" e do jogo. */
     val seed: Long = Random.nextLong(),
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : ViewModel() {
     private val _ui = MutableStateFlow(SelectionUi(TableLayout.initial(config.mode)))
     val ui: StateFlow<SelectionUi> = _ui.asStateFlow()
@@ -78,9 +89,21 @@ class PlayerSelectionViewModel(
     /** Há jogador remoto (chamado ou recrutado) nos lugares: o jogo é em rede. */
     val hasRemotes: Boolean get() = layout.remotes.isNotEmpty()
 
-    private fun setLayout(next: TableLayout) = _ui.update { it.copy(layout = next) }
+    /** Troca o layout e atualiza o relógio dos Chamados (novos recebem agora; quem saiu perde o registro). */
+    private fun setLayout(next: TableLayout) = _ui.update { st ->
+        val called = next.slots.filterIsInstance<Slot.Called>().map { it.key }
+        val at = called.associateWith { st.calledAt[it] ?: clock() }
+        st.copy(layout = next, calledAt = at, selected = st.selected?.takeIf { validIn(it, next) })
+    }
 
-    private fun clearPicks() = _ui.update { it.copy(selectedSeat = null, movingFrom = null, menuSeat = null) }
+    /** A seleção pendente ainda faz sentido no layout [next] (o lugar existe e não é o do jogador; o robô não sentou). */
+    private fun validIn(sel: Selection, next: TableLayout): Boolean = when (sel) {
+        is Selection.Seat -> sel.index in 1 until next.slots.size
+        is Selection.Robot -> sel.persona !in next.usedPersonas
+        is Selection.Player -> next.seatOf(sel.presence.key) == null
+    }
+
+    private fun select(sel: Selection?) = _ui.update { it.copy(selected = sel) }
 
     /**
      * §16.2 o Wi-Fi do jogo ligou: abre a mesa na rede e repete nela o que já estava nos lugares (robôs), para ligar não
@@ -99,22 +122,18 @@ class PlayerSelectionViewModel(
         recruiter = null
         val kept = layout.slots.map { if (it.remoteKey() != null) Slot.Vacant else it }
         setLayout(TableLayout(layout.mode, kept))
-        clearPicks()
+        select(null)
     }
 
     /** §16.2 os lugares mudaram na rede (a única fonte quando o recrutamento está aberto). */
     fun onRemoteLayout(next: TableLayout) {
         if (recruiter == null && next == layout) return
-        _ui.update { st ->
-            // quem foi para VAGO deixa de estar escolhido
-            val seatGone = st.selectedSeat?.takeIf { next.slots.getOrNull(it) != Slot.Vacant }
-            st.copy(layout = next, selectedSeat = st.selectedSeat.takeIf { it != seatGone }, menuSeat = st.menuSeat?.takeIf { next.slots.getOrNull(it)?.let { s -> s != Slot.Vacant } == true })
-        }
+        setLayout(next)
     }
 
     private fun networked(): SeatRecruiter? = recruiter
 
-    private fun <T> run(block: suspend () -> T) {
+    private fun launchOp(block: suspend () -> Unit) {
         viewModelScope.launch {
             try {
                 block()
@@ -126,46 +145,16 @@ class PlayerSelectionViewModel(
         }
     }
 
-    // ---- toques ---------------------------------------------------------------------------------------------------
+    // ---- operações ------------------------------------------------------------------------------------------------
 
-    /** Tocar num lugar: VAGO o escolhe (ou, no "Mover", recebe quem se move); preenchido abre o menu (ou recebe o "Mover"). */
-    fun onSeatTap(seat: Int) {
-        val st = _ui.value
-        if (seat == TableLayout.HOST_SEAT) return clearPicks()
-        val from = st.movingFrom
-        if (from != null) {
-            if (seat != from) move(from, seat)
-            return clearPicks()
-        }
-        if (st.layout.slots.getOrNull(seat) == null) return
-        if (st.layout.slots[seat] == Slot.Vacant) {
-            _ui.update { it.copy(selectedSeat = if (it.selectedSeat == seat) null else seat, menuSeat = null) }
-        } else {
-            _ui.update { it.copy(menuSeat = seat, selectedSeat = null) }
-        }
-    }
-
-    /** Tocar num robô da lista: põe no lugar VAGO escolhido (sem lugar escolhido, só um aviso). */
-    fun onRobotTap(persona: String) {
-        val seat = _ui.value.selectedSeat
-        if (seat == null) {
-            _notices.tryEmit(SelectionNotice.PICK_SEAT_FIRST)
-            return
-        }
-        if (persona in layout.usedPersonas) return
-        clearPicks()
+    private fun place(seat: Int, persona: String) {
+        select(null)
         val r = networked()
-        if (r != null) run { r.placeRobot(seat, persona) } else layout.placeRobot(seat, persona)?.let(::setLayout)
+        if (r != null) launchOp { r.placeRobot(seat, persona) } else layout.placeRobot(seat, persona)?.let(::setLayout)
     }
 
-    /** Tocar num jogador próximo livre: chama para o lugar VAGO escolhido (só com o Wi-Fi do jogo ligado). */
-    fun onPlayerTap(presence: PresenceAdvert) {
-        val seat = _ui.value.selectedSeat
-        if (seat == null) {
-            _notices.tryEmit(SelectionNotice.PICK_SEAT_FIRST)
-            return
-        }
-        clearPicks()
+    private fun call(seat: Int, presence: PresenceAdvert) {
+        select(null)
         val r = networked()
         if (r == null) {
             _notices.tryEmit(SelectionNotice.CANNOT_CALL)
@@ -177,30 +166,85 @@ class PlayerSelectionViewModel(
         }
     }
 
-    // ---- menu / mover / completar -------------------------------------------------------------------------------
-
-    fun onDismissMenu() = _ui.update { it.copy(menuSeat = null) }
-
-    fun onRemove(seat: Int) {
-        clearPicks()
+    private fun remove(seat: Int) {
+        select(null)
         val r = networked()
-        if (r != null) run { r.removeSeat(seat) } else layout.remove(seat)?.let(::setLayout)
+        if (r != null) launchOp { r.removeSeat(seat) } else layout.remove(seat)?.let(::setLayout)
     }
 
-    /** Alternativa ao arrastar: começa um "Mover" e espera o toque no lugar de destino. */
-    fun onMoveStart(seat: Int) = _ui.update { it.copy(movingFrom = seat, menuSeat = null, selectedSeat = null) }
-
-    /** Soltar o avatar de [from] sobre [to] (ou tocar no destino do "Mover"): ocupado → troca; VAGO → move. */
+    /** §16.2 troca (ocupado) ou move (VAGO): só o recrutador; o lugar 0 não se move nem recebe ninguém. */
     fun move(from: Int, to: Int) {
+        select(null)
         if (from == to || from == TableLayout.HOST_SEAT || to == TableLayout.HOST_SEAT) return
+        // VAGO ↔ ocupado é sempre "mover o ocupado para o VAGO", qualquer que tenha sido o lugar tocado primeiro.
+        val (a, b) = if (layout.slots.getOrNull(from) == Slot.Vacant && layout.slots.getOrNull(to) != Slot.Vacant) to to from else from to to
         val r = networked()
-        if (r != null) run { r.move(from, to) } else layout.move(from, to)?.let(::setLayout)
-        clearPicks()
+        if (r != null) launchOp { r.move(a, b) } else layout.move(a, b)?.let(::setLayout)
     }
+
+    // ---- toques ---------------------------------------------------------------------------------------------------
+
+    private fun isVacant(seat: Int) = layout.slots.getOrNull(seat) == Slot.Vacant
+
+    private fun isFilled(seat: Int) = layout.slots.getOrNull(seat)?.let { it != Slot.Vacant && it != Slot.Host } == true
+
+    /**
+     * Tocar num lugar. O do jogador não faz nada (cancela a seleção). Com um robô ou jogador da lista escolhido, o lugar
+     * VAGO o recebe (robô colocado, jogador chamado); com outro lugar escolhido, os dois trocam.
+     */
+    fun onSeatTap(seat: Int) {
+        if (seat == TableLayout.HOST_SEAT || seat !in layout.slots.indices) return select(null)
+        when (val sel = _ui.value.selected) {
+            null -> select(Selection.Seat(seat))
+            is Selection.Seat -> when {
+                sel.index == seat -> select(null)
+                // dois VAGO: nada a trocar, vale o novo
+                isVacant(sel.index) && isVacant(seat) -> select(Selection.Seat(seat))
+                else -> move(sel.index, seat)
+            }
+            is Selection.Robot -> if (isVacant(seat)) place(seat, sel.persona) else select(Selection.Seat(seat))
+            is Selection.Player -> if (isVacant(seat)) call(seat, sel.presence) else select(Selection.Seat(seat))
+        }
+    }
+
+    /**
+     * Tocar num robô da lista. Com um lugar VAGO escolhido, o robô é colocado; com um lugar **ocupado** escolhido, esse
+     * ocupante é **retirado** (o robô tocado não entra). Sem seleção, escolhe o robô (se ele ainda não está sentado).
+     */
+    fun onRobotTap(persona: String) {
+        val seated = persona in layout.usedPersonas
+        when (val sel = _ui.value.selected) {
+            is Selection.Seat -> when {
+                isFilled(sel.index) -> remove(sel.index)
+                !seated -> place(sel.index, persona)
+            }
+            is Selection.Robot -> select(if (sel.persona == persona) null else if (!seated) Selection.Robot(persona) else null)
+            else -> if (!seated) select(Selection.Robot(persona))
+        }
+    }
+
+    /**
+     * Tocar num jogador próximo livre da lista (só com o Wi-Fi do jogo ligado). Com um lugar VAGO escolhido, ele é chamado;
+     * com um lugar ocupado escolhido, esse ocupante é retirado (o jogador tocado não é chamado). Sem seleção, escolhe-o.
+     */
+    fun onPlayerTap(presence: PresenceAdvert) {
+        val onTable = layout.seatOf(presence.key) != null
+        when (val sel = _ui.value.selected) {
+            is Selection.Seat -> when {
+                isFilled(sel.index) -> remove(sel.index)
+                !onTable -> call(sel.index, presence)
+            }
+            is Selection.Player -> select(if (sel.presence.key == presence.key) null else if (!onTable) Selection.Player(presence) else null)
+            else -> if (!onTable) select(Selection.Player(presence))
+        }
+    }
+
+    /** Tocar numa área vazia (ou de novo no mesmo item): cancela a seleção pendente. */
+    fun onClear() = select(null)
 
     fun onFill() {
-        clearPicks()
+        select(null)
         val r = networked()
-        if (r != null) run { r.fillWithRobots(Tables.personaPool, seed) } else setLayout(layout.fillWithRobots(Tables.personaPool, Random(seed)))
+        if (r != null) launchOp { r.fillWithRobots(Tables.personaPool, seed) } else setLayout(layout.fillWithRobots(Tables.personaPool, Random(seed)))
     }
 }

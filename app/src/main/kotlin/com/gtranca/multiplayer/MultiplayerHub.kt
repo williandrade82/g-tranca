@@ -92,6 +92,14 @@ object MultiplayerHub {
         scope.launch { runCatching { rec.rename(name) } }
     }
 
+    private val _joining = MutableStateFlow(false)
+
+    /**
+     * §16.2 o recrutador começou a partida e este aparelho (recrutado) está passando do recrutamento para a mesa do jogo
+     * (a camada "Prepare-se!" fica na tela nesse intervalo, mesmo sem recrutamento nem mesa ainda).
+     */
+    val joining: StateFlow<Boolean> = _joining.asStateFlow()
+
     /** §16.2 encerra a mesa de lugares do recrutador (voltou à tela 1, saiu ou desligou o Wi-Fi): chamados cancelados, recrutados avisados. */
     fun closeRecruiting() {
         val rec = _recruitment.value ?: return
@@ -132,6 +140,7 @@ object MultiplayerHub {
                         rec.events.collect { if (it !is com.gtranca.net.RecruitEvent.Start) _recruitEvents.emit(it) }
                     }
                     val start = rec.events.first { it is com.gtranca.net.RecruitEvent.Start } as com.gtranca.net.RecruitEvent.Start
+                    _joining.value = true
                     events.cancel()
                     start
                 } finally {
@@ -148,7 +157,9 @@ object MultiplayerHub {
             }
             // §16.2 o anfitrião tocou em Escolher posições: entra direto, com a própria chave (sem novo convite).
             newTable(context, data, photo).joinAsync(start.tableId, name, inviteKey = start.inviteKey)
+            _joining.value = false
         } finally {
+            _joining.value = false
             withContext(NonCancellable) { runCatching { t.stopPresence() } }
         }
     }

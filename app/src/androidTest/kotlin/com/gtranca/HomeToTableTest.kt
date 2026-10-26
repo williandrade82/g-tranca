@@ -91,10 +91,15 @@ class HomeToTableTest {
         rule.onNodeWithTag("seat-1").performClick()
         rule.onNodeWithTag("robot-atleta").performClick()
         rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertDoesNotExist()
-        // tocar no lugar preenchido oferece Remover
+        // lugar ocupado e depois um item da lista: retira quem estava no lugar (o item tocado não entra)
         rule.onNodeWithTag("seat-1").performClick()
-        rule.onNodeWithTag("seat-1-remove").performClick()
+        rule.onNodeWithTag("robot-jovem").performClick()
         rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertExists()
+        // o outro sentido: robô primeiro e depois o lugar
+        rule.onNodeWithTag("robot-zen").performClick()
+        rule.onNodeWithTag("seat-hint").assertExists()
+        rule.onNodeWithTag("seat-1").performClick()
+        rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertDoesNotExist()
         rule.onNodeWithTag("fill-with-robots").performClick()
         rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag("start-match") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("start-match").performClick()

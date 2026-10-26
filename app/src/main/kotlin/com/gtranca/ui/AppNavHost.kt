@@ -75,6 +75,11 @@ import com.gtranca.ui.tables.RulesEditorScreen
 import com.gtranca.ui.tables.RulesEditorViewModel
 import com.gtranca.ui.tables.TablesScreen
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import com.gtranca.ui.tables.TablesViewModel
@@ -114,10 +119,6 @@ data class SelectionRoute(
 /** §16.2 *Mesa do recrutado* (docs/telas.md 3.13): a mesa de quem chamou, só para leitura. */
 @Serializable
 object RecruitedRoute
-
-/** §16.2 "Prepare-se!" da mesa em rede; a mesa está em [com.gtranca.multiplayer.MultiplayerHub]. */
-@Serializable
-object GetReadyRoute
 
 /** §16 jogo da mesa multijogador. */
 @Serializable
@@ -302,23 +303,6 @@ fun AppNavHost() {
         }
         composable<RecruitedRoute> {
             RecruitedDestination(data, navController)
-        }
-        composable<GetReadyRoute> {
-            val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
-            val current = table
-            if (current == null) {
-                LaunchedEffect(Unit) { navController.popBackStack() }
-            } else {
-                GetReadyDestination(current, onStarted = {
-                    navController.navigate(MultiplayerGameRoute) {
-                        popUpTo(HomeRoute) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                }) {
-                    com.gtranca.multiplayer.MultiplayerHub.leave()
-                    navController.popBackStack()
-                }
-            }
         }
         composable<MultiplayerGameRoute> { MultiplayerGameDestination(data, navController) }
         composable<RulesEditorRoute> { entry ->
@@ -590,6 +574,7 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
     if (invited != null && !onGame) {
         InviteDialog(
             invited,
+            now = { rec?.nowMillis() ?: 0L },
             onAccept = {
                 scope.launch {
                     if (rec?.accept() == true) {
@@ -603,31 +588,34 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
         )
     }
     val current = table ?: return
-    val status by current.guestStatus.collectAsStateWithLifecycle()
     val end by current.end.collectAsStateWithLifecycle()
-    val onGetReady = entry?.destination?.hasRoute<GetReadyRoute>() == true
-    // §16.2 o recrutador começou a partida: o recrutado entra na mesa pelo "Prepare-se!".
-    LaunchedEffect(status, onGetReady, onGame) {
-        val joining = status == com.gtranca.net.GuestStatus.Lobby || status == com.gtranca.net.GuestStatus.Connecting
-        if (joining && !onGetReady && !onGame) navController.navigate(GetReadyRoute) { launchSingleTop = true }
-    }
-    // Fora do "Prepare-se!" (ele mostra o seu): mesa encerrada antes de entrar.
+    // A mesa encerrada aparece na própria tela de seleção ou do recrutado (que a mostram); aqui, nas outras.
+    val onOwnScreen = entry?.destination?.let { it.hasRoute<SelectionRoute>() || it.hasRoute<RecruitedRoute>() } == true
     val reason = end
-    if (reason != null && !onGetReady && !onGame) {
+    if (reason != null && !onOwnScreen && !onGame) {
         com.gtranca.ui.multiplayer.MpEndMessage(reason) { com.gtranca.multiplayer.MultiplayerHub.leave() }
     }
 }
 
 /**
  * §16.2 modal **Convite** (docs/telas.md 4): "<recrutador> está te recrutando", a aposta, o tipo (individual/duplas), a
- * posição (Parceiro/Adversário) e o título da regra; **Detalhes da regra**, **Recusar** e **Aceitar**. Sem prazo.
+ * posição (Parceiro/Adversário) e o título da regra; **Detalhes da regra**, **Recusar** e **Aceitar**. Tem **25 s** para
+ * responder (§16.15), com uma barra que esvazia e os segundos restantes (vermelha nos últimos 5 s); ao zerar a rede
+ * devolve o jogador a "livre" e o modal some. O aceite nunca é automático. [now] é o relógio de `Recruitment.nowMillis`.
  */
 @Composable
-private fun InviteDialog(invited: com.gtranca.net.RecruitStatus.Invited, onAccept: () -> Unit, onRefuse: () -> Unit) {
+private fun InviteDialog(invited: com.gtranca.net.RecruitStatus.Invited, now: () -> Long, onAccept: () -> Unit, onRefuse: () -> Unit) {
     var details by rememberSaveable { mutableStateOf(false) }
     val rules = invited.table.rules
     val partner = invited.table.layout.relationOf(invited.you) == com.gtranca.net.SeatRelation.PARTNER
     val title = rules.rulesTitle.ifBlank { rules.rules.name }
+    // O que falta, a cada ~100 ms.
+    val remaining by androidx.compose.runtime.produceState(invited.remainingMillis(now()), invited.deadlineMillis) {
+        while (true) {
+            value = invited.remainingMillis(now())
+            kotlinx.coroutines.delay(100)
+        }
+    }
     com.gtranca.ui.theme.GDialog(
         onDismissRequest = {},
         modifier = Modifier.testTag("invite"),
@@ -647,6 +635,7 @@ private fun InviteDialog(invited: com.gtranca.net.RecruitStatus.Invited, onAccep
                     )
                 }
                 InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_rules)) { androidx.compose.material3.Text(title) }
+                InviteCountdown(remaining)
                 androidx.compose.material3.TextButton({ details = true }, Modifier.heightIn(min = 48.dp).testTag("invite-details")) {
                     androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_details), color = com.gtranca.ui.theme.GColors.Gold)
                 }
@@ -664,6 +653,43 @@ private fun InviteDialog(invited: com.gtranca.net.RecruitStatus.Invited, onAccep
         },
     )
     if (details) com.gtranca.ui.tables.RulesDetailsDialog(title, rules.rules, rules.targetScore) { details = false }
+}
+
+/**
+ * A contagem do convite: barra que esvazia + segundos restantes, vermelha nos últimos 5 s. O leitor de tela lê só nos
+ * marcos de 25, 20, 10 e 5 s (sem repetir a cada quadro).
+ */
+@Composable
+private fun InviteCountdown(remainingMillis: Long) {
+    val fraction = (remainingMillis / com.gtranca.net.INVITE_TIMEOUT_MILLIS.toFloat()).coerceIn(0f, 1f)
+    val seconds = kotlin.math.ceil(remainingMillis / 1000.0).toInt()
+    val urgent = remainingMillis <= 5_000
+    val color = if (urgent) com.gtranca.ui.theme.GColors.Ruby else com.gtranca.ui.theme.GColors.Gold
+    val milestone = listOf(25, 20, 10, 5).lastOrNull { it >= seconds } ?: 5
+    val description = androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_countdown_a11y, milestone)
+    androidx.compose.foundation.layout.Row(
+        Modifier
+            .fillMaxWidth()
+            .clearAndSetSemantics {
+                contentDescription = description
+                liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite
+            }
+            .testTag("invite-countdown"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) {
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier.weight(1f).height(8.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+            color = color,
+            trackColor = com.gtranca.ui.theme.GColors.Midnight,
+        )
+        androidx.compose.material3.Text(
+            androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_countdown_seconds, seconds),
+            color = color,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
+    }
 }
 
 @Composable
@@ -795,6 +821,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
     val photos = rememberNearbyPhotos(data)
     val rec by com.gtranca.multiplayer.MultiplayerHub.recruitment.collectAsStateWithLifecycle()
     val free by remember(rec) { rec?.free ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsStateWithLifecycle(emptyList())
+    val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
     var starting by rememberSaveable { mutableStateOf(false) }
     var started by remember { mutableStateOf(false) }
     val tableName = androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, selfName)
@@ -815,7 +842,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
         if (profile == null) return@LaunchedEffect
         vm.attach(RecruitmentSeats(live, rules, selfName))
         launch { live.layout.collect { it?.let(vm::onRemoteLayout) } }
-        // §16.2 avisos ao recrutador: recusou, saiu ou saldo insuficiente (com o motivo).
+        // §16.2 avisos ao recrutador: recusou, saiu, não respondeu a tempo ou saldo insuficiente (com o motivo).
         live.notices.collect { n ->
             val text = when {
                 n.reason == com.gtranca.net.RefusalReason.INSUFFICIENT_BALANCE -> context.getString(com.gtranca.R.string.recruit_balance, n.name)
@@ -836,7 +863,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
         scope.launch {
             val live = rec
             if (live != null && vm.hasRemotes) {
-                // §16.2 em rede: os recrutados entram direto; o "Prepare-se!" cobre a tela até o jogo começar.
+                // §16.2 em rede: os recrutados entram direto; a camada "Prepare-se!" cobre a tela até o jogo começar.
                 val tableId = com.gtranca.net.nearby.newTableId()
                 val plan = live.start(tableId, com.gtranca.game.Tables.personaPool, vm.seed)
                 if (plan == null) {
@@ -847,7 +874,6 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
                 com.gtranca.multiplayer.MultiplayerHub.stopRecruiting()
                 val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
                 com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).hostAsync(rules, selfName, tableId, plan)
-                navController.navigate(GetReadyRoute) { launchSingleTop = true }
             } else {
                 // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede, depois de no mínimo 1,5 s de "Prepare-se!".
                 started = true
@@ -866,10 +892,30 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
             navController.popBackStack()
         },
     )
-    if (starting) com.gtranca.ui.selection.GetReadyImage()
+    if (starting) com.gtranca.ui.selection.GetReadyOverlay()
+    // Em rede: a mesa do jogo é criada; quando começa, abre o jogo (depois de no mínimo 1,5 s de camada).
+    val current = table
+    if (started && current != null) {
+        GetReadyEffect(current) {
+            navController.navigate(MultiplayerGameRoute) {
+                popUpTo(HomeRoute) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+        val end by current.end.collectAsStateWithLifecycle()
+        end?.let { reason ->
+            com.gtranca.ui.multiplayer.MpEndMessage(reason) {
+                com.gtranca.multiplayer.MultiplayerHub.leave()
+                navController.popBackStack()
+            }
+        }
+    }
 }
 
-/** §16.2 *Mesa do recrutado* (docs/telas.md 3.13): só leitura; volta à tela anterior quando deixa de estar na mesa. */
+/**
+ * §16.2 *Mesa do recrutado* (docs/telas.md 3.13): só leitura; volta à tela anterior quando deixa de estar na mesa. Quando
+ * o recrutador começa a partida, a camada "Prepare-se!" cobre a própria tela até o jogo começar.
+ */
 @Composable
 private fun RecruitedDestination(data: GameData, navController: NavHostController) {
     val context = LocalContext.current
@@ -878,30 +924,58 @@ private fun RecruitedDestination(data: GameData, navController: NavHostControlle
     // O StateFlow dá o valor atual já na 1ª composição (com um inicial "Free" a tela fecharia antes de ler o Joined).
     val statusFlow = rec?.status
     val status = if (statusFlow != null) statusFlow.collectAsStateWithLifecycle().value else com.gtranca.net.RecruitStatus.Free
+    val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
+    val joining by com.gtranca.multiplayer.MultiplayerHub.joining.collectAsStateWithLifecycle()
     val profile = rememberProfile(data)
     val photos = rememberNearbyPhotos(data)
     val joined = status as? com.gtranca.net.RecruitStatus.Joined
+    // Depois do início o recrutamento se encerra (Free): a tela continua desenhando a última mesa por baixo da camada.
+    var lastJoined by remember { mutableStateOf<com.gtranca.net.RecruitStatus.Joined?>(null) }
+    if (joined != null) lastJoined = joined
+    val gettingReady = joining || table != null
     // Saiu, foi removido ou a mesa acabou: de volta à *Iniciar novo jogo* com as opções do próprio jogador.
-    LaunchedEffect(joined == null) { if (joined == null) navController.popBackStack() }
-    if (joined != null) {
+    LaunchedEffect(joined == null, gettingReady) { if (joined == null && !gettingReady) navController.popBackStack() }
+    val shown = joined ?: lastJoined
+    if (shown != null) {
         com.gtranca.ui.multiplayer.RecruitedTableScreen(
-            joined,
+            shown,
             self = (profile ?: PlayerProfile()).persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context)),
             photos = photos,
-            onLeave = { scope.launch { runCatching { rec?.leave() } } },
+            onLeave = {
+                if (table != null) {
+                    com.gtranca.multiplayer.MultiplayerHub.leave()
+                } else {
+                    scope.launch { runCatching { rec?.leave() } }
+                }
+            },
         )
+    }
+    if (gettingReady) {
+        com.gtranca.ui.selection.GetReadyOverlay()
+        val current = table
+        if (current != null) {
+            GetReadyEffect(current) {
+                navController.navigate(MultiplayerGameRoute) {
+                    popUpTo(HomeRoute) { inclusive = false }
+                    launchSingleTop = true
+                }
+            }
+            val end by current.end.collectAsStateWithLifecycle()
+            end?.let { reason ->
+                com.gtranca.ui.multiplayer.MpEndMessage(reason) { com.gtranca.multiplayer.MultiplayerHub.leave() }
+            }
+        }
     }
 }
 
 /**
- * §16.2 "Prepare-se!" da mesa em rede: a imagem por no mínimo 1,5 s e, quando a mesa do jogo começa, o jogo
- * ([onStarted]); [onLeave] sai da mesa.
+ * §16.2 "Prepare-se!": com a camada na tela, espera a mesa do jogo começar (anfitrião com o jogo criado, convidado
+ * jogando) e abre o jogo ([onStarted]) depois de no mínimo 1,5 s de camada. Não desenha nada.
  */
 @Composable
-private fun GetReadyDestination(table: com.gtranca.multiplayer.MultiplayerTable, onStarted: () -> Unit, onLeave: () -> Unit) {
+private fun GetReadyEffect(table: com.gtranca.multiplayer.MultiplayerTable, onStarted: () -> Unit) {
     val role by table.role.collectAsStateWithLifecycle()
     val status by table.guestStatus.collectAsStateWithLifecycle()
-    val end by table.end.collectAsStateWithLifecycle()
     val shownAt = remember { System.nanoTime() / 1_000_000 }
     val started = (role as? com.gtranca.multiplayer.MpRole.Hosting)?.host != null || status == com.gtranca.net.GuestStatus.Playing
     LaunchedEffect(started) {
@@ -910,5 +984,4 @@ private fun GetReadyDestination(table: com.gtranca.multiplayer.MultiplayerTable,
         if (left > 0) kotlinx.coroutines.delay(left)
         onStarted()
     }
-    com.gtranca.ui.multiplayer.GetReadyScreen(end, onLeave)
 }

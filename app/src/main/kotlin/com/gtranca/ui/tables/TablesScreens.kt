@@ -121,9 +121,10 @@ internal fun TableFrame(
 }
 
 @Composable
-internal fun RowScope.BottomButton(text: String, tag: String, kind: GButtonKind, enabled: Boolean = true, onClick: () -> Unit) {
-    GButton(onClick, Modifier.weight(1f).heightIn(min = 52.dp).testTag(tag).tourTarget(tag), enabled = enabled, kind = kind) {
-        Text(text, style = MaterialTheme.typography.titleMedium)
+internal fun RowScope.BottomButton(text: String, tag: String, kind: GButtonKind, enabled: Boolean = true, weight: Float = 1f, onClick: () -> Unit) {
+    GButton(onClick, Modifier.weight(weight).heightIn(min = 52.dp).testTag(tag).tourTarget(tag), enabled = enabled, kind = kind) {
+        // O texto fica numa linha só: com fonte grande a letra diminui, nunca quebra.
+        com.gtranca.ui.theme.FitText(text, MaterialTheme.typography.titleMedium, minFontSp = 10)
     }
 }
 
@@ -163,8 +164,8 @@ fun TablesScreen(
         stringResource(R.string.tables_title),
         "tables-screen",
         bottom = {
-            BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, onClick = onBack)
-            BottomButton(stringResource(R.string.tables_select_players), "select-players", GButtonKind.Primary, enabled = state.canSelect) {
+            BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, weight = 0.7f, onClick = onBack)
+            BottomButton(stringResource(R.string.tables_select_players), "select-players", GButtonKind.Primary, enabled = state.canSelect, weight = 1.3f) {
                 viewModel.onSelectPlayers()?.let(onSelectPlayers)
             }
         },

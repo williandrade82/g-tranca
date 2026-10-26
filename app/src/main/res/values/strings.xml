@@ -569,8 +569,8 @@
     <string name="recruit_balance">%1$s: saldo insuficiente</string>
     <string name="tour_tables_recruiters">Jogadores por perto que estão montando uma mesa. Eles podem te chamar; você aceita ou recusa.</string>
     <string name="tour_tables_select_players">Pronto? Escolha quem joga com você: robôs ou jogadores por perto.</string>
-    <string name="tour_sel_table">A mesa: você fica embaixo. Toque num lugar vago e escolha um robô ou um jogador; arraste um avatar para trocar de lugar.</string>
-    <string name="tour_sel_robots">Os robôs que podem ocupar os lugares. O que já está sentado fica esmaecido.</string>
+    <string name="tour_sel_table">A mesa: você fica embaixo. Toque num robô ou jogador e depois num lugar, ou ao contrário; toque em dois lugares para trocar. A dica embaixo da mesa explica cada passo.</string>
+    <string name="tour_sel_robots">Os robôs que podem ocupar os lugares. O que já está sentado fica esmaecido. Para tirar alguém da mesa, toque nele e depois num item desta lista.</string>
     <string name="tour_sel_multiplayer">Com o Wi-Fi ligado, você chama jogadores por perto. Eles aparecem aqui; quem você chamou fica com o selo Chamado até responder.</string>
     <string name="tour_sel_fill">Preenche os lugares vagos com robôs.</string>
     <string name="tour_sel_start">Fica ativo quando todos os lugares estão preenchidos e ninguém está sendo chamado.</string>
@@ -586,10 +586,6 @@
     <string name="selection_nobody_free">Ninguém livre por perto</string>
     <string name="selection_fill">Completar com robôs</string>
     <string name="selection_start">Começar Partida</string>
-    <string name="selection_remove">Remover</string>
-    <string name="selection_move">Mover</string>
-    <string name="selection_move_hint">Toque no lugar de destino</string>
-    <string name="selection_hint_seat">Toque primeiro num lugar vago</string>
     <string name="selection_cannot_call">Não deu para chamar esse jogador</string>
     <string name="selection_summary">%1$s · %2$s · %3$d moedas · %4$s</string>
     <string name="a11y_seat_vacant">Lugar %1$d, vago</string>
@@ -608,4 +604,10 @@
     <string name="invite_opponent">Adversário</string>
     <string name="invite_details">Detalhes da regra</string>
     <string name="recruited_waiting">Aguardando o recrutador começar a partida</string>
+    <string name="selection_hint_idle">Toque num robô, num jogador ou num lugar</string>
+    <string name="selection_hint_seat_for">Escolha um lugar para o %1$s</string>
+    <string name="selection_hint_who">Escolha quem vai para este lugar</string>
+    <string name="selection_hint_swap">Toque em outro lugar para trocar, ou na lista para retirar</string>
+    <string name="invite_countdown_seconds">%1$d s</string>
+    <string name="invite_countdown_a11y">Restam %1$d segundos para responder</string>
 </resources>

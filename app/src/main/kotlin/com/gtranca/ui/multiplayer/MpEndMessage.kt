@@ -1,9 +1,7 @@
 package com.gtranca.ui.multiplayer
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.gtranca.ui.selection.GetReadyImage
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.gtranca.R
@@ -11,17 +9,6 @@ import com.gtranca.multiplayer.MpEnd
 import com.gtranca.ui.theme.GMessage
 import com.gtranca.ui.theme.MessageIllustration
 import com.gtranca.ui.theme.MessageTone
-
-/**
- * §16.2 "Prepare-se! O jogo vai começar!" (docs/telas.md 4): a imagem em tela cheia enquanto a mesa do jogo espera os
- * recrutados entrarem (no mínimo 1,5 s) até o jogo começar. [end] mostra o motivo se a mesa acabou antes do início.
- */
-@Composable
-fun GetReadyScreen(end: MpEnd?, onLeave: () -> Unit) {
-    BackHandler(onBack = onLeave)
-    GetReadyImage()
-    end?.let { reason -> MpEndMessage(reason, onLeave) }
-}
 
 /** Mensagem de fim da mesa (recusa, mesa não achada, mesa encerrada) com volta. */
 @Composable

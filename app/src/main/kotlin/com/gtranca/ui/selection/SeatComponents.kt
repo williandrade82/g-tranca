@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -86,14 +84,60 @@ fun RobotPhoto(profile: BotProfile, level: BotLevel, size: Dp, modifier: Modifie
     )
 }
 
+/** Relógio local (ms) em que os prazos dos convites são medidos (o mesmo do recrutamento do `:net`). */
+fun nowMillis(): Long = System.nanoTime() / 1_000_000
+
 /**
- * Avatar com o selo [seal] no canto (docs/telas.md): [dim] esmaece o avatar (Chamado e robôs já sentados); o selo fica
- * inteiro. [content] desenha o avatar no tamanho [size].
+ * A fração (1 → 0) que falta de [durationMillis] desde [startedAt] (relógio de [nowMillis]), atualizada a cada ~100 ms;
+ * `null` sem [startedAt]. Pára em zero.
  */
 @Composable
-fun SealedAvatar(size: Dp, seal: Seal?, dim: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun rememberCountdown(startedAt: Long?, durationMillis: Long): Float? {
+    if (startedAt == null) return null
+    val fraction by androidx.compose.runtime.produceState(1f, startedAt, durationMillis) {
+        while (true) {
+            val left = durationMillis - (nowMillis() - startedAt)
+            value = (left.toFloat() / durationMillis).coerceIn(0f, 1f)
+            if (left <= 0) break
+            kotlinx.coroutines.delay(100)
+        }
+    }
+    return fraction
+}
+
+/**
+ * Avatar com o selo [seal] no canto (docs/telas.md): [dim] esmaece o avatar (Chamado e robôs já sentados); o selo fica
+ * inteiro. [highlighted] marca a seleção pendente com um aro dourado. [calledAt] (Chamado, no recrutador) põe em volta do
+ * avatar um anel fino de contagem regressiva do convite (§16.15). [content] desenha o avatar no tamanho [size].
+ */
+@Composable
+fun SealedAvatar(
+    size: Dp,
+    seal: Seal?,
+    dim: Boolean,
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
+    calledAt: Long? = null,
+    content: @Composable () -> Unit,
+) {
+    val fraction = rememberCountdown(calledAt, com.gtranca.net.INVITE_TIMEOUT_MILLIS)
     Box(modifier.size(size + 6.dp), contentAlignment = Alignment.Center) {
         Box(Modifier.alpha(if (dim) 0.45f else 1f).clip(CircleShape)) { content() }
+        if (highlighted) {
+            Box(Modifier.matchParentSize().border(3.dp, GColors.Gold, CircleShape))
+        }
+        if (fraction != null) {
+            val color = if (fraction * com.gtranca.net.INVITE_TIMEOUT_MILLIS <= 5_000) GColors.Ruby else GColors.Gold
+            Canvas(Modifier.matchParentSize().testTag("seat-timer")) {
+                val stroke = 2.5.dp.toPx()
+                drawArc(
+                    color, -90f, 360f * fraction, false,
+                    topLeft = Offset(stroke / 2, stroke / 2),
+                    size = androidx.compose.ui.geometry.Size(this.size.width - stroke, this.size.height - stroke),
+                    style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                )
+            }
+        }
         if (seal != null) {
             Image(
                 painterResource(if (seal == Seal.CALLED) R.drawable.seal_chamado else R.drawable.seal_recrutado),
@@ -176,14 +220,11 @@ fun SeatTable(
     modifier: Modifier = Modifier,
     interactive: Boolean = false,
     selectedSeat: Int? = null,
-    movingFrom: Int? = null,
-    menuSeat: Int? = null,
+    /** Quando cada Chamado recebeu o convite (relógio de [nowMillis]): o anel de contagem regressiva. */
+    calledAt: Map<String, Long> = emptyMap(),
     tagPrefix: String = "seat",
     onSeatTap: (Int) -> Unit = {},
     onDrop: (from: Int, to: Int) -> Unit = { _, _ -> },
-    onRemove: (Int) -> Unit = {},
-    onMoveStart: (Int) -> Unit = {},
-    onDismissMenu: () -> Unit = {},
 ) {
     val mode = layout.mode
     val bounds = remember { mutableStateMapOf<Int, Rect>() }
@@ -205,7 +246,7 @@ fun SeatTable(
                 SeatRole.LEFT_OPPONENT -> Alignment.CenterStart
                 SeatRole.RIGHT_OPPONENT -> Alignment.CenterEnd
             }
-            val picked = selectedSeat == index || movingFrom == index
+            val picked = selectedSeat == index
             val look = slotLook(index, slot, viewerSeat, self, hostName, level, photos, highlighted = picked)
             val stateTag = when {
                 slot is Slot.Vacant -> "vacant"
@@ -254,7 +295,11 @@ fun SeatTable(
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                SealedAvatar(SeatAvatar, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag")) { look.avatar(SeatAvatar) }
+                SealedAvatar(
+                    SeatAvatar, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
+                    highlighted = picked && slot != Slot.Vacant,
+                    calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
+                ) { look.avatar(SeatAvatar) }
                 Text(
                     look.name,
                     color = GColors.Champagne,
@@ -264,21 +309,6 @@ fun SeatTable(
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelMedium,
                 )
-                if (interactive && menuSeat == index) {
-                    DropdownMenu(expanded = true, onDismissRequest = onDismissMenu) {
-                        DropdownMenuItem(
-                            { Text(stringResource(R.string.selection_remove)) },
-                            { onRemove(index) },
-                            Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-remove"),
-                        )
-                        DropdownMenuItem(
-                            { Text(stringResource(R.string.selection_move)) },
-                            { onMoveStart(index) },
-                            Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-move"),
-                        )
-                        DropdownMenuItem({ Text(stringResource(R.string.cancel)) }, onDismissMenu, Modifier.heightIn(min = 48.dp))
-                    }
-                }
             }
         }
     }
