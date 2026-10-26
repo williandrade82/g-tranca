@@ -89,9 +89,9 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 6. **Barra fixa** embaixo: Perfil · Estatísticas; versão discreta logo abaixo.
 7. Botão de **som** no canto superior direito, sempre à vista.
 
-**Variações:** "Ver mesas - Iniciar" com jogo salvo abre o modal *Começar um novo jogo?* (o jogo salvo conta como derrota por desistência). Com uma **sessão multijogador** guardada (§16.12), **Continuar** a mostra ao lado do jogo salvo contra robôs (cada um no seu botão): tocar nela reingressa na mesa como jogador comum, mesmo para quem era anfitrião.
+**Variações:** "Ver mesas - Iniciar" com jogo salvo abre o modal *Começar um novo jogo?* (o jogo salvo conta como derrota por desistência). Com uma **sessão multijogador** guardada (§16.12), um segundo botão **Continuar mesa** (tag `continue-session`) aparece ao lado do jogo salvo contra robôs (cada um no seu botão), com o nome do anfitrião ("Mesa de <anfitrião>") e o assento ("Você: lugar 3"): tocar nele leva a *Voltar à mesa* (3.17) e reingressa como jogador comum, mesmo para quem era anfitrião. A sessão some quando o jogo termina e o resultado é entregue (§16.11), quando o jogador desiste e não volta, quando a mesa é encerrada ou a vaga é preenchida, quando ele sai da mesa pelo botão e **12 h** depois de gravada.
 **Regras:** §14 (jogo salvo), §14.6 (moedas), §13.1 (desistência).
-**Tags:** `home-bots`, `new-game`, `continue`, `home-balance`, `claim-daily`, `profile`, `stats`, `home-version`.
+**Tags:** `home-bots`, `new-game`, `continue`, `continue-session`, `home-balance`, `claim-daily`, `profile`, `stats`, `home-version`.
 
 ### 3.2 Iniciar novo jogo (`TablesScreen`)
 **Objetivo:** escolher as **opções da mesa** (§14.4): modo, dificuldade dos robôs, aposta, regras e pontuação-alvo; os jogadores são escolhidos na tela seguinte (3.3). Substitui a antiga *Mesas disponíveis*: a grade de participantes, os cards de mesas de outros anfitriões e o pedido de entrada deixaram de existir; **só se entra numa mesa sendo chamado** (§16.2).
@@ -270,6 +270,16 @@ Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jo
 11. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
 **Multijogador:** o tour é só da tela deste aparelho e não pausa o jogo; a vez continua aberta enquanto ele está na tela (não há limite de tempo para jogar, §16).
 
+### 3.17 Voltar à mesa (`RejoinScreen`)
+**Objetivo:** reingressar, como jogador comum, na mesa da sessão guardada (§16.5, §16.12), a partir de **Continuar mesa** (3.1).
+**Fluxo:**
+1. **Wi-Fi do jogo desligado:** primeiro o modal *Ligar o Wi-Fi do jogo?* (4); confirmado, passa pelo modal *Procurar mesas por perto* se faltar permissão; recusar volta ao Início.
+2. **Procurando a mesa…:** indicador de espera, o nome do anfitrião e o botão **Cancelar** (tag `rejoin-cancel`). Procura por até **30 s** (a busca é repetida); achada, envia o token e volta ao **mesmo assento**, recebe a vista atual (e o fim da última partida que faltar, §16.5, §16.11) e abre a *Mesa de jogo* (3.8). A aposta retida volta com o assento (§16.9, §14.6).
+3. **Falhas** (modal com **OK**, que volta ao Início; a sessão é apagada nos itens que dizem "apaga"): *Mesa não encontrada por perto* (não apaga: dá para tentar de novo; expira em 12 h); *A vaga foi preenchida.* (token recusado: apaga); *Mesa encerrada.* (apaga).
+Se o jogo já terminou e o resultado ainda não foi recebido, o jogador recebe só o fim do jogo e o prêmio (§16.11).
+**Regras:** §16.5, §16.9, §16.11, §16.12.
+**Tags:** `rejoin`, `rejoin-searching`, `rejoin-cancel`, `rejoin-failed`, `rejoin-wifi`, `rejoin-wifi-on`.
+
 ## 4. Modais
 
 Todos levam o **cabeçalho de marca**.
@@ -282,6 +292,7 @@ Todos levam o **cabeçalho de marca**.
 | **Convite** | mensagem | jogador próximo **chamado** por um recrutador (§16.2), em qualquer tela fora de um jogo | "<recrutador> está te recrutando"; **aposta** (com o ícone do saco de dinheiro), **tipo** (individual / duplas), **posição** (**Parceiro** se o lugar é o da frente; senão **Adversário**; no individual, **Adversário**) e **título da regra** (Clássica / Tranca Paulista / Personalizada); botões **Detalhes da regra** (abre o modal *Detalhes da regra*), **Recusar** e **Aceitar**. **25 s para responder, com contagem na tela**: uma **barra de progresso que esvazia** com os **segundos restantes** ao lado, atualizada a cada ~100 ms, que **muda de cor nos últimos 5 s**; o leitor de tela anuncia a contagem sem repetir demais (a cada 10 s e aos 5 s). Ao zerar o modal fecha sozinho (sem resposta vale como recusa, motivo "não respondeu a tempo"; **o aceite nunca é automático**); a posição acompanha o recrutador movendo o chamado; some se o recrutador o remover. Saldo menor que a aposta: recusa automática com aviso. Tags `invite`, `invite-details`, `invite-accept`, `invite-refuse`, `invite-countdown` |
 | **Detalhes da regra** | diálogo | botão "Ver detalhes da regra" (Iniciar novo jogo, Mesa do recrutado) ou "Detalhes da regra" (Convite) | o nome do perfil de regras e o **resumo** das regras da mesa (§14.2: as diferenças em relação à Clássica) e a pontuação-alvo; **Fechar**. Tags `rules-details-dialog` |
 | **Prepare-se!** | camada sobre a tela atual | **Começar Partida** (todos os celulares da mesa) | sobre a própria tela, que fica esmaecida (preto ~50 %), a imagem **"Prepare-se! O jogo vai começar!"** centralizada, entrando com leve escala e fade (sem movimento se as animações do sistema estão desligadas); bloqueia os toques; **no mínimo 1,5 s**, até o jogo começar; não tem botões. Tag `get-ready` |
+| **Ligar o Wi-Fi do jogo?** | mensagem (aviso) | **Continuar mesa** com o Wi-Fi do jogo desligado (3.17) | "Para voltar à mesa de <anfitrião> o Wi-Fi do jogo precisa estar ligado."; **Ligar** / **Cancelar**. Tags `rejoin-wifi`, `rejoin-wifi-on` |
 | **Desconectar a mesa?** | mensagem (aviso) | anfitrião desliga o botão de Wi-Fi na mesa de jogo com humanos (3.14) | "Os jogadores por perto serão substituídos por robôs e o jogo segue só neste celular."; **Desconectar** / **Cancelar** (no convidado, o botão abre *Desistir da mesa?*) |
 | **Recusa** | aviso breve (toast) | chamado recusou, saiu ou ficou fora do alcance (§16.2) | quem recusou e o **motivo** (recusou o convite, saldo insuficiente, fora do alcance); o lugar volta a VAGO. No pedido de entrada do meio do jogo (§16.7) também "o anfitrião recusou" e "mesa cheia" |
 | Recusar a compra? | mensagem | monte acabou sem morto | encerra a partida sem batida |

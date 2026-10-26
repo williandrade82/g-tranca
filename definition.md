@@ -614,6 +614,8 @@ flowchart TD
 - O **anfitrião não retoma como anfitrião**: ao desconectar ou desistir ele deixa de ser anfitrião. "Continuar" (início) pode aparecer para quem era anfitrião, mas ele volta à mesa como **jogador comum**, reingressando com o token.
 - O aparelho de um **jogador comum** guarda **só a sessão** (mesa, assento, token e nome), **nunca o jogo**. O aparelho que é **anfitrião ou sucessor** **não grava** o estado completo em disco para retomada.
 - A sessão multijogador e o jogo salvo contra robôs (§14) ficam em **espaços separados** e coexistem; "Continuar" mostra o que existir.
+- **O que a sessão guarda:** o identificador da mesa, o assento, o token, o nome do jogador, o nome do anfitrião (só para exibir) e se o jogador era o anfitrião (que volta como jogador comum). Grava-se quando o jogador entra na mesa (e a cada vez que o token ou o assento mudam). **Apaga-se** quando o jogo termina e o resultado é entregue (§16.11), quando o jogador desiste e não volta, quando a mesa é encerrada, quando a vaga foi preenchida (token recusado), quando ele sai da mesa pelo botão e **12 h** depois de gravada (a mesa já não existe).
+- **Continuar a sessão:** o jogador procura a mesa por até **30 s** (com o Wi-Fi do jogo ligado, com confirmação se estiver desligado) e reingressa com o token (§16.5). Mesa não encontrada não apaga a sessão; token recusado ("A vaga foi preenchida.") e mesa encerrada, sim.
 
 ### **16.13. Moedas e apostas na mesa multijogador**
 - A aposta vale **em grupo**: cada humano aposta o valor da mesa, **debitado no próprio celular** ao começar; os robôs também apostam (virtualmente). O fim do jogo é calculado pelo anfitrião e enviado a cada humano.
