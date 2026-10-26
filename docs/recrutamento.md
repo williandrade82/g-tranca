@@ -108,7 +108,8 @@ exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (t
 | `onLost` | a presença só sai se não reaparecer em 3 s (1 s no modo ativo; anunciante que para e reanuncia não pisca) |
 | aviso "saindo" | sai na hora (todas as entradas da chave) |
 | busca reiniciada a cada 8 s (modo econômico) | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~20 s) |
-| **modo ativo** (telas *Iniciar novo jogo* e *Seleção de jogadores* abertas, Wi-Fi ligado) | busca reiniciada a cada 1 s, folga de 0,5 s; sai quem não reaparece em 2 recomeços seguidos (queda silenciosa sem conexão: até ~3 s); fora dessas telas volta o modo econômico |
+| **modo ativo** (telas *Iniciar novo jogo* e *Seleção de jogadores* abertas, Wi-Fi ligado) | busca reiniciada a cada **3 s**, folga de 1 s; sai quem não reaparece em 2 recomeços seguidos (queda silenciosa sem conexão: até ~7 s); fora dessas telas volta o modo econômico (8 s) |
+| **rajada** (`refreshNow()`, botão atualizar ou puxar para atualizar) | busca reiniciada a cada 1 s (folga 0,5 s) por 5 s e volta aos 3 s; novo pedido durante a rajada é ignorado; só vale no modo ativo |
 | conexão aberta (espera/recrutamento) | mensagem de teste a cada 400 ms; sem nenhuma resposta por 1 s a conexão é dada como caída e o jogador sai das listas (~1 s) |
 | aviso explícito de saída (`RecruitBye`) | pela conexão aberta e pelo anúncio "saindo" (0,5 s); quem recebe tira o jogador da lista na hora (~1 s no rádio real) |
 | chave **fixada** (chamada/recrutada/recrutador de quem aceitou) | a varredura não a remove; só `onLost` após a folga, "saindo" ou a queda da conexão |

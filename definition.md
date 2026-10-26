@@ -628,7 +628,7 @@ flowchart TD
 | O quê | Tempo |
 |---|---|
 | Convite sem resposta vale como recusa (§16.2) | 25 s no relógio de quem recebe; o recrutador espera mais 2 s de folga da rede |
-| Percepção das mudanças dos outros nas telas *Iniciar novo jogo* e *Seleção de jogadores* — modo ativo (§16.2) | aviso explícito (Wi-Fi desligado, saída): cerca de 1 s; conexão aberta que cai: cerca de 1 s (mensagem de teste a cada 400 ms, queda após 1 s sem resposta); jogador novo: assim que a busca o vê; queda silenciosa sem conexão: até cerca de 3 s (a busca recomeça a cada 1 s, sai quem não reaparece em dois recomeços seguidos) |
+| Percepção das mudanças dos outros nas telas *Iniciar novo jogo* e *Seleção de jogadores* — modo ativo (§16.2) | aviso explícito (Wi-Fi desligado, saída): cerca de 1 s; conexão aberta que cai: cerca de 1 s (mensagem de teste a cada 400 ms, queda após 1 s sem resposta); jogador novo: em até cerca de 3 s (a busca recomeça a cada 3 s) ou na hora com a **atualização imediata** (botão ou puxar para atualizar: a busca recomeça a cada 1 s por 5 s e volta aos 3 s; toques repetidos durante a rajada são ignorados); queda silenciosa sem conexão: até cerca de 7 s no modo ativo (sai quem não reaparece em dois recomeços seguidos) e cerca de 3 s durante a rajada |
 | Jogador próximo que reanuncia a presença (parou e voltou) continua na lista dos outros (§16.2) | 3 s de folga depois do aviso de perda do Nearby (1 s no modo ativo) |
 | Tentativas de conexão de espera ao recrutador (§16.2) | 0,3 s, 1 s, 2 s, 4 s e, daí em diante, a cada 8 s, enquanto ele estiver recrutando ou listar a chave |
 | Lugares do recrutador enviados a chamados e recrutados (§16.2) | 0,3 s depois da última mudança (convite, resposta e remoção não esperam) |
