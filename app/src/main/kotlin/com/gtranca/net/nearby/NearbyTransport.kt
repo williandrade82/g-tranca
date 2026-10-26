@@ -65,6 +65,9 @@ class NearbyTransport(
     private val activeRefreshMillis: Long = ACTIVE_REFRESH_MILLIS,
     private val activeSweepGraceMillis: Long = ACTIVE_SWEEP_GRACE_MILLIS,
     private val activeLostGraceMillis: Long = ACTIVE_LOST_GRACE_MILLIS,
+    /** §16.15 rajada da atualização imediata: busca a cada [burstRefreshMillis] por [BURST_MILLIS]. */
+    private val burstRefreshMillis: Long = BURST_REFRESH_MILLIS,
+    private val burstSweepGraceMillis: Long = BURST_SWEEP_GRACE_MILLIS,
     /** Diagnóstico (só no build debug): eventos sem nomes, fotos nem bytes. */
     private val log: (String) -> Unit = {},
 ) : LocalTransport {
@@ -88,6 +91,28 @@ class NearbyTransport(
 
     /** Acorda o laço da busca quando o modo muda (o recomeço não espera o intervalo econômico). */
     private val modeChanged = Channel<Unit>(Channel.CONFLATED)
+
+    @Volatile
+    private var burstUntil = Long.MIN_VALUE
+
+    private fun bursting() = active && now() < burstUntil
+    private fun refreshInterval() = if (bursting()) burstRefreshMillis else if (active) activeRefreshMillis else refreshMillis
+    private fun sweepGrace() = if (bursting()) burstSweepGraceMillis else if (active) activeSweepGraceMillis else sweepGraceMillis
+
+    /**
+     * §16.2, §16.15 atualização imediata: a busca recomeça a cada 1 s por [durationMillis] (5 s) e volta ao ritmo do modo
+     * ativo. Só vale no modo ativo; pedido durante uma rajada em andamento é ignorado (toques repetidos não somam).
+     */
+    override fun burst(durationMillis: Long) {
+        if (!active) return
+        if (bursting()) {
+            log("burst ignored: running")
+            return
+        }
+        burstUntil = now() + durationMillis
+        log("burst start ${durationMillis} ms")
+        modeChanged.trySend(Unit)
+    }
 
     override fun setActiveMode(active: Boolean) {
         if (this.active == active) return
@@ -307,7 +332,7 @@ class NearbyTransport(
      * Com conexão de presença pendente ou aberta (troca de fotos), o recomeço é adiado (no Nearby ele pode abortá-la).
      */
     private suspend fun refreshPresence() {
-        waitRefresh(if (active) activeRefreshMillis else refreshMillis)
+        waitRefresh(refreshInterval())
         while (true) {
             if (presenceConnectionBusy()) {
                 delay(RESTART_RETRY_MILLIS)
@@ -334,10 +359,10 @@ class NearbyTransport(
                 delay(RESTART_RETRY_MILLIS)
                 continue
             }
-            val grace = if (active) activeSweepGraceMillis else sweepGraceMillis
+            val grace = sweepGrace()
             delay(grace)
             sweep(restartedAt)
-            waitRefresh(((if (active) activeRefreshMillis else refreshMillis) - grace).coerceAtLeast(0))
+            waitRefresh((refreshInterval() - grace).coerceAtLeast(0))
         }
     }
 
@@ -503,8 +528,13 @@ class NearbyTransport(
         const val PRESENCE_LEAVING_MILLIS: Long = 500
 
         /** §16.15 modo ativo: a busca recomeça a cada 1 s, com folga de 0,5 s, e o aviso de perda vale 1 s. */
-        const val ACTIVE_REFRESH_MILLIS: Long = 1_000
-        const val ACTIVE_SWEEP_GRACE_MILLIS: Long = 500
+        const val ACTIVE_REFRESH_MILLIS: Long = 3_000
+        const val ACTIVE_SWEEP_GRACE_MILLIS: Long = 1_000
+
+        /** §16.15 atualização imediata: 5 s de busca a cada 1 s (folga de 0,5 s). */
+        const val BURST_MILLIS: Long = 5_000
+        const val BURST_REFRESH_MILLIS: Long = 1_000
+        const val BURST_SWEEP_GRACE_MILLIS: Long = 500
         const val ACTIVE_LOST_GRACE_MILLIS: Long = 1_000
 
         /** §16.15 folga depois do aviso de perda do Nearby antes de tirar a presença da lista. */

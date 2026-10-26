@@ -260,6 +260,12 @@ class Recruitment(
         }
     }
 
+    /** §16.2, §16.15 "atualizar": rajada de busca de 5 s a cada 1 s (os toques repetidos durante a rajada são ignorados). */
+    fun refreshNow() {
+        log("rec refreshNow")
+        transport.burst()
+    }
+
     /** O nome do perfil mudou: o anúncio acompanha (o estado do recrutamento não muda). */
     suspend fun rename(name: String) {
         mutex.withLock {

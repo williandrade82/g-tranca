@@ -448,7 +448,7 @@ class NearbyTransportTest {
     }
 
     @Test
-    fun `§16_2 §16_15 modo ativo - a busca recomeca a cada 1 s e quem some sem avisar sai em ate cerca de 3 s`() = runTest {
+    fun `§16_2 §16_15 modo ativo - a busca recomeca a cada 3 s e quem some sem avisar sai em ate cerca de 7 s`() = runTest {
         network.silentStop = true
         val (goneApi, gone) = node()
         val (api, me) = node()
@@ -461,10 +461,10 @@ class NearbyTransportTest {
         runCurrent()
         lists.last() shouldBe listOf(bia)
         goneApi.stopAdvertising() // sumiu sem avisar
-        advanceTimeBy(3_000)
+        advanceTimeBy(7_000)
         runCurrent()
-        lists.last() shouldBe emptyList()
-        (api.discoveryStarts >= 3) shouldBe true // recomeçou a cada 1 s
+        lists.last() shouldBe emptyList() // queda silenciosa no modo ativo: até ~7 s
+        (api.discoveryStarts >= 3) shouldBe true // recomeçou a cada 3 s
         // Fora das telas (modo econômico) a busca volta ao ritmo de 8 s.
         me.setActiveMode(false)
         runCurrent()
@@ -490,5 +490,38 @@ class NearbyTransportTest {
         advanceTimeBy(NearbyTransport.PRESENCE_LEAVING_MILLIS + 1)
         runCurrent()
         stopping.isCompleted shouldBe true
+    }
+
+    @Test
+    fun `§16_2 §16_15 rajada - busca a cada 1 s por 5 s, volta aos 3 s e toques repetidos sao ignorados`() = runTest {
+        val (api, me) = node()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect {} }
+        runCurrent()
+        me.setActiveMode(true)
+        runCurrent()
+        advanceTimeBy(100)
+        val s0 = api.discoveryStarts
+        me.burst()
+        me.burst() // ignorado: já há rajada
+        advanceTimeBy(5_000)
+        runCurrent()
+        val inBurst = api.discoveryStarts - s0
+        (inBurst in 4..6) shouldBe true // ~1 por segundo
+        val s1 = api.discoveryStarts
+        advanceTimeBy(9_000)
+        runCurrent()
+        ((api.discoveryStarts - s1) in 2..4) shouldBe true // de volta ao ritmo de 3 s
+    }
+
+    @Test
+    fun `§16_2 rajada fora do modo ativo nao faz nada`() = runTest {
+        val (api, me) = node()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect {} }
+        runCurrent()
+        val s0 = api.discoveryStarts
+        me.burst()
+        advanceTimeBy(5_000)
+        runCurrent()
+        (api.discoveryStarts - s0) shouldBe 0
     }
 }

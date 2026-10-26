@@ -135,6 +135,12 @@ interface LocalTransport {
      */
     fun setActiveMode(active: Boolean) {}
 
+    /**
+     * §16.2, §16.15 atualização imediata (botão ou puxar para atualizar): no modo ativo, a busca recomeça a cada 1 s por
+     * [durationMillis] e volta ao ritmo normal; pedido durante uma rajada em andamento é ignorado.
+     */
+    fun burst(durationMillis: Long = 5_000) {}
+
     /** §16.2 tira da lista a presença de [key] (aviso explícito de saída ou conexão caída); reaparece se for vista de novo. */
     fun forgetPresence(key: String) {}
 
