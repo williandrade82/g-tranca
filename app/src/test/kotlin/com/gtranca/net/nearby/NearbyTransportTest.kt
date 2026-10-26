@@ -118,7 +118,7 @@ class NearbyTransportTest {
     }
 
     @Test
-    fun `§16_15 busca que demora 30 s para ligar estoura em 5 s com falha e a proxima tentativa funciona`() = runTest {
+    fun `§16_15 busca que demora 30 s para ligar estoura em 8 s com falha e a proxima tentativa funciona`() = runTest {
         val logs = mutableListOf<String>()
         val api = network.api()
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job(backgroundScope.coroutineContext[Job]))
@@ -130,7 +130,7 @@ class NearbyTransportTest {
         val first = backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
             try { guest.discover().first() } catch (e: Exception) { failure = e }
         }
-        advanceTimeBy(4_999)
+        advanceTimeBy(7_999)
         runCurrent()
         failure shouldBe null
         advanceTimeBy(2)
@@ -142,6 +142,21 @@ class NearbyTransportTest {
         api.startDiscoveryDelayMillis = 0
         guest.discover().first { it.isNotEmpty() }.single().tableId shouldBe advert.tableId
         logs.any { it.startsWith("api startDiscovery") } shouldBe true
+    }
+
+    @Test
+    fun `§16_15 pedido de conexao lento (12 s) nao estoura em 5 s - o prazo e o da conexao`() = runTest {
+        val (_, host) = node()
+        val (guestApi, guest) = node()
+        host.advertise(advert)
+        guestApi.requestConnectionDelayMillis = 12_000
+        events(host)
+        val found = guest.discover().first { it.isNotEmpty() }
+        var connected: EndpointId? = null
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { connected = guest.connect(found.single()) }
+        advanceTimeBy(13_000)
+        runCurrent()
+        connected shouldBe EndpointId(network.nodes.entries.first { it.value.advertInfo != null }.key)
     }
 
     @Test

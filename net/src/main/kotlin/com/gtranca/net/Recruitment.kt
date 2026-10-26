@@ -136,7 +136,7 @@ class Recruitment(
         }
         val now = clock()
         links.entries.toList().forEach { (ep, link) ->
-            if (now - (lastHeard[ep] ?: now) > DEAD_AFTER_MILLIS) {
+            if (!startPending && now - (lastHeard[ep] ?: now) > DEAD_AFTER_MILLIS) {
                 log("heartbeat dead ${k(peerKey[ep] ?: "??")} silent=${now - (lastHeard[ep] ?: now)} ms")
                 val key = peerKey[ep]
                 links.remove(ep)
@@ -213,6 +213,13 @@ class Recruitment(
 
     @Volatile
     private var closed = false
+
+    /** §16.15 o recrutador montou o plano e ainda não enviou o início: nada pode sair dizendo "o recrutador saiu" (Bye, Leave, fechar conexões). */
+    @Volatile
+    private var startPending = false
+
+    /** Últimos anúncios de mesa vistos: o recrutado em reingresso procura neles a sua chave de convite. */
+    private var lastTables: List<TableAdvert> = emptyList()
 
     /** §16.15 o início foi enviado ou recebido: o anúncio é da mesa do jogo e a presença não o toca mais. */
     @Volatile
@@ -456,6 +463,7 @@ class Recruitment(
         if (rules == null || !l.canStart) return@withLock null
         // Daqui em diante o único passo válido é [sendStart]: encerrar a mesa de lugares agora avisaria os recrutados de "Mesa encerrada".
         yielded = true
+        startPending = true
         log("rec start planned")
         TablePlan(l, personaPool, seed)
     }
@@ -470,6 +478,10 @@ class Recruitment(
             yielded = true
             debounceJob?.cancel()
             remotes.values.forEach { it.link?.sendLocked(RecruitStart(tableId, PREPARE_MILLIS)) }
+            // Quem estava só em espera (não é recrutado) fica sabendo que este recrutador saiu; os recrutados só recebem o início.
+            val recruitedLinks = remotes.values.mapNotNull { it.link }.toSet()
+            links.values.filter { it !in recruitedLinks }.forEach { it.sendLocked(RecruitBye(myKey)) }
+            startPending = false
             log("rec start sent prepare=$PREPARE_MILLIS remotes=${remotes.size}")
             remotes.values.forEach { it.absentJob?.cancel(); it.graceJob?.cancel() }
             remotes.clear()
@@ -505,6 +517,12 @@ class Recruitment(
 
     /** Larga tudo (Wi-Fi do jogo desligado ou o aparelho entrou numa mesa/jogo): encerra o recrutamento nos dois papÃ©is. */
     suspend fun shutdown() {
+        // §16.15 entre o plano e o início, largar as conexões diria aos recrutados que o recrutador saiu: só marca como fechado;
+        // o início (sendStart) entrega a mensagem e fecha as conexões.
+        if (mutex.withLock { closed = true; startPending }) {
+            log("rec shutdown deferred: start pending")
+            return
+        }
         mutex.withLock {
             closed = true
             // Â§16.2 aviso explÃ­cito de saÃ­da: quem recebe me tira das listas na hora (as confirmaÃ§Ãµes esperam atÃ© 0,5 s).
@@ -698,6 +716,7 @@ class Recruitment(
 
     /** O inÃ­cio se perdeu: a mesa do recrutador apareceu com a minha chave em `invited`. */
     private suspend fun tablesLocked(list: List<TableAdvert>) {
+        lastTables = list
         if (_status.value !is RecruitStatus.Joined) return
         val table = list.firstOrNull { myKey in it.invited } ?: return
         log("rec start via table advert")
@@ -877,6 +896,11 @@ class Recruitment(
             RecruitPing -> link.controlLocked(RecruitPong)
             RecruitPong -> Unit
             is RecruitBye -> {
+                // §16.15 o recrutador que me recrutou não sai da mesa por aviso de saída: o fim vem como RecruitEnd; o início, como RecruitStart.
+                if (_status.value is RecruitStatus.Joined && payload.key == hostKey) {
+                    log("rec bye from host ignored while joined")
+                    return
+                }
                 log("rec bye ${k(payload.key)}")
                 transport.forgetPresence(payload.key)
                 // Quem estava na minha mesa e saiu de propÃ³sito: o lugar volta a VAGO na hora.
@@ -968,9 +992,19 @@ class Recruitment(
                     log("rec host link lost: rejoin for $REJOIN_MILLIS ms")
                     rejoinJob?.cancel()
                     rejoinJob = scope.launch {
-                        delay(REJOIN_MILLIS)
+                        // §16.15 o início pode ter saído com a conexão já caída: a busca fica viva para ver a mesa do recrutador.
+                        transport.holdSearch(true)
+                        try {
+                            delay(REJOIN_MILLIS)
+                        } finally {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { transport.holdSearch(false) }
+                        }
                         mutex.withLock {
-                            if (hostLink == null && _status.value is RecruitStatus.Joined) {
+                            val table = lastTables.firstOrNull { myKey in it.invited }
+                            if (table != null && _status.value is RecruitStatus.Joined) {
+                                log("rec start via table advert (last look)")
+                                startedLocked(table.tableId, PREPARE_MILLIS)
+                            } else if (hostLink == null && _status.value is RecruitStatus.Joined) {
                                 transition(RecruitStatus.Free)
                                 _events.tryEmit(RecruitEvent.Closed(s.hostName))
                                 advertiseLocked()

@@ -57,6 +57,7 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
     /** Como o serviço do Google preso numa troca de meio: estas chamadas demoram tanto (relógio virtual) antes de responder. */
     var startAdvertisingDelayMillis = 0L
     var startDiscoveryDelayMillis = 0L
+    var requestConnectionDelayMillis = 0L
 
     override suspend fun startAdvertising(endpointInfo: ByteArray, callback: ConnectionCallback) {
         if (startAdvertisingDelayMillis > 0) kotlinx.coroutines.delay(startAdvertisingDelayMillis)
@@ -95,6 +96,7 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
     }
 
     override suspend fun requestConnection(localInfo: ByteArray, endpointId: String, callback: ConnectionCallback) {
+        if (requestConnectionDelayMillis > 0) kotlinx.coroutines.delay(requestConnectionDelayMillis)
         val target = network.nodes[endpointId] ?: error("STATUS_ENDPOINT_UNKNOWN")
         val targetCallback = target.advertCallback ?: error("STATUS_ENDPOINT_UNKNOWN")
         links[endpointId] = Link(callback)

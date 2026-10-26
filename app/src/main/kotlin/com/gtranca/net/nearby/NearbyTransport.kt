@@ -76,6 +76,8 @@ class NearbyTransport(
     private val log: (String) -> Unit = {},
     /** §16.15 prazo de cada chamada ao Nearby (iniciar anúncio/busca, pedir/aceitar conexão). */
     private val apiTimeoutMillis: Long = API_TIMEOUT_MILLIS,
+    /** §16.15 prazo de iniciar a busca (mais longo: até 2,5 s medidos nos aparelhos). */
+    private val discoveryTimeoutMillis: Long = DISCOVERY_TIMEOUT_MILLIS,
 ) : LocalTransport {
 
     /** §16.2 quando cada presença foi vista (achada) pela última vez, por endpoint. */
@@ -413,7 +415,7 @@ class NearbyTransport(
                 if (discovering) runCatching { api.stopDiscovery() }
                 recordStartLocked()
                 try {
-                    call("startDiscovery") { api.startDiscovery(discoveryCallback) }
+                    call("startDiscovery", discoveryTimeoutMillis) { api.startDiscovery(discoveryCallback) }
                     discovering = true
                     if (burstLeft > 0) burstLeft--
                     log("restart ok budget=${startTimes.size}/$restartBudget")
@@ -485,7 +487,7 @@ class NearbyTransport(
             found.value = emptyMap()
             foundPresence.value = emptyMap()
             try {
-                call("startDiscovery") { api.startDiscovery(discoveryCallback) }
+                call("startDiscovery", discoveryTimeoutMillis) { api.startDiscovery(discoveryCallback) }
                 recordStartLocked()
             } catch (e: Exception) {
                 subscribers-- // a busca não começou: quem pediu recebe o erro e não fica contado
@@ -544,7 +546,12 @@ class NearbyTransport(
             pending.getOrPut(endpointId) { CompletableDeferred() }
         }
         try {
-            call("requestConnection") { api.requestConnection(LOCAL_INFO, endpointId, connectionCallback) }
+            // O pedido pode demorar (o serviço está ocupado) e ainda assim completar: o prazo é o da conexão, não o das outras chamadas.
+            call("requestConnection", connectTimeoutMillis) { api.requestConnection(LOCAL_INFO, endpointId, connectionCallback) }
+            if (synchronized(lock) { endpointId in connected }) {
+                synchronized(lock) { pending.remove(endpointId) }
+                return EndpointId(endpointId)
+            }
         } catch (e: Exception) {
             synchronized(lock) { pending.remove(endpointId) }
             throw IllegalStateException("Falha ao conectar", e)
@@ -589,10 +596,10 @@ class NearbyTransport(
      * ficar presa por dezenas de segundos (ex.: troca de meio em andamento). Estourado o prazo, vira falha (quem chamou
      * trata e tenta de novo) e a trava é liberada. Registra a duração de cada chamada (só no build debug).
      */
-    private suspend fun <T> call(name: String, block: suspend () -> T): T {
+    private suspend fun <T> call(name: String, timeoutMillis: Long = apiTimeoutMillis, block: suspend () -> T): T {
         val started = now()
         try {
-            val result = kotlinx.coroutines.withTimeout(apiTimeoutMillis) { block() }
+            val result = kotlinx.coroutines.withTimeout(timeoutMillis) { block() }
             log("api $name ${now() - started} ms")
             return result
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -608,6 +615,9 @@ class NearbyTransport(
 
         /** §16.15 prazo de cada chamada ao Nearby. */
         const val API_TIMEOUT_MILLIS: Long = 5_000
+
+        /** §16.15 prazo de iniciar a busca. */
+        const val DISCOVERY_TIMEOUT_MILLIS: Long = 8_000
 
         /** §16.15 a busca recomeça a cada 8 s enquanto alguém observa os jogadores próximos. */
         const val PRESENCE_REFRESH_MILLIS: Long = 15_000

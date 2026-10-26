@@ -69,7 +69,12 @@ class GmsNearbyApi(context: Context) : NearbyApi {
     override suspend fun requestConnection(localInfo: ByteArray, endpointId: String, callback: ConnectionCallback) {
         val options = ConnectionOptions.Builder()
             .setConnectionType(ConnectionType.NON_DISRUPTIVE).setDisruptiveUpgrade(false).setLowPower(LOW_POWER).build()
-        client.requestConnection(localInfo, endpointId, lifecycle(callback), options).await()
+        try {
+            client.requestConnection(localInfo, endpointId, lifecycle(callback), options).await()
+        } catch (e: com.google.android.gms.common.api.ApiException) {
+            // 8003: a conexão já completou no serviço (o pedido anterior terminou depois do nosso prazo): vale a existente.
+            if (e.statusCode != ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT) throw e
+        }
     }
 
     override suspend fun acceptConnection(endpointId: String, onBytes: (String, ByteArray) -> Unit) {
