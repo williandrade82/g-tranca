@@ -93,6 +93,8 @@ jogador está `Chamado` ou `Recrutado`; recusa/saída/remoção o limpam.
 
 ## Entrada na mesa e início do jogo
 
+**Lista e anúncio (§16.2, §16.15):** `closeHosting` manda `RecruitBye` às conexões de espera que não são chamadas nem recrutadas, e o outro lado tira o recrutador da lista na hora. `NearbyTransport` trata `EndpointUnknownException` (8011) esquecendo só aquele endpoint e disparando uma busca extra (dentro do orçamento). `stopPresence(announceLeaving = false)` é o que o recrutado usa antes de procurar a mesa; o pedido de conexão espera 0,25 s depois da última mudança de anúncio.
+
 **Rádio (§16.15):** `GmsNearbyApi` anuncia e conecta com `NON_DISRUPTIVE` e `disruptiveUpgrade = false` (sem Wi-Fi Direct/hotspot; `lowPower` desligado por causa dos anúncios de até 100 bytes). `NearbyTransport` dá prazo a cada chamada ao Nearby (5 s anúncio e aceite, 8 s busca, 20 s pedido de conexão; "já conectado" 8003 vale como sucesso) (`api timeout <nome>` no log; `api <nome> <ms> ms` com a duração), separa a trava do anúncio da trava da busca e deixa o aviso de "saindo" e as desconexões fora do caminho do início (`Recruitment.shutdown` não espera confirmações depois do início).
 
 `HostSession` recebe o **plano de lugares** (`TablePlan`): o layout (humano = Recrutado com a chave de presença; robô com a persona),
