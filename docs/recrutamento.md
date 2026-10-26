@@ -107,9 +107,10 @@ exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (t
 | mesma chave achada em outro endpoint | o endpoint antigo é descartado (a chave é a identidade; vale o mais recente) |
 | `onLost` | a presença só sai se não reaparecer em 3 s (1 s no modo ativo; anunciante que para e reanuncia não pisca) |
 | aviso "saindo" | sai na hora (todas as entradas da chave) |
-| busca reiniciada a cada 8 s (modo econômico) | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~20 s) |
-| **modo ativo** (telas *Iniciar novo jogo* e *Seleção de jogadores* abertas, Wi-Fi ligado) | busca reiniciada a cada **3 s**, folga de 1 s; sai quem não reaparece em 2 recomeços seguidos (queda silenciosa sem conexão: até ~7 s); fora dessas telas volta o modo econômico (8 s) |
-| **rajada** (`refreshNow()`, botão atualizar ou puxar para atualizar) | busca reiniciada a cada 1 s (folga 0,5 s) por 5 s e volta aos 3 s; novo pedido durante a rajada é ignorado; só vale no modo ativo |
+| busca reiniciada a cada 15 s (modo econômico) | quem não reaparece 3 s depois, em 2 verificações seguidas, sai (~31 s) |
+| **orçamento de buscas** | o Android limita os inícios de varredura (~5 por 30 s por app; acima, volta vazia em silêncio): no máximo **4 recomeços por janela móvel de 30 s** (contando o inicial) e nunca em menos de 2,5 s; sem orçamento o laço espera a janela liberar (`restart skipped budget=N/4 wait=ms`). Recomeço pulado ou que falhou **não** conta como perda de ninguém |
+| **modo ativo** (telas *Iniciar novo jogo* e *Seleção de jogadores* abertas, Wi-Fi ligado) | busca reiniciada a cada **7,5 s**, folga de 1 s; sai quem não reaparece em 2 recomeços seguidos (queda silenciosa sem conexão: até ~16 s); fora dessas telas volta o modo econômico (15 s) |
+| **rajada** (`refreshNow()`, botão atualizar ou puxar para atualizar) | até 2 recomeços rápidos (2,5 s um do outro, folga 0,5 s) dentro do orçamento e volta aos 7,5 s; novo pedido durante a rajada é ignorado; só vale no modo ativo |
 | conexão aberta (espera/recrutamento) | mensagem de teste a cada 400 ms; qualquer byte recebido conta como vida; sem **nenhum** byte por 4 s a conexão é dada como caída e o jogador sai das listas (~4 s). O aviso explícito é o caminho rápido (~1 s). Convite (`Invited`) que perde a conexão continua na tela por 1,5 s: se a conexão volta e o convite é reenviado, o status é atualizado no lugar, sem piscar |
 | aviso explícito de saída (`RecruitBye`) | pela conexão aberta e pelo anúncio "saindo" (0,5 s); quem recebe tira o jogador da lista na hora (~1 s no rádio real) |
 | chave **fixada** (chamada/recrutada/recrutador de quem aceitou) | a varredura não a remove; só `onLost` após a folga, "saindo" ou a queda da conexão |
