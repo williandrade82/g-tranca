@@ -73,6 +73,7 @@ class GmsNearbyApi(context: Context) : NearbyApi {
             client.requestConnection(localInfo, endpointId, lifecycle(callback), options).await()
         } catch (e: com.google.android.gms.common.api.ApiException) {
             // 8003: a conexão já completou no serviço (o pedido anterior terminou depois do nosso prazo): vale a existente.
+            if (e.statusCode == ConnectionsStatusCodes.STATUS_ENDPOINT_UNKNOWN) throw EndpointUnknownException("STATUS_ENDPOINT_UNKNOWN")
             if (e.statusCode != ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT) throw e
         }
     }

@@ -505,6 +505,9 @@ class Recruitment(
                 r.absentJob?.cancel()
                 r.graceJob?.cancel()
             }
+            // Conexões de espera que não são chamadas nem recrutadas: ficam sabendo na hora que o recrutador fechou a mesa.
+            val remoteLinks = remotes.values.mapNotNull { it.link }.toSet()
+            links.values.filter { it !== hostLink && it !in remoteLinks }.forEach { it.sendLocked(RecruitBye(myKey)) }
             remotes.clear()
             layoutState = null
             _layout.value = null

@@ -160,6 +160,49 @@ class NearbyTransportTest {
     }
 
     @Test
+    fun `§16_2 §16_15 endpoint desconhecido (8011) sai da lista so aquele endpoint, sem insistir, e dispara uma busca extra`() = runTest {
+        val (hostApi, host) = node()
+        val (guestApi, guest) = node()
+        host.advertisePresence(com.gtranca.net.PresenceAdvert("kkkkkk", "Ana", hosting = true))
+        val seen = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { guest.discoverPresence().collect { seen += it } }
+        runCurrent()
+        seen.last().size shouldBe 1
+        network.deadEndpoints += hostApi.id
+        val starts = guestApi.discoveryStarts
+        shouldThrow<Exception> { guest.connectPresence(seen.last().single()) }
+        runCurrent()
+        seen.last() shouldBe emptyList()
+        guestApi.requestConnectionAt.size shouldBe 1 // uma tentativa só
+        advanceTimeBy(3_000)
+        runCurrent()
+        guestApi.discoveryStarts shouldBe starts + 1 // a busca extra, uma vez
+    }
+
+    @Test
+    fun `§16_15 quem entra na mesa para a presenca sem anunciar saindo, e o primeiro pedido de conexao espera 0,25 s`() = runTest {
+        val (hostApi, host) = node()
+        val (guestApi, guest) = node()
+        guestApi.nowMillis = { testScheduler.currentTime }
+        host.advertise(advert)
+        guest.advertisePresence(com.gtranca.net.PresenceAdvert("kkkkkk", "Bia"))
+        val startsBefore = guestApi.advertiseStarts
+        events(host)
+        val found = guest.discover().first { it.isNotEmpty() }
+        guest.stopPresence(announceLeaving = false)
+        guestApi.advertiseStarts shouldBe startsBefore // nada de "saindo"
+        guestApi.advertInfo shouldBe null
+        val stoppedAt = testScheduler.currentTime
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { guest.connect(found.single()) }
+        runCurrent()
+        guestApi.requestConnectionAt shouldBe emptyList() // ainda esperando a calma depois da troca de anúncio
+        advanceTimeBy(300)
+        runCurrent()
+        (guestApi.requestConnectionAt.single() - stoppedAt) shouldBeGreaterThanOrEqual 250
+        hostApi.advertiseStarts shouldBe 1
+    }
+
+    @Test
     fun `anuncio igual nao reanuncia e anuncio novo para e reanuncia sem derrubar conexoes`() = runTest {
         val (hostApi, host) = node()
         val (_, guest) = node()

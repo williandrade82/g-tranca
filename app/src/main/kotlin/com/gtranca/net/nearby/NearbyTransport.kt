@@ -200,6 +200,14 @@ class NearbyTransport(
     private val adLock = Mutex()
     private var advertised: ByteArray? = null
 
+    /** Quando o anúncio mudou pela última vez: o pedido de conexão espera a calma depois de uma troca ([ADVERT_SETTLE_MILLIS]). */
+    @Volatile
+    private var lastAdvertChangeAt = Long.MIN_VALUE / 2
+
+    /** Pedido de busca imediata (endpoint morto): o laço de recomeço não espera o intervalo. */
+    @Volatile
+    private var kicked = false
+
     /** O que está anunciado agora é a presença (§16.2), não uma mesa: um aparelho anuncia uma coisa por vez. */
     private var advertisingPresence = false
 
@@ -323,6 +331,7 @@ class NearbyTransport(
             }
             advertised = bytes
             advertisingPresence = presence
+            lastAdvertChangeAt = now()
         }
     }
 
@@ -333,10 +342,18 @@ class NearbyTransport(
      * §16.2, §16.15 para a presença (a mesa, se for ela no ar, continua): antes, anuncia "saindo" com a mesma chave por
      * [leavingMillis], para os outros tirarem o jogador da lista na hora.
      */
-    override suspend fun stopPresence() {
+    override suspend fun stopPresence(announceLeaving: Boolean) {
         val leaving = adLock.withLock {
             val current = advertised
             if (current == null || !advertisingPresence) return
+            if (!announceLeaving) {
+                // §16.15 quem vai entrar numa mesa não mexe mais no anúncio (o aviso de saída já foi por mensagem): só para.
+                api.stopAdvertising()
+                advertised = null
+                lastAdvertChangeAt = now()
+                log("advertise stopped (no leaving)")
+                return
+            }
             val presence = AdvertCodec.decodePresence(current) ?: return@withLock null
             if (presence.leaving) return@withLock null
             val bytes = AdvertCodec.encodePresenceLeaving(presence.key)
@@ -360,6 +377,7 @@ class NearbyTransport(
             if (advertised == null || advertisingPresence != presence) return
             api.stopAdvertising()
             advertised = null
+            lastAdvertChangeAt = now()
         }
     }
 
@@ -442,8 +460,26 @@ class NearbyTransport(
 
     /** Espera o intervalo da busca, ou menos se o modo mudou nesse meio tempo. */
     private suspend fun waitRefresh(millis: Long) {
+        if (kicked) {
+            kicked = false
+            return
+        }
         modeChanged.tryReceive()
         withTimeoutOrNull(millis) { modeChanged.receive() }
+        kicked = false
+    }
+
+    /**
+     * §16.2, §16.15 o endpoint não existe mais (8011): esquece só ele e pede uma busca extra (o laço respeita o orçamento de
+     * buscas); o jogador ou a mesa reaparecem com o anúncio novo.
+     */
+    private fun endpointGone(endpointId: String) {
+        synchronized(presenceSeen) { presenceSeen.remove(endpointId); presenceMisses.remove(endpointId); lostJobs.remove(endpointId)?.cancel() }
+        found.update { it - endpointId }
+        foundPresence.update { it - endpointId }
+        log("endpoint gone ${endpointId.take(2)}: forgotten, extra search")
+        kicked = true
+        modeChanged.trySend(Unit)
     }
 
     private fun sweep(restartedAt: Long) {
@@ -545,6 +581,8 @@ class NearbyTransport(
             if (endpointId in connected) return EndpointId(endpointId)
             pending.getOrPut(endpointId) { CompletableDeferred() }
         }
+        val settle = ADVERT_SETTLE_MILLIS - (now() - lastAdvertChangeAt)
+        if (settle > 0) delay(settle)
         try {
             // O pedido pode demorar (o serviço está ocupado) e ainda assim completar: o prazo é o da conexão, não o das outras chamadas.
             call("requestConnection", connectTimeoutMillis) { api.requestConnection(LOCAL_INFO, endpointId, connectionCallback) }
@@ -554,6 +592,7 @@ class NearbyTransport(
             }
         } catch (e: Exception) {
             synchronized(lock) { pending.remove(endpointId) }
+            if (e is EndpointUnknownException) endpointGone(endpointId)
             throw IllegalStateException("Falha ao conectar", e)
         }
         val ok = withTimeoutOrNull(connectTimeoutMillis) { waiting.await() } ?: false
@@ -615,6 +654,9 @@ class NearbyTransport(
 
         /** §16.15 prazo de cada chamada ao Nearby. */
         const val API_TIMEOUT_MILLIS: Long = 5_000
+
+        /** §16.15 calma depois de trocar o anúncio, antes de pedir conexão (a troca no meio do pedido dava erro de rádio). */
+        const val ADVERT_SETTLE_MILLIS: Long = 250
 
         /** §16.15 prazo de iniciar a busca. */
         const val DISCOVERY_TIMEOUT_MILLIS: Long = 8_000

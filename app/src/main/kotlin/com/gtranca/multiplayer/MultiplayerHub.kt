@@ -156,6 +156,8 @@ object MultiplayerHub {
                 }
             }
             // §16.2 o anfitrião tocou em Escolher posições: entra direto, com a própria chave (sem novo convite).
+            // §16.15 o anúncio de presença pára (sem "saindo") ANTES de procurar a mesa: trocar o anúncio no meio do pedido de conexão fazia falhar.
+            withContext(NonCancellable) { runCatching { t.stopPresence(announceLeaving = false) } }
             newTable(context, data, photo).joinAsync(start.tableId, name, inviteKey = start.inviteKey)
             _joining.value = false
         } finally {

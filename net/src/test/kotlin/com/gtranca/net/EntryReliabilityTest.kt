@@ -289,6 +289,30 @@ class EntryReliabilityTest {
         r.biaEvents.filterIsInstance<RecruitEvent.Start>().single().tableId shouldBe "m"
     }
 
+    @Test
+    fun `§16_2 §16_15 ao fechar a mesa o recrutador avisa a saida as conexoes de espera e elas o tiram da lista na hora`() = runTest {
+        val network = MemoryNetwork()
+        val byes = mutableListOf<String>()
+        network.tap = { d ->
+            (ProtocolCodec().decode(d.bytes) as? Decoded.Ok)?.envelope?.p?.let { if (it is RecruitBye) byes += it.key }
+            listOf(d)
+        }
+        val anaT = network.transport()
+        val ana = Recruitment(anaT, sessionScope, "ka", "Ana", PresencePhotos(anaT, "ka", null), canAfford = { true }, clock = { testScheduler.currentTime })
+        sessionScope.launch { ana.run() }
+        val biaT = network.transport()
+        val bia = Recruitment(biaT, sessionScope, "kb", "Bia", PresencePhotos(biaT, "kb", null), canAfford = { true }, clock = { testScheduler.currentTime })
+        sessionScope.launch { bia.run() }
+        sessionScope.launch { bia.setFree(true) }
+        runCurrent()
+        ana.openTable(testRules(GameMode.INDIVIDUAL), "Ana")
+        runCurrent()
+        byes.isEmpty() shouldBe true
+        ana.closeHosting()
+        runCurrent()
+        byes shouldBe listOf("ka")
+    }
+
     private fun TablePlan?.shouldNotBeNullPlan(): TablePlan = this ?: error("plano ausente")
 
     private class CountingTransport(private val inner: MemoryTransport) : LocalTransport by inner {

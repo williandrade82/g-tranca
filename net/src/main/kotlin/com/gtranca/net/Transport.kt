@@ -117,7 +117,7 @@ interface LocalTransport {
     suspend fun advertisePresence(presence: PresenceAdvert) {}
 
     /** §16.2 deixa de anunciar a presença (entrou num jogo ou desligou o Wi-Fi do jogo). */
-    suspend fun stopPresence() {}
+    suspend fun stopPresence(announceLeaving: Boolean = true) {}
 
     /**
      * §16.2 chaves de presença que a busca não pode tirar da lista só por não terem sido revistas (marcadas, recrutadas ou
@@ -324,7 +324,7 @@ class MemoryTransport internal constructor(private val network: MemoryNetwork, v
 
     override suspend fun advertisePresence(presence: PresenceAdvert) = network.advertisePresence(presence, id)
 
-    override suspend fun stopPresence() = network.stopPresence(id)
+    override suspend fun stopPresence(announceLeaving: Boolean) = network.stopPresence(id)
 
     private val hidden = MutableStateFlow<Set<String>>(emptySet())
 
