@@ -63,7 +63,7 @@ não recruta recrutador (nenhum abre conexão a outro). Dois aparelhos `recrutan
 | `RecruitLeave` ("Sair da mesa") | lugar `VACANT`; aviso |
 | conexão cai (`RECRUITED`) | continua `RECRUITED` **sem conexão** por 8 s à espera do reingresso; passado o prazo: `VACANT` + aviso "fora do alcance" |
 | `CALLED` sem conexão e ausente da lista por 10 s seguidos | `VACANT` + aviso "fora do alcance" |
-| Começar Partida | exige `canStart`; `RecruitStart(tableId, prepareMillis = 1500)` a cada `RECRUITED` conectado (espera as confirmações até 2 s); abre a mesa do jogo (`HostSession` com o plano de lugares); espera os recrutados entrarem, no mínimo 1,5 s e no máximo 10 s; quem não entrou vira robô sorteado (aviso) |
+| Começar Partida | exige `canStart`; `RecruitStart(tableId, prepareMillis = 1500)` a cada `RECRUITED` conectado (espera as confirmações até 2 s); **1.** `Recruitment.plan` valida e monta o plano (sem enviar nada); **2.** o recrutador larga a leitura dos eventos e abre a mesa do jogo (`HostSession` com o plano), que **anuncia a mesa**; **3.** só então `Recruitment.sendStart` envia `RecruitStart(tableId, prepareMillis = 1500)` a cada `RECRUITED` conectado (espera as confirmações até 2 s) e a presença deixa de anunciar por cima da mesa; a sessão espera `Ready` de cada recrutado, no mínimo 1,5 s e no máximo 30 s; quem não confirmou vira robô sorteado (aviso) e, se ainda tiver conexão, recebe `Rejected` com o motivo |
 | voltar à tela 1 / sair / Wi-Fi desligado | `CALLED`: `RecruitEnd(CANCELLED)`; `RECRUITED`: `RecruitEnd(CLOSED)` ("Mesa encerrada"); espera as confirmações até 0,5 s; lugares limpos (sempre `VACANT` ao abrir de novo) |
 
 ## Chamado / Recrutado (jogador livre)
@@ -95,8 +95,8 @@ jogador está `Chamado` ou `Recrutado`; recusa/saída/remoção o limpam.
 
 `HostSession` recebe o **plano de lugares** (`TablePlan`): o layout (humano = Recrutado com a chave de presença; robô com a persona),
 as personas possíveis e a semente. Cada recrutado entra com `GuestSession.join(tableId, inviteKey)` e já fica no lugar
-planejado (`Welcome` com `started = false`, sem confirmação). Ao abrir (`HostSession.open`), a sessão espera `prepareMillis`
-(1,5 s) **e** todos os humanos do plano conectados, até `waitMillis` (10 s); quem faltou vira robô sorteado (aviso em
+planejado (`Welcome` com `started = false`) e responde `Ready` (**protocolo versão 16**; o anfitrião conta o recrutado como presente só com ele). Enquanto algum recrutado não confirmou, o anfitrião reafirma o anúncio da mesa a cada 2 s. Quem procura a mesa (`GuestSession.join`) repete a busca (rajada de recomeços dentro do orçamento de §16.15) e a conexão por até 30 s, com espera crescente; a falha final é tipada (`NOT_FOUND`, `CONNECT_FAILED`, `TIMEOUT`) e cada tipo tem o seu texto no modal *Mesa encerrada*. Ao abrir (`HostSession.open`), a sessão espera `prepareMillis`
+(1,5 s) **e** todos os humanos do plano com `Ready` recebido, até `waitMillis` (30 s); quem faltou vira robô sorteado (aviso em
 `lobbyNotices`); envia `GameStarted` (com os robôs de cada lugar) e preenche `gameStart`. Os robôs são exatamente os da tela 2 (nada é sorteado de novo,
 exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (testado varrendo os bytes).
 
@@ -153,7 +153,7 @@ recrutadores na lista da tela 1 sai como inicial (no `P2P_STAR` o livre mantém 
    uma vez por convite/estado, e as mudanças que passam pelo debounce são as de lugares).
 5. **Aposta:** mesmo índice ao trocar de nível; acima do saldo vira o maior valor coberto (§14.6).
 6. **Recusa/saída/queda deixam o lugar VAGO** (sem robô sorteado sozinho); o sorteio só acontece em *Completar com robôs* e,
-   no início, para quem não entrou na mesa em 10 s.
+   no início, para quem não confirmou `Ready` na mesa em 30 s.
 
 ## Em aberto (perguntar ao produto)
 
