@@ -67,4 +67,5 @@ fun refusalText(reason: com.gtranca.net.RefusalReason): Int = when (reason) {
     com.gtranca.net.RefusalReason.OUT_OF_RANGE -> R.string.mp_refusal_out_of_range
     com.gtranca.net.RefusalReason.HOST_REFUSED -> R.string.mp_refusal_host
     com.gtranca.net.RefusalReason.TABLE_FULL -> R.string.mp_refusal_full
+    com.gtranca.net.RefusalReason.NO_RESPONSE -> R.string.mp_refusal_no_response
 }

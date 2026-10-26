@@ -511,6 +511,9 @@
     <string name="mp_refusal_out_of_range">Fora do alcance.</string>
     <string name="mp_refusal_host">O anfitrião recusou.</string>
     <string name="mp_refusal_full">Mesa cheia.</string>
+    <string name="mp_refusal_no_response">Não respondeu a tempo.</string>
+    <string name="recruit_no_response_host">%1$s não respondeu a tempo.</string>
+    <string name="recruit_no_response">Você não respondeu ao convite a tempo.</string>
     <string name="mp_ok_short">OK</string>
     <string name="mp_closed_host_left">O anfitrião saiu e desfez a mesa.</string>
     <string name="mp_closed_host_offline">O anfitrião desligou o Wi-Fi do jogo: o jogo segue só no celular dele, com robôs no lugar dos outros jogadores.</string>

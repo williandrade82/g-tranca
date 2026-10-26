@@ -40,7 +40,21 @@ sealed interface RecruitStatus {
      * Convite imediato recebido do recrutador [hostKey] (sem prazo): Aceitar ou Recusar. [table] traz aposta, tipo, regras e
      * lugares; [you] é o lugar do chamado (a posição vem de `table.layout.relationOf(you)`). Atualizado a cada [RecruitSync].
      */
-    data class Invited(val hostKey: String, val hostName: String, val table: RecruitTable, val you: Int, val version: Long = 0) : RecruitStatus
+    data class Invited(
+        val hostKey: String,
+        val hostName: String,
+        val table: RecruitTable,
+        val you: Int,
+        val version: Long = 0,
+        /**
+         * §16.15 limite para responder, no relógio local ([Recruitment.nowMillis]) de quem recebeu o convite: o aparelho desenha
+         * a contagem com [remainingMillis]. Sem resposta até ele, o convite vale como recusa.
+         */
+        val deadlineMillis: Long = 0,
+    ) : RecruitStatus {
+        /** Quanto falta para responder agora ([now] = [Recruitment.nowMillis]). */
+        fun remainingMillis(now: Long): Long = (deadlineMillis - now).coerceAtLeast(0)
+    }
 
     /** Aceitou: vê a mesa do recrutador ([table], com os lugares) ao vivo e só para leitura. */
     data class Joined(val hostKey: String, val hostName: String, val table: RecruitTable, val you: Int, val version: Long = 0) : RecruitStatus
@@ -95,6 +109,48 @@ class Recruitment(
     private val photoSent = mutableSetOf<EndpointId>()
 
     private fun k(key: String) = key.take(2)
+
+    /** Relógio monotônico local (ms) em que os prazos ([RecruitStatus.Invited.deadlineMillis]) são medidos. */
+    fun nowMillis(): Long = clock()
+
+    private val lastHeard = mutableMapOf<EndpointId, Long>()
+    private var heartbeatJob: Job? = null
+    private var inviteTimer: Job? = null
+
+    /** §16.15 liga a mensagem de teste das conexões abertas (só roda enquanto há conexão). */
+    private fun ensureHeartbeatLocked() {
+        if (heartbeatJob != null) return
+        heartbeatJob = scope.launch {
+            while (true) {
+                delay(HEARTBEAT_MILLIS)
+                if (mutex.withLock { heartbeatTickLocked() }) break
+            }
+        }
+    }
+
+    /** Devolve se acabou (sem conexões). Conexão muda por mais de [DEAD_AFTER_MILLIS] é dada como caída. */
+    private suspend fun heartbeatTickLocked(): Boolean {
+        if (links.isEmpty()) {
+            heartbeatJob = null
+            return true
+        }
+        val now = clock()
+        links.entries.toList().forEach { (ep, link) ->
+            if (now - (lastHeard[ep] ?: now) > DEAD_AFTER_MILLIS) {
+                log("heartbeat dead ${k(peerKey[ep] ?: "??")} silent=${now - (lastHeard[ep] ?: now)} ms")
+                val key = peerKey[ep]
+                links.remove(ep)
+                lastHeard.remove(ep)
+                link.close()
+                key?.let { transport.forgetPresence(it) }
+                lostLocked(ep, link)
+                scope.launch { runCatching { transport.disconnect(ep) } }
+            } else {
+                link.controlLocked(RecruitPing)
+            }
+        }
+        return false
+    }
 
     // ---- presença -----------------------------------------------------------------------------------------------
     private var freeFlag = false
@@ -184,11 +240,16 @@ class Recruitment(
         _status.value = to
         if (to == RecruitStatus.Free) awaitingStart = false
         if (from::class != to::class) log("rec state ${from::class.simpleName}->${to::class.simpleName}")
+        if (to !is RecruitStatus.Invited) {
+            inviteTimer?.cancel()
+            inviteTimer = null
+        }
     }
 
     private fun pinned(): Set<String> = remotes.keys + listOfNotNull(hostKey)
 
     private suspend fun advertiseLocked() {
+        transport.setActiveMode(!closed && (freeFlag || recruiting()))
         val recruitedBy = if (_status.value == RecruitStatus.Free) null else hostKey
         val inviting = remotes.values.filter { it.link == null }.map { it.key }.take(AdvertCodecLimits.MAX_INVITED)
         runCatching {
@@ -282,6 +343,16 @@ class Recruitment(
         layoutState = next
         val r = Remote(presence.key, presence.name, clock())
         remotes[presence.key] = r
+        // §16.2, §16.15 o chamado tem 25 s (+ folga): sem resposta, o lugar volta a VAGO e o jogador pode ser chamado de novo.
+        scope.launch {
+            delay(INVITE_TIMEOUT_MILLIS + INVITE_HOST_GRACE_MILLIS)
+            mutex.withLock {
+                if (remotes[presence.key] === r && layoutState?.slots?.any { it is Slot.Called && it.key == presence.key } == true) {
+                    r.link?.sendLocked(RecruitEnd(RecruitEndReason.CANCELLED))
+                    vacateLocked(presence.key, RecruitNotice(presence.key, r.name, refused = true, reason = RefusalReason.NO_RESPONSE), "no response")
+                }
+            }
+        }
         val link = links.entries.firstOrNull { peerKey[it.key] == presence.key }?.value
         if (link != null) {
             r.link = link
@@ -397,7 +468,12 @@ class Recruitment(
 
     /** Larga tudo (Wi-Fi do jogo desligado ou o aparelho entrou numa mesa/jogo): encerra o recrutamento nos dois papéis. */
     suspend fun shutdown() {
-        mutex.withLock { closed = true }
+        mutex.withLock {
+            closed = true
+            // §16.2 aviso explícito de saída: quem recebe me tira das listas na hora (as confirmações esperam até 0,5 s).
+            links.values.forEach { it.sendLocked(RecruitBye(myKey)) }
+            advertiseLocked()
+        }
         closeHosting()
         val rest = mutex.withLock {
             contacting?.cancel()
@@ -544,6 +620,8 @@ class Recruitment(
                 if (endpoint != null) {
                     mutex.withLock {
                         val link = links[endpoint] ?: ReliableLink(endpoint, transport, codec, scope, mutex).also { links[endpoint] = it }
+                        lastHeard[endpoint] = clock()
+                        ensureHeartbeatLocked()
                         outLink = link
                         peerKey[endpoint] = host
                         if (rejoin) {
@@ -621,7 +699,9 @@ class Recruitment(
             if (envelope.p is PresencePhoto) return true
             if (envelope.p !is RecruitHello) return false
             link = ReliableLink(event.endpoint, transport, codec, scope, mutex).also { links[event.endpoint] = it }
+            ensureHeartbeatLocked()
         }
+        lastHeard[event.endpoint] = clock()
         link.receiveLocked(envelope).forEach { processLocked(link, it) }
         return false
     }
@@ -668,8 +748,21 @@ class Recruitment(
                     return
                 }
                 appliedVersion = payload.version
-                transition(RecruitStatus.Invited(host, payload.table.hostName, payload.table, payload.you, payload.version))
-                log("rec invite shown v=${payload.version}")
+                val deadline = clock() + payload.timeoutMillis
+                transition(RecruitStatus.Invited(host, payload.table.hostName, payload.table, payload.you, payload.version, deadline))
+                // §16.15 sem resposta no prazo vale como recusa (nunca aceita sozinho).
+                inviteTimer?.cancel()
+                inviteTimer = scope.launch {
+                    delay(payload.timeoutMillis)
+                    mutex.withLock {
+                        val s = _status.value
+                        if (s is RecruitStatus.Invited && s.deadlineMillis == deadline) {
+                            log("rec invite expired: no response")
+                            refuseLocked(RefusalReason.NO_RESPONSE)
+                        }
+                    }
+                }
+                log("rec invite shown v=${payload.version} timeout=${payload.timeoutMillis}")
                 advertiseLocked()
             }
             is RecruitSync -> {
@@ -722,6 +815,17 @@ class Recruitment(
                 startedLocked(payload.tableId, payload.prepareMillis)
             }
             // ---- os dois ----
+            RecruitPing -> link.controlLocked(RecruitPong)
+            RecruitPong -> Unit
+            is RecruitBye -> {
+                log("rec bye ${k(payload.key)}")
+                transport.forgetPresence(payload.key)
+                // Quem estava na minha mesa e saiu de propósito: o lugar volta a VAGO na hora.
+                if (layoutState?.seatOf(payload.key) != null) {
+                    val r = remotes[payload.key]
+                    vacateLocked(payload.key, RecruitNotice(payload.key, r?.name.orEmpty(), refused = false, reason = null), "bye")
+                }
+            }
             is PresencePhoto -> {
                 photos?.store(payload)
                 sendPhotoOnceLocked(link)
@@ -763,7 +867,8 @@ class Recruitment(
         r.absentJob = null
         val table = tableFor(hello.key)!!
         if (l.slots[inLayout] is Slot.Called) {
-            link.sendLocked(RecruitInvite(version, table, inLayout))
+            val remaining = (INVITE_TIMEOUT_MILLIS - (clock() - r.calledAt)).coerceAtLeast(0)
+            link.sendLocked(RecruitInvite(version, table, inLayout, remaining))
             log("rec invite sent after hello in ${clock() - r.calledAt} ms")
         } else {
             version++
@@ -867,5 +972,9 @@ class Recruitment(
         const val START_CONFIRM_MILLIS: Long = 2_000
         const val CLOSE_CONFIRM_MILLIS: Long = 500
         const val POLL_MILLIS: Long = 50
+
+        /** §16.15 mensagem de teste das conexões abertas a cada 400 ms; sem resposta por 1 s a conexão é dada como caída. */
+        const val HEARTBEAT_MILLIS: Long = 400
+        const val DEAD_AFTER_MILLIS: Long = 1_000
     }
 }

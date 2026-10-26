@@ -114,9 +114,9 @@ class RecruitmentTest {
         ana.r.layout.value!!.slots[2] shouldBe Slot.Called("kb", "Bia")
         ana.r.layout.value!!.canStart shouldBe false
         ana.logs.any { it.startsWith("rec call kb invite sent via link") } shouldBe true
-        advanceTimeBy(60_000)
+        advanceTimeBy(20_000)
         runCurrent()
-        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>() // sem prazo
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>() // ainda dentro dos 25 s
         ana.scope.cancel()
     }
 
@@ -530,6 +530,98 @@ class RecruitmentTest {
             .forEach { it.bytes.decodeToString() shouldNotContain "key-caio-456" }
         sent.filter { it.to == caio.transport.id && ("recruitSync" in it.bytes.decodeToString() || "recruitInvite" in it.bytes.decodeToString()) }
             .forEach { it.bytes.decodeToString() shouldNotContain "key-bia-123" }
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 §16_15 convite sem resposta em 25 s vale como recusa - volta a Free, o recrutador e avisado e o lugar fica VAGO`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        val invited = bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>()
+        invited.remainingMillis(bia.r.nowMillis()) shouldBe INVITE_TIMEOUT_MILLIS
+        advanceTimeBy(10_000)
+        runCurrent()
+        (bia.r.status.value as RecruitStatus.Invited).remainingMillis(bia.r.nowMillis()) shouldBe INVITE_TIMEOUT_MILLIS - 10_000
+        advanceTimeBy(INVITE_TIMEOUT_MILLIS - 10_000 - 1)
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>() // o aceite nunca é automático
+        advanceTimeBy(2)
+        runCurrent()
+        bia.r.status.value shouldBe RecruitStatus.Free
+        bia.events.single() shouldBe RecruitEvent.Refused("Ana", RefusalReason.NO_RESPONSE)
+        ana.notices.single() shouldBe RecruitNotice("kb", "Bia", refused = true, reason = RefusalReason.NO_RESPONSE)
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Vacant
+        // Pode ser chamado de novo, com 25 s novos.
+        ana.r.call(1, ana.presenceOf("kb")) shouldBe true
+        runCurrent()
+        (bia.r.status.value as RecruitStatus.Invited).remainingMillis(bia.r.nowMillis()) shouldBe INVITE_TIMEOUT_MILLIS
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_15 o chamado que respondeu a tempo nao e recusado depois`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        advanceTimeBy(24_000)
+        bia.r.accept() shouldBe true
+        advanceTimeBy(60_000)
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Joined>()
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Recruited("kb", "Bia")
+        ana.notices.shouldNotBeNull()
+        bia.events shouldBe emptyList()
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_15 recrutador devolve o lugar sozinho quando a resposta nunca chega, depois de 25 s mais a folga`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        // A conexão segue viva, mas nada que o recrutado diga (nem recusa) chega ao recrutador.
+        net.tap = { d -> if (d.from == bia.transport.id && "recruitReply" in d.bytes.decodeToString()) emptyList() else listOf(d) }
+        bia.r.refuse()
+        advanceTimeBy(INVITE_TIMEOUT_MILLIS + INVITE_HOST_GRACE_MILLIS - 1)
+        ana.r.layout.value!!.slots[2].shouldBeInstanceOf<Slot.Called>()
+        advanceTimeBy(2)
+        runCurrent()
+        ana.r.layout.value!!.slots[2] shouldBe Slot.Vacant
+        ana.notices.last().reason shouldBe RefusalReason.NO_RESPONSE
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_15 conexao aberta que fica muda e dada como caida em cerca de 1 s e o jogador sai das listas`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.free.value.map { it.key } shouldBe listOf("kb")
+        net.tap = { d -> if (d.from == bia.transport.id || d.to == bia.transport.id) emptyList() else listOf(d) } // sumiu sem avisar
+        advanceTimeBy(Recruitment.DEAD_AFTER_MILLIS + Recruitment.HEARTBEAT_MILLIS * 2)
+        runCurrent()
+        ana.logs.any { it.startsWith("heartbeat dead") } shouldBe true
+        ana.r.free.value shouldBe emptyList()
+        ana.scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 aviso explicito de saida - o outro tira o jogador das listas na hora`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.free.value.map { it.key } shouldBe listOf("kb")
+        bia.r.shutdown()
+        runCurrent()
+        ana.r.free.value shouldBe emptyList()
+        ana.logs.any { it.startsWith("rec bye kb") } shouldBe true
         ana.scope.cancel()
     }
 }

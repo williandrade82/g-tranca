@@ -128,6 +128,16 @@ interface LocalTransport {
     /** §16.2 conecta-se ao jogador próximo que anuncia [presence] (só para pedir a foto, [PresencePhotos]). */
     suspend fun connectPresence(presence: PresenceAdvert): EndpointId = error("Presença não encontrada")
 
+    /**
+     * §16.2, §16.15 modo ativo: as telas *Iniciar novo jogo* e *Seleção de jogadores* estão abertas, então as mudanças dos
+     * outros devem ser percebidas em cerca de 1 s (busca que recomeça mais depressa; mais bateria). Fora delas, o modo
+     * econômico.
+     */
+    fun setActiveMode(active: Boolean) {}
+
+    /** §16.2 tira da lista a presença de [key] (aviso explícito de saída ou conexão caída); reaparece se for vista de novo. */
+    fun forgetPresence(key: String) {}
+
     /** §16.2 jogadores próximos que anunciam presença agora (sem este aparelho). */
     fun discoverPresence(): Flow<List<PresenceAdvert>> = kotlinx.coroutines.flow.flowOf(emptyList())
 }
@@ -304,7 +314,12 @@ class MemoryTransport internal constructor(private val network: MemoryNetwork, v
 
     override suspend fun stopPresence() = network.stopPresence(id)
 
-    override fun discoverPresence(): Flow<List<PresenceAdvert>> = network.presencesVisibleTo(id)
+    private val hidden = MutableStateFlow<Set<String>>(emptySet())
+
+    override fun forgetPresence(key: String) = hidden.update { it + key }
+
+    override fun discoverPresence(): Flow<List<PresenceAdvert>> =
+        combine(network.presencesVisibleTo(id), hidden) { list, gone -> list.filter { it.key !in gone } }.distinctUntilChanged()
 
     override suspend fun connectPresence(presence: PresenceAdvert): EndpointId = network.connectPresence(id, presence)
 }

@@ -61,6 +61,10 @@ class NearbyTransport(
     private val sweepGraceMillis: Long = PRESENCE_SWEEP_GRACE_MILLIS,
     private val leavingMillis: Long = PRESENCE_LEAVING_MILLIS,
     private val lostGraceMillis: Long = PRESENCE_LOST_GRACE_MILLIS,
+    /** §16.15 modo ativo (telas *Iniciar novo jogo* e *Seleção de jogadores*): busca e folgas mais curtas. */
+    private val activeRefreshMillis: Long = ACTIVE_REFRESH_MILLIS,
+    private val activeSweepGraceMillis: Long = ACTIVE_SWEEP_GRACE_MILLIS,
+    private val activeLostGraceMillis: Long = ACTIVE_LOST_GRACE_MILLIS,
     /** Diagnóstico (só no build debug): eventos sem nomes, fotos nem bytes. */
     private val log: (String) -> Unit = {},
 ) : LocalTransport {
@@ -77,6 +81,27 @@ class NearbyTransport(
 
     override fun pinPresence(keys: Set<String>) {
         pinnedKeys = keys
+    }
+
+    @Volatile
+    private var active = false
+
+    /** Acorda o laço da busca quando o modo muda (o recomeço não espera o intervalo econômico). */
+    private val modeChanged = Channel<Unit>(Channel.CONFLATED)
+
+    override fun setActiveMode(active: Boolean) {
+        if (this.active == active) return
+        this.active = active
+        log("active mode=$active")
+        modeChanged.trySend(Unit)
+    }
+
+    override fun forgetPresence(key: String) {
+        val gone = foundPresence.value.filterValues { it.key == key }.keys
+        if (gone.isEmpty()) return
+        synchronized(presenceSeen) { gone.forEach { presenceSeen.remove(it); presenceMisses.remove(it); lostJobs.remove(it)?.cancel() } }
+        log("remove ${key.take(2)}: forgotten t=${now()}")
+        foundPresence.update { it - gone }
     }
 
     /** §16.2 varreduras seguidas em que a presença não foi revista (sai da lista na [SWEEPS_TO_REMOVE]ª). */
@@ -168,7 +193,7 @@ class NearbyTransport(
             synchronized(presenceSeen) {
                 lostJobs.remove(endpointId)?.cancel()
                 lostJobs[endpointId] = scope.launch {
-                    delay(lostGraceMillis)
+                    delay(if (active) activeLostGraceMillis else lostGraceMillis)
                     synchronized(presenceSeen) { lostJobs.remove(endpointId); presenceSeen.remove(endpointId); presenceMisses.remove(endpointId) }
                     val current = foundPresence.value[endpointId]
                     if (current != null && current.key == presence.key) {
@@ -282,7 +307,7 @@ class NearbyTransport(
      * Com conexão de presença pendente ou aberta (troca de fotos), o recomeço é adiado (no Nearby ele pode abortá-la).
      */
     private suspend fun refreshPresence() {
-        delay(refreshMillis)
+        waitRefresh(if (active) activeRefreshMillis else refreshMillis)
         while (true) {
             if (presenceConnectionBusy()) {
                 delay(RESTART_RETRY_MILLIS)
@@ -309,10 +334,17 @@ class NearbyTransport(
                 delay(RESTART_RETRY_MILLIS)
                 continue
             }
-            delay(sweepGraceMillis)
+            val grace = if (active) activeSweepGraceMillis else sweepGraceMillis
+            delay(grace)
             sweep(restartedAt)
-            delay((refreshMillis - sweepGraceMillis).coerceAtLeast(0))
+            waitRefresh(((if (active) activeRefreshMillis else refreshMillis) - grace).coerceAtLeast(0))
         }
+    }
+
+    /** Espera o intervalo da busca, ou menos se o modo mudou nesse meio tempo. */
+    private suspend fun waitRefresh(millis: Long) {
+        modeChanged.tryReceive()
+        withTimeoutOrNull(millis) { modeChanged.receive() }
     }
 
     private fun sweep(restartedAt: Long) {
@@ -468,7 +500,12 @@ class NearbyTransport(
         const val SWEEPS_TO_REMOVE: Int = 2
 
         /** §16.15 aviso de "saindo" no ar antes de parar a presença. */
-        const val PRESENCE_LEAVING_MILLIS: Long = 2_000
+        const val PRESENCE_LEAVING_MILLIS: Long = 500
+
+        /** §16.15 modo ativo: a busca recomeça a cada 1 s, com folga de 0,5 s, e o aviso de perda vale 1 s. */
+        const val ACTIVE_REFRESH_MILLIS: Long = 1_000
+        const val ACTIVE_SWEEP_GRACE_MILLIS: Long = 500
+        const val ACTIVE_LOST_GRACE_MILLIS: Long = 1_000
 
         /** §16.15 folga depois do aviso de perda do Nearby antes de tirar a presença da lista. */
         const val PRESENCE_LOST_GRACE_MILLIS: Long = 3_000

@@ -405,8 +405,8 @@ class NearbyTransportTest {
         bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>().hostName shouldBe "Ana"
         hostApi.advertiseStarts shouldBe advertsBefore // nada foi reanunciado para entregar o convite
         hostLogs.any { "invite sent via link" in it } shouldBe true
-        // Reinício da busca (a cada 8 s) durante o recrutamento: convite e conexão intactos.
-        advanceTimeBy(wait * 4)
+        // Reinício da busca (a cada 8 s) durante o recrutamento: convite e conexão intactos (dentro dos 25 s).
+        advanceTimeBy(wait * 2)
         runCurrent()
         (bobApi.discoveryStarts > 1) shouldBe true
         bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>()
@@ -445,5 +445,50 @@ class NearbyTransportTest {
         bia.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>() // não piscou
         caio.status.value.shouldBeInstanceOf<com.gtranca.net.RecruitStatus.Invited>()
         scope.cancel()
+    }
+
+    @Test
+    fun `§16_2 §16_15 modo ativo - a busca recomeca a cada 1 s e quem some sem avisar sai em ate cerca de 3 s`() = runTest {
+        network.silentStop = true
+        val (goneApi, gone) = node()
+        val (api, me) = node()
+        val bia = com.gtranca.net.PresenceAdvert("kbia", "Bia")
+        gone.advertisePresence(bia)
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        me.setActiveMode(true)
+        runCurrent()
+        lists.last() shouldBe listOf(bia)
+        goneApi.stopAdvertising() // sumiu sem avisar
+        advanceTimeBy(3_000)
+        runCurrent()
+        lists.last() shouldBe emptyList()
+        (api.discoveryStarts >= 3) shouldBe true // recomeçou a cada 1 s
+        // Fora das telas (modo econômico) a busca volta ao ritmo de 8 s.
+        me.setActiveMode(false)
+        runCurrent()
+        val starts = api.discoveryStarts
+        advanceTimeBy(4_000)
+        runCurrent()
+        (api.discoveryStarts - starts) shouldBe 0
+    }
+
+    @Test
+    fun `§16_2 §16_15 aviso saindo vale 0,5 s e tira o jogador da lista na hora`() = runTest {
+        network.silentStop = true
+        val (_, gone) = node()
+        val (_, me) = node()
+        gone.advertisePresence(com.gtranca.net.PresenceAdvert("kbia", "Bia"))
+        val lists = mutableListOf<List<com.gtranca.net.PresenceAdvert>>()
+        backgroundScope.launch(StandardTestDispatcher(testScheduler)) { me.discoverPresence().collect { lists += it } }
+        runCurrent()
+        lists.last().size shouldBe 1
+        val stopping = backgroundScope.launch(StandardTestDispatcher(testScheduler)) { gone.stopPresence() }
+        runCurrent()
+        lists.last() shouldBe emptyList()
+        advanceTimeBy(NearbyTransport.PRESENCE_LEAVING_MILLIS + 1)
+        runCurrent()
+        stopping.isCompleted shouldBe true
     }
 }

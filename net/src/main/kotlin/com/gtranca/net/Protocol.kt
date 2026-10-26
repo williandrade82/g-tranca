@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 14
+const val PROTOCOL_VERSION: Int = 15
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -265,7 +265,34 @@ data class RecruitHello(val key: String, val name: String, val rejoin: Boolean =
  */
 @Serializable
 @SerialName("recruitInvite")
-data class RecruitInvite(val version: Long, val table: RecruitTable, val you: Int) : Payload
+data class RecruitInvite(
+    val version: Long,
+    val table: RecruitTable,
+    val you: Int,
+    /** §16.15 tempo que o chamado tem para responder, contado no relógio de **quem recebe** (sem relógios sincronizados). */
+    val timeoutMillis: Long = INVITE_TIMEOUT_MILLIS,
+) : Payload
+
+/** §16.15 o chamado tem 25 s para responder; sem resposta, vale como recusa. */
+const val INVITE_TIMEOUT_MILLIS: Long = 25_000
+
+/** §16.15 folga da rede que o recrutador espera a mais antes de devolver o lugar a VAGO. */
+const val INVITE_HOST_GRACE_MILLIS: Long = 2_000
+
+/** §16.15 mensagem de teste das conexões abertas de recrutamento (fora da sequência). */
+@Serializable
+@SerialName("recruitPing")
+data object RecruitPing : Payload
+
+/** §16.15 resposta à mensagem de teste. */
+@Serializable
+@SerialName("recruitPong")
+data object RecruitPong : Payload
+
+/** §16.2 aviso explícito de saída (Wi-Fi do jogo desligado ou saída das telas): quem recebe tira o jogador das listas na hora. */
+@Serializable
+@SerialName("recruitBye")
+data class RecruitBye(val key: String) : Payload
 
 /** §16.2 o recrutado saiu da mesa ("Sair da mesa", `null`) ou saiu sozinho ([RefusalReason.INSUFFICIENT_BALANCE]). */
 @Serializable
@@ -340,6 +367,9 @@ enum class RefusalReason {
 
     /** Não há robô no lugar de quem entrar (ou as posições já travaram). */
     TABLE_FULL,
+
+    /** §16.2, §16.15 o chamado não respondeu ao convite em 25 s: vale como recusa. */
+    NO_RESPONSE,
 }
 
 /** §16.2 texto em pt-BR do motivo (o mesmo nos dois lados). */
@@ -349,6 +379,7 @@ fun refusalMessage(reason: RefusalReason): String = when (reason) {
     RefusalReason.OUT_OF_RANGE -> "Fora do alcance."
     RefusalReason.HOST_REFUSED -> "O anfitrião recusou."
     RefusalReason.TABLE_FULL -> "Mesa cheia."
+    RefusalReason.NO_RESPONSE -> "Não respondeu a tempo."
 }
 
 /** Entrada ou mensagem recusada, com o motivo em pt-BR (ex.: [VERSION_MISMATCH_MESSAGE]) e, se for o caso, o de §16.2. */
