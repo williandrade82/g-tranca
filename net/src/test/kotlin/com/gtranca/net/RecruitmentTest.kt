@@ -732,4 +732,28 @@ class RecruitmentTest {
         bia.r.status.value shouldBe RecruitStatus.Free
         ana.scope.cancel()
     }
+
+    @Test
+    fun `§16_2 cancelar o recrutamento devolve o recrutador a lista dos livres do outro e anuncia free de novo`() = runTest {
+        val net = MemoryNetwork()
+        val ana = device(net, "ka", "Ana") // livre na tela 1
+        val bia = device(net, "kb", "Bia")
+        runCurrent()
+        bia.r.free.value.map { it.key } shouldBe listOf("ka")
+        ana.r.setFree(false) // foi para a tela 2
+        ana.r.openTable(rulesDuplas, "Ana")
+        runCurrent()
+        bia.r.free.value shouldBe emptyList() // recrutando: não aparece como livre
+        bia.r.recruiters.value.map { it.key } shouldBe listOf("ka")
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        ana.r.closeHosting() // voltou à tela 1
+        ana.r.setFree(true)
+        runCurrent()
+        bia.r.status.value shouldBe RecruitStatus.Free
+        bia.r.recruiters.value shouldBe emptyList()
+        bia.r.free.value.map { it.key } shouldBe listOf("ka") // volta à lista do outro
+        ana.r.free.value.map { it.key } shouldBe listOf("kb")
+        ana.scope.cancel()
+    }
 }

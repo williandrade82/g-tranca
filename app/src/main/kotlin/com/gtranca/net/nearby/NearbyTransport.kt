@@ -67,6 +67,10 @@ class NearbyTransport(
     private val activeLostGraceMillis: Long = ACTIVE_LOST_GRACE_MILLIS,
     /** §16.15 rajada da atualização imediata: busca a cada [burstRefreshMillis] por [BURST_MILLIS]. */
     private val burstRefreshMillis: Long = BURST_REFRESH_MILLIS,
+    /** §16.15 orçamento de buscas: no máximo [restartBudget] recomeços por janela de [restartWindowMillis], com [minRestartGapMillis] entre eles. */
+    private val restartBudget: Int = RESTART_BUDGET,
+    private val restartWindowMillis: Long = RESTART_WINDOW_MILLIS,
+    private val minRestartGapMillis: Long = MIN_RESTART_GAP_MILLIS,
     private val burstSweepGraceMillis: Long = BURST_SWEEP_GRACE_MILLIS,
     /** Diagnóstico (só no build debug): eventos sem nomes, fotos nem bytes. */
     private val log: (String) -> Unit = {},
@@ -92,16 +96,40 @@ class NearbyTransport(
     /** Acorda o laço da busca quando o modo muda (o recomeço não espera o intervalo econômico). */
     private val modeChanged = Channel<Unit>(Channel.CONFLATED)
 
+    /** Recomeços rápidos que ainda restam da rajada (a atualização imediata). */
     @Volatile
-    private var burstUntil = Long.MIN_VALUE
+    private var burstLeft = 0
 
-    private fun bursting() = active && now() < burstUntil
+    /** Quando cada início de busca aconteceu (o inicial e os recomeços), para o orçamento de §16.15. */
+    private val startTimes = ArrayDeque<Long>()
+
+    /** Registra um início de busca (exige a trava `control`). */
+    private fun recordStartLocked() {
+        startTimes.addLast(now())
+        while (startTimes.size > 16) startTimes.removeFirst()
+    }
+
+    /**
+     * §16.15 quanto falta para poder recomeçar a busca: espera a janela de 30 s liberar quando o orçamento acabou e
+     * respeita o intervalo mínimo entre inícios. 0 = pode agora. O Android limita os inícios de varredura por app e, acima
+     * do limite, a varredura volta vazia sem aviso.
+     */
+    private fun restartWaitLocked(): Long {
+        val t = now()
+        while (startTimes.isNotEmpty() && t - startTimes.first() >= restartWindowMillis) startTimes.removeFirst()
+        val gap = startTimes.lastOrNull()?.let { minRestartGapMillis - (t - it) } ?: 0
+        val budget = if (startTimes.size >= restartBudget) startTimes.first() + restartWindowMillis - t else 0
+        return maxOf(gap, budget, 0)
+    }
+
+    private fun bursting() = active && burstLeft > 0
     private fun refreshInterval() = if (bursting()) burstRefreshMillis else if (active) activeRefreshMillis else refreshMillis
     private fun sweepGrace() = if (bursting()) burstSweepGraceMillis else if (active) activeSweepGraceMillis else sweepGraceMillis
 
     /**
-     * §16.2, §16.15 atualização imediata: a busca recomeça a cada 1 s por [durationMillis] (5 s) e volta ao ritmo do modo
-     * ativo. Só vale no modo ativo; pedido durante uma rajada em andamento é ignorado (toques repetidos não somam).
+     * §16.2, §16.15 atualização imediata: até [BURST_RESTARTS] recomeços rápidos da busca (2,5 s um do outro), sempre dentro
+     * do orçamento de buscas, e volta ao ritmo do modo ativo. Só vale no modo ativo; pedido durante uma rajada em andamento
+     * é ignorado (toques repetidos não somam). [durationMillis] é só a compatibilidade com a interface.
      */
     override fun burst(durationMillis: Long) {
         if (!active) return
@@ -109,8 +137,8 @@ class NearbyTransport(
             log("burst ignored: running")
             return
         }
-        burstUntil = now() + durationMillis
-        log("burst start ${durationMillis} ms")
+        burstLeft = BURST_RESTARTS
+        log("burst start restarts=$BURST_RESTARTS")
         modeChanged.trySend(Unit)
     }
 
@@ -338,24 +366,34 @@ class NearbyTransport(
                 delay(RESTART_RETRY_MILLIS)
                 continue
             }
+            // §16.15 orçamento de buscas: sem ele o laço espera; recomeço pulado nunca conta como perda de ninguém.
+            val wait = control.withLock { restartWaitLocked() }
+            if (wait > 0) {
+                log("restart skipped budget=${startTimes.size}/$restartBudget wait=$wait ms")
+                delay(wait)
+                continue
+            }
             val restartedAt = control.withLock {
                 if (subscribers == 0) return@withLock null
                 val at = now()
                 if (discovering) runCatching { api.stopDiscovery() }
+                recordStartLocked()
                 try {
                     api.startDiscovery(discoveryCallback)
                     discovering = true
-                    log("restart ok")
+                    if (burstLeft > 0) burstLeft--
+                    log("restart ok budget=${startTimes.size}/$restartBudget")
                     at
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     discovering = false
-                    log("restart failed ${e.message?.take(40)}")
+                    log("restart failed ${e.message?.take(40)} (no sweep)")
                     null
                 }
             }
             if (restartedAt == null) {
+                // Falha não conta como perda (sem varredura) e o próximo recomeço também respeita o orçamento.
                 delay(RESTART_RETRY_MILLIS)
                 continue
             }
@@ -413,6 +451,7 @@ class NearbyTransport(
             foundPresence.value = emptyMap()
             try {
                 api.startDiscovery(discoveryCallback)
+                recordStartLocked()
             } catch (e: Exception) {
                 subscribers-- // a busca não começou: quem pediu recebe o erro e não fica contado
                 throw e
@@ -516,7 +555,7 @@ class NearbyTransport(
         const val CONNECT_TIMEOUT_MILLIS: Long = 20_000
 
         /** §16.15 a busca recomeça a cada 8 s enquanto alguém observa os jogadores próximos. */
-        const val PRESENCE_REFRESH_MILLIS: Long = 8_000
+        const val PRESENCE_REFRESH_MILLIS: Long = 15_000
 
         /** §16.15 folga depois de cada recomeço para o Nearby reportar de novo quem continua no ar. */
         const val PRESENCE_SWEEP_GRACE_MILLIS: Long = 3_000
@@ -528,12 +567,20 @@ class NearbyTransport(
         const val PRESENCE_LEAVING_MILLIS: Long = 500
 
         /** §16.15 modo ativo: a busca recomeça a cada 1 s, com folga de 0,5 s, e o aviso de perda vale 1 s. */
-        const val ACTIVE_REFRESH_MILLIS: Long = 3_000
+        const val ACTIVE_REFRESH_MILLIS: Long = 7_500
         const val ACTIVE_SWEEP_GRACE_MILLIS: Long = 1_000
 
         /** §16.15 atualização imediata: 5 s de busca a cada 1 s (folga de 0,5 s). */
         const val BURST_MILLIS: Long = 5_000
-        const val BURST_REFRESH_MILLIS: Long = 1_000
+        const val BURST_REFRESH_MILLIS: Long = 2_500
+
+        /** §16.15 a atualização imediata faz no máximo 2 recomeços rápidos. */
+        const val BURST_RESTARTS: Int = 2
+
+        /** §16.15 orçamento de buscas: no máximo 4 recomeços por janela móvel de 30 s, nunca em menos de 2,5 s. */
+        const val RESTART_BUDGET: Int = 4
+        const val RESTART_WINDOW_MILLIS: Long = 30_000
+        const val MIN_RESTART_GAP_MILLIS: Long = 2_500
         const val BURST_SWEEP_GRACE_MILLIS: Long = 500
         const val ACTIVE_LOST_GRACE_MILLIS: Long = 1_000
 
