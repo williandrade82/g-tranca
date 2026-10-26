@@ -610,4 +610,6 @@
     <string name="selection_hint_swap">Toque em outro lugar para trocar, ou na lista para retirar</string>
     <string name="invite_countdown_seconds">%1$d s</string>
     <string name="invite_countdown_a11y">Restam %1$d segundos para responder</string>
+    <string name="refresh_players_desc">Atualizar jogadores por perto</string>
+    <string name="tour_refresh">Procura de novo, por alguns segundos, quem está por perto.</string>
 </resources>

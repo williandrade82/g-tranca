@@ -99,6 +99,7 @@ fun PlayerSelectionScreen(
     myKey: String?,
     photos: Map<String, ByteArray>,
     starting: Boolean,
+    onRefresh: () -> Unit,
     onStart: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -130,7 +131,7 @@ fun PlayerSelectionScreen(
                     .clickable(remember { MutableInteractionSource() }, indication = null, enabled = !starting) { vm.onClear() },
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
-                SelectionContent(vm, ui, self, hostName, level, wifi, free, myKey, photos, starting)
+                SelectionContent(vm, ui, self, hostName, level, wifi, free, myKey, photos, starting, onRefresh)
             }
         }
     }
@@ -148,6 +149,7 @@ private fun ColumnScope.SelectionContent(
     myKey: String?,
     photos: Map<String, ByteArray>,
     starting: Boolean,
+    onRefresh: () -> Unit,
 ) {
     val config = vm.config
     // As opções (3.2) só como resumo: não mudam aqui.
@@ -179,7 +181,7 @@ private fun ColumnScope.SelectionContent(
         minFontSp = 10,
     )
     RobotRow(ui.layout.usedPersonas, (sel as? Selection.Robot)?.persona, level, vm::onRobotTap)
-    MultiplayerBlock(vm, ui, wifi, free, myKey, photos)
+    MultiplayerBlock(vm, ui, wifi, free, myKey, photos, onRefresh)
     GButton(
         vm::onFill,
         Modifier.fillMaxWidth().heightIn(min = 48.dp).tourTarget("fill-with-robots").testTag("fill-with-robots"),
@@ -223,10 +225,12 @@ private fun MultiplayerBlock(
     free: List<PresenceAdvert>,
     myKey: String?,
     photos: Map<String, ByteArray>,
+    onRefresh: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().tourTarget("multiplayer-block"), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.selection_multiplayer), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = GColors.Champagne)
+            if (wifi?.on == true) com.gtranca.ui.tables.RefreshButton("selection-refresh", onRefresh)
             wifi?.let { WifiButton(it.on, it.toggle, tag = "selection-wifi") }
         }
         if (wifi?.on != true) return@Column

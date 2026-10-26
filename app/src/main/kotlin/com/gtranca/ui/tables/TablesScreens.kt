@@ -54,6 +54,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.Role
@@ -152,6 +153,7 @@ fun TablesScreen(
     viewModel: TablesViewModel,
     recruiters: List<com.gtranca.net.PresenceAdvert>,
     wifi: WifiControl?,
+    onRefresh: () -> Unit,
     onSelectPlayers: (GameConfig) -> Unit,
     onCustomize: () -> Unit,
     onBack: () -> Unit,
@@ -176,7 +178,7 @@ fun TablesScreen(
             }
         },
     ) {
-        if (wifi?.on == true) RecruitersList(recruiters)
+        if (wifi?.on == true) RecruitersList(recruiters, onRefresh)
         TableOptions(state, viewModel, onCustomize, onShowDetails = { showDetails = true })
     }
     }
@@ -209,9 +211,12 @@ fun WifiButton(on: Boolean, onToggle: () -> Unit, tag: String = "tables-wifi") {
  * tocar não faz nada. A foto aparece como inicial (limitação do `P2P_STAR`).
  */
 @Composable
-private fun RecruitersList(recruiters: List<com.gtranca.net.PresenceAdvert>) {
+private fun RecruitersList(recruiters: List<com.gtranca.net.PresenceAdvert>, onRefresh: () -> Unit) {
     Column(Modifier.fillMaxWidth().testTag("recruiters").tourTarget("recruiters"), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        Text(stringResource(R.string.tables_recruiters_title), style = MaterialTheme.typography.titleSmall, color = GColors.Champagne)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.tables_recruiters_title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = GColors.Champagne)
+            RefreshButton("refresh-players", onRefresh)
+        }
         if (recruiters.isEmpty()) {
             Text(
                 stringResource(R.string.tables_recruiters_empty),
@@ -234,6 +239,56 @@ private fun RecruitersList(recruiters: List<com.gtranca.net.PresenceAdvert>) {
                 }
             }
         }
+    }
+}
+
+/** Duração da rajada de busca da atualização imediata (§16.15: 5 s a cada 1 s). */
+private const val REFRESH_BURST_MILLIS = 5_000L
+
+/**
+ * O botão discreto de **atualizar** jogadores por perto (docs/telas.md 3.2 e 3.3): duas setas em círculo, alvo de 48 dp.
+ * Chama [onRefresh] (a busca em rajada de 5 s); enquanto ela roda o ícone gira e o botão fica desabilitado. Sem
+ * animações do sistema, o ícone fica parado (só desabilita).
+ */
+@Composable
+fun RefreshButton(tag: String, onRefresh: () -> Unit) {
+    var refreshing by rememberSaveable { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(refreshing) {
+        if (refreshing) {
+            kotlinx.coroutines.delay(REFRESH_BURST_MILLIS)
+            refreshing = false
+        }
+    }
+    val motion = com.gtranca.ui.theme.rememberMotionEnabled()
+    val angle = if (refreshing && motion) {
+        val a by androidx.compose.animation.core.rememberInfiniteTransition(label = "refresh").animateFloat(
+            0f, 360f,
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing)),
+            label = "refresh-angle",
+        )
+        a
+    } else {
+        0f
+    }
+    val description = stringResource(R.string.refresh_players_desc)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .clickable(enabled = !refreshing, onClickLabel = description, role = Role.Button) {
+                refreshing = true
+                onRefresh()
+            }
+            .semantics { contentDescription = description }
+            .testTag(tag)
+            .tourTarget(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        com.gtranca.ui.theme.RecycleIcon(
+            if (refreshing) GColors.Steel else GColors.Gold,
+            Modifier.graphicsLayer { rotationZ = angle },
+            size = 24.dp,
+        )
     }
 }
 

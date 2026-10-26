@@ -292,6 +292,7 @@ fun AppNavHost() {
                 tablesVm,
                 recruiters = recruiters,
                 wifi = wifi,
+                onRefresh = { rec?.refreshNow() },
                 onSelectPlayers = { config -> navController.navigate(SelectionRoute.of(config)) { launchSingleTop = true } },
                 onCustomize = { navController.navigate(RulesEditorRoute(fromCreate = true)) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
@@ -886,6 +887,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
     com.gtranca.ui.selection.PlayerSelectionScreen(
         vm = vm, self = self, hostName = selfName, wifi = wifi, free = free,
         myKey = com.gtranca.multiplayer.MultiplayerHub.myPresenceKey, photos = photos, starting = starting,
+        onRefresh = { rec?.refreshNow() },
         onStart = start,
         onBack = {
             com.gtranca.multiplayer.MultiplayerHub.closeRecruiting()
