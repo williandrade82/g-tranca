@@ -4,6 +4,8 @@ import android.content.Context
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.AdvertisingOptions
 import com.google.android.gms.nearby.connection.ConnectionInfo
+import com.google.android.gms.nearby.connection.ConnectionOptions
+import com.google.android.gms.nearby.connection.ConnectionType
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback
 import com.google.android.gms.nearby.connection.ConnectionResolution
 import com.google.android.gms.nearby.connection.ConnectionsClient
@@ -34,7 +36,8 @@ class GmsNearbyApi(context: Context) : NearbyApi {
     }
 
     override suspend fun startAdvertising(endpointInfo: ByteArray, callback: ConnectionCallback) {
-        val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_STAR).build()
+        val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_STAR)
+            .setConnectionType(ConnectionType.NON_DISRUPTIVE).setDisruptiveUpgrade(false).setLowPower(LOW_POWER).build()
         try {
             client.startAdvertising(endpointInfo, SERVICE_ID, lifecycle(callback), options).await()
         } catch (e: com.google.android.gms.common.api.ApiException) {
@@ -48,7 +51,7 @@ class GmsNearbyApi(context: Context) : NearbyApi {
     override fun stopAdvertising() = client.stopAdvertising()
 
     override suspend fun startDiscovery(callback: DiscoveryCallback) {
-        val options = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_STAR).build()
+        val options = DiscoveryOptions.Builder().setStrategy(Strategy.P2P_STAR).setLowPower(LOW_POWER).build()
         client.startDiscovery(
             SERVICE_ID,
             object : EndpointDiscoveryCallback() {
@@ -64,7 +67,9 @@ class GmsNearbyApi(context: Context) : NearbyApi {
     override fun stopDiscovery() = client.stopDiscovery()
 
     override suspend fun requestConnection(localInfo: ByteArray, endpointId: String, callback: ConnectionCallback) {
-        client.requestConnection(localInfo, endpointId, lifecycle(callback)).await()
+        val options = ConnectionOptions.Builder()
+            .setConnectionType(ConnectionType.NON_DISRUPTIVE).setDisruptiveUpgrade(false).setLowPower(LOW_POWER).build()
+        client.requestConnection(localInfo, endpointId, lifecycle(callback), options).await()
     }
 
     override suspend fun acceptConnection(endpointId: String, onBytes: (String, ByteArray) -> Unit) {
@@ -88,6 +93,14 @@ class GmsNearbyApi(context: Context) : NearbyApi {
     companion object {
         /** Serviço do Nearby: só aparelhos com este app se veem. */
         const val SERVICE_ID: String = "br.com.funnyandplay.trancabot.mesa"
+
+        /**
+         * §16.15 sem troca de banda que atrapalhe: as mensagens são pequenas (fotos até 20 KB), então a conexão não precisa
+         * subir para Wi-Fi Direct/hotspot; a troca de meio deixava o Nearby ocupado por dezenas de segundos e travava a
+         * entrada na mesa. `NON_DISRUPTIVE` + `disruptiveUpgrade = false` valem nos dois lados. `lowPower` (só BLE) fica
+         * desligado: os anúncios têm até 100 bytes e o BLE de baixa potência pode não os levar inteiros.
+         */
+        const val LOW_POWER: Boolean = false
     }
 }
 

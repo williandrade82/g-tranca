@@ -91,6 +91,60 @@ class NearbyTransportTest {
     }
 
     @Test
+    fun `§16_15 anuncio que demora 30 s no Nearby estoura em 5 s e nao prende a busca nem a entrada na mesa`() = runTest {
+        val logs = mutableListOf<String>()
+        val hostApi = network.api()
+        val hostScope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job(backgroundScope.coroutineContext[Job]))
+        val host = NearbyTransport(hostApi, hostScope, clock = { testScheduler.currentTime }, log = { logs += it })
+        val (_, guest) = node()
+        host.advertise(advert) // a mesa está no ar
+        // O recrutado (aqui o outro aparelho) ainda tem presença no ar e o serviço fica preso 30 s ao trocar o anúncio.
+        val (guestApi2, other) = node()
+        guestApi2.startAdvertisingDelayMillis = 30_000
+        val leaving = backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
+            other.advertisePresence(com.gtranca.net.PresenceAdvert("kkkkkk", "Bia"))
+            other.stopPresence()
+        }
+        runCurrent()
+        // Enquanto o anúncio está preso, a busca e a conexão deste mesmo aparelho andam na hora.
+        val t0 = testScheduler.currentTime
+        val found = other.discover().first { it.isNotEmpty() }
+        (testScheduler.currentTime - t0) shouldBeLessThan 4_000
+        found.single().tableId shouldBe advert.tableId
+        advanceTimeBy(6_000)
+        runCurrent()
+        leaving.isCompleted shouldBe true // a chamada presa estourou em 5 s e liberou a trava do anúncio
+        guest.holdSearch(false)
+    }
+
+    @Test
+    fun `§16_15 busca que demora 30 s para ligar estoura em 5 s com falha e a proxima tentativa funciona`() = runTest {
+        val logs = mutableListOf<String>()
+        val api = network.api()
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job(backgroundScope.coroutineContext[Job]))
+        val guest = NearbyTransport(api, scope, clock = { testScheduler.currentTime }, log = { logs += it })
+        val (_, host) = node()
+        host.advertise(advert)
+        api.startDiscoveryDelayMillis = 30_000
+        var failure: Throwable? = null
+        val first = backgroundScope.launch(StandardTestDispatcher(testScheduler)) {
+            try { guest.discover().first() } catch (e: Exception) { failure = e }
+        }
+        advanceTimeBy(4_999)
+        runCurrent()
+        failure shouldBe null
+        advanceTimeBy(2)
+        runCurrent()
+        first.isCompleted shouldBe true
+        failure.shouldBeInstanceOf<IllegalStateException>()
+        logs.any { it.startsWith("api timeout startDiscovery") } shouldBe true
+        api.stopDiscovery() // o que ficou pendente no serviço
+        api.startDiscoveryDelayMillis = 0
+        guest.discover().first { it.isNotEmpty() }.single().tableId shouldBe advert.tableId
+        logs.any { it.startsWith("api startDiscovery") } shouldBe true
+    }
+
+    @Test
     fun `anuncio igual nao reanuncia e anuncio novo para e reanuncia sem derrubar conexoes`() = runTest {
         val (hostApi, host) = node()
         val (_, guest) = node()

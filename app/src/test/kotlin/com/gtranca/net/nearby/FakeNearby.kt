@@ -54,7 +54,12 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
 
     override val maxBytes: Int = 1047552
 
+    /** Como o serviço do Google preso numa troca de meio: estas chamadas demoram tanto (relógio virtual) antes de responder. */
+    var startAdvertisingDelayMillis = 0L
+    var startDiscoveryDelayMillis = 0L
+
     override suspend fun startAdvertising(endpointInfo: ByteArray, callback: ConnectionCallback) {
+        if (startAdvertisingDelayMillis > 0) kotlinx.coroutines.delay(startAdvertisingDelayMillis)
         check(advertInfo == null) { "STATUS_ALREADY_ADVERTISING" }
         advertiseStarts++
         advertInfo = endpointInfo
@@ -73,6 +78,7 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
     var failNextDiscoveryStarts = 0
 
     override suspend fun startDiscovery(callback: DiscoveryCallback) {
+        if (startDiscoveryDelayMillis > 0) kotlinx.coroutines.delay(startDiscoveryDelayMillis)
         check(discovery == null) { "STATUS_ALREADY_DISCOVERING" }
         if (failNextDiscoveryStarts > 0) {
             failNextDiscoveryStarts--

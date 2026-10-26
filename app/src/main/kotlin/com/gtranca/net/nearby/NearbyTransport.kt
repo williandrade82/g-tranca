@@ -74,6 +74,8 @@ class NearbyTransport(
     private val burstSweepGraceMillis: Long = BURST_SWEEP_GRACE_MILLIS,
     /** Diagnóstico (só no build debug): eventos sem nomes, fotos nem bytes. */
     private val log: (String) -> Unit = {},
+    /** §16.15 prazo de cada chamada ao Nearby (iniciar anúncio/busca, pedir/aceitar conexão). */
+    private val apiTimeoutMillis: Long = API_TIMEOUT_MILLIS,
 ) : LocalTransport {
 
     /** §16.2 quando cada presença foi vista (achada) pela última vez, por endpoint. */
@@ -191,6 +193,9 @@ class NearbyTransport(
     private val pending = mutableMapOf<String, CompletableDeferred<Boolean>>()
 
     private val control = Mutex()
+
+    /** Trava do anúncio (estado de [advertised]): separada da da busca, para um anúncio lento do Nearby não segurar a busca nem a entrada na mesa. */
+    private val adLock = Mutex()
     private var advertised: ByteArray? = null
 
     /** O que está anunciado agora é a presença (§16.2), não uma mesa: um aparelho anuncia uma coisa por vez. */
@@ -209,7 +214,7 @@ class NearbyTransport(
     private val connectionCallback = object : ConnectionCallback {
         override fun onInitiated(endpointId: String) {
             scope.launch {
-                runCatching { api.acceptConnection(endpointId) { id, bytes -> inbox.trySend(TransportEvent.Received(EndpointId(id), bytes)) } }
+                runCatching { call("acceptConnection") { api.acceptConnection(endpointId) { id, bytes -> inbox.trySend(TransportEvent.Received(EndpointId(id), bytes)) } } }
                     .onFailure { synchronized(lock) { pending.remove(endpointId) }?.complete(false) }
             }
         }
@@ -293,7 +298,7 @@ class NearbyTransport(
         advertiseBytes(AdvertCodec.encodePresence(presence), presence = true)
 
     private suspend fun advertiseBytes(bytes: ByteArray, presence: Boolean) {
-        control.withLock {
+        adLock.withLock {
             val current = advertised
             if (current != null && current.contentEquals(bytes)) return
             // §16.2, §16.15 a mesa do jogo tem prioridade: a presença nunca a substitui (só o fim da mesa libera o anúncio).
@@ -305,10 +310,12 @@ class NearbyTransport(
             if (current != null) api.stopAdvertising()
             advertised = null
             try {
-                api.startAdvertising(bytes, connectionCallback)
+                call("startAdvertising") { api.startAdvertising(bytes, connectionCallback) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // Sem resposta no prazo: pede a parada do que ficou pendente no serviço, para o próximo anúncio começar limpo.
+                runCatching { api.stopAdvertising() }
                 // Falha do rádio não fecha o app nem derruba a mesa: as conexões seguem e o próximo anúncio tenta de novo.
                 return
             }
@@ -325,7 +332,7 @@ class NearbyTransport(
      * [leavingMillis], para os outros tirarem o jogador da lista na hora.
      */
     override suspend fun stopPresence() {
-        val leaving = control.withLock {
+        val leaving = adLock.withLock {
             val current = advertised
             if (current == null || !advertisingPresence) return
             val presence = AdvertCodec.decodePresence(current) ?: return@withLock null
@@ -333,11 +340,11 @@ class NearbyTransport(
             val bytes = AdvertCodec.encodePresenceLeaving(presence.key)
             api.stopAdvertising()
             advertised = null
-            runCatching { api.startAdvertising(bytes, connectionCallback) }.onSuccess { advertised = bytes; log("advertise leaving") }
+            runCatching { call("startAdvertising") { api.startAdvertising(bytes, connectionCallback) } }.onSuccess { advertised = bytes; log("advertise leaving") }
             bytes.takeIf { advertised === it }
         }
         if (leaving != null) delay(leavingMillis)
-        control.withLock {
+        adLock.withLock {
             // Outra coisa (a mesa, ou a presença de novo) pode ter tomado o lugar durante o aviso.
             if (leaving != null && advertised !== leaving) return
             if (advertised == null || !advertisingPresence) return
@@ -347,7 +354,7 @@ class NearbyTransport(
     }
 
     private suspend fun stopKind(presence: Boolean) {
-        control.withLock {
+        adLock.withLock {
             if (advertised == null || advertisingPresence != presence) return
             api.stopAdvertising()
             advertised = null
@@ -406,7 +413,7 @@ class NearbyTransport(
                 if (discovering) runCatching { api.stopDiscovery() }
                 recordStartLocked()
                 try {
-                    api.startDiscovery(discoveryCallback)
+                    call("startDiscovery") { api.startDiscovery(discoveryCallback) }
                     discovering = true
                     if (burstLeft > 0) burstLeft--
                     log("restart ok budget=${startTimes.size}/$restartBudget")
@@ -478,7 +485,7 @@ class NearbyTransport(
             found.value = emptyMap()
             foundPresence.value = emptyMap()
             try {
-                api.startDiscovery(discoveryCallback)
+                call("startDiscovery") { api.startDiscovery(discoveryCallback) }
                 recordStartLocked()
             } catch (e: Exception) {
                 subscribers-- // a busca não começou: quem pediu recebe o erro e não fica contado
@@ -537,7 +544,7 @@ class NearbyTransport(
             pending.getOrPut(endpointId) { CompletableDeferred() }
         }
         try {
-            api.requestConnection(LOCAL_INFO, endpointId, connectionCallback)
+            call("requestConnection") { api.requestConnection(LOCAL_INFO, endpointId, connectionCallback) }
         } catch (e: Exception) {
             synchronized(lock) { pending.remove(endpointId) }
             throw IllegalStateException("Falha ao conectar", e)
@@ -577,10 +584,30 @@ class NearbyTransport(
 
     private fun now(): Long = clock()
 
+    /**
+     * §16.15 chamada ao Nearby com prazo de [apiTimeoutMillis]: o serviço do Google serializa as chamadas e uma delas pode
+     * ficar presa por dezenas de segundos (ex.: troca de meio em andamento). Estourado o prazo, vira falha (quem chamou
+     * trata e tenta de novo) e a trava é liberada. Registra a duração de cada chamada (só no build debug).
+     */
+    private suspend fun <T> call(name: String, block: suspend () -> T): T {
+        val started = now()
+        try {
+            val result = kotlinx.coroutines.withTimeout(apiTimeoutMillis) { block() }
+            log("api $name ${now() - started} ms")
+            return result
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            log("api timeout $name ${now() - started} ms")
+            throw IllegalStateException("Tempo esgotado: $name", e)
+        }
+    }
+
     companion object {
         const val WARM_UP_MILLIS: Long = 3_000
         const val LINGER_MILLIS: Long = 10_000
         const val CONNECT_TIMEOUT_MILLIS: Long = 20_000
+
+        /** §16.15 prazo de cada chamada ao Nearby. */
+        const val API_TIMEOUT_MILLIS: Long = 5_000
 
         /** §16.15 a busca recomeça a cada 8 s enquanto alguém observa os jogadores próximos. */
         const val PRESENCE_REFRESH_MILLIS: Long = 15_000

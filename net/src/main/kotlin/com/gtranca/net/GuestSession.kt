@@ -257,9 +257,9 @@ class GuestSession(
                 while (!joined) {
                     attempt++
                     log("join attempt $attempt")
-                    val advert = transport.discover().mapNotNull { it.preferred(tableId) }.first()
-                    seenTable = true
                     try {
+                        val advert = transport.discover().mapNotNull { it.preferred(tableId) }.first()
+                        seenTable = true
                         connectAndHello(advert, seat)
                         joined = true
                         log("join ok attempt=$attempt")

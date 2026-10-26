@@ -524,7 +524,8 @@ class Recruitment(
             _status.value = RecruitStatus.Free
             all
         }
-        if (rest.isNotEmpty()) closeAfterConfirm(rest, CLOSE_CONFIRM_MILLIS)
+        // §16.15 depois do início (enviado ou recebido) nada espera confirmação: a entrada na mesa não pode ficar atrás da desconexão.
+        if (rest.isNotEmpty()) closeAfterConfirm(rest, if (yielded) 0 else CLOSE_CONFIRM_MILLIS)
     }
 
     // ---- API do chamado/recrutado -------------------------------------------------------------------------------
