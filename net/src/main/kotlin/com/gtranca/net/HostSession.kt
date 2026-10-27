@@ -37,10 +37,28 @@ interface HostGamePort {
 
     /** §16.10 o sucessor [playerId] confirmou o estado [stateSeq]. */
     fun onSuccessorAck(playerId: Int, stateSeq: Long) {}
+
+    /** §16.7 quanto debita quem entrar no [seat] aberto: a aposta cheia no lugar de um robô de origem; 0 no de quem saiu. */
+    fun entryDebit(seat: Seat): Int = 0
+
+    /**
+     * §16.7 o chamado aceitou: aprova o pedido [requestId] (chamar já é a aprovação do anfitrião). Devolve se o jogador
+     * passou a ocupar o assento; `false` faz a sessão encerrar a chamada com "A vaga foi preenchida.".
+     */
+    suspend fun approveCalled(requestId: Int): Boolean = false
 }
 
-/** §16.7 pedido de entrada no meio do jogo, à espera da aprovação do anfitrião. */
-data class JoinRequest(val requestId: Int, val name: String, val seat: Seat)
+/** §16.7 pedido de entrada no meio do jogo, à espera da aprovação do anfitrião ([called] = chamada aceita: já aprovada). */
+data class JoinRequest(val requestId: Int, val name: String, val seat: Seat, val called: Boolean = false)
+
+/**
+ * §16.7 chamada do anfitrião a um jogador livre para o [seat] aberto. [connected] = o chamado já conectou e recebeu o
+ * convite (aguarda a resposta).
+ */
+data class SeatCall(val key: String, val name: String, val seat: Seat, val connected: Boolean = false)
+
+/** §16.7 fim de uma chamada sem aceite: o [reason] diz por quê (`null` = o anfitrião cancelou ou o assento foi ocupado). */
+data class CallNotice(val key: String, val name: String, val seat: Seat, val reason: RefusalReason?)
 
 /**
  * §16.2 plano de lugares com que a mesa do jogo começa (o resultado de [Recruitment.start]): o [layout] sem lugar VAGO nem
@@ -132,6 +150,15 @@ class HostSession(
 
         /** §16.11 conexão só para entregar o resultado depois do fim: nada mais é processado nela. */
         var resultsOnly = false
+
+        /** §16.7 chave de presença do chamado que abriu esta conexão (recebeu o [CallOffer]). */
+        var callKey: String? = null
+    }
+
+    /** §16.7 chamada em andamento: o prazo vigente ([timer]) e a conexão do chamado, se já conectou. */
+    private class Call(val key: String, var name: String, val seat: Seat) {
+        var pending: Pending? = null
+        var timer: Job? = null
     }
 
     private val mutex = Mutex()
@@ -310,6 +337,19 @@ class HostSession(
     /** §16.7, §16.8 assentos abertos a outro convidado (mesa na lista com "jogo em andamento"). */
     val openSeats: StateFlow<Set<Seat>> = _openSeats.asStateFlow()
 
+    /** §16.7 chamadas por chave de presença (sob a trava). */
+    private val calls = linkedMapOf<String, Call>()
+
+    private val _calls = MutableStateFlow<List<SeatCall>>(emptyList())
+
+    /** §16.7 chamadas em andamento (para a lista do anfitrião: "Aguardando <nome>"). */
+    val seatCalls: StateFlow<List<SeatCall>> = _calls.asStateFlow()
+
+    private val _callNotices = MutableSharedFlow<CallNotice>(extraBufferCapacity = 16)
+
+    /** §16.7 chamadas que terminaram sem aceite (recusa, prazo, fora do alcance, cancelada), com o motivo. */
+    val callNotices: SharedFlow<CallNotice> = _callNotices.asSharedFlow()
+
     private val _successors = MutableStateFlow<List<Int>>(emptyList())
 
     /** §16.10 ids do 1º e do 2º sucessores (ordem de entrada e disponibilidade); vazio = sem sucessor. */
@@ -485,6 +525,59 @@ class HostSession(
 
     private suspend fun refuseRequestsLocked(seat: Seat) {
         pending.values.filter { it.request?.seat == seat }.toList().forEach { refuseLocked(it, SEAT_TAKEN_MESSAGE) }
+        // §16.7 a chamada para um assento que deixou de ser ocupável cai sozinha ("A vaga foi preenchida.").
+        calls.values.filter { it.seat == seat }.toList().forEach { endCallLocked(it, null, SEAT_TAKEN_MESSAGE) }
+    }
+
+    /**
+     * §16.7 chama o jogador livre de presença [key] ([name]) para o [seat] já aberto ([openSeat]). Uma chamada por
+     * assento e no máximo [MAX_CALLS] ao mesmo tempo. A chave vai no anúncio da mesa; o chamado conecta, recebe o
+     * [CallOffer] e tem [CALL_REPLY_MILLIS] para responder. Devolve se a chamada foi aberta.
+     */
+    suspend fun callPlayer(seat: Seat, key: String, name: String): Boolean = mutex.withLock {
+        if (!started || finished || closed || seat !in _openSeats.value || seat == hostSeat) return@withLock false
+        if (calls.containsKey(key) || calls.values.any { it.seat == seat } || calls.size >= MAX_CALLS) return@withLock false
+        val call = Call(key, name, seat).also { calls[key] = it }
+        armCallLocked(call, CALL_CONNECT_MILLIS)
+        publishCallsLocked()
+        advertiseLocked()
+        true
+    }
+
+    /** §16.7 o anfitrião desfez a chamada à presença [key] (o chamado, se conectado, é avisado). */
+    suspend fun cancelCall(key: String) {
+        mutex.withLock { calls[key]?.let { endCallLocked(it, null, CALL_CANCELLED_MESSAGE, notify = false) } }
+    }
+
+    private fun armCallLocked(call: Call, millis: Long) {
+        call.timer?.cancel()
+        call.timer = scope.launch {
+            delay(millis)
+            mutex.withLock { if (calls[call.key] === call) endCallLocked(call, RefusalReason.NO_RESPONSE, CALL_TIMEOUT_MESSAGE) }
+        }
+    }
+
+    private fun publishCallsLocked() {
+        _calls.value = calls.values.map { SeatCall(it.key, it.name, it.seat, connected = it.pending != null) }
+    }
+
+    /**
+     * §16.7 encerra a chamada sem aceite: a chave sai do anúncio, o chamado conectado recebe [guestMessage] (se houver) e é
+     * desconectado, e o anfitrião é avisado com [reason] (`null` = cancelada pelo próprio anfitrião ou assento ocupado).
+     */
+    private suspend fun endCallLocked(call: Call, reason: RefusalReason?, guestMessage: String?, notify: Boolean = true) {
+        if (calls.remove(call.key) == null) return
+        call.timer?.cancel()
+        call.pending?.let { p ->
+            p.callKey = null
+            if (pending.containsKey(p.link.endpoint)) {
+                if (guestMessage != null) refuseLocked(p, guestMessage, reason) else closePendingLocked(p)
+            }
+        }
+        call.pending = null
+        publishCallsLocked()
+        if (notify) _callNotices.tryEmit(CallNotice(call.key, call.name, call.seat, reason))
+        advertiseLocked()
     }
 
     /** Fecha o [seat] à entrada (ex.: o anfitrião pôs um robô); os pedidos para ele são recusados. */
@@ -514,6 +607,13 @@ class HostSession(
             if (request.seat !in _openSeats.value) return null
             if (!attach(request.seat)) return null
             pending.remove(entry.key)
+            // §16.7 chamada aceita: ela termina aqui (o chamado virou jogador), sem avisos de recusa.
+            calls.values.firstOrNull { it.pending === entry.value }?.let { c ->
+                calls.remove(c.key)
+                c.timer?.cancel()
+                c.pending = null
+                publishCallsLocked()
+            }
             memberAtLocked(request.seat)?.let { removeMemberLocked(it, disconnect = true) }
             val id = nextId++
             val info = PlayerInfo(id = id, name = nameOrDefault(request.name, id), joinOrder = id, seat = request.seat, confirmed = true)
@@ -706,6 +806,9 @@ class HostSession(
         mutex.withLock {
             finished = true
             closed = true
+            calls.values.forEach { it.timer?.cancel() }
+            calls.clear()
+            _calls.value = emptyList()
             finals.clear()
             _canForceCommit.value = false
             _resultsPending.value = false
@@ -736,6 +839,8 @@ class HostSession(
         pending.remove(endpoint)?.let { p ->
             p.link.close()
             if (p.request != null) _joinRequests.value = _joinRequests.value.filter { it.requestId != p.request?.requestId }
+            // §16.7 o chamado perdeu a conexão antes de entrar: a chamada acaba, a vaga continua aberta.
+            p.callKey?.let { calls[it] }?.takeIf { it.pending === p }?.let { endCallLocked(it, RefusalReason.OUT_OF_RANGE, null) }
             return false
         }
         val member = memberByEndpoint(endpoint) ?: return false
@@ -781,6 +886,7 @@ class HostSession(
     /** Uma conexão sem jogador: só [Hello] (entrada, reingresso ou pedido de entrada no meio). */
     private suspend fun helloLocked(p: Pending, payload: Payload) {
         if (p.resultsOnly) return
+        if (payload is CallReply) return callReplyLocked(p, payload)
         if (payload !is Hello) return refuseLocked(p, "Entre na mesa antes de jogar.")
         if (p.request != null) return
         val token = payload.token
@@ -789,6 +895,8 @@ class HostSession(
             val key = payload.inviteKey ?: return refuseLocked(p, "A mesa está sendo montada: só entra quem foi recrutado.")
             return entryHelloLocked(p, payload, key)
         }
+        // §16.7 jogador livre chamado pelo anfitrião: recebe o convite da partida em andamento.
+        payload.inviteKey?.let { key -> calls[key]?.takeIf { !finished && it.seat in _openSeats.value }?.let { return offerLocked(p, payload, it) } }
         // §16.2, §16.15 recrutado que chega depois de o lugar ter passado para um robô: o aviso diz isso.
         if (payload.inviteKey != null) return refuseLocked(p, SEAT_LOST_MESSAGE)
         // §16.7 durante o jogo só se entra no assento que o anfitrião abriu (o pedido diz qual, se houver mais de um) ou,
@@ -808,6 +916,36 @@ class HostSession(
         p.photo = payload.photo
         _joinRequests.value = _joinRequests.value + request
         p.link.sendLocked(JoinWaiting)
+    }
+
+    /** §16.7 o chamado conectou: manda o [CallOffer] e passa a esperar a resposta ([CALL_REPLY_MILLIS]). */
+    private suspend fun offerLocked(p: Pending, hello: Hello, call: Call) {
+        // Uma conexão nova do mesmo chamado (a anterior caiu sem o anfitrião saber) toma o lugar da antiga.
+        call.pending?.takeIf { it !== p }?.let { old -> old.callKey = null; if (pending.containsKey(old.link.endpoint)) closePendingLocked(old) }
+        call.pending = p
+        p.callKey = call.key
+        p.photo = hello.photo
+        call.name = hello.name.trim().ifBlank { call.name }
+        armCallLocked(call, CALL_REPLY_MILLIS)
+        publishCallsLocked()
+        p.link.sendLocked(CallOffer(members.getValue(hostId).info.name, rules, call.seat, game?.entryDebit(call.seat) ?: 0))
+    }
+
+    /** §16.7 resposta do chamado: aceitar vira um pedido já aprovado pelo anfitrião; recusar só limpa a chamada. */
+    private suspend fun callReplyLocked(p: Pending, reply: CallReply) {
+        val call = p.callKey?.let { calls[it] }?.takeIf { it.pending === p } ?: return
+        if (p.request != null) return
+        if (!reply.accepted) return endCallLocked(call, reply.reason ?: RefusalReason.INVITE_REFUSED, null)
+        if (finished || call.seat !in _openSeats.value) return endCallLocked(call, null, SEAT_TAKEN_MESSAGE)
+        call.timer?.cancel()
+        val request = JoinRequest(nextRequest++, call.name, call.seat, called = true)
+        p.request = request
+        _joinRequests.value = _joinRequests.value + request
+        // Aprovar mexe no jogo e toma a trava: fora dela. Se o jogo não aceitar, a chamada acaba como assento ocupado.
+        scope.launch {
+            val ok = game?.approveCalled(request.requestId) ?: false
+            if (!ok) mutex.withLock { calls[call.key]?.takeIf { it.pending === p }?.let { endCallLocked(it, null, SEAT_TAKEN_MESSAGE) } }
+        }
     }
 
     /** §16.5 reingresso pelo token, no mesmo assento, enquanto não foi substituído nem ocupado. */
@@ -988,7 +1126,8 @@ class HostSession(
             listed = started && open,
             hostId = hostId, epoch = epoch, provisionalRank = provisionalRank,
             // §16.2 recrutados que ainda não entraram: a chave serve de reserva se o início se perdeu.
-            invited = members.values.filter { it.inviteKey != null && it.link == null }.mapNotNull { it.inviteKey },
+            // §16.7 e as chamadas do anfitrião a jogadores livres, para a partida em andamento.
+            invited = members.values.filter { it.inviteKey != null && it.link == null }.mapNotNull { it.inviteKey } + calls.keys,
         )
     }
 
@@ -1100,6 +1239,18 @@ class HostSession(
 
         /** §16.5 eventos simultâneos: o assento já tem dono. */
         const val SEAT_TAKEN_MESSAGE: String = "A vaga foi preenchida."
+
+        /** §16.7 no máximo 3 chamadas ao mesmo tempo (o limite de chaves do anúncio da mesa). */
+        const val MAX_CALLS: Int = 3
+
+        /** §16.7, §16.15 o chamado tem 30 s para conectar à mesa em andamento (a busca do rádio, como em §16.2). */
+        const val CALL_CONNECT_MILLIS: Long = 30_000
+
+        /** §16.7, §16.15 depois de conectar: os 25 s do convite mais 2 s de folga da rede. */
+        const val CALL_REPLY_MILLIS: Long = 27_000
+
+        const val CALL_CANCELLED_MESSAGE: String = "O anfitrião cancelou a chamada."
+        const val CALL_TIMEOUT_MESSAGE: String = "Você não respondeu a tempo."
     }
 }
 

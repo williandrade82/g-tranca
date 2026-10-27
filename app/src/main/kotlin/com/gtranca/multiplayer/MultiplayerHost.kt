@@ -598,6 +598,12 @@ class MultiplayerHost(
         scope?.launch { evaluatePause() }
     }
 
+    /** §16.7 quem entrar num assento de robô de origem debita a aposta cheia; no lugar de quem saiu, herda a retida (0). */
+    override fun entryDebit(seat: Seat): Int = _ledger.value.let { if (it.seats[seat.index].holder == null) it.stake else 0 }
+
+    /** §16.7 o jogador chamado aceitou: chamar já era a aprovação do anfitrião, então entra pelo mesmo caminho de [approveJoin]. */
+    override suspend fun approveCalled(requestId: Int): Boolean = approveJoin(requestId)
+
     /**
      * §16.5, §16.7 quem (re)entra recebe o fim da última partida se ainda não o tinha recebido (§16.11), a vista completa
      * (com o histórico) e, se o jogo está pausado, o porquê.

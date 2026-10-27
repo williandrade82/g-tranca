@@ -30,6 +30,15 @@ sealed interface GuestStatus {
     /** §16.7 pediu para entrar no meio do jogo; aguardando a aprovação do anfitrião. */
     data object WaitingApproval : GuestStatus
 
+    /**
+     * §16.7 o anfitrião chamou este jogador livre para uma partida em andamento: [offer] traz regras, assento e débito. A
+     * interface mostra o modal *Convite* e responde com [GuestSession.answerCall]; sem resposta o convite vale como recusa.
+     */
+    data class Called(val offer: CallOffer) : GuestStatus
+
+    /** §16.7 o chamado recusou (ou não pôde aceitar): a sessão acabou, sem mensagem de "mesa encerrada". */
+    data object Declined : GuestStatus
+
     /** Jogo em andamento. */
     data object Playing : GuestStatus
 
@@ -382,6 +391,25 @@ class GuestSession(
         }
     }
 
+    /**
+     * §16.7 responde à chamada para a partida em andamento ([GuestStatus.Called]). Aceitar fica à espera do [Welcome];
+     * recusar (ou o saldo menor que o débito, [reason] [RefusalReason.INSUFFICIENT_BALANCE]) encerra a sessão.
+     */
+    suspend fun answerCall(accept: Boolean, reason: RefusalReason? = null) {
+        mutex.withLock {
+            if (_status.value !is GuestStatus.Called) return
+            link?.sendLocked(CallReply(accept, reason))
+            if (accept) {
+                _status.value = GuestStatus.WaitingApproval
+            } else {
+                // O anfitrião fecha a conexão ao receber a recusa: aqui só se solta o enlace, sem tentar voltar.
+                link?.close()
+                link = null
+                _status.value = GuestStatus.Declined
+            }
+        }
+    }
+
     /** Propõe [action] para o pedido em aberto da vista atual (ou para [requestId], se informado). */
     suspend fun propose(action: Action, requestId: Long = _view.value?.requestId ?: 0) = send(ProposeAction(requestId, action))
 
@@ -555,6 +583,11 @@ class GuestSession(
                 }
             }
             JoinWaiting -> _status.value = GuestStatus.WaitingApproval
+            is CallOffer -> {
+                replyWatch?.cancel()
+                _rules.value = payload.rules
+                _status.value = GuestStatus.Called(payload)
+            }
             is Rejected -> {
                 // §16.5 recusado ou substituído por outra conexão (sessão duplicada): não volta nem assume, e o estado
                 // completo (se era sucessor) é descartado.

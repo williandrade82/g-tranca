@@ -292,6 +292,28 @@ class MultiplayerTable(
     /** Diagnóstico (só no build debug): passos da entrada e do início, sem nomes, cartas nem tokens. */
     var log: (String) -> Unit = {}
 
+    /** §16.7 esta mesa foi aberta por uma chamada do anfitrião: aceita, a tela vai direto ao jogo (sem "Prepare-se!"). */
+    @Volatile
+    var viaCall: Boolean = false
+        private set
+
+    private val _lowBalance = MutableStateFlow(false)
+
+    /** §16.7 a chamada foi recusada sozinha: o saldo é menor que o débito (a tela avisa "Saldo insuficiente para esta mesa"). */
+    val lowBalance: StateFlow<Boolean> = _lowBalance.asStateFlow()
+
+    /** §16.7 responde à chamada para a partida em andamento (aceitar ou recusar); sem papel de convidado, nada. */
+    suspend fun answerCall(accept: Boolean, reason: com.gtranca.net.RefusalReason? = null) {
+        (_role.value as? MpRole.Guesting)?.session?.answerCall(accept, reason ?: if (accept) null else com.gtranca.net.RefusalReason.INVITE_REFUSED)
+    }
+
+    /**
+     * §16.7 jogadores **livres** por perto, para o anfitrião escolher quem chamar: na tela *Iniciar novo jogo*, sem estar
+     * recrutando nem já chamados ou recrutados. Só colete com o modal *Chamar jogador* aberto (a busca fica em modo ativo).
+     */
+    fun freePlayers(): kotlinx.coroutines.flow.Flow<List<com.gtranca.net.PresenceAdvert>> =
+        transport.discoverPresence().map { list -> list.filter { it.free && !it.hosting && !it.leaving && it.recruitedBy == null } }
+
     private fun failureEnd(kind: com.gtranca.net.JoinFailureKind): MpEnd = when (kind) {
         com.gtranca.net.JoinFailureKind.NOT_FOUND -> MpEnd.NotFound
         com.gtranca.net.JoinFailureKind.CONNECT_FAILED -> MpEnd.ConnectFailed
@@ -299,7 +321,8 @@ class MultiplayerTable(
     }
 
     /** [join] sem esperar: a falha vira o fim com a sua causa (mesa não achada, conexão que falhou, sem resposta). */
-    fun joinAsync(tableId: String, playerName: String, inviteKey: String? = null) {
+    fun joinAsync(tableId: String, playerName: String, inviteKey: String? = null, viaCall: Boolean = false) {
+        this.viaCall = viaCall
         scope.launch {
             after?.join()
             try {
@@ -557,7 +580,7 @@ class MultiplayerTable(
             is MpRole.Guesting -> {
                 val status = role.session.status.value
                 if (status == GuestStatus.Lobby || status == GuestStatus.Connecting ||
-                    status == GuestStatus.WaitingApproval
+                    status == GuestStatus.WaitingApproval || status is GuestStatus.Called
                 ) {
                     role.session.leave()
                 }
@@ -713,6 +736,14 @@ class MultiplayerTable(
                             if (was == GuestStatus.Reconnecting || was == GuestStatus.Resigned) _resigned.value = false
                         }
                         GuestStatus.Resigned -> _resigned.value = true
+                        is GuestStatus.Called -> {
+                            // §16.7 saldo menor que o débito: recusa sozinha (como no convite de §16.2).
+                            val debit = status.offer.debit
+                            if (debit > 0 && !coins.canAfford(debit)) {
+                                _lowBalance.value = true
+                                guest.answerCall(false, com.gtranca.net.RefusalReason.INSUFFICIENT_BALANCE)
+                            }
+                        }
                         is GuestStatus.Refused -> {
                             _end.value = MpEnd.Refused(status.message, status.reason)
                             // §16.12 token recusado ("A vaga foi preenchida."): a sessão não serve mais (a conexão substituída por

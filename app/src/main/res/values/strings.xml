@@ -590,6 +590,14 @@
     <string name="mp_pause_recruit">Abrir vaga</string>
     <string name="mp_pause_waiting">Aguardando %1$s</string>
     <string name="mp_pause_recruiting">Aguardando recrutamento</string>
+    <string name="mp_pause_call">Chamar jogador</string>
+    <string name="mp_call_title">Chamar jogador</string>
+    <string name="mp_call_text">Escolha quem está livre por perto para ocupar a vaga de %1$s.</string>
+    <string name="mp_call_empty">Ninguém livre por perto. Quem estiver em Iniciar novo jogo com o Wi-Fi do jogo ligado aparece aqui.</string>
+    <string name="mp_call_waiting">Aguardando %1$s responder…</string>
+    <string name="mp_call_cancel">Cancelar chamada</string>
+    <string name="mp_call_close">Fechar</string>
+    <string name="mp_call_out_of_range">%1$s saiu do alcance.</string>
     <string name="mp_join_request">%1$s quer entrar no lugar de %2$s</string>
     <string name="mp_join_accept">Aceitar</string>
     <string name="mp_join_refuse">Recusar</string>
@@ -630,7 +638,7 @@
     <string name="mp_disconnect_confirm">Desconectar</string>
     <string name="mp_menu_section">Multijogador</string>
     <string name="mp_swap_seat">Trocar jogador ou robô</string>
-    <string name="mp_swap_text">Escolha um assento: o jogador dá lugar a um robô; o robô libera a vaga para alguém entrar, com a sua aprovação.</string>
+    <string name="mp_swap_text">Escolha um assento: o jogador dá lugar a um robô; o robô libera a vaga e você chama alguém que esteja livre por perto.</string>
     <string name="mp_swap_none">Não há assento para trocar.</string>
     <string name="mp_notice_left_robot">%1$s saiu; %2$s assume o lugar</string>
     <string name="mp_notice_left_robot_reason">%1$s saiu; %2$s assume o lugar (%3$s)</string>
@@ -702,6 +710,9 @@
     <string name="a11y_player_available">%1$s, jogador, disponível</string>
     <string name="a11y_recruited_elsewhere">%1$s, recrutado por outro</string>
     <string name="invite_recruiting">%1$s está te recrutando</string>
+    <string name="invite_calling">%1$s está te chamando para uma partida em andamento</string>
+    <string name="invite_debit">Débito</string>
+    <string name="invite_debit_none">Nenhum: você herda a aposta de quem saiu</string>
     <string name="invite_stake">Aposta</string>
     <string name="invite_type">Tipo</string>
     <string name="invite_position">Posição</string>

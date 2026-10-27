@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 16
+const val PROTOCOL_VERSION: Int = 17
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -522,6 +522,20 @@ data class ResendRequest(val from: Long) : Payload
 @Serializable
 @SerialName("joinWaiting")
 data object JoinWaiting : Payload
+
+/**
+ * §16.7 convite de uma **partida em andamento** (anfitrião → jogador livre chamado, primeira resposta ao [Hello] com a
+ * chave de presença): as [rules] da mesa, o [seat] oferecido e o [debit] (a aposta cheia no lugar de um robô; 0 no lugar
+ * de quem saiu, que herda a aposta retida). Quem recebe responde com [CallReply]; o aceite nunca é automático.
+ */
+@Serializable
+@SerialName("callOffer")
+data class CallOffer(val hostName: String, val rules: TableRules, val seat: Seat, val debit: Int) : Payload
+
+/** §16.7 resposta ao [CallOffer] (chamado → anfitrião). Aceitar entra no assento; recusar só limpa a chamada. */
+@Serializable
+@SerialName("callReply")
+data class CallReply(val accepted: Boolean, val reason: RefusalReason? = null) : Payload
 
 /** Tipo de aviso público da mesa (§16.8: todos são avisados de cada ação do anfitrião). */
 @Serializable

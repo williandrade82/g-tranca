@@ -470,6 +470,44 @@ class RecruitmentTest {
         bia.events shouldBe listOf(RecruitEvent.Start("mesa1", "kb", PREPARE_MILLIS))
     }
 
+    /** §16.7 livre (tela 1) que acha a própria chave no anúncio de uma partida em andamento é avisado, uma vez só. */
+    @Test
+    fun `§16_7 livre chamado por uma partida em andamento recebe o evento Called uma vez`() = runTest {
+        val net = MemoryNetwork()
+        val bia = device(net, "kb", "Bia")
+        runCurrent()
+        net.transport().advertise(TableAdvert("mesa1", "Mesa", "Ana", inProgress = true, invited = listOf("kb")))
+        runCurrent()
+        bia.events shouldBe listOf(RecruitEvent.Called("mesa1", "kb"))
+        net.transport().advertise(TableAdvert("mesa1", "Mesa", "Ana", inProgress = true, invited = listOf("kb")))
+        runCurrent()
+        bia.events.size shouldBe 1
+    }
+
+    /** §16.7 quem não está livre (outra tela) ou a chave de outro jogador não dispara a chamada. */
+    @Test
+    fun `§16_7 so o livre que foi chamado recebe o evento Called`() = runTest {
+        val net = MemoryNetwork()
+        val away = device(net, "kc", "Caio", free = false)
+        val other = device(net, "kd", "Duda")
+        runCurrent()
+        net.transport().advertise(TableAdvert("mesa1", "Mesa", "Ana", inProgress = true, invited = listOf("kc")))
+        runCurrent()
+        away.events shouldBe emptyList()
+        other.events shouldBe emptyList()
+    }
+
+    /** §16.2 anúncio ainda não iniciado com a chave em `invited` continua sendo só o "início perdido" do recrutado. */
+    @Test
+    fun `§16_7 mesa que ainda nao comecou nao chama o livre`() = runTest {
+        val net = MemoryNetwork()
+        val bia = device(net, "kb", "Bia")
+        runCurrent()
+        net.transport().advertise(TableAdvert("mesa1", "Mesa", "Ana", inProgress = false, invited = listOf("kb")))
+        runCurrent()
+        bia.events shouldBe emptyList()
+    }
+
     @Test
     fun `§16_2 as fotos vao pela conexao de espera, nos dois sentidos, antes do convite`() = runTest {
         val net = MemoryNetwork()

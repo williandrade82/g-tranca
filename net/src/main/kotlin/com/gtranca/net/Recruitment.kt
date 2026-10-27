@@ -73,6 +73,12 @@ sealed interface RecruitEvent {
 
     /** O recrutador tocou em ComeÃ§ar Partida: mostrar "Prepare-se!" por no mÃ­nimo [prepareMillis] e entrar na mesa [tableId]. */
     data class Start(val tableId: String, val inviteKey: String, val prepareMillis: Long = PREPARE_MILLIS) : RecruitEvent
+
+    /**
+     * §16.7 o anfitrião de uma partida em andamento chamou este jogador livre (a chave dele está em `invited` do anúncio da
+     * mesa [tableId], que está em andamento): conectar à mesa com [inviteKey] para receber o convite. Sem "Prepare-se!".
+     */
+    data class Called(val tableId: String, val inviteKey: String) : RecruitEvent
 }
 
 /**
@@ -224,6 +230,9 @@ class Recruitment(
     /** §16.15 o início foi enviado ou recebido: o anúncio é da mesa do jogo e a presença não o toca mais. */
     @Volatile
     private var yielded = false
+
+    /** §16.7 já avisei o hub da chamada para a partida em andamento (uma vez por instância). */
+    private var callEmitted = false
 
     /** Recrutado sem conexÃ£o e recusado no reingresso: o inÃ­cio se perdeu; espera a mesa aparecer. */
     private var awaitingStart = false
@@ -721,6 +730,17 @@ class Recruitment(
     /** O inÃ­cio se perdeu: a mesa do recrutador apareceu com a minha chave em `invited`. */
     private suspend fun tablesLocked(list: List<TableAdvert>) {
         lastTables = list
+        // §16.7 livre (tela 1) e chamado por uma partida em andamento: avisa o hub, que conecta à mesa (uma vez só).
+        if (_status.value == RecruitStatus.Free && isFree()) {
+            if (!callEmitted) {
+                list.firstOrNull { it.inProgress && myKey in it.invited }?.let { table ->
+                    callEmitted = true
+                    log("rec called to a game in progress")
+                    _events.tryEmit(RecruitEvent.Called(table.tableId, myKey))
+                }
+            }
+            return
+        }
         if (_status.value !is RecruitStatus.Joined) return
         val table = list.firstOrNull { myKey in it.invited } ?: return
         log("rec start via table advert")
