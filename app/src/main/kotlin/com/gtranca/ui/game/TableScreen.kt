@@ -292,8 +292,11 @@ private fun TableScreenContent(
     var explainedRefusal by remember { mutableStateOf<RefusalContent?>(null) }
     // Altura (px, a partir do alto da tela) do último toque do jogador; negativa = ainda sem toque.
     var lastTouchY by remember { mutableStateOf(-1f) }
+    // Altura em que o aviso aparece: fixada quando ele surge, para não fugir do dedo ao ser tocado.
+    var snackY by remember { mutableStateOf(-1f) }
     LaunchedEffect(state.message) {
         if (messageText != null) {
+            snackY = lastTouchY
             snackRefusal = state.message?.let { MoveRefusal.explain(it, view) }
             snackbar.showSnackbar(messageText)
             events.onMessageShown()
@@ -484,7 +487,7 @@ private fun TableScreenContent(
                         // Ocupa a área toda (sem pegar toques) e posiciona só a faixa, que mede o próprio tamanho.
                         val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
                         val room = (constraints.maxHeight - placeable.height).coerceAtLeast(0)
-                        val y = if (lastTouchY < 0f) room else (lastTouchY - topInsetPx - placeable.height - gapPx).toInt().coerceIn(0, room)
+                        val y = if (snackY < 0f) room else (snackY - topInsetPx - placeable.height - gapPx).toInt().coerceIn(0, room)
                         layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, y) }
                     },
                 ) {
