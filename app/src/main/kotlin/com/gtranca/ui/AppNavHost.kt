@@ -201,6 +201,12 @@ fun AppNavHost() {
     val speedSettings = remember(slowAnimations, data) {
         SpeedSettings(slowAnimations) { WriteQueue.app.enqueue { data.settings.setSlowAnimations(!slowAnimations) } }
     }
+    // Ações impedidas (Perfil e modal da mesa): vale para o app todo.
+    val refusalAlert by remember(data) { data.settings.settings.map { it.refusalAlert }.catch { emit(com.gtranca.data.RefusalAlert.EXPLAIN) } }
+        .collectAsStateWithLifecycle(com.gtranca.data.RefusalAlert.EXPLAIN)
+    val refusalSettings = remember(refusalAlert, data) {
+        com.gtranca.ui.game.RefusalSettings(refusalAlert) { alert -> WriteQueue.app.enqueue { data.settings.setRefusalAlert(alert) } }
+    }
     // Cor do baralho (Perfil): vale para o app todo.
     val deck by remember(data) {
         data.settings.settings.map { com.gtranca.game.PlayerProfile.decode(it.profileId).deck }.catch { emit(com.gtranca.game.DeckColor.AZUL) }
@@ -230,6 +236,7 @@ fun AppNavHost() {
         com.gtranca.ui.tour.LocalTours provides tourSettings,
         LocalSoundSettings provides soundSettings,
         LocalSpeedSettings provides speedSettings,
+        com.gtranca.ui.game.LocalRefusalSettings provides refusalSettings,
         com.gtranca.ui.cards.LocalDeckColor provides deck,
     ) {
     androidx.compose.foundation.layout.Box(

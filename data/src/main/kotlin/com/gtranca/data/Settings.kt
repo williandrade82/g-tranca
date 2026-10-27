@@ -14,6 +14,18 @@ import kotlinx.coroutines.flow.catch
 import java.io.IOException
 import kotlinx.coroutines.flow.map
 
+/** Perfil, "Ações impedidas": o que a mesa mostra quando o motor recusa uma jogada (docs/telas.md 3.6, item 6d). */
+enum class RefusalAlert {
+    /** Nada aparece. */
+    NONE,
+
+    /** Faixa pequena perto da barra de ações, com uma frase simples do problema. */
+    SUBTLE,
+
+    /** Modal que explica o que aconteceu, a regra da mesa e o que fazer. */
+    EXPLAIN,
+}
+
 /**
  * Preferências do jogador.
  *
@@ -24,6 +36,7 @@ import kotlinx.coroutines.flow.map
  * @property slowAnimations velocidade das animações: `true` = 30% mais lentas (padrão), `false` = normal.
  * @property wifiOn §16 Wi-Fi do jogo (Perfil): multijogador por perto ligado (desligado por padrão).
  * @property showSharedPhotos §16.2 ver as fotos dos outros jogadores nas mesas multijogador (ligado por padrão).
+ * @property refusalAlert Perfil, "Ações impedidas": como avisar de uma jogada recusada (explicar sempre por padrão).
  * @property toursSeen tours guiados já vistos (um id por tela; docs/telas.md 3.16).
  * @property customRules §14.4 regras personalizadas do jogador, ou `null` se ainda não salvou (a interface parte da Clássica).
  */
@@ -39,6 +52,7 @@ data class Settings(
     val toursSeen: Set<String> = emptySet(),
     /** Tour guiado automático (Perfil): ligado, cada tela mostra o seu tour sozinha na primeira vez. */
     val tourAuto: Boolean = true,
+    val refusalAlert: RefusalAlert = RefusalAlert.EXPLAIN,
     /** §14.4 última montagem da mesa (docs/telas.md 3.2), ou `null` se ainda não montou nenhuma. */
     val tableSetup: TableSetup? = null,
 )
@@ -70,6 +84,8 @@ interface SettingsRepository {
 
     suspend fun setTourAuto(on: Boolean) = Unit
 
+    suspend fun setRefusalAlert(alert: RefusalAlert) = Unit
+
     /** §14.4 grava a montagem da mesa (substitui a configuração antiga de "Criar mesa"). */
     suspend fun setTableSetup(setup: TableSetup) = Unit
 }
@@ -92,6 +108,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             showSharedPhotos = prefs[SHOW_SHARED_PHOTOS] ?: true,
             toursSeen = prefs[TOURS_SEEN] ?: emptySet(),
             tourAuto = prefs[TOUR_AUTO] ?: true,
+            refusalAlert = prefs[REFUSAL_ALERT]?.let { name -> RefusalAlert.entries.firstOrNull { it.name == name } } ?: RefusalAlert.EXPLAIN,
             // A configuração antiga de "Criar mesa" vale só enquanto não há montagem nova (tipo e nome da mesa ignorados).
             tableSetup = prefs[TABLE_SETUP]?.let(TableSetup::decode) ?: prefs[CREATE_TABLE]?.let(TableSetup::fromLegacy),
         )
@@ -132,6 +149,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit { it[TOUR_AUTO] = on }
     }
 
+    override suspend fun setRefusalAlert(alert: RefusalAlert) {
+        store.edit { it[REFUSAL_ALERT] = alert.name }
+    }
+
     override suspend fun resetTours() {
         store.edit { it.remove(TOURS_SEEN) }
     }
@@ -157,6 +178,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         val WIFI_ON = booleanPreferencesKey("wifi_on")
         val SHOW_SHARED_PHOTOS = booleanPreferencesKey("show_shared_photos")
         val TOUR_AUTO = booleanPreferencesKey("tour_auto")
+        val REFUSAL_ALERT = stringPreferencesKey("refusal_alert")
         /** Formato antigo (até a mesa montada): lido uma vez como [TableSetup.fromLegacy] e apagado ao gravar. */
         val CREATE_TABLE = stringPreferencesKey("create_table")
         val TABLE_SETUP = stringPreferencesKey("table_setup")

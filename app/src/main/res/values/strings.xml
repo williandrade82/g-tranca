@@ -310,7 +310,14 @@
     <string name="refusal_section_happened">O que aconteceu</string>
     <string name="refusal_section_rule">Regra desta mesa</string>
     <string name="refusal_section_tip">O que fazer</string>
-    <string name="refusal_ok">Entendi</string>
+    <string name="refusal_keep">Continuar avisando</string>
+    <string name="refusal_subtle">Avisar discretamente</string>
+    <string name="refusal_none">Não avisar mais</string>
+    <string name="profile_refusal">Ações impedidas</string>
+    <string name="profile_refusal_hint">O que a mesa faz quando uma jogada não é permitida.</string>
+    <string name="profile_refusal_none_choice">Não avisar</string>
+    <string name="profile_refusal_subtle_choice">Aviso discreto</string>
+    <string name="profile_refusal_explain_choice">Explicar sempre</string>
 
     <string name="refusal_title_generic">Jogada não permitida</string>
     <string name="refusal_title_round_finished">A partida terminou</string>

@@ -280,12 +280,15 @@ private fun TableScreenContent(
     val snapshot = state.snapshot
     val view = snapshot.view
     val snackbar = remember { SnackbarHostState() }
-    // Jogada recusada: modal que explica (docs/telas.md 4). Só o aviso "Mostre suas cartas" continua sendo faixa.
-    val refusal = state.message?.let { MoveRefusal.explain(it, view) }
-    val messageText = state.message?.takeIf { refusal == null }?.let { stringResource(it.messageRes()) }
+    // Jogada recusada: o Perfil escolhe entre nada, aviso discreto e modal que explica (docs/telas.md 3.6 e 4).
+    val handling = state.message?.let { LocalRefusalSettings.current.alert.handling(it) }
+    val refusal = state.message?.takeIf { handling == MessageHandling.MODAL }?.let { MoveRefusal.explain(it, view) }
+    val messageText = state.message?.takeIf { handling == MessageHandling.SNACK }?.let { stringResource(it.messageRes()) }
     LaunchedEffect(state.message) {
         if (messageText != null) {
             snackbar.showSnackbar(messageText)
+            events.onMessageShown()
+        } else if (handling == MessageHandling.HIDDEN) {
             events.onMessageShown()
         }
     }
@@ -484,7 +487,7 @@ private fun TableScreenContent(
         }
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
-    refusal?.let { RefusalDialog(it, events::onMessageShown) }
+    refusal?.let { RefusalDialog(it, LocalRefusalSettings.current.set, events::onMessageShown) }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.meldChoice?.let { options -> MeldChoiceDialog(options, view, events) }
     if (state.confirmDecline) {

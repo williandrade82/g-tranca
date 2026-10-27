@@ -17,17 +17,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gtranca.R
+import com.gtranca.data.RefusalAlert
 import com.gtranca.ui.theme.GButton
+import com.gtranca.ui.theme.GButtonKind
 import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GDialog
 import com.gtranca.ui.theme.Spacing
 
 /**
  * Modal de jogada não permitida (docs/telas.md 4): explica o que aconteceu, qual regra da mesa causa a recusa e o que
- * fazer. Não fecha sozinho; só o botão "Entendi" (ou voltar/tocar fora) o dispensa. O conteúdo vem de [MoveRefusal].
+ * fazer. Não fecha sozinho; só um dos três botões de *Ações impedidas* (ou voltar/tocar fora) o dispensa. O conteúdo vem
+ * de [MoveRefusal].
  */
 @Composable
-fun RefusalDialog(content: RefusalContent, onDismiss: () -> Unit) {
+fun RefusalDialog(content: RefusalContent, onChoose: (RefusalAlert) -> Unit, onDismiss: () -> Unit) {
     GDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("refusal-dialog"),
@@ -50,8 +53,21 @@ fun RefusalDialog(content: RefusalContent, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            GButton(onDismiss, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("refusal-ok")) {
-                Text(stringResource(R.string.refusal_ok), style = MaterialTheme.typography.titleMedium)
+            // "Continuar avisando" só fecha; as outras duas gravam a preferência (Perfil, Ações impedidas) e fecham.
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                GButton(onDismiss, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("refusal-keep")) {
+                    Text(stringResource(R.string.refusal_keep), style = MaterialTheme.typography.titleMedium)
+                }
+                GButton(
+                    { onChoose(RefusalAlert.SUBTLE); onDismiss() },
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("refusal-subtle"),
+                    kind = GButtonKind.Secondary,
+                ) { Text(stringResource(R.string.refusal_subtle)) }
+                GButton(
+                    { onChoose(RefusalAlert.NONE); onDismiss() },
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("refusal-none"),
+                    kind = GButtonKind.Text,
+                ) { Text(stringResource(R.string.refusal_none)) }
             }
         },
     )

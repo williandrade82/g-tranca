@@ -1,5 +1,6 @@
 package com.gtranca.ui.profile
 
+import com.gtranca.data.RefusalAlert
 import com.gtranca.data.Settings
 import com.gtranca.data.SettingsRepository
 import com.gtranca.engine.model.GameMode
@@ -43,6 +44,20 @@ class ProfileViewModelTest {
         override suspend fun setWifiOn(on: Boolean) = state.update { it.copy(wifiOn = on) }
         override suspend fun resetTours() = state.update { it.copy(toursSeen = emptySet()) }
         override suspend fun setTourAuto(on: Boolean) = state.update { it.copy(tourAuto = on) }
+        override suspend fun setRefusalAlert(alert: RefusalAlert) = state.update { it.copy(refusalAlert = alert) }
+    }
+
+    @Test
+    fun `Acoes impedidas - explica sempre por padrao, le o gravado e grava na hora`() = runTest(dispatcher) {
+        val settings = FakeSettings()
+        val vm = ProfileViewModel(settings, WriteQueue(CoroutineScope(dispatcher)))
+        advanceUntilIdle()
+        vm.uiState.value.refusalAlert shouldBe RefusalAlert.EXPLAIN
+        vm.onRefusalAlert(RefusalAlert.SUBTLE)
+        advanceUntilIdle()
+        settings.state.value.refusalAlert shouldBe RefusalAlert.SUBTLE
+        ProfileViewModel(FakeSettings(Settings(refusalAlert = RefusalAlert.NONE)), WriteQueue(CoroutineScope(dispatcher)))
+            .also { advanceUntilIdle() }.uiState.value.refusalAlert shouldBe RefusalAlert.NONE
     }
 
     @Test
