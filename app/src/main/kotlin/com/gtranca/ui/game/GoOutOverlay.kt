@@ -29,6 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -147,6 +150,9 @@ fun RoundEndBanner(end: RoundEnd, mode: GameMode, compact: Boolean, modifier: Mo
     }
 }
 
+/** Base da barra superior da mesa em coordenadas da tela: os fogos passam por baixo dela (docs/telas.md 3.8, camadas). */
+val LocalTableHeaderBottom = androidx.compose.runtime.compositionLocalOf<androidx.compose.runtime.MutableState<Float>?> { null }
+
 private val FireworksGreen = listOf(Color(0xFF2ECC40), Color(0xFF8BF05A), Color(0xFFC8FFB0))
 private val FireworksRed = listOf(Color(0xFFE53935), Color(0xFFFF6F60), Color(0xFFFFB4A8))
 
@@ -160,7 +166,10 @@ fun GoOutFireworks(win: Boolean, modifier: Modifier = Modifier) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) { progress.animateTo(1f, tween(Fireworks.TOTAL_MILLIS.toInt(), easing = androidx.compose.animation.core.LinearEasing)) }
     val palette = if (win) FireworksGreen else FireworksRed
-    Canvas(modifier.fillMaxSize().testTag("go-out-fireworks")) {
+    val headerBottom = LocalTableHeaderBottom.current
+    var top by remember { mutableStateOf(0f) }
+    Canvas(modifier.fillMaxSize().onGloballyPositioned { top = it.positionInRoot().y }.testTag("go-out-fireworks")) {
+      clipRect(top = ((headerBottom?.value ?: 0f) - top).coerceAtLeast(0f)) {
         val t = progress.value
         val base = size.minDimension * 0.008f
         bursts.forEach { burst ->
@@ -172,6 +181,7 @@ fun GoOutFireworks(win: Boolean, modifier: Modifier = Modifier) {
                 drawCircle(color.copy(alpha = s.alpha), base * 1.4f * s.size, center)
             }
         }
+      }
     }
 }
 

@@ -19,6 +19,8 @@ import com.gtranca.ui.theme.GSnack
 import com.gtranca.ui.persona.PersonaAvatar
 
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 
 import androidx.annotation.StringRes
 import androidx.compose.ui.text.style.TextAlign
@@ -377,9 +379,15 @@ private fun TableScreenContent(
         snackbarHost = { SnackbarHost(snackbar) { data -> GSnack(data.visuals.message) } },
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
+            var headerHeightPx by remember { mutableStateOf(0) }
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.fillMaxSize()) {
-                    Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                    // A barra superior fica à frente das animações da mesa (docs/telas.md 3.8, camadas): mede-se a base dela para
+                    // cortar os voos e os fogos ali, de modo que passem por baixo.
+                    val headerBottom = LocalTableHeaderBottom.current
+                    Box(Modifier.onGloballyPositioned { headerHeightPx = it.size.height; headerBottom?.value = it.positionInRoot().y + it.size.height }) {
+                        Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                    }
                     // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
                     // pelo menos o espaço livre e cresce com o conteúdo, nunca cortando cartas (telas baixas, fonte grande).
                     var seatsHeight by remember { mutableStateOf(0) }
@@ -428,10 +436,12 @@ private fun TableScreenContent(
                     // Comandos no ponto mais baixo da tela (o painel desce até a borda, sob a barra de navegação).
                     if (onReviewContinue != null) ReviewContinueBar(onReviewContinue, reviewBanner) else StatusAndActions(state, events)
                 }
+                Box(Modifier.fillMaxSize().drawWithContent { clipRect(top = headerHeightPx.toFloat()) { this@drawWithContent.drawContent() } }) {
                 FlightsLayer(state.flights, anchors, state.animationMillis, { readyFlights[it] == true }) { id ->
                     arrived[id] = true
                     // O som acompanha a chegada da carta ao destino.
                     state.flights.firstOrNull { it.id == id }?.let(SoundMap::forFlight)?.let(sound::play)
+                }
                 }
                 // §3.5/§6.5 troca de 3 vermelho de outro assento: anúncio no meio da tela, que some sozinho.
                 state.banner?.let { SwapAnnouncement(it, view.mode, snapshot.viewerSeat, state.personas.getOrNull(it.seat.index)) }

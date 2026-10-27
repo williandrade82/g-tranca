@@ -98,7 +98,7 @@ fun GameScreen(
     var goOutSeen by rememberSaveable { mutableStateOf(0) }
     val finishedRounds = snapshot.history.size
     // §14.4 regras da mesa para os textos (sem coringa, §1: só "Canastra", sem limpa/suja).
-    androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules, LocalTableHeaderBottom provides androidx.compose.runtime.remember { mutableStateOf(0f) }) {
     if (state.endScreen == EndScreen.FINAL_TABLE) {
         // docs/telas.md 3.9, 3.12 a mesa final, só para olhar: o banner de fim de partida grande por 2 s e, depois,
         // minimizado junto do "Seguir", que vai direto aos pontos da partida. Numa caixa só, com a animação por cima.
