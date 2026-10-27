@@ -1743,7 +1743,8 @@ private fun FlyingCard(
         snapshotFlow { isReady() }.first { it }
         delay(delayMillis)
         visible = true
-        progress.animateTo(1f, tween(durationMillis.toInt().coerceAtLeast(1), easing = FastOutSlowInEasing))
+        // A batida (última jogada) voa em câmera lenta (docs/telas.md 3.9).
+        progress.animateTo(1f, tween((durationMillis * flight.durationFactor).toInt().coerceAtLeast(1), easing = FastOutSlowInEasing))
         onArrived(flight.id)
         visible = false
     }
@@ -1766,7 +1767,8 @@ private fun FlyingCard(
                 IntOffset(point.x.roundToInt(), point.y.roundToInt())
             }
             .graphicsLayer {
-                val lift = 1f + 0.18f * sin(PI.toFloat() * progress.value)
+                // Batida: cresce até 1,4x em 40% do trajeto, fica grande por 20% e volta ao normal ao pousar.
+                val lift = if (flight.finale) GoOutDrama.flightScale(progress.value) else 1f + 0.18f * sin(PI.toFloat() * progress.value)
                 scaleX = lift
                 scaleY = lift
                 shadowElevation = 6f

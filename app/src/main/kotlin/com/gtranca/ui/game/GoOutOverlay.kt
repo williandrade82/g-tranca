@@ -147,6 +147,34 @@ fun RoundEndBanner(end: RoundEnd, mode: GameMode, compact: Boolean, modifier: Mo
     }
 }
 
+private val FireworksGreen = listOf(Color(0xFF2ECC40), Color(0xFF8BF05A), Color(0xFFC8FFB0))
+private val FireworksRed = listOf(Color(0xFFE53935), Color(0xFFFF6F60), Color(0xFFFFB4A8))
+
+/**
+ * Fogos de artifício da batida (docs/telas.md 3.9) por [Fireworks.TOTAL_MILLIS]: verdes se o jogador (ou a dupla) venceu,
+ * vermelhos se perdeu. Só desenha (sem toques); a animação pertence à composição, então para sozinha se a tela sair.
+ */
+@Composable
+fun GoOutFireworks(win: Boolean, modifier: Modifier = Modifier) {
+    val bursts = remember { Fireworks.create(seed = if (win) 31L else 47L) }
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { progress.animateTo(1f, tween(Fireworks.TOTAL_MILLIS.toInt(), easing = androidx.compose.animation.core.LinearEasing)) }
+    val palette = if (win) FireworksGreen else FireworksRed
+    Canvas(modifier.fillMaxSize().testTag("go-out-fireworks")) {
+        val t = progress.value
+        val base = size.minDimension * 0.008f
+        bursts.forEach { burst ->
+            burst.sparks.forEach { spark ->
+                val s = Fireworks.state(burst, spark, t) ?: return@forEach
+                val center = Offset(s.x * size.width, s.y * size.height)
+                val color = palette[spark.shade % palette.size]
+                drawCircle(color.copy(alpha = s.alpha * 0.25f), base * 3.2f * s.size, center)
+                drawCircle(color.copy(alpha = s.alpha), base * 1.4f * s.size, center)
+            }
+        }
+    }
+}
+
 /**
  * §11 animação do fim da partida sobre a mesa (docs/telas.md 3.9): a mesa escurecida ao fundo e o banner grande no centro
  * por 2 s (um toque encerra); confete se o seu lado bateu, borda da tela pulsando em vermelho se o adversário bateu, só o
@@ -168,7 +196,14 @@ fun RoundEndOverlay(end: RoundEnd, mode: GameMode, animate: Boolean, onDone: () 
             }
         }
     }
-    LaunchedEffect(Unit) {
+    // Dramatização (docs/telas.md 3.9): fogos de artifício por 1,5 s (um toque pula) e só então o banner.
+    var phase by remember { mutableStateOf(GoOutDrama.startPhase(end, animate)) }
+    LaunchedEffect(phase) {
+        if (phase == GoOutDrama.OverlayPhase.FIREWORKS) {
+            delay(Fireworks.TOTAL_MILLIS)
+            phase = GoOutDrama.next(phase)
+            return@LaunchedEffect
+        }
         when (end) {
             RoundEnd.YOU, RoundEnd.PARTNER -> sound.play(SoundEffect.WIN)
             RoundEnd.OPPONENT -> sound.play(SoundEffect.LOSE)
@@ -177,16 +212,21 @@ fun RoundEndOverlay(end: RoundEnd, mode: GameMode, animate: Boolean, onDone: () 
         delay(GO_OUT_OVERLAY_MILLIS)
         finish()
     }
+    val fireworks = phase == GoOutDrama.OverlayPhase.FIREWORKS
     val fade = 1f - collapse.value
     BoxWithConstraints(
         modifier
             .fillMaxSize()
             .zIndex(10f)
-            .background(Color.Black.copy(alpha = 0.4f * fade))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = finish)
+            .background(Color.Black.copy(alpha = if (fireworks) 0f else 0.4f * fade))
+            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = { if (fireworks) phase = GoOutDrama.next(phase) else finish() })
             .testTag("go-out-overlay"),
         contentAlignment = Alignment.Center,
     ) {
+        if (fireworks) {
+            GoOutFireworks(win = GoOutDrama.fireworksWin(end))
+            return@BoxWithConstraints
+        }
         val travel = constraints.maxHeight * 0.4f
         if (animate && !finishing) {
             when (end) {

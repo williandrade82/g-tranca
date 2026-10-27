@@ -5,6 +5,7 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.MortoStatus
+import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.Seat
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.RedThreeNotice
@@ -57,7 +58,12 @@ data class CardFlight(
     val delayMillis: Long = 0,
     /** Outras cartas da mão do humano que só aparecem quando este voo pousa (as do morto que não ganharam voo, §9). */
     val also: List<Card> = emptyList(),
-)
+    /** Última jogada da partida (a batida): voo em câmera lenta com a carta que cresce (docs/telas.md 3.9). */
+    val finale: Boolean = false,
+) {
+    /** Quantas vezes o voo dura o normal. */
+    val durationFactor: Float get() = if (finale) GoOutDrama.SLOWDOWN else 1f
+}
 
 /** §7 um conjunto virou canastra (limpa ou suja) neste instante: destaque curto. */
 data class CanastaFlash(val id: Long, val side: Int, val meldId: Int, val clean: Boolean)
@@ -135,6 +141,8 @@ object TableAnimations {
         old: GameSnapshot,
         new: GameSnapshot,
         hiddenFromView: Set<Card>,
+        /** A partida terminou com estas ações: os voos da última jogada viram a dramatização da batida. */
+        goOut: Boolean = false,
         nextId: () -> Long,
     ): Pair<List<CardFlight>, List<CanastaFlash>> {
         val events = newEvents(old, new)
@@ -148,7 +156,9 @@ object TableAnimations {
         // compra não aparece duas vezes (antes: uma carta virada aqui e a reposição de novo na troca).
         val laidNow = new.view.redThreeLog.drop(old.view.redThreeLog.size).filter { !it.atTurnStart }
 
+        val eventStarts = mutableListOf<Int>()
         for (event in events) {
+            eventStarts += flights.size
             val from = holder(event.seat, viewer)
             val side = mode.sideOf(event.seat).index
             when (val action = event.action) {
@@ -195,6 +205,18 @@ object TableAnimations {
                 is Action.AddToMeld -> action.cards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
                     flights += CardFlight(nextId(), from, AnimAnchor.Meld(side, action.meldId.value), card, STAGGER_MILLIS * i)
                 }
+            }
+        }
+        // Batida: as cartas que saem da mão na última ação voam em câmera lenta e crescendo (docs/telas.md 3.9).
+        val goOutSeat = (new.view.result as? RoundResult.GoOut)?.seat
+        val last = events.indexOfLast { it.seat == goOutSeat }
+        if (goOut && goOutSeat != null && last >= 0) {
+            // A última ação é a do assento que bateu (os eventos vêm agrupados por assento, não por tempo).
+            val hand = holder(goOutSeat, viewer)
+            val end = eventStarts.getOrElse(last + 1) { flights.size }
+            for (i in eventStarts[last] until end) {
+                val f = flights[i]
+                if (f.from == hand) flights[i] = f.copy(finale = true, delayMillis = (f.delayMillis * GoOutDrama.SLOWDOWN).toLong())
             }
         }
         // §9 morto pego agora: as cartas voam viradas da pilha do morto até quem o pegou (depois das outras jogadas).

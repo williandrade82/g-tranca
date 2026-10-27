@@ -195,6 +195,11 @@ class EndScreensTest {
         val snap = snapshot()
         var done = false
         rule.setContent { GTrancaTheme { RoundEndOverlay(roundEnd(snap)!!, snap.view.mode, animate = true, onDone = { done = true }) } }
+        // Antes do banner vêm os fogos de artifício vermelhos por 1,5 s (docs/telas.md 3.9).
+        rule.onNodeWithTag("go-out-fireworks").assertExists()
+        rule.onNodeWithTag("go-out-banner").assertDoesNotExist()
+        rule.mainClock.advanceTimeBy(1_600)
+        rule.onNodeWithTag("go-out-fireworks").assertDoesNotExist()
         rule.onNodeWithTag("go-out-message").assertIsDisplayed()
         rule.onNodeWithText("Sua dupla perdeu").assertIsDisplayed()
         rule.onNodeWithTag("go-out-banner").assertIsDisplayed()
