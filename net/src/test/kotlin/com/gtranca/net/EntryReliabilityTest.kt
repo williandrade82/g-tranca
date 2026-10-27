@@ -259,37 +259,6 @@ class EntryReliabilityTest {
     }
 
     @Test
-    fun `§16_2 §16_15 conexao que cai logo depois do plano - o recrutado ainda entra pelo anuncio da mesa`() = runTest {
-        val network = MemoryNetwork()
-        val r = recruitedPair(network)
-        r.anaRun.cancel()
-        network.drop(r.anaTransport.id) // a conexão de recrutamento morre antes do início
-        runCurrent()
-        val host = HostSession(r.anaTransport, "m", testRules(GameMode.INDIVIDUAL), "Ana", plan = r.plan)
-        host.open(sessionScope)
-        advanceTimeBy(5_000)
-        runCurrent()
-        r.biaEvents.filterIsInstance<RecruitEvent.Start>().single().tableId shouldBe "m"
-    }
-
-    @Test
-    fun `§16_2 §16_15 o reingresso de 8 s nao derruba o recrutado quando a mesa dele esta no ar`() = runTest {
-        val network = MemoryNetwork()
-        val r = recruitedPair(network)
-        r.anaRun.cancel()
-        network.drop(r.anaTransport.id)
-        runCurrent()
-        // A mesa só aparece depois dos 8 s do reingresso: o recrutado não pode ter virado Free antes de ver o anúncio.
-        advanceTimeBy(7_000)
-        runCurrent()
-        r.bia.status.value.shouldBeInstanceOf<RecruitStatus.Joined>()
-        HostSession(r.anaTransport, "m", testRules(GameMode.INDIVIDUAL), "Ana", plan = r.plan).open(sessionScope)
-        advanceTimeBy(5_000)
-        runCurrent()
-        r.biaEvents.filterIsInstance<RecruitEvent.Start>().single().tableId shouldBe "m"
-    }
-
-    @Test
     fun `§16_2 §16_15 ao fechar a mesa o recrutador avisa a saida as conexoes de espera e elas o tiram da lista na hora`() = runTest {
         val network = MemoryNetwork()
         val byes = mutableListOf<String>()

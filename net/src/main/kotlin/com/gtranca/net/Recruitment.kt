@@ -635,7 +635,8 @@ class Recruitment(
 
     /** Chamado/recrutado: conecta ao recrutador; larga a espera de quem parou de recrutar. */
     private suspend fun evaluateContactLocked() {
-        if (closed || recruiting()) return
+        // §16.15 depois do início (plano, envio ou recebimento) o aparelho vai para a mesa do jogo: não procura mais recrutador.
+        if (closed || yielded || recruiting()) return
         if (!freeFlag && _status.value == RecruitStatus.Free) {
             outLink?.let { dropLinkLocked(it) }
             return
@@ -676,7 +677,7 @@ class Recruitment(
             while (true) {
                 val presence = mutex.withLock {
                     presences.firstOrNull { it.key == host }
-                        ?.takeIf { !closed && outLink == null && !recruiting() && (rejoin || wants(it)) }
+                        ?.takeIf { !closed && !yielded && outLink == null && !recruiting() && (rejoin || wants(it)) }
                 }
                 if (presence == null) break
                 val endpoint = runCatching { transport.connectPresence(presence) }.getOrElse { log("rec connect failed ${it.message?.take(40)}"); null }

@@ -462,6 +462,7 @@ class NearbyTransportTest {
         scope.launch { biaPhotos.serve() }
         scope.launch { anaPhotos.fetchAll(ana.discoverPresence()) }
         scope.launch { biaPhotos.fetchAll(bia.discoverPresence()) }
+        advanceTimeBy(400) // a calma de 0,25 s depois de trocar o anúncio, antes do pedido de conexão
         runCurrent()
         biaPhotos.photos.value shouldBe mapOf("kana" to "FOTO")
         anaPhotos.photos.value shouldBe mapOf("kbia" to "")
