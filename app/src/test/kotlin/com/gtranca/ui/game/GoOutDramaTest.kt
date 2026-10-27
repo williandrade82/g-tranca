@@ -65,6 +65,16 @@ class GoOutDramaTest {
     }
 
     @Test
+    fun `o tremor da mesa comeca e termina parado e fica amortecido`() {
+        GoOutDrama.shake(0f) shouldBe Triple(0f, 0f, 0f)
+        GoOutDrama.shake(1f) shouldBe Triple(0f, 0f, 0f)
+        val early = (1..9).maxOf { kotlin.math.abs(GoOutDrama.shake(it * 0.02f).first) }
+        val late = (1..9).maxOf { kotlin.math.abs(GoOutDrama.shake(0.8f + it * 0.02f).first) }
+        (early > late) shouldBe true
+        GoOutDrama.SHAKE_MILLIS shouldBe 450
+    }
+
+    @Test
     fun `fogos verdes na vitoria (voce ou o parceiro) e vermelhos na derrota`() {
         GoOutDrama.fireworksWin(RoundEnd.YOU) shouldBe true
         GoOutDrama.fireworksWin(RoundEnd.PARTNER) shouldBe true

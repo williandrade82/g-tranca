@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -103,14 +104,30 @@ fun GameScreen(
         // minimizado junto do "Seguir", que vai direto aos pontos da partida. Numa caixa só, com a animação por cima.
         val end = roundEnd(snapshot)
         val showing = end != null && goOutSeen < finishedRounds
+        // Tremor da mesa quando a última carta chega (junto com os fogos); só a mesa treme, não o banner. Sem animação, sem tremor.
+        val shake = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+        val shakes = showing && state.animationMillis > 0 && end != RoundEnd.NO_WINNER
+        androidx.compose.runtime.LaunchedEffect(shakes) {
+            if (shakes) shake.animateTo(1f, androidx.compose.animation.core.tween(GoOutDrama.SHAKE_MILLIS, easing = androidx.compose.animation.core.LinearEasing))
+        }
+        val shakeReach = androidx.compose.ui.platform.LocalDensity.current.density * 5f
         androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
-            androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
-                FinalTableReview(
-                    state, viewModel, viewModel::onEndNext,
-                    banner = if (end != null && !showing) {
-                        { RoundEndBanner(end, snapshot.view.mode, compact = true, Modifier.fillMaxWidth()) }
-                    } else null,
-                )
+            androidx.compose.foundation.layout.Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    val (x, y, r) = GoOutDrama.shake(shake.value)
+                    translationX = x * shakeReach
+                    translationY = y * shakeReach
+                    rotationZ = r * 0.4f
+                },
+            ) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
+                    FinalTableReview(
+                        state, viewModel, viewModel::onEndNext,
+                        banner = if (end != null && !showing) {
+                            { RoundEndBanner(end, snapshot.view.mode, compact = true, Modifier.fillMaxWidth()) }
+                        } else null,
+                    )
+                }
             }
             if (showing) RoundEndOverlay(end!!, snapshot.view.mode, state.animationMillis > 0, onDone = { goOutSeen = finishedRounds })
         }

@@ -10,8 +10,8 @@ import kotlin.random.Random
  * então o banner. Lógica pura (sem Android), testável na JVM.
  */
 object GoOutDrama {
-    /** O voo da última jogada dura tantas vezes o normal (e a pausa entre as cartas do movimento também). */
-    const val SLOWDOWN: Float = 2f
+    /** O voo da última jogada dura tantas vezes o normal (fácil de ajustar) (e a pausa entre as cartas do movimento também). */
+    const val SLOWDOWN: Float = 3f
 
     /** Tamanho máximo da carta no meio do voo, em relação ao normal. */
     const val PEAK_SCALE: Float = 1.4f
@@ -33,6 +33,17 @@ object GoOutDrama {
         t <= GROW_END -> 1f + (PEAK_SCALE - 1f) * smooth(t / GROW_END)
         t <= HOLD_END -> PEAK_SCALE
         else -> 1f + (PEAK_SCALE - 1f) * (1f - smooth((t - HOLD_END) / (1f - HOLD_END)))
+    }
+
+    /** Duração do tremor da mesa quando a última carta chega (junto com os fogos). */
+    const val SHAKE_MILLIS: Int = 450
+
+    /** Tremor amortecido da mesa no instante [t] (0 a 1): deslocamentos x e y e rotação, cada um entre -1 e 1; zero no fim. */
+    fun shake(t: Float): Triple<Float, Float, Float> {
+        if (t <= 0f || t >= 1f) return Triple(0f, 0f, 0f)
+        val decay = (1f - t) * (1f - t)
+        val w = t * 2f * PI.toFloat()
+        return Triple(sin(w * 5f) * decay, sin(w * 6.5f + 1f) * decay, sin(w * 4f + 2f) * decay)
     }
 
     /** Tempos da dramatização no overlay do fim da partida. */
