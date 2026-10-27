@@ -284,8 +284,12 @@ private fun TableScreenContent(
     val handling = state.message?.let { LocalRefusalSettings.current.alert.handling(it) }
     val refusal = state.message?.takeIf { handling == MessageHandling.MODAL }?.let { MoveRefusal.explain(it, view) }
     val messageText = state.message?.takeIf { handling == MessageHandling.SNACK }?.let { stringResource(it.messageRes()) }
+    // Tocar no aviso discreto abre o modal que explica a mesma recusa.
+    var snackRefusal by remember { mutableStateOf<RefusalContent?>(null) }
+    var explainedRefusal by remember { mutableStateOf<RefusalContent?>(null) }
     LaunchedEffect(state.message) {
         if (messageText != null) {
+            snackRefusal = state.message?.let { MoveRefusal.explain(it, view) }
             snackbar.showSnackbar(messageText)
             events.onMessageShown()
         } else if (handling == MessageHandling.HIDDEN) {
@@ -381,7 +385,14 @@ private fun TableScreenContent(
         containerColor = Color.Transparent,
         // Sem a margem de baixo: a barra de ações cobre a área da navegação e põe o espaço dentro dela.
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        snackbarHost = { SnackbarHost(snackbar) { data -> GSnack(data.visuals.message) } },
+        snackbarHost = {
+            SnackbarHost(snackbar) { data ->
+                GSnack(
+                    data.visuals.message,
+                    onClick = snackRefusal?.let { content -> { explainedRefusal = content; data.dismiss() } },
+                )
+            }
+        },
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             var headerHeightPx by remember { mutableStateOf(0) }
@@ -488,6 +499,7 @@ private fun TableScreenContent(
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     refusal?.let { RefusalDialog(it, LocalRefusalSettings.current.set, events::onMessageShown) }
+    explainedRefusal?.let { RefusalDialog(it, LocalRefusalSettings.current.set) { explainedRefusal = null } }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.meldChoice?.let { options -> MeldChoiceDialog(options, view, events) }
     if (state.confirmDecline) {

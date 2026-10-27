@@ -3,6 +3,9 @@ package com.gtranca.ui.theme
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -186,13 +189,14 @@ fun GMessage(
 
 /** Aviso rápido (barra inferior): cartão escuro com borda amarela e o "!" de atenção. */
 @Composable
-fun GSnack(message: String, modifier: Modifier = Modifier) {
+fun GSnack(message: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     Row(
         modifier
             .padding(Spacing.md)
             .shadow(Elevation.dialog, MaterialTheme.shapes.large)
             .background(GColors.Indigo, MaterialTheme.shapes.large)
             .border(2.dp, GColors.Yellow, MaterialTheme.shapes.large)
+            .then(if (onClick != null) Modifier.clip(MaterialTheme.shapes.large).clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
