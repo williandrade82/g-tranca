@@ -141,6 +141,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.toSize
@@ -287,6 +290,8 @@ private fun TableScreenContent(
     // Tocar no aviso discreto abre o modal que explica a mesma recusa.
     var snackRefusal by remember { mutableStateOf<RefusalContent?>(null) }
     var explainedRefusal by remember { mutableStateOf<RefusalContent?>(null) }
+    // Altura (px, a partir do alto da tela) do último toque do jogador; negativa = ainda sem toque.
+    var lastTouchY by remember { mutableStateOf(-1f) }
     LaunchedEffect(state.message) {
         if (messageText != null) {
             snackRefusal = state.message?.let { MoveRefusal.explain(it, view) }
@@ -381,18 +386,19 @@ private fun TableScreenContent(
     Scaffold(
         modifier = modifier
             .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
-            .testTag("table-screen"),
+            .testTag("table-screen")
+            // Registra a altura do último toque (sem consumir o evento) para o aviso discreto aparecer ali.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.firstOrNull { it.pressed }?.let { lastTouchY = it.position.y }
+                    }
+                }
+            },
         containerColor = Color.Transparent,
         // Sem a margem de baixo: a barra de ações cobre a área da navegação e põe o espaço dentro dela.
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        snackbarHost = {
-            SnackbarHost(snackbar) { data ->
-                GSnack(
-                    data.visuals.message,
-                    onClick = snackRefusal?.let { content -> { explainedRefusal = content; data.dismiss() } },
-                )
-            }
-        },
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             var headerHeightPx by remember { mutableStateOf(0) }
@@ -467,6 +473,26 @@ private fun TableScreenContent(
                     LaunchedEffect(reveal.notice.id) {
                         delay(state.swapNoticeMillis)
                         events.onRevealConfirmed()
+                    }
+                }
+                // Aviso discreto: logo acima do último toque (o dedo não o cobre e fica longe da barra do Android);
+                // sem toque ainda, no fim da área. Por cima de tudo, para poder ser tocado.
+                val topInsetPx = with(LocalDensity.current) { padding.calculateTopPadding().toPx() }
+                val gapPx = with(LocalDensity.current) { 24.dp.toPx() }
+                Box(
+                    Modifier.fillMaxSize().layout { measurable, constraints ->
+                        // Ocupa a área toda (sem pegar toques) e posiciona só a faixa, que mede o próprio tamanho.
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        val room = (constraints.maxHeight - placeable.height).coerceAtLeast(0)
+                        val y = if (lastTouchY < 0f) room else (lastTouchY - topInsetPx - placeable.height - gapPx).toInt().coerceIn(0, room)
+                        layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, y) }
+                    },
+                ) {
+                    SnackbarHost(snackbar, Modifier.fillMaxWidth()) { data ->
+                        GSnack(
+                            data.visuals.message,
+                            onClick = snackRefusal?.let { content -> { explainedRefusal = content; data.dismiss() } },
+                        )
                     }
                 }
             }
