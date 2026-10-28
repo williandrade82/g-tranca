@@ -142,7 +142,7 @@ class InventoryRepositoryTest {
         val saved = SavedGame(
             gameId = "g", config = SavedConfig(com.gtranca.engine.model.GameMode.INDIVIDUAL, "medio", 3000),
             gameSeed = 1, match = com.gtranca.engine.startMatch(com.gtranca.engine.model.GameMode.INDIVIDUAL, 3000, Random(1)),
-            events = emptyList(), tableBoosters = com.gtranca.engine.TableBoosters.single(0, listOf("b1", "b3")).confirm(2, listOf("b2")),
+            events = emptyList(), tableBoosters = com.gtranca.engine.TableBoosters.single(0, listOf("b1", "b3")).confirm(2, listOf("b2"), 1),
         )
         val back = json.decodeFromString(SavedGame.serializer(), json.encodeToString(SavedGame.serializer(), saved))
         back.tableBoosters shouldBe saved.tableBoosters
