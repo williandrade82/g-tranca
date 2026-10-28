@@ -25,6 +25,15 @@ class BoostersTest {
     }
 
     @Test
+    fun `§17_1 b1 e b2 sao boosters de skill e b3 de interacao`() {
+        catalog.map { it.kind } shouldBe listOf(BoosterKind.SKILL, BoosterKind.SKILL, BoosterKind.INTERACTION)
+        BoosterCatalog.isSkill("b1") shouldBe true
+        BoosterCatalog.isSkill("b2") shouldBe true
+        BoosterCatalog.isSkill("b3") shouldBe false
+        BoosterCatalog.isSkill("inventado") shouldBe false
+    }
+
+    @Test
     fun `§17_1 quem nao tem inventario recebe a quantidade inicial e as moedas ficam fora`() {
         val inv = Inventory.initial(catalog)
         catalog.forEach { inv.quantity(it.id) shouldBe 5 }

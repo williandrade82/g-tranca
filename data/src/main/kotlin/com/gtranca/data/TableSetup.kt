@@ -21,6 +21,8 @@ data class TableSetup(
     val rules: String = "CLASSICA",
     val stake: Int = 0,
     val target: String = "",
+    /** §17.9 a mesa permite os boosters de skill. */
+    val skillBoosters: Boolean = true,
 ) {
     fun encode(): String = JSON.encodeToString(serializer(), this)
 

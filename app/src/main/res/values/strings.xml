@@ -775,4 +775,11 @@
     <string name="inventory_info_placeholder">Toque num item do armário para ver o que ele faz.</string>
     <string name="inventory_info_quantity">· você tem %1$d</string>
     <string name="inventory_coins_description">Moedas do jogo: ganha-se ao vencer e perde-se ao perder. Servem para as apostas e não se marcam para a partida.</string>
+    <string name="create_skill_boosters">Boosters de skill</string>
+    <string name="skill_boosters_on">Permitidos</string>
+    <string name="skill_boosters_off">Não permitidos</string>
+    <string name="recruited_skill">Boosters de skill: %1$s</string>
+    <string name="selector_skill_blocked">Esta mesa não permite boosters de skill</string>
+    <string name="booster_kind_skill">Booster de Skill</string>
+    <string name="booster_kind_interaction">Booster de Interação</string>
 </resources>

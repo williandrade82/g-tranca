@@ -76,6 +76,12 @@ fun RecruitedTableScreen(joined: RecruitStatus.Joined, self: Persona, photos: Ma
                 Text(stringResource(R.string.stake_line, rules.stake), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
             }
             Text(stringResource(R.string.rule_target_value, com.gtranca.ui.game.plainPoints(rules.targetScore)), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel)
+            Text(
+                stringResource(R.string.recruited_skill, stringResource(if (rules.skillBoosters) R.string.skill_boosters_on else R.string.skill_boosters_off)),
+                Modifier.testTag("recruited-skill"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = GColors.Steel,
+            )
             Text(rules.rulesTitle.ifBlank { rules.rules.name }, style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
             TextButton(
                 { showDetails = true },

@@ -26,7 +26,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 18
+const val PROTOCOL_VERSION: Int = 19
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -89,6 +89,8 @@ data class TableRules(
     val robots: List<String> = emptyList(),
     /** §16.2 título das regras ("Clássica", "Tranca Paulista" ou "Personalizada"), mostrado no convite. */
     val rulesTitle: String = "",
+    /** §17.9 a mesa permite os boosters de skill (o convite informa; o anfitrião recusa os de skill se não). */
+    val skillBoosters: Boolean = true,
 )
 
 /** Etapa do jogo vista por um assento (mesma ideia de `Stage` do `:app`). */

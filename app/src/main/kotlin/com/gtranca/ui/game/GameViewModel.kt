@@ -279,7 +279,7 @@ class GameViewModel(
     private val playsLocally: Boolean = externalDriver == null
 
     /** §17.3 os boosters do jogador deste aparelho: os do assento dele em [table]. */
-    private val boosters: List<String> get() = seatState.boosters
+    private val boosters: List<String> get() = seatState.boosters.filter { config.skillBoosters || !com.gtranca.engine.BoosterCatalog.isSkill(it) } // §17.9
 
     /**
      * §17.4 o estado dos boosters do assento deste aparelho: na mesa multijogador o que o anfitrião guarda (e só vale na partida em
@@ -559,7 +559,7 @@ class GameViewModel(
         val snapshot = driver.controller.saveSnapshot()
         persistence?.let { store -> writes.enqueue { store.discard() } }
         val robots = personas.withIndex().mapNotNull { (i, p) -> p.character?.let { i to it.profile.code } }.toMap()
-        return HandOff(playedConfig.copy(rules = snapshot.match.rules), gameSeed, snapshot, robots)
+        return HandOff(playedConfig.copy(rules = snapshot.match.rules), gameSeed, snapshot, robots, table)
     }
 
     /** A troca é do próprio humano: encenação com o botão "Baixar 3 vermelho". */
@@ -1091,4 +1091,6 @@ data class HandOff(
     val gameSeed: Long,
     val snapshot: SaveSnapshot,
     val robots: Map<Int, String>,
+    /** §17.3 os boosters de cada assento (a partida em andamento já tem os escolhidos). */
+    val boosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters(),
 )

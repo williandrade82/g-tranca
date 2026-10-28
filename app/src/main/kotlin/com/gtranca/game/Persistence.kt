@@ -19,9 +19,9 @@ fun PublicEvent.toSaved(): SavedEvent = SavedEvent(seat.index, action, takenFrom
 
 fun SavedEvent.toPublic(): PublicEvent = PublicEvent(Seat(seat), action, takenFromDiscard, takenTop)
 
-fun GameConfig.toSaved(): SavedConfig = SavedConfig(mode, difficulty.id, targetScore, stake)
+fun GameConfig.toSaved(): SavedConfig = SavedConfig(mode, difficulty.id, targetScore, stake, skillBoosters)
 
-fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(difficultyId), targetScore, stake = stake)
+fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(difficultyId), targetScore, stake = stake, skillBoosters = skillBoosters)
 
 fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls, playerName, tableBoosters)
 

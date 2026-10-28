@@ -76,6 +76,8 @@ data class TableSetupUiState(
     /** §14.6 aposta escolhida e saldo da carteira. */
     val stake: Int = Coins.stakesFor(1).first(),
     val balance: Int = Coins.INITIAL_BALANCE,
+    /** §17.9 a mesa permite os boosters de skill. */
+    val skillBoosters: Boolean = true,
 ) {
     val targetScore: Int? get() = parseTargetScore(targetText)
 
@@ -96,7 +98,7 @@ data class TableSetupUiState(
 
     val canSelect: Boolean get() = targetScore != null && loaded && canAfford
 
-    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(mode, difficulty, it, rules, stake) }
+    fun toConfig(): GameConfig? = targetScore?.let { GameConfig(mode, difficulty, it, rules, stake, skillBoosters) }
 
     companion object {
         const val MAX_TARGET: Int = Int.MAX_VALUE
@@ -181,6 +183,9 @@ class TablesViewModel(
 
     fun onTargetChange(text: String) = edit { it.copy(targetText = text) }
 
+    /** §17.9 permitir ou não os boosters de skill na mesa. */
+    fun onSkillBoostersChange(allowed: Boolean) = edit { it.copy(skillBoosters = allowed) }
+
     /** §14.6 aposta da mesa (um dos três valores do nível que o saldo cobre; outro valor é ignorado). */
     fun onStakeChange(stake: Int) = edit {
         if (stake in it.stakes && Coins.canJoin(it.balance, stake)) it.copy(stake = stake) else it
@@ -214,6 +219,7 @@ object TableSetupPrefs {
         rules = state.rulesChoice.name,
         stake = state.stake,
         target = state.targetText,
+        skillBoosters = state.skillBoosters,
     )
 
     /**
@@ -233,6 +239,7 @@ object TableSetupPrefs {
             // §14.6 aposta que não existe na tabela do nível vira o valor mais próximo (empate: o menor)
             stake = fitStake(difficulty.level, setup.stake, balance),
             targetText = target,
+            skillBoosters = setup.skillBoosters,
         )
     }
 

@@ -381,6 +381,15 @@ private fun InfoBox(ui: InventoryUi) {
                         }
                     }
                 }
+                // §17.1 o tipo do booster (Skill ou Interação) logo antes da descrição.
+                def?.let {
+                    Text(
+                        stringResource(com.gtranca.ui.boosters.boosterKindRes(it.def.kind)),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = GColors.Champagne,
+                        modifier = Modifier.testTag("inventory-info-kind"),
+                    )
+                }
                 Text(
                     text,
                     style = MaterialTheme.typography.bodyMedium,

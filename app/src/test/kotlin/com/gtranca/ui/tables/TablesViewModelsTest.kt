@@ -56,6 +56,7 @@ class TablesViewModelsTest {
         vm.onRulesChange(RulesChoice.PAULISTA)
         vm.onStakeChange(300)
         vm.onTargetChange("2000")
+        vm.onSkillBoostersChange(false)
         vm.onSelectPlayers().shouldNotBeNull()
         advanceUntilIdle()
         val again = TablesViewModel(settings)
@@ -66,6 +67,8 @@ class TablesViewModelsTest {
             it.rulesChoice shouldBe RulesChoice.PAULISTA
             it.stake shouldBe 300
             it.targetText shouldBe "2000"
+            it.skillBoosters shouldBe false // §17.9 lembrado com as demais opções
+            it.toConfig()!!.skillBoosters shouldBe false
         }
     }
 

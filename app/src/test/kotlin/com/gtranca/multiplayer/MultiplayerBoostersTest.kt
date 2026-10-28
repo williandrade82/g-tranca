@@ -24,8 +24,28 @@ import org.junit.jupiter.api.Test
 class MultiplayerBoostersTest {
 
     @Test
-    fun `§17_4 a versao do protocolo subiu para 18`() {
-        PROTOCOL_VERSION shouldBe 18
+    fun `§17_9 a versao do protocolo subiu para 19`() {
+        PROTOCOL_VERSION shouldBe 19
+    }
+
+    @Test
+    fun `§17_9 mesa sem boosters de skill - o anfitriao recusa os de skill e aceita os de interacao`() = runTest {
+        val t = openTable(GameMode.DUPLAS, 44, listOf(Seat(1)), skillBoosters = false)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { t.host.run() }
+        runCurrent()
+        t.guests.getValue(Seat(1)).chooseBoosters(1, listOf("b1", "b2", "b3"))
+        advanceUntilIdle()
+        t.host.boosters.value.of(1).boosters shouldBe listOf("b3")
+    }
+
+    @Test
+    fun `§17_9 mesa que permite os de skill aceita todos`() = runTest {
+        val t = openTable(GameMode.DUPLAS, 45, listOf(Seat(1)), skillBoosters = true)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { t.host.run() }
+        runCurrent()
+        t.guests.getValue(Seat(1)).chooseBoosters(1, listOf("b1", "b2", "b3"))
+        advanceUntilIdle()
+        t.host.boosters.value.of(1).boosters shouldBe listOf("b1", "b2", "b3")
     }
 
     @Test

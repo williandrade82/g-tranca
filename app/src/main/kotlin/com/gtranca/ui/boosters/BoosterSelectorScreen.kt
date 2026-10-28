@@ -52,6 +52,7 @@ import androidx.lifecycle.viewModelScope
 import com.gtranca.R
 import com.gtranca.data.InventoryRepository
 import com.gtranca.engine.BoosterDef
+import com.gtranca.engine.BoosterKind
 import com.gtranca.engine.Loadout
 import com.gtranca.ui.inventory.boosterIconRes
 import com.gtranca.ui.theme.FitText
@@ -81,14 +82,19 @@ data class BoosterSelectorUi(
     val ready: Boolean = false,
     /** Seguir já foi acionado (botão e prazo só valem uma vez). */
     val confirmed: Boolean = false,
+    /** §17.9 a mesa permite os boosters de skill; sem isso eles ficam esmaecidos e não entram nos nichos. */
+    val allowSkill: Boolean = true,
 ) {
-    /** O booster pode entrar num nicho: tem quantidade e ainda não foi escolhido. */
-    fun canPick(id: String): Boolean = id !in slots && (quantities[id] ?: 0) >= (catalog.firstOrNull { it.id == id }?.cost ?: Int.MAX_VALUE)
+    /** O booster pode entrar num nicho: a mesa o permite, tem quantidade e ainda não foi escolhido. */
+    fun canPick(id: String): Boolean = id !in slots && allowed(id) && (quantities[id] ?: 0) >= (catalog.firstOrNull { it.id == id }?.cost ?: Int.MAX_VALUE)
+
+    /** §17.9 a mesa permite o booster [id] (os de interação sempre; os de skill só se [allowSkill]). */
+    fun allowed(id: String): Boolean = allowSkill || catalog.firstOrNull { it.id == id }?.kind != BoosterKind.SKILL
 }
 
 /** §17.3 seletor de boosters antes de cada partida: começa com a marcação do Inventário; Seguir debita e entrega o que valeu. */
-class BoosterSelectorViewModel(private val repository: InventoryRepository) : ViewModel() {
-    private val _state = MutableStateFlow(BoosterSelectorUi(catalog = repository.catalog))
+class BoosterSelectorViewModel(private val repository: InventoryRepository, allowSkill: Boolean = true) : ViewModel() {
+    private val _state = MutableStateFlow(BoosterSelectorUi(catalog = repository.catalog, allowSkill = allowSkill))
     val state: StateFlow<BoosterSelectorUi> = _state.asStateFlow()
 
     init {
@@ -98,7 +104,7 @@ class BoosterSelectorViewModel(private val repository: InventoryRepository) : Vi
                 val marked = repository.selection.first()
                 _state.update {
                     it.copy(
-                        slots = List(Loadout.MAX) { index -> marked.getOrNull(index) },
+                        slots = List(Loadout.MAX) { index -> marked.filter { id -> it.allowed(id) }.getOrNull(index) },
                         quantities = repository.catalog.associate { def -> def.id to inventory.quantity(def.id) },
                         ready = true,
                     )
@@ -133,7 +139,7 @@ class BoosterSelectorViewModel(private val repository: InventoryRepository) : Vi
         _state.update { it.copy(confirmed = true, picking = null) }
         viewModelScope.launch {
             val chosen = try {
-                repository.confirmLoadout(_state.value.slots.filterNotNull()).boosters
+                repository.confirmLoadout(_state.value.slots.filterNotNull().filter { _state.value.allowed(it) }).boosters
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -275,6 +281,9 @@ private fun PickerDialog(ui: BoosterSelectorUi, viewModel: BoosterSelectorViewMo
         title = { Text(stringResource(R.string.boosters_pick_title)) },
         text = {
         Column(Modifier.verticalScroll(rememberScrollState()).testTag("boosters-picker"), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            if (!ui.allowSkill) {
+                Text(stringResource(R.string.selector_skill_blocked), Modifier.testTag("boosters-skill-blocked"), style = MaterialTheme.typography.bodySmall, color = GColors.Champagne)
+            }
             ui.catalog.forEach { def ->
                 val enabled = ui.canPick(def.id)
                 Row(
@@ -292,6 +301,7 @@ private fun PickerDialog(ui: BoosterSelectorUi, viewModel: BoosterSelectorViewMo
                     Column(Modifier.weight(1f)) {
                         Text(def.name, style = MaterialTheme.typography.titleSmall, color = GColors.Gold, fontWeight = FontWeight.Bold)
                         Text(def.summary, style = MaterialTheme.typography.bodySmall, color = GColors.Ivory)
+                        Text(stringResource(boosterKindRes(def.kind)), style = MaterialTheme.typography.labelSmall, color = GColors.Champagne)
                     }
                     Text("×${ui.quantities[def.id] ?: 0}", style = MaterialTheme.typography.titleSmall, color = GColors.Gold, fontWeight = FontWeight.ExtraBold)
                 }
@@ -299,4 +309,10 @@ private fun PickerDialog(ui: BoosterSelectorUi, viewModel: BoosterSelectorViewMo
         }
         },
     )
+}
+
+/** §17.1 o nome do tipo do booster ("Booster de Skill" / "Booster de Interação"). */
+fun boosterKindRes(kind: BoosterKind): Int = when (kind) {
+    BoosterKind.SKILL -> R.string.booster_kind_skill
+    BoosterKind.INTERACTION -> R.string.booster_kind_interaction
 }

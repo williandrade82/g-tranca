@@ -393,6 +393,7 @@ class MultiplayerTable(
         robots: Map<Int, String>,
         hostSeat: Seat = Seat(0),
         ledger: com.gtranca.engine.GroupBetLedger? = null,
+        boosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters(),
     ) {
         name = playerName
         // §16.7 o jogo continua de onde estava: a tela não refaz nenhuma animação (como no reingresso).
@@ -409,6 +410,7 @@ class MultiplayerTable(
             nextPlayerId = session.nextPlayerId(),
             robotPersonas = robots,
             ledger = ledger,
+            boosters = boosters, // §17.3 o jogo que já está em andamento não volta ao seletor
         )
         val host = MultiplayerHost(
             session, config, gameSeed, emptySet(),
@@ -422,11 +424,11 @@ class MultiplayerTable(
     }
 
     /** [hostRobotGame] sem esperar. */
-    fun hostRobotGameAsync(rules: TableRules, playerName: String, tableId: String, gameSeed: Long, snapshot: com.gtranca.game.SaveSnapshot, robots: Map<Int, String>) {
+    fun hostRobotGameAsync(rules: TableRules, playerName: String, tableId: String, gameSeed: Long, snapshot: com.gtranca.game.SaveSnapshot, robots: Map<Int, String>, boosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters()) {
         scope.launch {
             after?.join()
             try {
-                hostRobotGame(rules, playerName, tableId, gameSeed, snapshot, robots)
+                hostRobotGame(rules, playerName, tableId, gameSeed, snapshot, robots, boosters = boosters)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -569,7 +571,7 @@ class MultiplayerTable(
         val snapshot = old.controller.saveSnapshot()
         hostRobotGame(
             _rules.value ?: return, name, com.gtranca.net.nearby.newTableId(), old.gameSeed, snapshot,
-            old.robotPersonas.value, old.hostSeat, old.ledger.value,
+            old.robotPersonas.value, old.hostSeat, old.ledger.value, old.boosters.value,
         )
         _offline.value = false
     }
@@ -999,6 +1001,6 @@ class MultiplayerTable(
         const val REJOIN_TIMEOUT_MILLIS: Long = 30_000
 
         fun configOf(rules: TableRules): GameConfig =
-            GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake)
+            GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake, rules.skillBoosters)
     }
 }

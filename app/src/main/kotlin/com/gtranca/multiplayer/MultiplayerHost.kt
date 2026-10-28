@@ -152,6 +152,8 @@ class MultiplayerHost(
         if (round != currentRound()) return
         // O anfitrião só aceita ids do catálogo (um convidado adulterado não põe id inventado no assento nem no sucessor).
         val known = boosters.take(com.gtranca.engine.Loadout.MAX * 4).filter { id -> com.gtranca.engine.BoosterCatalog.DEFAULT.any { it.id == id } }
+            // §17.9 mesa sem boosters de skill: o anfitrião os recusa (ficam de fora da escolha).
+            .filter { id -> config.skillBoosters || !com.gtranca.engine.BoosterCatalog.isSkill(id) }
         var changed = false
         _boosters.update { table ->
             if (table.of(seat.index).confirmedFor(round)) table else table.confirm(seat.index, known, round).also { changed = true }
@@ -272,7 +274,7 @@ class MultiplayerHost(
         // Uma só fonte das regras da mesa: as que os convidados receberam (§16.2) são as que o anfitrião aplica.
         session.rules.let {
             require(it.mode == config.mode && it.rules == config.rules && it.targetScore == config.targetScore &&
-                it.difficulty == config.difficulty.id && it.stake == config.stake) { "Regras da mesa diferentes das do jogo" }
+                it.difficulty == config.difficulty.id && it.stake == config.stake && it.skillBoosters == config.skillBoosters) { "Regras da mesa diferentes das do jogo" }
         }
         session.game = this
     }
@@ -773,7 +775,7 @@ class MultiplayerHost(
                 hostPhoto = hostPhoto,
             )
             session.open(scope)
-            val config = GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake)
+            val config = GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake, rules.skillBoosters)
             val remote = state.members.mapNotNull { it.info.seat }.toSet() - me.info.seat!!
             val host = MultiplayerHost(
                 session, config, state.match.seed, remote,

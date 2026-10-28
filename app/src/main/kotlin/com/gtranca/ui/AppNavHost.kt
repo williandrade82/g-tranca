@@ -113,11 +113,12 @@ data class SelectionRoute(
     val targetScore: Int,
     val rulesJson: String,
     val stake: Int,
+    val skillBoosters: Boolean = true,
 ) {
-    fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson, stake = stake).toConfig()
+    fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson, stake = stake, skillBoosters = skillBoosters).toConfig()
 
     companion object {
-        fun of(config: GameConfig) = GameRoute.of(config).let { SelectionRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, it.stake) }
+        fun of(config: GameConfig) = GameRoute.of(config).let { SelectionRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, it.stake, it.skillBoosters) }
     }
 }
 
@@ -158,6 +159,8 @@ data class GameRoute(
     val stake: Int = 0,
     /** §14.4, §14.5 personagem de cada assento de robô ("1=zen;2=jovem"); vazio = sorteio pela semente. */
     val robots: String = "",
+    /** §17.9 a mesa permite os boosters de skill. */
+    val skillBoosters: Boolean = true,
 ) {
     fun robotMap(): Map<Int, String> = robots.split(';').mapNotNull { part ->
         val (seat, code) = part.split('=').takeIf { it.size == 2 } ?: return@mapNotNull null
@@ -170,6 +173,7 @@ data class GameRoute(
         targetScore,
         if (rulesJson.isEmpty()) RuleSet.DEFAULT else Json.decodeFromString(RuleSet.serializer(), rulesJson),
         stake,
+        skillBoosters,
     )
 
     companion object {
@@ -180,6 +184,7 @@ data class GameRoute(
             rulesJson = Json.encodeToString(RuleSet.serializer(), config.rules),
             seed = seed,
             stake = config.stake,
+            skillBoosters = config.skillBoosters,
             robots = robots.entries.sortedBy { it.key }.joinToString(";") { "${it.key}=${it.value}" },
         )
 
@@ -426,7 +431,7 @@ private fun MultiplayerGameDestination(data: GameData, navController: NavHostCon
     if (!gameCreated && pendingFirst != null) {
         val round = pendingFirst!!
         com.gtranca.ui.boosters.BoosterSelectorScreen(
-            viewModel(key = "boosters-selector-mp-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory) },
+            viewModel(key = "boosters-selector-mp-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory, rules.skillBoosters) },
         ) { chosen -> readyDriver.confirmBoosters(round, chosen) }
         return
     }
@@ -526,7 +531,7 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                 LaunchedEffect(Unit) { goHome() }
             } else if (saved == null && chosenCsv == null) {
                 com.gtranca.ui.boosters.BoosterSelectorScreen(
-                    viewModel(key = "boosters-selector-1") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory) },
+                    viewModel(key = "boosters-selector-1") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory, route.skillBoosters) },
                 ) { chosen -> chosenCsv = chosen.joinToString(",") }
             } else {
                 val firstBoosters = chosenCsv.orEmpty().split(',').filter { it.isNotEmpty() }
@@ -757,6 +762,12 @@ private fun InviteDialog(
                 InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_type)) {
                     androidx.compose.material3.Text(com.gtranca.ui.tables.modeLabel(rules.mode))
                 }
+                InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.create_skill_boosters)) {
+                    androidx.compose.material3.Text(
+                        androidx.compose.ui.res.stringResource(if (rules.skillBoosters) com.gtranca.R.string.skill_boosters_on else com.gtranca.R.string.skill_boosters_off),
+                        Modifier.testTag("invite-skill"),
+                    )
+                }
                 InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_position)) {
                     androidx.compose.material3.Text(
                         androidx.compose.ui.res.stringResource(if (partner) com.gtranca.R.string.invite_partner else com.gtranca.R.string.invite_opponent),
@@ -866,9 +877,10 @@ private fun rememberLocalWifi(viewModel: GameViewModel, data: GameData, navContr
                     targetScore = config.targetScore,
                     stake = config.stake,
                     difficulty = config.difficulty.id,
+                    skillBoosters = config.skillBoosters,
                 )
                 com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).hostRobotGameAsync(
-                    rules, name, com.gtranca.net.nearby.newTableId(), handOff.gameSeed, handOff.snapshot, handOff.robots,
+                    rules, name, com.gtranca.net.nearby.newTableId(), handOff.gameSeed, handOff.snapshot, handOff.robots, handOff.boosters,
                 )
                 navController.navigate(MultiplayerGameRoute) {
                     popUpTo(HomeRoute) { inclusive = false }
@@ -957,7 +969,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
     val rules = remember(config, tableName, rulesTitle) {
         com.gtranca.net.TableRules(
             tableName = tableName, mode = config.mode, rules = config.rules, targetScore = config.targetScore,
-            stake = config.stake, difficulty = config.difficulty.id, rulesTitle = rulesTitle,
+            stake = config.stake, difficulty = config.difficulty.id, rulesTitle = rulesTitle, skillBoosters = config.skillBoosters,
         )
     }
     // §16.2 com o Wi-Fi ligado a mesa de lugares passa a viver no recrutamento (e os chamados aparecem); sem ele, é local.

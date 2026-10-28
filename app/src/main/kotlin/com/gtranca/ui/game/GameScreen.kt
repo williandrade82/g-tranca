@@ -104,7 +104,7 @@ fun GameScreen(
         viewModel.boosterInventory?.let { inventory ->
             val round = state.boosterSelectorRound.takeIf { it != 0 } ?: snapshot.roundNumber
             com.gtranca.ui.boosters.BoosterSelectorScreen(
-                androidx.lifecycle.viewmodel.compose.viewModel(key = "boosters-selector-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(inventory) },
+                androidx.lifecycle.viewmodel.compose.viewModel(key = "boosters-selector-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(inventory, snapshot.config.skillBoosters) },
                 viewModel::onBoostersConfirmed,
             )
         }

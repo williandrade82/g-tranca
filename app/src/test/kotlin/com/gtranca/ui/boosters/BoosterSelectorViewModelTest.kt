@@ -56,6 +56,25 @@ class BoosterSelectorViewModelTest {
     }
 
     @Test
+    fun `§17_9 mesa sem boosters de skill - os de skill saem da marcacao, nao entram nos nichos e nao sao debitados`() = runTest(dispatcher) {
+        val repo = FakeInventory(Inventory.initial(), listOf("b1", "b3"))
+        val vm = BoosterSelectorViewModel(repo, allowSkill = false)
+        advanceUntilIdle()
+        vm.state.value.slots shouldBe listOf("b3", null, null)
+        vm.state.value.canPick("b1") shouldBe false
+        vm.state.value.canPick("b2") shouldBe false
+        vm.state.value.canPick("b3") shouldBe false // já está num nicho
+        vm.onSlot(1)
+        vm.onPick("b2")
+        vm.state.value.slots shouldBe listOf("b3", null, null)
+        var delivered: List<String>? = null
+        vm.confirm { delivered = it }
+        advanceUntilIdle()
+        delivered shouldBe listOf("b3")
+        repo.stock.value.quantities shouldBe mapOf("b1" to 5, "b2" to 5, "b3" to 4)
+    }
+
+    @Test
     fun `§17_3 Seguir debita o custo de cada escolhido e entrega o que valeu`() = runTest(dispatcher) {
         val repo = FakeInventory(Inventory.initial(), listOf("b1", "b2"))
         val vm = BoosterSelectorViewModel(repo)

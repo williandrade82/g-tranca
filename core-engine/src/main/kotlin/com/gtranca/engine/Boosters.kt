@@ -3,6 +3,13 @@ package com.gtranca.engine
 import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
+/**
+ * §17.1 o tipo do booster: [SKILL] aumenta a percepção do jogador sobre uma jogada (a mesa pode proibi-lo, §17.9);
+ * [INTERACTION] permite interagir com os outros jogadores.
+ */
+@Serializable
+enum class BoosterKind { SKILL, INTERACTION }
+
 /** §17.1 um booster do catálogo. Os mesmos campos do JSON local do catálogo. */
 @Serializable
 data class BoosterDef(
@@ -15,6 +22,8 @@ data class BoosterDef(
     /** Faixa da quantidade sorteada no presente diário (§17.5). */
     val giftMin: Int,
     val giftMax: Int,
+    /** §17.1 Skill ou Interação (padrão Skill). */
+    val kind: BoosterKind = BoosterKind.SKILL,
 )
 
 /** §17.1 o catálogo inicial. */
@@ -23,10 +32,13 @@ object BoosterCatalog {
     const val RED_LED = "b2"
     const val REACTIONS = "b3"
 
+    /** §17.1 o booster [id] é de skill? (id fora do catálogo: não). */
+    fun isSkill(id: String): Boolean = DEFAULT.firstOrNull { it.id == id }?.kind == BoosterKind.SKILL
+
     val DEFAULT: List<BoosterDef> = listOf(
         BoosterDef(GREEN_LED, "Green-LED", "Mostra um ponto verde nas cartas que pode baixar", 1, 5, 1, 3),
         BoosterDef(RED_LED, "Yellow-LED", "Mostra um ponto amarelo nas cartas que se encaixam no jogo do adversário", 1, 5, 1, 3),
-        BoosterDef(REACTIONS, "Reações", "Permite expressar até 3 reações durante a partida", 1, 5, 2, 7),
+        BoosterDef(REACTIONS, "Reações", "Permite expressar até 3 reações durante a partida", 1, 5, 2, 7, BoosterKind.INTERACTION),
     )
 }
 

@@ -673,10 +673,13 @@ class MultiplayerTableTest {
             val vm = com.gtranca.ui.game.GameViewModel(
                 config, gameSeed = 7, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
                 persistence = persistence, writes = com.gtranca.game.WriteQueue(CoroutineScope(dispatcher)), robots = robots,
+                initialBoosters = listOf("b1", "b3"),
             )
             advanceUntilIdle()
             val before = vm.uiState.value.snapshot
             val handOff = vm.handOffToHost().shouldNotBeNull()
+            // §17.3 os boosters da partida em andamento vão junto: ligar o Wi-Fi não volta ao seletor.
+            handOff.boosters.of(0).boosters shouldBe listOf("b1", "b3")
             advanceUntilIdle()
             // §16.12 o jogo salvo é apagado e nada mais é gravado.
             discarded shouldBe 1
@@ -686,9 +689,10 @@ class MultiplayerTableTest {
             val scope = CoroutineScope(dispatcher + Job())
             val table = MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, newSeed = { 7 })
             val rules = TableRules("Mesa de Ana", GameMode.DUPLAS, handOff.config.rules, 3000, 50, Difficulty.FACIL.id)
-            table.hostRobotGame(rules, "Ana", "mesa-r", handOff.gameSeed, handOff.snapshot, handOff.robots)
+            table.hostRobotGame(rules, "Ana", "mesa-r", handOff.gameSeed, handOff.snapshot, handOff.robots, boosters = handOff.boosters)
             advanceTimeBy(1)
             val host = (table.role.value as MpRole.Hosting).host.shouldNotBeNull()
+            host.boosters.value.of(0).confirmedFor(before.roundNumber) shouldBe true
             // O jogo não muda: mesma partida, mesma mão, mesmo placar, os mesmos robôs.
             host.controller.currentMatch.currentRound shouldBe handOff.snapshot.match.currentRound
             host.controller.state.value.view.hand shouldBe before.view.hand
@@ -702,7 +706,8 @@ class MultiplayerTableTest {
             saves.size shouldBe savesAtHandOff
             // §16.7 sem replay: a tela começa na vista atual (sem distribuição nem voos), como no reingresso.
             table.continuing shouldBe true
-            val driver = MultiplayerDriver.create(table, scope) { 0 }
+            val driver = MultiplayerDriver.create(table, scope, withBoosters = true) { 0 }
+            driver.boosterRound.value shouldBe null // §17.3 a partida em andamento não volta ao seletor
             driver.state.value.view.hand shouldBe before.view.hand
             driver.state.value.turnEvents shouldBe before.turnEvents
             val screen = com.gtranca.ui.game.GameViewModel(

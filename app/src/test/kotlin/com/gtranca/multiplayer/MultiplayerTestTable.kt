@@ -47,9 +47,10 @@ internal suspend fun TestScope.openTable(
     targetScore: Int = 1000,
     network: MemoryNetwork = MemoryNetwork(),
     stake: Int = 0,
+    skillBoosters: Boolean = true,
 ): TestTable {
-    val config = GameConfig(mode, Difficulty.FACIL, targetScore = targetScore, stake = stake)
-    val rules = TableRules("Mesa de teste", mode, config.rules, targetScore, stake = stake, difficulty = Difficulty.FACIL.id)
+    val config = GameConfig(mode, Difficulty.FACIL, targetScore = targetScore, stake = stake, skillBoosters = skillBoosters)
+    val rules = TableRules("Mesa de teste", mode, config.rules, targetScore, stake = stake, difficulty = Difficulty.FACIL.id, skillBoosters = skillBoosters)
     val dispatcher = StandardTestDispatcher(testScheduler)
     // Sessões no relógio virtual, fora do `backgroundScope` (que o `advanceUntilIdle` não roda); os coletores só suspendem.
     val scope = CoroutineScope(dispatcher + Job())
