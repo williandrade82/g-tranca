@@ -46,6 +46,12 @@ interface HostGamePort {
      * passou a ocupar o assento; `false` faz a sessão encerrar a chamada com "A vaga foi preenchida.".
      */
     suspend fun approveCalled(requestId: Int): Boolean = false
+
+    /** §17.3 o convidado do [seat] confirmou o seletor da partida [round] com [boosters] (já debitados por ele). */
+    fun onBoosterChoice(seat: Seat, round: Int, boosters: List<String>) {}
+
+    /** §17.8 o convidado do [seat] pediu para enviar a reação [reaction] (código) na partida [round]. */
+    fun onReaction(seat: Seat, round: Int, reaction: String) {}
 }
 
 /** §16.7 pedido de entrada no meio do jogo, à espera da aprovação do anfitrião ([called] = chamada aceita: já aprovada). */
@@ -1028,6 +1034,9 @@ class HostSession(
                 if (rejection != null) member.link?.sendLocked(rejection)
             }
             is SuccessorAck -> game?.onSuccessorAck(player.id, payload.stateSeq)
+            // §17.3, §17.8 boosters e reações do assento: o anfitrião valida e registra.
+            is ChooseBoosters -> player.seat?.takeIf { started && !player.resigned }?.let { game?.onBoosterChoice(it, payload.round, payload.boosters) }
+            is SendReaction -> player.seat?.takeIf { started && !player.resigned }?.let { game?.onReaction(it, payload.round, payload.reaction) }
             else -> Unit
         }
     }

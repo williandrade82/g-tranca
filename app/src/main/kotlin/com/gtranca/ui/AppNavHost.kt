@@ -380,7 +380,7 @@ class MultiplayerGameHolder(
     init {
         val scope = viewModelScope
         scope.launch {
-            driver.value = com.gtranca.multiplayer.MultiplayerDriver.create(table, scope) { com.gtranca.game.GameController.DEFAULT_BOT_DELAY_MILLIS }
+            driver.value = com.gtranca.multiplayer.MultiplayerDriver.create(table, scope, withBoosters = true) { com.gtranca.game.GameController.DEFAULT_BOT_DELAY_MILLIS }
         }
     }
 }
@@ -419,9 +419,22 @@ private fun MultiplayerGameDestination(data: GameData, navController: NavHostCon
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
+    // §17.3 antes de ver a distribuição, cada humano escolhe os boosters da partida (a mesa já espera por ele): a tela do jogo
+    // só é criada depois do Seguir, para a distribuição e os descartes já feitos serem animados depois dele.
+    val pendingFirst by readyDriver.boosterRound.collectAsStateWithLifecycle()
+    var gameCreated by rememberSaveable { mutableStateOf(false) }
+    if (!gameCreated && pendingFirst != null) {
+        val round = pendingFirst!!
+        com.gtranca.ui.boosters.BoosterSelectorScreen(
+            viewModel(key = "boosters-selector-mp-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory) },
+        ) { chosen -> readyDriver.confirmBoosters(round, chosen) }
+        return
+    }
+    gameCreated = true
     val viewModel = viewModel {
         GameViewModel(
             com.gtranca.multiplayer.MultiplayerTable.configOf(rules),
+            boosterInventory = data.inventory,
             initialHand = HandPrefs.parse(loaded.handSortId),
             playerProfile = profile,
             playerPhoto = photoPath,

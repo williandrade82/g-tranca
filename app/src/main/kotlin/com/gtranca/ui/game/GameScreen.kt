@@ -102,7 +102,7 @@ fun GameScreen(
     if (state.boosterSelectorPending) {
         // §17.3 antes de cada partida: o seletor de boosters, sem a distribuição à vista (docs/telas.md 3.19).
         viewModel.boosterInventory?.let { inventory ->
-            val round = snapshot.roundNumber
+            val round = state.boosterSelectorRound.takeIf { it != 0 } ?: snapshot.roundNumber
             com.gtranca.ui.boosters.BoosterSelectorScreen(
                 androidx.lifecycle.viewmodel.compose.viewModel(key = "boosters-selector-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(inventory) },
                 viewModel::onBoostersConfirmed,

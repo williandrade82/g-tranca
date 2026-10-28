@@ -42,7 +42,32 @@ interface TableDriver {
 
     /** Roda a mesa enquanto a tela existir. */
     suspend fun run()
+
+    /**
+     * §17.3 a partida que está esperando o seletor de boosters deste aparelho (a distribuição só aparece depois do Seguir);
+     * `null` = nada pendente. Só a mesa multijogador usa; o jogo contra robôs tem o seu próprio fluxo.
+     */
+    val boosterRound: StateFlow<Int?> get() = NO_BOOSTER_ROUND
+
+    /** §17.4 o estado dos boosters do assento deste aparelho (multijogador); `null` = a tela guarda o dela. */
+    val seatBoosters: StateFlow<com.gtranca.engine.SeatBoosters>? get() = null
+
+    /** §17.8 reações enviadas por qualquer assento (multijogador). */
+    val seatReactions: kotlinx.coroutines.flow.Flow<SeatReaction> get() = kotlinx.coroutines.flow.emptyFlow()
+
+    /** §17.3 o seletor da partida [round] foi confirmado com [boosters] (já debitados): registra no assento. */
+    fun confirmBoosters(round: Int, boosters: List<String>) {}
+
+    /** §17.8 envia uma reação na partida [round]. */
+    fun sendReaction(round: Int, reaction: com.gtranca.engine.Reaction) {}
+
+    companion object {
+        private val NO_BOOSTER_ROUND: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null)
+    }
 }
+
+/** §17.8 a reação [reaction] enviada pelo assento [seat] (índice). */
+data class SeatReaction(val seat: Int, val reaction: com.gtranca.engine.Reaction)
 
 /** O jogo local contra robôs (§15): exatamente o [GameController] de sempre, com o humano [human]. */
 class LocalTableDriver(val controller: GameController, private val human: HumanPlayer) : TableDriver {

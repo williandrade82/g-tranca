@@ -27,6 +27,8 @@ import com.gtranca.net.PauseReason
 import com.gtranca.net.Paused
 import com.gtranca.net.Payload
 import com.gtranca.net.Payout
+import com.gtranca.net.ReactionShown
+import com.gtranca.net.SeatBoostersUpdate
 import com.gtranca.net.Played
 import com.gtranca.net.RejectReason
 import com.gtranca.net.Resumed
@@ -44,7 +46,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
@@ -128,6 +132,54 @@ class MultiplayerHost(
 
     /** §16.13 apostas em grupo (retidas, herdadas, perdidas). */
     val ledger: StateFlow<GroupBetLedger> = _ledger.asStateFlow()
+
+    /**
+     * §17.4 os boosters de **cada assento** (escolhidos, reações usadas, partida a que valem): ficam aqui, no anfitrião, e vão
+     * ao sucessor; quem entrar num assento (§16.7) recebe o estado dele e segue com o que o assento tem.
+     */
+    private val _boosters = MutableStateFlow(restored?.boosters ?: com.gtranca.engine.TableBoosters())
+    val boosters: StateFlow<com.gtranca.engine.TableBoosters> = _boosters.asStateFlow()
+
+    /** §17.8 reações enviadas por qualquer assento (o anfitrião as vê aqui; os convidados as recebem em [ReactionShown]). */
+    private val _reactions = MutableSharedFlow<ReactionShown>(extraBufferCapacity = 16)
+    val reactions: SharedFlow<ReactionShown> = _reactions
+
+    /** A partida em andamento: a escolha de outra partida não vale. */
+    private fun currentRound(): Int = controller.stateOf(hostSeat).value.roundNumber
+
+    /** §17.3 o seletor do [seat] foi confirmado na partida [round]; só vale na partida em andamento e uma vez. */
+    fun registerBoosters(seat: Seat, round: Int, boosters: List<String>) {
+        if (round != currentRound()) return
+        var changed = false
+        _boosters.update { table ->
+            if (table.of(seat.index).confirmedFor(round)) table else table.confirm(seat.index, boosters, round).also { changed = true }
+        }
+        if (changed) pushSeatBoosters(seat)
+    }
+
+    /** §17.8 o [seat] envia a reação [reaction] (só com o b3 no assento, com usos e na partida certa). */
+    fun sendReaction(seat: Seat, round: Int, reaction: com.gtranca.engine.Reaction): Boolean {
+        var accepted = false
+        _boosters.update { table -> table.useReaction(seat.index, round)?.also { accepted = true } ?: table }
+        if (!accepted) return false
+        pushSeatBoosters(seat)
+        val shown = ReactionShown(seat, reaction.code)
+        _reactions.tryEmit(shown)
+        scope?.launch { session.broadcast(shown) }
+        return true
+    }
+
+    /** Manda ao humano do [seat] (se for um convidado) o estado do assento. */
+    private fun pushSeatBoosters(seat: Seat) {
+        if (seat !in remote) return
+        scope?.launch { session.sendTo(seat, SeatBoostersUpdate(_boosters.value.of(seat.index))) }
+    }
+
+    override fun onBoosterChoice(seat: Seat, round: Int, boosters: List<String>) = registerBoosters(seat, round, boosters)
+
+    override fun onReaction(seat: Seat, round: Int, reaction: String) {
+        com.gtranca.engine.Reaction.ofCode(reaction)?.let { sendReaction(seat, round, it) }
+    }
 
     /**
      * §16.2 os robôs são os que a sessão anunciou no início ([HostSession.robots], os mesmos em todos os aparelhos); no
@@ -343,6 +395,7 @@ class MultiplayerHost(
         return state.copy(
             members = session.membersForSuccessor(),
             ledger = _ledger.value,
+            boosters = _boosters.value,
             nextPlayerId = session.nextPlayerId(),
             robotPersonas = _robotPersonas.value,
             requestBase = maxWireRequest,
@@ -373,7 +426,7 @@ class MultiplayerHost(
         launch { session.successors.collect { push() } }
         // §16.10 a sala muda sem jogada (entrada, vaga aberta, escolha na pausa, apostas): o estado vai de novo.
         launch {
-            kotlinx.coroutines.flow.combine(session.roster, session.openSeats, _decision, _ledger, _robotPersonas) { _, _, _, _, _ -> Unit }
+            kotlinx.coroutines.flow.combine(kotlinx.coroutines.flow.combine(session.roster, session.openSeats, _decision, _ledger, _robotPersonas) { _, _, _, _, _ -> Unit }, _boosters) { _, _ -> Unit }
                 .collect { latestState.update { st -> st?.let { withMeta(it.copy(stateSeq = stateSeq.incrementAndGet())) } } }
         }
         latestState.collect { push() }
@@ -616,6 +669,8 @@ class MultiplayerHost(
             lastRoundOver[seat.index]?.takeIf { it.roundNumber > roundOverSeen }?.let { session.sendTo(seat, it) }
             sentHistory.remove(seat.index)
             if (seat in remote) sendView(seat, controller.stateOf(seat).value)
+            // §17.4 quem entra no assento segue com os boosters e as reações que o assento tem.
+            pushSeatBoosters(seat)
             _decision.value?.takeIf { it.seat != seat }?.let { session.sendTo(seat, Paused(it.seat, it.reason, it.choice)) }
             evaluatePause()
         }

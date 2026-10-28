@@ -47,6 +47,8 @@ class MultiplayerDriver private constructor(
     dealWaitMillis: (() -> Long)?,
     presentationWaitMillis: (() -> Long)?,
     initial: GameSnapshot,
+    /** §17.3 a mesa espera o seletor de boosters deste aparelho antes de mostrar cada partida (a tela do app liga; os testes não). */
+    private val withBoosters: Boolean,
 ) : TableDriver {
 
     /** Última vista mostrada (como chegou, antes de [answered] e da desistência). */
@@ -73,11 +75,40 @@ class MultiplayerDriver private constructor(
         paceMillis = paceMillis,
         dealWaitMillis = dealWaitMillis ?: { if (paceMillis() > 0) (DEAL_MILLIS * dealDelayScale).toLong() + WAIT_GRACE_MILLIS else 0 },
         presentationWaitMillis = presentationWaitMillis ?: { if (paceMillis() > 0) PRESENTATION_WAIT_MILLIS else 0 },
+        boostersGate = if (withBoosters) ::awaitBoosters else null,
         publish = { snapshot ->
             shown = snapshot
             refresh()
         },
     )
+
+    private val _boosterRound = MutableStateFlow<Int?>(null)
+    override val boosterRound: StateFlow<Int?> = _boosterRound.asStateFlow()
+
+    override val seatBoosters: StateFlow<com.gtranca.engine.SeatBoosters> get() = table.seatBoosters
+
+    override val seatReactions: Flow<com.gtranca.game.SeatReaction> = table.reactions.mapNotNull { shown ->
+        com.gtranca.engine.Reaction.ofCode(shown.reaction)?.let { com.gtranca.game.SeatReaction(shown.seat.index, it) }
+    }
+
+    /**
+     * §17.3 antes de mostrar uma partida em que este assento ainda não confirmou o seletor, espera o Seguir (o assento já
+     * confirmado, ou herdado com a escolha feita, passa direto). O limite só protege a mesa de travar se a tela não responder.
+     */
+    private suspend fun awaitBoosters(round: Int) {
+        if (table.resigned.value || table.seatBoosters.value.confirmedFor(round)) return
+        _boosterRound.value = round
+        kotlinx.coroutines.withTimeoutOrNull(BOOSTERS_WAIT_MILLIS) { table.seatBoosters.first { it.confirmedFor(round) } }
+        _boosterRound.value = null
+    }
+
+    override fun confirmBoosters(round: Int, boosters: List<String>) {
+        scope.launch { table.chooseBoosters(round, boosters) }
+    }
+
+    override fun sendReaction(round: Int, reaction: com.gtranca.engine.Reaction) {
+        scope.launch { table.sendReaction(round, reaction) }
+    }
 
     /** A vista na tela: a última mostrada, sem as jogadas do pedido já respondido e, se desistiu, o fim de jogo. */
     private fun refresh() {
@@ -92,6 +123,10 @@ class MultiplayerDriver private constructor(
     }
 
     init {
+        // §17.3 a 1ª vista já pode esperar o seletor: a tela só cria o jogo depois dele (a distribuição não aparece antes).
+        if (withBoosters && initial.stage == Stage.PLAYING && !initial.resigned && !table.seatBoosters.value.confirmedFor(initial.roundNumber)) {
+            _boosterRound.value = initial.roundNumber
+        }
         scope.launch { pacer.run(initial) }
         scope.launch { for (snapshot in table.feed) pacer.offer(snapshot) }
         scope.launch { table.resigned.collect { refresh() } }
@@ -179,6 +214,9 @@ class MultiplayerDriver private constructor(
         /** Folga das esperas pela tela (rede de segurança, como no jogo local). */
         private const val WAIT_GRACE_MILLIS: Long = 4_000
 
+        /** §17.3 limite da espera pelo seletor: os 30 s do prazo (§16.15) mais a folga da rede. */
+        private const val BOOSTERS_WAIT_MILLIS: Long = 35_000
+
         /** Limite da espera pela encenação das trocas de 3 vermelho (a própria troca espera o toque do jogador). */
         private const val PRESENTATION_WAIT_MILLIS: Long = 20_000
 
@@ -192,11 +230,12 @@ class MultiplayerDriver private constructor(
             scope: CoroutineScope,
             dealWaitMillis: (() -> Long)? = null,
             presentationWaitMillis: (() -> Long)? = null,
+            withBoosters: Boolean = false,
             paceMillis: () -> Long,
         ): MultiplayerDriver {
             // A primeira vista da fila (a distribuição, se o jogo acabou de começar; no reingresso, a atual).
             val first = table.feed.receive()
-            return MultiplayerDriver(table, scope, paceMillis, dealWaitMillis, presentationWaitMillis, first)
+            return MultiplayerDriver(table, scope, paceMillis, dealWaitMillis, presentationWaitMillis, first, withBoosters)
         }
 
         /** Nome do erro do motor recebido na recusa → o erro (para o texto em pt-BR); desconhecido = `null`. */

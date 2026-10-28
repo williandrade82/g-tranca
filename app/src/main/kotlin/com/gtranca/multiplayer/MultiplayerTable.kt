@@ -250,6 +250,45 @@ class MultiplayerTable(
         }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
+    /**
+     * §17.4 o estado dos boosters do **assento** deste aparelho: o anfitrião o guarda (na tabela dele, para o seu assento) e
+     * manda a quem ocupa o assento; segue o papel atual (§16.10).
+     */
+    val seatBoosters: StateFlow<com.gtranca.engine.SeatBoosters> = _role.flatMapLatest { role ->
+        when (role) {
+            is MpRole.Hosting -> role.host?.let { host -> host.boosters.map { it.of(host.hostSeat.index) } } ?: flowOf(com.gtranca.engine.SeatBoosters())
+            is MpRole.Guesting -> role.session.seatBoosters.map { it ?: com.gtranca.engine.SeatBoosters() }
+            null -> flowOf(com.gtranca.engine.SeatBoosters())
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, com.gtranca.engine.SeatBoosters())
+
+    /** §17.8 reações de qualquer assento (código, assento). */
+    val reactions: kotlinx.coroutines.flow.Flow<com.gtranca.net.ReactionShown> = _role.flatMapLatest { role ->
+        when (role) {
+            is MpRole.Hosting -> role.host?.reactions ?: kotlinx.coroutines.flow.emptyFlow()
+            is MpRole.Guesting -> role.session.reactions
+            null -> kotlinx.coroutines.flow.emptyFlow()
+        }
+    }
+
+    /** §17.3 confirma no anfitrião os boosters deste assento na partida [round] (o anfitrião registra direto; o convidado envia). */
+    suspend fun chooseBoosters(round: Int, boosters: List<String>) {
+        when (val role = _role.value) {
+            is MpRole.Hosting -> role.host?.let { it.registerBoosters(it.hostSeat, round, boosters) }
+            is MpRole.Guesting -> role.session.chooseBoosters(round, boosters)
+            null -> Unit
+        }
+    }
+
+    /** §17.8 pede para enviar uma reação (o anfitrião valida e repassa a todos). */
+    suspend fun sendReaction(round: Int, reaction: com.gtranca.engine.Reaction) {
+        when (val role = _role.value) {
+            is MpRole.Hosting -> role.host?.let { it.sendReaction(it.hostSeat, round, reaction) }
+            is MpRole.Guesting -> role.session.sendReaction(round, reaction.code)
+            null -> Unit
+        }
+    }
+
     /** Id público deste jogador (0 enquanto não entrou; o anfitrião original é 0). */
     val myId: Int
         get() = when (val role = _role.value) {
