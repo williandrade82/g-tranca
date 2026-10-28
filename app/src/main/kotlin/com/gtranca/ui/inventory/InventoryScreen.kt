@@ -196,7 +196,7 @@ private object Shelf {
 }
 
 @Composable
-fun InventoryScreen(viewModel: InventoryViewModel, onBack: () -> Unit) {
+fun InventoryScreen(viewModel: InventoryViewModel, onShop: () -> Unit, onBack: () -> Unit) {
     val ui by viewModel.state.collectAsStateWithLifecycle()
     GBackground(Modifier.fillMaxSize().testTag("inventory-screen")) {
         Column(
@@ -224,6 +224,7 @@ fun InventoryScreen(viewModel: InventoryViewModel, onBack: () -> Unit) {
                 InventoryNotice.NO_STOCK -> Notice(stringResource(R.string.inventory_notice_stock))
                 null -> Unit
             }
+            GButton(onShop, Modifier.heightIn(min = 48.dp).testTag("inventory-shop")) { Text(stringResource(R.string.inventory_open_shop)) }
             GButton(onBack, Modifier.heightIn(min = 48.dp).testTag("inventory-back"), kind = GButtonKind.Text) { Text(stringResource(R.string.back)) }
         }
     }

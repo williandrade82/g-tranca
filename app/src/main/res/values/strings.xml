@@ -782,4 +782,22 @@
     <string name="selector_skill_blocked">Esta mesa não permite boosters de skill</string>
     <string name="booster_kind_skill">Booster de Skill</string>
     <string name="booster_kind_interaction">Booster de Interação</string>
+    <!-- §17.10 Loja -->
+    <string name="inventory_open_shop">Acessar loja</string>
+    <string name="shop_title">Loja</string>
+    <string name="shop_hint">Troque suas moedas por boosters.</string>
+    <plurals name="shop_units">
+        <item quantity="one">%1$d unidade</item>
+        <item quantity="other">%1$d unidades</item>
+    </plurals>
+    <string name="shop_offer_desc">%1$s, %2$s, %3$d moedas</string>
+    <string name="shop_dialog_title">Comprar booster</string>
+    <string name="shop_dialog_quantity">Quantidade</string>
+    <string name="shop_dialog_total">Valor total</string>
+    <string name="shop_dialog_have">Suas moedas</string>
+    <string name="shop_dialog_after">Moedas depois da compra</string>
+    <string name="shop_insufficient">Saldo insuficiente</string>
+    <string name="shop_buy">Comprar</string>
+    <string name="shop_bought">Compra feita: %1$s, %2$s.</string>
+    <string name="shop_failed">Não foi possível concluir a compra. Tente de novo.</string>
 </resources>

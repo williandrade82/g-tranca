@@ -98,6 +98,10 @@ object StatsRoute
 @Serializable
 object InventoryRoute
 
+/** §17.10 *Loja*: compra de boosters com moedas, aberta pelo Inventário (docs/telas.md 3.20). */
+@Serializable
+object ShopRoute
+
 /** §14.4 *Iniciar novo jogo*: as opções da mesa (docs/telas.md 3.2). */
 @Serializable
 object TablesRoute
@@ -345,6 +349,12 @@ fun AppNavHost() {
         composable<InventoryRoute> {
             com.gtranca.ui.inventory.InventoryScreen(
                 viewModel { com.gtranca.ui.inventory.InventoryViewModel(data.inventory, data.wallet) },
+                onShop = { navController.navigate(ShopRoute) { launchSingleTop = true } },
+            ) { navController.popBackStack() }
+        }
+        composable<ShopRoute> {
+            com.gtranca.ui.shop.ShopScreen(
+                viewModel { com.gtranca.ui.shop.ShopViewModel(data.wallet, data.shop, data.inventory.catalog, WriteQueue.app) },
             ) { navController.popBackStack() }
         }
         composable<StatsRoute> {
