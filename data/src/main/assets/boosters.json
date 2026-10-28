@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "boosters": [
+    {
+      "id": "b1",
+      "name": "Green-LED",
+      "summary": "Mostra um ponto verde nas cartas que pode baixar",
+      "cost": 1,
+      "initialQuantity": 5,
+      "giftMin": 1,
+      "giftMax": 3
+    },
+    {
+      "id": "b2",
+      "name": "Red-LED",
+      "summary": "Mostra um ponto vermelho nas cartas que se encaixam no jogo do adversário",
+      "cost": 1,
+      "initialQuantity": 5,
+      "giftMin": 1,
+      "giftMax": 3
+    },
+    {
+      "id": "b3",
+      "name": "Reações",
+      "summary": "Permite expressar até 3 reações durante a partida",
+      "cost": 1,
+      "initialQuantity": 5,
+      "giftMin": 2,
+      "giftMax": 7
+    }
+  ]
+}

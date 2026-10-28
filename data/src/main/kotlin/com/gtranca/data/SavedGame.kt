@@ -47,6 +47,16 @@ data class SavedGame(
      * semente do jogo).
      */
     val robots: Map<Int, String> = emptyMap(),
+    /**
+     * §17.3 boosters do jogador na partida em andamento (ids do catálogo), já debitados. Vazio em jogos salvos antes dos
+     * boosters (e quando o jogador não escolheu nenhum).
+     */
+    val boosters: List<String> = emptyList(),
+    /**
+     * §17.3 o seletor da partida em andamento já foi confirmado. Falso: salvo antes do Seguir, o seletor volta ao
+     * retomar. Jogos salvos antes dos boosters valem como confirmados.
+     */
+    val boostersConfirmed: Boolean = true,
 ) {
     companion object {
         /** Versão atual do formato; arquivos de outra versão são tratados como "sem jogo salvo". */

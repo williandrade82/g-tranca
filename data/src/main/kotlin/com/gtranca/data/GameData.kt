@@ -33,11 +33,18 @@ class GameData private constructor(context: Context, isKnownDifficulty: (String)
     /** §14.6 carteira local (no mesmo arquivo das estatísticas). */
     val wallet: WalletRepository = statsAndWallet
 
+    /** §17 inventário de boosters, marcação e último presente (arquivo próprio); o catálogo vem de `assets/boosters.json`. */
+    val inventory: InventoryRepository = DataStoreInventoryRepository(
+        preferencesStore(context.preferencesDataStoreFile(INVENTORY_FILE)),
+        BoosterCatalogJson.load(context),
+    )
+
     companion object {
         const val SAVED_GAME_FILE = "saved_game.json"
         const val MULTIPLAYER_SESSION_FILE = "multiplayer_session.json"
         private const val SETTINGS_FILE = "settings"
         private const val STATS_FILE = "stats"
+        private const val INVENTORY_FILE = "inventory"
 
         /**
          * DataStore Preferences em [file]. Arquivo corrompido é trocado por um vazio (valores padrão) em vez de
