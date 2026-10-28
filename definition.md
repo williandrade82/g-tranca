@@ -456,6 +456,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    A0["Cada humano escolhe os boosters da partida, sem ver as cartas (§17.3)"] --> A
     A["Embaralha e distribui: 11 cartas por jogador, 2 mortos de 11 cartas, o restante no monte; lixo vazio; 3 vermelhos ficam na mão (§1, §3)"] --> C["Jogada do jogador da vez (§15.3), começando pelo primeiro jogador"]
     C --> D{"A partida terminou? (§11)"}
     D -->|"Sim: batida ou fim sem vencedor"| E["Fim da partida"]
@@ -568,6 +569,7 @@ flowchart TD
 
 ### **16.7. Entrada no meio do jogo**
 - Uma pessoa pode **ocupar o lugar de um robô** ou de quem saiu, desde que o **anfitrião permita** (ele aprova cada pedido). Quem entra herda o assento **exatamente como está** (mão, jogos e vez) e já entra jogando, como num jogo pausado que acaba de abrir.
+- **Boosters:** quem entra herda também os **boosters do assento** na partida em curso, sem descontar do seu inventário (§17.4).
 - **Aposta:** quem ocupa o lugar de **quem saiu** herda a aposta já retida, e **nada é debitado de novo**. Quem ocupa o lugar de um **robô** debita a aposta normalmente (§14.6) e a aposta virtual do robô deixa de existir; para isso o saldo deve ser maior ou igual à aposta.
 - A mesa fica **anunciada durante todo o jogo**, para que quem tem token sempre consiga voltar (§16.5), mesmo sem a mesa na lista. Ninguém escolhe uma mesa em andamento numa lista: a tela *Iniciar novo jogo* não lista mesas ("só se entra sendo chamado", §14.4). A única porta de entrada é a **chamada** abaixo.
 - **Chamar um jogador (a porta de entrada, decidido em 2026-10-27):** com um assento **ocupável** (o da vez de quem caiu, depois de "Recrutar outro jogador" de §16.8, ou um assento de robô que o anfitrião liberou), o anfitrião vê os **jogadores livres por perto** (os que estão na tela *Iniciar novo jogo*, §16.2) e **chama** um deles, como no recrutamento. **Chamar é a aprovação do anfitrião**: não há segunda aprovação.
@@ -614,6 +616,7 @@ flowchart TD
 
 ### **16.11. Próxima partida**
 - Ao fim de cada partida (§12), o anfitrião faz a pontuação e envia a **cada convidado** um **pacote completo** com o fim da partida (pontos de §12 por lado, totais) e, se o jogo terminou (§13), o fim do jogo (vencedor). O pacote só tem informação visível (§16.4): nada de mãos alheias, monte, mortos ou semente.
+- **Boosters:** ao receber o início de cada partida, cada humano passa pelo **seletor de boosters** (§17.3) antes de ver a distribuição; o anfitrião registra a escolha de cada assento e, na vez de quem ainda não escolheu, espera até o prazo de §16.15.
 - **Cada aparelho conduz sozinho** a sua sequência de telas de resultado (anúncio, pontos, fim de jogo), no seu tempo.
 - O **anfitrião** segue para a próxima partida (§4.1) quando **ele mesmo** avança nas suas telas: distribui e envia as informações de início a todos. O convidado recebe isso **a qualquer momento** e **guarda** até o seu jogador avançar nas telas de resultado.
 - O jogo **nunca espera** os convidados avançarem telas: só pára para aguardar a jogada do jogador da vez (§16.6).
@@ -664,5 +667,58 @@ flowchart TD
 | Reenvio de mensagem sem confirmação (§16.5) | 1 s, até 5 vezes |
 | Confirmação de recebimento sem outra mensagem a enviar | 200 ms |
 | Mensagem de teste da qualidade da conexão (convidado sem enviar nada) | a cada 5 s |
+| Seletor de boosters antes de cada partida (§17.3) | 30 s no relógio de quem escolhe; sem confirmar, vale o que está selecionado; o jogo só espera na vez dele |
 
 - **Qualidade da conexão (sinal na tela do convidado):** medida no convidado pelo tempo entre enviar uma mensagem ao anfitrião e receber a confirmação (média móvel), sem tráfego extra frequente: só quando o convidado passou **5 s** sem enviar nada, ele manda uma mensagem curta de teste. **3 barras** (boa): média até **500 ms** e nenhum reenvio recente; **2 barras** (média): média até **1.500 ms** e até **2** reenvios recentes; **1 barra** (ruim): acima disso, ou reconectando. É só informação na tela; não muda o jogo.
+
+---
+
+# **17. Boosters**
+
+Boosters são itens do **inventário** do jogador que ele escolhe usar **antes de cada partida**. Valem só para o jogo contra os jogadores virtuais e a mesa multijogador local; o inventário fica **no aparelho** (adulterável, risco aceito por ora, como a carteira de §14.6). Os robôs **não** usam boosters. Plano: `docs/plano-boosters.md`.
+
+### **17.1. Inventário e catálogo**
+- O inventário guarda a **quantidade** de cada item. As **moedas** (§14.6) são um item do inventário, mas o saldo continua na carteira e é o **único** item que muda de dono entre jogos (ganha-se ao vencer, perde-se ao perder). Os boosters nunca são ganhos nem perdidos por resultado de jogo.
+- O **catálogo** é uma lista de boosters com: identificação, nome, resumo, **custo por uso** (padrão **1**), **quantidade inicial** e **faixa de quantidade do sorteio** (§17.5). Fica num arquivo JSON local, pensado para virar banco com sincronização on-line depois.
+- Quem ainda não tem inventário recebe a **quantidade inicial** de cada booster.
+
+| Id | Nome | Resumo | Qtd. inicial | Sorteio |
+|---|---|---|---|---|
+| b1 | Green-LED | Mostra um ponto verde nas cartas que pode baixar | 5 | 1 a 3 |
+| b2 | Red-LED | Mostra um ponto vermelho nas cartas que se encaixam no jogo do adversário | 5 | 1 a 3 |
+| b3 | Reações | Permite expressar até 3 reações durante a partida | 5 | 2 a 7 |
+
+### **17.2. Escolha no inventário**
+- Na tela do inventário o jogador marca **até 3 boosters distintos** para a próxima partida; **moedas não podem** ser marcadas. A marcação é gravada e **vale também para as próximas partidas** até ser mudada; booster com quantidade **0** não pode ser marcado e, se estava marcado, sai da marcação.
+
+### **17.3. Escolha antes de cada partida**
+- **Antes de cada partida** (a 1ª e as seguintes de um jogo), cada jogador **humano** vê o **seletor de boosters** **sem ver a distribuição das cartas**: a mesa só mostra as cartas (mão, jogos e descartes já feitos) depois que ele confirma.
+- O seletor começa **preenchido com a marcação do inventário** (§17.2), sem os de quantidade 0. O jogador pode trocar, tirar ou deixar como está. Booster de quantidade **0** aparece esmaecido e **não pode ser escolhido**.
+- **Seguir** confirma: debita **o custo de cada booster escolhido** (padrão 1) do inventário e registra a escolha **no aparelho e no anfitrião** (§17.4). Se o débito não passar (a quantidade acabou), o booster fica de fora.
+- **Prazo de 30 s** a partir de quando o seletor aparece. Sem confirmar, vale **o que estiver selecionado na tela** (como se tivesse tocado em Seguir); sem nenhum selecionado, a partida começa **sem boosters**.
+- O jogo **não espera** quem ainda não escolheu: os demais começam. Ao chegar a **vez** de quem ainda não escolheu, o jogo **espera**, como parte da jogada dele, no máximo até o fim dos 30 s. Depois de confirmar, o jogador vê as **animações de distribuição e os descartes já feitos** (§16.6).
+- Os boosters valem **só para a partida**: a partida seguinte tem novo seletor e nova cobrança. **Desistir** (§13.1) ou cair da mesa não devolve o que foi debitado.
+- Jogo salvo ("Continuar", §14): guarda os boosters da partida em andamento, já debitados; retomar **não debita de novo**. Salvo antes de confirmar o seletor, o seletor volta a aparecer ao retomar.
+
+### **17.4. Boosters e assentos (multijogador)**
+- O booster fica **no assento**, não no jogador. O **anfitrião** conhece os boosters escolhidos de **todos** os assentos humanos.
+- Quem **sai** do assento (§16.8, §16.9) leva o que sobrou do inventário, mas **não** os boosters já debitados da partida; quem **entra** depois (§16.7) **herda os boosters do assento** nessa partida **sem descontar do seu inventário**. Se o assento ainda não tinha confirmado o seletor, o novo ocupante o faz.
+- Nas partidas seguintes, cada ocupante escolhe os seus (§17.3).
+
+### **17.5. Presente diário**
+- Na **primeira abertura do dia** (data do aparelho), **só na tela inicial**, o jogador pode receber **um booster de presente**, com a mensagem "Você recebeu um presente", o ícone, o nome e a quantidade.
+- Há um **sorteio por dia**, com **chance de 3 em 5** (60 %). Ganhando, sorteia-se **um booster** entre os que o jogador tem **menos de 10**, com o mesmo peso, e a **quantidade** dentro da faixa do catálogo (§17.1), **limitada de modo que o total não passe de 10**. Quem já tem **10 ou mais** de todos não recebe nada. Moedas **não** entram no sorteio.
+- O dia é marcado **mesmo sem prêmio** (um sorteio por dia). Com o relógio do aparelho atrasado (data anterior ou igual à do último sorteio), não há novo sorteio.
+
+### **17.6. b1 Green-LED**
+- Na **vez** do jogador, as cartas da mão que **participam de alguma jogada** (baixar, acrescentar ou pegar o lixo, a partir de `legalActions`, sem o descarte) ganham um **ponto verde no canto superior direito**. Com cartas selecionadas, as que **completam jogada junto com a seleção** ganham o destaque forte e as demais ficam esmaecidas. **Sem o b1 na partida, nada disso aparece**: só a seleção (carta levantada) é mostrada.
+
+### **17.7. b2 Red-LED**
+- Na vez do jogador, **depois de comprar ou pegar o lixo** (§4.3, etapa 2: baixar ou descartar), cada carta da mão que **poderia ser acrescentada a um conjunto da mesa do adversário** (pelas regras de §6.2, §6.3 e §7.3, como se fosse a vez do adversário) ganha um **círculo vermelho do mesmo tamanho do ponto verde**, no **canto inferior esquerdo**. Em duplas valem os conjuntos dos **dois adversários**.
+- A carta **pulsa** se acrescentá-la **fecharia uma canastra** do adversário (o conjunto passaria de 6 para **7 cartas**, §7.1).
+- Só usa informação **visível** da mesa (§16.4); nunca a mão dos outros. Não é uma jogada e **não** muda `legalActions`.
+
+### **17.8. b3 Reações**
+- Cada partida com o b3 dá **3 reações** (no total, de qualquer tipo). As reações são: **Aplausos**, **Amei**, **Pensativo**, **Nervoso** e **Frango**.
+- O jogador abre o menu e escolhe uma; ela **aparece para toda a mesa** por alguns segundos junto do assento de quem a enviou (*tempo provisório, revisar com produto*) e **gasta 1** das 3. Sem usos restantes, o botão fica esmaecido. As reações valem a **qualquer momento** da partida (não só na vez) e não alteram o jogo.
+- No multijogador a reação viaja pelo anfitrião a todos os humanos (§16.4: não revela nada oculto).

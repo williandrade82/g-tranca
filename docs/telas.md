@@ -28,6 +28,11 @@ Use estes nomes nos pedidos.
 | **Modal de jogada não permitida** | `GDialog` que explica por que o motor recusou a jogada do jogador: título curto, **o que aconteceu**, **a regra desta mesa** (cita o nome da regra da mesa, ex.: "Tranca Paulista") e **o que fazer**; três botões no lugar do antigo "Entendi", as opções de **Ações impedidas**: **Continuar avisando** (só fecha o modal; destaque), **Avisar discretamente** e **Não avisar mais** (fecham e gravam a preferência). Aparece só quando a preferência *Ações impedidas* do Perfil é **Explicar sempre** | mesa de jogo (ver §4) |
 | **Aviso discreto** | Faixa pequena (`GSnack`) na altura do último toque do jogador na mesa, logo acima do dedo, fixa enquanto aparece (nunca sob a barra de navegação do Android), com uma frase simples do problema (ex.: "Compre uma carta antes de jogar"); some sozinha. **Tocar na faixa (mensagem ou ícone) abre o modal de jogada não permitida**, o mesmo da opção *Explicar sempre* (a faixa "Mostre suas cartas para jogar" não abre nada). Usada quando *Ações impedidas* é **Aviso discreto** | mesa de jogo (ver §4) |
 | **Placar (pílula)** | Cápsula com os totais acumulados ("Nós 200 × 300 Eles") | cabeçalho da mesa |
+| **Armário** | Imagem do armário de madeira (`booster-stock-v1.png`) com 9 nichos (3 × 3); cada **nicho** guarda um item do inventário | Inventário |
+| **Nicho de booster** | Espaço do armário (ou do seletor) com o **ícone** do booster, o **nome** embaixo à esquerda e a **quantidade** embaixo à direita; **esmaecido** com quantidade 0; **marcado** (aro dourado) quando escolhido para o próximo jogo | Inventário, Seletor de boosters |
+| **Ponto verde / círculo vermelho** | Marcas do b1 (ponto verde, canto **superior direito** da carta) e do b2 (círculo vermelho, mesmo tamanho, canto **inferior esquerdo**; a carta **pulsa** se fecharia uma canastra do adversário) | mão da mesa |
+| **Botão de reações** | Ícone (`reacts-icon-v1.png`) entre "Sua mão" e o botão da última jogada, só com o b3 na partida; mostra os usos restantes; abre o **balão de reações** | mesa de jogo |
+| **Balão de reações** | Balão de fala discreto acima do botão com as 5 reações (imagem, nome); fecha ao escolher uma ou ao tocar fora; o texto "N restantes" mostra os usos da partida | mesa de jogo |
 | **Bordão** | Frase decorativa em itálico dourado de cada robô | vários |
 | **Medalhão** | Aro dourado com o avatar dentro: robô (em círculo) ou foto/inicial do jogador | pílula, Perfil |
 | **Barra de ações** | Status da vez + botões (Baixar, Comprar, Descartar...) fixos acima da mão | mesa de jogo |
@@ -57,8 +62,9 @@ Use estes nomes nos pedidos.
 
 ```
 (abertura sem nome no perfil) Boas-vindas ──► Perfil ──(com nome)──► Início
-Início ──► Iniciar novo jogo (opções; ⇄ Personalizar regra) ──Selecionar jogadores──► Seleção de jogadores ──Começar Partida──► Prepare-se! (camada, ≥ 1,5 s) ──► JOGO
+Início ──► Iniciar novo jogo (opções; ⇄ Personalizar regra) ──Selecionar jogadores──► Seleção de jogadores ──Começar Partida──► Prepare-se! (camada, ≥ 1,5 s) ──► Seletor de boosters (30 s; antes de cada partida) ──Seguir──► JOGO
   ├──► Continuar ─────────────────────────────────────────────────────────────────► JOGO
+  ├──► Inventário (armário; marca até 3 boosters)
   ├──► Perfil ──► Personalizar regra
   └──► Estatísticas
 
@@ -88,12 +94,13 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 3. **Saldo** ("Seu saldo: N moedas") e, quando disponível, o botão **Resgatar +200 moedas** (§14.6).
 4. **Continuar** (só com jogo salvo): botão dourado com modo, dificuldade, partida e placar.
 5. **Ver mesas - Iniciar** (abre *Iniciar novo jogo*): dourado sem jogo salvo; secundário com jogo salvo.
-6. **Barra fixa** embaixo: Perfil · Estatísticas; versão discreta logo abaixo.
+6. **Barra fixa** embaixo: Perfil · **Inventário** (ícone do armário, tag `inventory`) · Estatísticas; versão discreta logo abaixo.
 7. Botão de **som** no canto superior direito, sempre à vista.
 
 **Variações:** "Ver mesas - Iniciar" com jogo salvo abre o modal *Começar um novo jogo?* (o jogo salvo conta como derrota por desistência). Com uma **sessão multijogador** guardada (§16.12), um segundo botão **Continuar mesa** (tag `continue-session`) aparece ao lado do jogo salvo contra robôs (cada um no seu botão), com o nome do anfitrião ("Mesa de <anfitrião>") e o assento ("Você: lugar 3"): tocar nele leva a *Voltar à mesa* (3.17) e reingressa como jogador comum, mesmo para quem era anfitrião. A sessão some quando o jogo termina e o resultado é entregue (§16.11), quando o jogador desiste e não volta, quando a mesa é encerrada ou a vaga é preenchida, quando ele sai da mesa pelo botão e **12 h** depois de gravada.
-**Regras:** §14 (jogo salvo), §14.6 (moedas), §13.1 (desistência).
-**Tags:** `home-bots`, `new-game`, `continue`, `continue-session`, `home-balance`, `claim-daily`, `profile`, `stats`, `home-version`.
+**Presente do dia (§17.5):** na primeira abertura do dia, **só aqui** (não nas Boas-vindas), se o sorteio acertar, o modal *Presente do dia* aparece sobre o Início.
+**Regras:** §14 (jogo salvo), §14.6 (moedas), §13.1 (desistência), §17.5 (presente).
+**Tags:** `inventory`, `home-bots`, `new-game`, `continue`, `continue-session`, `home-balance`, `claim-daily`, `profile`, `stats`, `home-version`.
 
 ### 3.2 Iniciar novo jogo (`TablesScreen`)
 **Objetivo:** escolher as **opções da mesa** (§14.4): modo, dificuldade dos robôs, aposta, regras e pontuação-alvo; os jogadores são escolhidos na tela seguinte (3.3). Substitui a antiga *Mesas disponíveis*: a grade de participantes, os cards de mesas de outros anfitriões e o pedido de entrada deixaram de existir; **só se entra numa mesa sendo chamado** (§16.2).
@@ -168,6 +175,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 **Área do meio (rola):** **pílulas dos outros assentos** (em duplas: adv. esquerdo, parceiro, adv. direito; em telas estreitas, o parceiro numa linha e os adversários na de baixo) → jogos do outro lado → **mesa** (monte, mortos, lixo com ícone de ver todo o lixo) → jogos do seu lado, com 3 vermelhos.
 **Fixos embaixo:** **barra de ações** e **mão**.
 **Minha última jogada:** na linha "Sua mão (N)", ao lado do nome, um botão (tag `own-last-play`, 48 dp) abre o **modal de detalhe** com a **sua** última vez, no mesmo formato do dos outros jogadores (sem jogada ainda na partida: "Você ainda não jogou nesta partida."). Vale contra robôs e no multijogador.
+**Boosters na mão (§17):** o realce das cartas da mão (ponto verde nas que participam de jogada; com seleção, borda forte nas que completam e esmaecimento das demais) **só existe com o b1 (Green-LED)** na partida; sem ele, só a carta selecionada se destaca. Com o **b2 (Red-LED)**, depois de comprar ou pegar o lixo, as cartas que se encaixam nos jogos do adversário ganham o círculo vermelho no canto inferior esquerdo (e pulsam se fecham uma canastra dele). Com o **b3 (Reações)**, o **botão de reações** fica na linha "Sua mão (N)", entre o título e o botão da última jogada (`own-last-play`); o toque abre o **balão de reações** acima dele; a reação escolhida aparece junto da pílula do assento (a do próprio jogador, junto da linha da mão) por alguns segundos e a contagem cai de 3 para 0. Tags: `reactions-button`, `reactions-balloon`, `reaction-<nome>`.
 **Ordem do detalhe da vez (pílula e modal):** a vez aparece na **ordem real, a mesma das animações**: troca de 3 vermelho do início da vez, compra ou lixo (ao pegar o lixo, primeiro o jogo com o topo e as cartas da mão, depois o resto que foi à mão), troca do 3 vermelho que veio na compra, baixas e acréscimos na ordem em que foram feitos, e o descarte por último.
 **Sinal da conexão (multijogador, só na tela dos convidados):** a pílula do **anfitrião** mostra um ícone de sinal com **1 a 3 barras** (tag `host-signal`): a qualidade da conexão deste aparelho com o anfitrião (§16.15). No anfitrião não aparece.
 **Esconder cartas (só na mesa multijogador):** na linha "Sua mão (N)", à esquerda do botão de ordenação, o botão de **olho** (tag `hand-hide`; olho riscado quando escondida). Ligado, as cartas da mão aparecem **viradas** (verso na cor do baralho) e não podem ser selecionadas; a contagem continua. O estado é só deste aparelho (não vai pela rede) e vale até o fim do jogo; **não se desliga sozinho** na vez do jogador: Comprar e Pegar o lixo continuam funcionando, e tocar numa carta virada mostra o aviso "Mostre suas cartas para jogar". Contra robôs o botão não aparece.
@@ -278,7 +286,7 @@ Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jo
 7. Monte: "O monte: no começo da vez, compre uma carta daqui."
 8. Mortos: "Os mortos: quem acabar primeiro com as cartas da mão pega um."
 9. Lixo: "O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer."
-10. Mão: "Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora."
+10. Mão: "Sua mão. Toque nas cartas para selecionar." (com o booster Green-LED, acrescenta: "as marcadas com ponto verde podem ser jogadas agora.")
 11. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
 **Multijogador:** o tour é só da tela deste aparelho e não pausa o jogo; a vez continua aberta enquanto ele está na tela (não há limite de tempo para jogar, §16).
 
@@ -292,6 +300,19 @@ Se o jogo já terminou e o resultado ainda não foi recebido, o jogador recebe s
 **Regras:** §16.5, §16.9, §16.11, §16.12.
 **Tags:** `rejoin`, `rejoin-searching`, `rejoin-cancel`, `rejoin-failed`, `rejoin-wifi`, `rejoin-wifi-on`.
 
+### 3.18 Inventário (`InventoryScreen`)
+**Objetivo:** ver os itens e marcar até 3 boosters para a próxima partida (§17.1, §17.2).
+**Conteúdo:** o **armário** (`booster-stock-v1.png`, 9 nichos) com um **nicho de booster** por item do catálogo, na ordem do catálogo; as **moedas** aparecem como item (saldo), **sem** poder ser marcadas. Tocar num nicho com quantidade marca/desmarca (aro dourado); no máximo 3 marcados (o 4º é recusado com um aviso discreto); quantidade 0: esmaecido e não marca. Texto de apoio: "Escolha até 3 boosters para a próxima partida". A marcação é gravada na hora. Botão **Voltar**.
+**Regras:** §17.1, §17.2.
+**Tags:** `inventory-screen`, `booster-slot-<id>`, `inventory-back`.
+
+### 3.19 Seletor de boosters (`BoosterSelectorScreen`)
+**Objetivo:** escolher os boosters da partida **antes de ver a distribuição** (§17.3). Aparece **antes de cada partida**, depois do *Prepare-se!* na primeira e depois dos pontos nas seguintes, também contra robôs.
+**Conteúdo:** a imagem `boosters-selector-v1.png`: "Selecione até três boosters para usar nesse jogo." (no jogo, "nessa partida") e **3 nichos**, **pré-preenchidos** com a marcação do Inventário (sem os de quantidade 0); nicho vazio mostra o "+" tracejado e abre a lista de boosters (os de quantidade 0 esmaecidos, sem seleção); tocar num nicho cheio o esvazia. Botão verde **Seguir ▶** (tag `boosters-go`) com um **contador** discreto do prazo de **30 s**; ao zerar vale o que está selecionado, como Seguir. Seguir debita o custo de cada booster; sem nenhum selecionado, segue sem booster. A mesa não aparece por trás (nada de cartas) e depois do Seguir mostra as animações de distribuição e os descartes já feitos (§16.6).
+**Multijogador:** cada humano tem a sua tela. Os que já confirmaram jogam; ao chegar a vez de quem ainda não escolheu, a mesa mostra *Aguardando <nome> escolher os boosters*.
+**Regras:** §17.3, §17.4, §16.15.
+**Tags:** `boosters-selector`, `booster-pick-<n>`, `boosters-go`, `boosters-timer`.
+
 ## 4. Modais
 
 Todos levam o **cabeçalho de marca**.
@@ -300,6 +321,7 @@ Todos levam o **cabeçalho de marca**.
 |---|---|---|---|
 | Começar um novo jogo? | mensagem (perigo) | Início, "Novo jogo" com jogo salvo | explica que o jogo salvo vira desistência |
 | Voltar ao início? | mensagem (aviso) | voltar durante o jogo | confirma sair |
+| Presente do dia | `GDialog` | Início, primeira abertura do dia, se o sorteio (§17.5) acertar | "Você recebeu um presente": **ícone** do booster, **nome** e **quantidade**; botão **Guardar** (o presente já foi creditado ao abrir). Tags `gift-modal`, `gift-ok` |
 | Desistir do jogo? | mensagem (perigo) | bandeira (menu de engrenagem) | §13.1; mostra as **apostas em jogo** (aposta de cada jogador, total em jogo, quanto o jogador perde e que deixa de concorrer ao prêmio) e os **pontos** da mesa (placar de cada lado, com os nomes de quem está nele); cancelar volta ao estado exato |
 | **Convite** | mensagem | jogador próximo **chamado** por um recrutador (§16.2), em qualquer tela fora de um jogo. **Partida em andamento (§16.7):** o chamado que está em *Iniciar novo jogo* recebe o mesmo modal, com o título "<anfitrião> está te chamando para uma partida em andamento", a linha **Débito** (a aposta cheia, ou "nenhum: você herda a aposta de quem saiu") e a posição do assento; aceitar entra direto na mesa de jogo (sem *Mesa do recrutado* nem "Prepare-se!"). Tags iguais, mais `invite-debit`; quem recusa ou deixa passar o prazo continua em *Iniciar novo jogo* | "<recrutador> está te recrutando"; **aposta** (com o ícone do saco de dinheiro), **tipo** (individual / duplas), **posição** (**Parceiro** se o lugar é o da frente; senão **Adversário**; no individual, **Adversário**) e **título da regra** (Clássica / Tranca Paulista / Personalizada); botões **Detalhes da regra** (abre o modal *Detalhes da regra*), **Recusar** e **Aceitar**. **25 s para responder, com contagem na tela**: uma **barra de progresso que esvazia** com os **segundos restantes** ao lado, atualizada a cada ~100 ms, que **muda de cor nos últimos 5 s**; o leitor de tela anuncia a contagem sem repetir demais (a cada 10 s e aos 5 s). Ao zerar o modal fecha sozinho (sem resposta vale como recusa, motivo "não respondeu a tempo"; **o aceite nunca é automático**); a posição acompanha o recrutador movendo o chamado; some se o recrutador o remover. Saldo menor que a aposta: recusa automática com aviso. Tags `invite`, `invite-details`, `invite-accept`, `invite-refuse`, `invite-countdown` |
 | **Detalhes da regra** | diálogo | botão "Ver detalhes da regra" (Iniciar novo jogo, Mesa do recrutado) ou "Detalhes da regra" (Convite) | o nome do perfil de regras e o **resumo** das regras da mesa (§14.2: as diferenças em relação à Clássica) e a pontuação-alvo; **Fechar**. Tags `rules-details-dialog` |
