@@ -92,4 +92,40 @@ class InventoryViewModelTest {
         advanceUntilIdle()
         repo.marked.value shouldBe emptyList()
     }
+
+    @Test
+    fun `§17_2 tocar num item mostra a descricao dele na caixa de texto e marca o booster`() = runTest(dispatcher) {
+        val repo = FakeInventory(BoosterCatalog.DEFAULT, Inventory.initial())
+        val vm = InventoryViewModel(repo)
+        vm.state.value.info shouldBe null
+        vm.onItem("b2")
+        advanceUntilIdle()
+        vm.state.value.info shouldBe "b2"
+        repo.marked.value shouldBe listOf("b2")
+        // outro item troca a descrição
+        vm.onItem("b3")
+        advanceUntilIdle()
+        vm.state.value.info shouldBe "b3"
+    }
+
+    @Test
+    fun `§17_2 as moedas mostram a descricao mas nao se marcam nem avisam falta de estoque`() = runTest(dispatcher) {
+        val repo = FakeInventory(BoosterCatalog.DEFAULT, Inventory.initial())
+        val vm = InventoryViewModel(repo)
+        vm.onItem("coins")
+        advanceUntilIdle()
+        vm.state.value.info shouldBe "coins"
+        repo.marked.value shouldBe emptyList()
+        vm.state.value.notice shouldBe null
+    }
+
+    @Test
+    fun `§17_2 item sem estoque mostra a descricao e avisa que acabou`() = runTest(dispatcher) {
+        val repo = FakeInventory(BoosterCatalog.DEFAULT, Inventory(mapOf("b1" to 0)))
+        val vm = InventoryViewModel(repo)
+        vm.onItem("b1")
+        advanceUntilIdle()
+        vm.state.value.info shouldBe "b1"
+        vm.state.value.notice shouldBe InventoryNotice.NO_STOCK
+    }
 }

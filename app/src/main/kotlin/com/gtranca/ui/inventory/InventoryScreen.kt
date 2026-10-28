@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -87,6 +89,8 @@ data class InventoryUi(
     /** Saldo de moedas (item do inventário, só para ver: não se marca); `null` enquanto lê. */
     val balance: Int? = null,
     val notice: InventoryNotice? = null,
+    /** O item cuja descrição está na caixa de texto (id do booster ou "coins"); `null` = nenhum tocado ainda. */
+    val info: String? = null,
 ) {
     val selectedCount: Int get() = items.count { it.selected }
 }
@@ -97,21 +101,33 @@ class InventoryViewModel(
     wallet: WalletRepository? = null,
 ) : ViewModel() {
     private val notice = MutableStateFlow<InventoryNotice?>(null)
+    private val info = MutableStateFlow<String?>(null)
 
     val state: StateFlow<InventoryUi> = combine(
         repository.inventory,
         repository.selection,
         wallet?.wallet?.map<com.gtranca.engine.Wallet, Int?> { it.balance }?.catch { emit(null) } ?: flowOf<Int?>(null),
         notice,
-    ) { inventory, selection, balance, notice ->
+        info,
+    ) { inventory, selection, balance, notice, info ->
         InventoryUi(
             items = repository.catalog.map { InventoryItem(it, inventory.quantity(it.id), it.id in selection) },
             balance = balance,
             notice = notice,
+            info = info,
         )
     }
         .catch { emit(InventoryUi()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, InventoryUi())
+
+    /**
+     * Toque num nicho do armário: a descrição do item aparece na caixa de texto e, se for um booster, ele é marcado ou
+     * desmarcado ([onToggle]). As moedas só mostram a descrição.
+     */
+    fun onItem(id: String) {
+        info.value = id
+        if (repository.catalog.any { it.id == id }) onToggle(id) else notice.value = null
+    }
 
     /** Marca ou desmarca [id]; a marca que não cabe (quarta, sem estoque) só mostra o aviso. */
     fun onToggle(id: String) {
@@ -195,7 +211,8 @@ fun InventoryScreen(viewModel: InventoryViewModel, onBack: () -> Unit) {
                 color = GColors.OnTable,
                 textAlign = TextAlign.Center,
             )
-            Shelf(ui, viewModel::onToggle)
+            Shelf(ui, viewModel::onItem)
+            InfoBox(ui)
             Text(
                 stringResource(R.string.inventory_selected_count, ui.selectedCount, Loadout.MAX),
                 style = MaterialTheme.typography.titleMedium,
@@ -237,7 +254,7 @@ private fun Shelf(ui: InventoryUi, onToggle: (String) -> Unit) {
             Image(painterResource(R.drawable.booster_stock), null, Modifier.size(w, h), contentScale = ContentScale.FillBounds)
             val coinName = stringResource(R.string.inventory_coins)
             val slots = buildList {
-                ui.balance?.let { add(Slot("coins", coinName, R.drawable.coin_bag, it, selected = false, enabled = false)) }
+                ui.balance?.let { add(Slot("coins", coinName, R.drawable.coin_bag, it, selected = false, enabled = true)) }
                 ui.items.forEach { add(Slot(it.def.id, it.def.name, boosterIconRes(it.def.id), it.quantity, it.selected, enabled = true)) }
             }.take(9)
             slots.forEachIndexed { index, slot -> Niche(slot, index % 3, index / 3, w, h, onToggle) }
@@ -301,5 +318,76 @@ private fun Niche(slot: Slot, col: Int, row: Int, w: Dp, h: Dp, onToggle: (Strin
             Modifier.testTag("booster-qty-${slot.id}"),
             minFontSp = 6,
         )
+    }
+}
+
+/**
+ * A caixa de texto abaixo do armário: mostra a descrição do item tocado (nome, quantidade e o que o booster faz). Decorada como o
+ * resto do app: fundo azul-marinho em degradê, moldura dourada dupla e parafusos nos cantos, como as placas das imagens.
+ */
+@Composable
+private fun InfoBox(ui: InventoryUi) {
+    val shape = RoundedCornerShape(16.dp)
+    val def = ui.items.firstOrNull { it.def.id == ui.info }
+    val isCoins = ui.info == "coins"
+    val name = when {
+        def != null -> def.def.name
+        isCoins -> stringResource(R.string.inventory_coins)
+        else -> null
+    }
+    val text = when {
+        def != null -> def.def.summary
+        isCoins -> stringResource(R.string.inventory_coins_description)
+        else -> stringResource(R.string.inventory_info_placeholder)
+    }
+    val quantity = def?.quantity ?: if (isCoins) ui.balance else null
+    val icon = when {
+        def != null -> boosterIconRes(def.def.id)
+        isCoins -> R.drawable.coin_bag
+        else -> null
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .widthIn(max = 520.dp)
+            .background(Brush.verticalGradient(listOf(GColors.Indigo, GColors.Midnight)), shape)
+            .border(3.dp, GColors.Gold, shape)
+            .padding(5.dp)
+            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+            .testTag("inventory-info"),
+    ) {
+        // Parafusos nos quatro cantos.
+        Canvas(Modifier.matchParentSize()) {
+            val r = 3.5.dp.toPx()
+            val inset = 11.dp.toPx()
+            listOf(Offset(inset, inset), Offset(size.width - inset, inset), Offset(inset, size.height - inset), Offset(size.width - inset, size.height - inset))
+                .forEach { c ->
+                    drawCircle(GColors.Gold.copy(alpha = 0.85f), r, c)
+                    drawCircle(GColors.Midnight.copy(alpha = 0.7f), r * 0.4f, c)
+                }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon?.let { Image(painterResource(it), null, Modifier.size(56.dp), contentScale = ContentScale.Fit) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                name?.let {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                        Text(it, style = MaterialTheme.typography.titleMedium, color = GColors.Gold, fontWeight = FontWeight.ExtraBold, modifier = Modifier.testTag("inventory-info-name"))
+                        quantity?.let { q ->
+                            Text(stringResource(R.string.inventory_info_quantity, q), style = MaterialTheme.typography.labelLarge, color = GColors.Champagne)
+                        }
+                    }
+                }
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (name == null) GColors.OnTable.copy(alpha = 0.75f) else GColors.Ivory,
+                    modifier = Modifier.testTag("inventory-info-text"),
+                )
+            }
+        }
     }
 }

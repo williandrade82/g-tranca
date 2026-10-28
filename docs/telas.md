@@ -302,7 +302,7 @@ Se o jogo já terminou e o resultado ainda não foi recebido, o jogador recebe s
 
 ### 3.18 Inventário (`InventoryScreen`)
 **Objetivo:** ver os itens e marcar até 3 boosters para a próxima partida (§17.1, §17.2).
-**Conteúdo:** o **armário** (`booster-stock-v1.png`, 9 nichos) com um **nicho de booster** por item do catálogo, na ordem do catálogo; as **moedas** aparecem como item (saldo), **sem** poder ser marcadas. Tocar num nicho com quantidade marca/desmarca (aro dourado); no máximo 3 marcados (o 4º é recusado com um aviso discreto); quantidade 0: esmaecido e não marca. Texto de apoio: "Escolha até 3 boosters para a próxima partida". A marcação é gravada na hora. Botão **Voltar**.
+**Conteúdo:** o **armário** (`booster-stock-v1.png`, 9 nichos) com um **nicho de booster** por item do catálogo, na ordem do catálogo; as **moedas** aparecem como item (saldo), **sem** poder ser marcadas. Tocar num nicho mostra a **descrição** do item na **caixa de texto** logo abaixo do armário (tag `inventory-info`: ícone, nome, "você tem N" e o que o booster faz; moldura dourada dupla com parafusos nos cantos; antes do 1º toque, uma dica; as moedas também têm descrição) e, se for um booster, marca/desmarca (aro dourado); no máximo 3 marcados (o 4º é recusado com um aviso discreto); quantidade 0: esmaecido e não marca. Texto de apoio: "Escolha até 3 boosters para a próxima partida". A marcação é gravada na hora. Botão **Voltar**.
 **Regras:** §17.1, §17.2.
 **Tags:** `inventory-screen`, `booster-slot-<id>`, `inventory-back`.
 

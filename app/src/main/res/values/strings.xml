@@ -772,4 +772,7 @@
     <string name="gift_title">Você recebeu um presente</string>
     <string name="gift_quantity">+%1$d</string>
     <string name="gift_ok">Guardar</string>
+    <string name="inventory_info_placeholder">Toque num item do armário para ver o que ele faz.</string>
+    <string name="inventory_info_quantity">· você tem %1$d</string>
+    <string name="inventory_coins_description">Moedas do jogo: ganha-se ao vencer e perde-se ao perder. Servem para as apostas e não se marcam para a partida.</string>
 </resources>
