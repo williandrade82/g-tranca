@@ -54,18 +54,20 @@ internal suspend fun TestScope.openTable(
     // Sessões no relógio virtual, fora do `backgroundScope` (que o `advanceUntilIdle` não roda); os coletores só suspendem.
     val scope = CoroutineScope(dispatcher + Job())
     val hostTransport = network.transport()
-    val hostSession = HostSession(hostTransport, "mesa-1", rules, "Anfitrião")
+    // §16.2 plano de lugares: o anfitrião no 0, os convidados nos lugares pedidos (recrutados) e robôs nos demais.
+    var layout = com.gtranca.net.TableLayout.initial(mode)
+    guestSeats.forEach { seat -> layout = layout.call(seat.index, "k${seat.index}", "Convidado ${seat.index}")!!.accept("k${seat.index}")!! }
+    layout = layout.fillWithRobots(com.gtranca.game.Tables.personaPool, Random(seed))
+    val plan = com.gtranca.net.TablePlan(layout, com.gtranca.game.Tables.personaPool, seed)
+    val hostSession = HostSession(hostTransport, "mesa-1", rules, "Anfitrião", plan = plan)
     hostSession.open(scope)
     val endpoints = mutableMapOf<Seat, MemoryTransport>()
     val guests = guestSeats.associateWith { seat ->
         val transport = network.transport().also { endpoints[seat] = it }
-        GuestSession(transport, "Convidado ${seat.index}").also { it.join(scope, "mesa-1") }
+        GuestSession(transport, "Convidado ${seat.index}").also { it.join(scope, "mesa-1", inviteKey = "k${seat.index}") }
     }
-    advanceUntilIdle()
-    guests.forEach { (seat, guest) -> guest.chooseSeat(seat); guest.confirmSeat() }
-    advanceUntilIdle()
-    val seats = hostSession.startGame().keys
-    advanceUntilIdle()
+    advanceUntilIdle() // o "Prepare-se!" passa no relógio virtual e o jogo começa sozinho
+    val seats = hostSession.gameStart.value!!.keys
     val host = MultiplayerHost(
         hostSession, config, seed, seats,
         botFactory = { seat, _ -> testBot(seed, seat) },

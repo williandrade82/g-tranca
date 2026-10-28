@@ -53,11 +53,11 @@ class HomeToTableTest {
     @Test
     fun alvoInvalidoDesabilitaEscolherPosicoes() {
         openTables()
-        rule.onNodeWithTag("target-field").performTextReplacement("0")
+        rule.onNodeWithTag("target-score").performTextReplacement("0")
         rule.onNodeWithText("Informe um número inteiro positivo").assertExists()
-        rule.onNodeWithTag("choose-seats").assertIsNotEnabled()
-        rule.onNodeWithTag("target-field").performTextReplacement("1500")
-        rule.onNodeWithTag("choose-seats").assertIsEnabled()
+        rule.onNodeWithTag("select-players").assertIsNotEnabled()
+        rule.onNodeWithTag("target-score").performTextReplacement("1500")
+        rule.onNodeWithTag("select-players").assertIsEnabled()
     }
 
     /** §14.4 "Novo jogo" abre a montagem da mesa ("Mesas disponíveis"). */
@@ -66,26 +66,43 @@ class HomeToTableTest {
         rule.waitUntil(10_000) { exists("tables-screen") }
     }
 
-    /** §16.2 "Escolher posições" → a mesa só com robôs: confirmar e, 2 s depois, o jogo. */
+    /** §16.3 "Selecionar jogadores" → mesa só com robôs: completar, Começar Partida e, depois do "Prepare-se!", o jogo. */
     private fun chooseSeatsAndStart() {
-        rule.onNodeWithTag("choose-seats").performClick()
-        rule.waitUntil(10_000) { exists("seat-picker-confirm") }
-        rule.onNodeWithTag("seat-picker-confirm").performClick()
+        rule.onNodeWithTag("select-players").performClick()
+        rule.waitUntil(10_000) { exists("player-selection") }
+        rule.onNodeWithTag("fill-with-robots").performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag("start-match") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(10_000) { exists("table-screen") }
     }
 
     @Test
-    fun montagemComRobosEscolhidosLevaAEscolhaDePosicoesEAoJogo() {
+    fun selecaoPorToqueColocaRoboNoLugarERemove() {
         openTables()
-        rule.onNodeWithTag("participant-self").assertExists()
-        rule.onNodeWithTag("participant-bot-atleta").performClick()
-        rule.onNodeWithTag("participant-bot-jovem").performClick()
-        // 3 participantes: duplas, sem escolha.
-        rule.onNodeWithTag("mode-individual").assertIsNotEnabled()
-        rule.onNodeWithTag("choose-seats").performClick()
-        rule.waitUntil(10_000) { exists("seat-picker") }
-        rule.onNodeWithTag("seat-slot-1").assertExists()
-        rule.onNodeWithTag("seat-picker-confirm").performClick()
+        // §14.6 três apostas por nível, cada uma com o saco de dinheiro; "Ver detalhes da regra" abre o modal com o resumo.
+        rule.onNodeWithTag("stake-100").assertExists()
+        rule.onNodeWithTag("rules-details").performClick()
+        rule.onNodeWithTag("rules-details-dialog").assertExists()
+        rule.onNodeWithTag("rules-details-close").performClick()
+        rule.onNodeWithTag("select-players").performClick()
+        rule.waitUntil(10_000) { exists("player-selection") }
+        rule.onNodeWithTag("start-match").assertIsNotEnabled()
+        // tocar num lugar vago e depois num robô
+        rule.onNodeWithTag("seat-1").performClick()
+        rule.onNodeWithTag("robot-atleta").performClick()
+        rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertDoesNotExist()
+        // lugar ocupado e depois um item da lista: retira quem estava no lugar (o item tocado não entra)
+        rule.onNodeWithTag("seat-1").performClick()
+        rule.onNodeWithTag("robot-jovem").performClick()
+        rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertExists()
+        // o outro sentido: robô primeiro e depois o lugar
+        rule.onNodeWithTag("robot-zen").performClick()
+        rule.onNodeWithTag("seat-hint").assertExists()
+        rule.onNodeWithTag("seat-1").performClick()
+        rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithTag("fill-with-robots").performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag("start-match") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(10_000) { exists("table-screen") }
     }
 

@@ -40,12 +40,6 @@ object MultiplayerHub {
     private fun transport(context: Context): LocalTransport =
         transport ?: MultiplayerAccess.transport(context.applicationContext, scope).also { transport = it }
 
-    /** Mesas anunciadas por perto (§16.2); a busca para sozinha quando ninguém mais observa. */
-    fun discover(context: Context): Flow<List<TableAdvert>> = transport(context).discover()
-
-    /** §16.2 jogadores próximos (presença) achados por perto. */
-    fun discoverPresence(context: Context): Flow<List<PresenceAdvert>> = transport(context).discoverPresence()
-
     /** §16.2 chave de presença deste aparelho: nova a cada vez que o Wi-Fi do jogo liga. */
     @Volatile
     private var presenceKey: String? = null
@@ -98,6 +92,20 @@ object MultiplayerHub {
         scope.launch { runCatching { rec.rename(name) } }
     }
 
+    private val _joining = MutableStateFlow(false)
+
+    /**
+     * §16.2 o recrutador começou a partida e este aparelho (recrutado) está passando do recrutamento para a mesa do jogo
+     * (a camada "Prepare-se!" fica na tela nesse intervalo, mesmo sem recrutamento nem mesa ainda).
+     */
+    val joining: StateFlow<Boolean> = _joining.asStateFlow()
+
+    /** §16.2 encerra a mesa de lugares do recrutador (voltou à tela 1, saiu ou desligou o Wi-Fi): chamados cancelados, recrutados avisados. */
+    fun closeRecruiting() {
+        val rec = _recruitment.value ?: return
+        scope.launch { runCatching { rec.closeHosting() } }
+    }
+
     /** Chave de presença atual deste aparelho (`null` com o Wi-Fi do jogo desligado). */
     val myPresenceKey: String? get() = presenceKey
 
@@ -132,6 +140,7 @@ object MultiplayerHub {
                         rec.events.collect { if (it !is com.gtranca.net.RecruitEvent.Start) _recruitEvents.emit(it) }
                     }
                     val start = rec.events.first { it is com.gtranca.net.RecruitEvent.Start } as com.gtranca.net.RecruitEvent.Start
+                    _joining.value = true
                     events.cancel()
                     start
                 } finally {
@@ -147,8 +156,12 @@ object MultiplayerHub {
                 }
             }
             // §16.2 o anfitrião tocou em Escolher posições: entra direto, com a própria chave (sem novo convite).
+            // §16.15 o anúncio de presença pára (sem "saindo") ANTES de procurar a mesa: trocar o anúncio no meio do pedido de conexão fazia falhar.
+            withContext(NonCancellable) { runCatching { t.stopPresence(announceLeaving = false) } }
             newTable(context, data, photo).joinAsync(start.tableId, name, inviteKey = start.inviteKey)
+            _joining.value = false
         } finally {
+            _joining.value = false
             withContext(NonCancellable) { runCatching { t.stopPresence() } }
         }
     }
@@ -159,8 +172,9 @@ object MultiplayerHub {
      */
     fun newTable(context: Context, data: GameData, photo: String? = null): MultiplayerTable {
         val leaving = _table.value?.let { old -> scope.launch { old.leave() } }
-        return MultiplayerTable(transport(context), scope, DataMpCoins(data, scope), after = leaving).also {
+        return MultiplayerTable(transport(context), scope, DataMpCoins(data, scope), after = leaving, sessions = DataMpSessions(data)).also {
             it.myPhoto = photo
+            it.log = debugLog
             _table.value = it
         }
     }
@@ -174,10 +188,18 @@ object MultiplayerHub {
         }
     }
 
-    /** Sai da sala de espera (ou desiste de entrar, ou recusa o convite). */
+    /** Solta a mesa **sem** apagar a sessão guardada (§16.12): cancelar o "Voltar à mesa" não perde o direito de tentar de novo. */
+    fun leaveKeepingSession() {
+        val table = _table.value ?: return
+        _table.value = null
+        scope.launch { table.leave() }
+    }
+
+    /** Sai da sala de espera (ou desiste de entrar, ou recusa o convite): a sessão guardada (§16.12) é apagada. */
     fun leave() {
         val table = _table.value ?: return
         _table.value = null
+        table.forgetSession()
         scope.launch { table.leave() }
     }
 }
@@ -193,4 +215,11 @@ private class DataMpCoins(private val data: GameData, scope: CoroutineScope) : M
     override suspend fun settle(gameId: String, rules: TableRules, result: GameResult, stake: Int, received: Int) {
         runCatching { data.stats.recordBet(gameId, rules.mode, rules.difficulty, result, stake, received) }
     }
+}
+
+/** §16.12 a sessão do jogador comum no `:data` (arquivo próprio, separado do jogo salvo contra robôs). */
+private class DataMpSessions(private val data: GameData) : MpSessions {
+    override suspend fun save(session: com.gtranca.data.MultiplayerSession) = data.multiplayerSession.save(session)
+
+    override suspend fun clear() = data.multiplayerSession.clear()
 }

@@ -5,15 +5,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Última montagem da mesa (§14.4, docs/telas.md 3.2), lembrada no aparelho: modo, nível dos robôs, regras, aposta,
- * pontuação-alvo e os **robôs marcados**, na ordem em que foram marcados (§16.2: a ordem dos assentos segue a da escolha).
- * Os jogadores próximos não são lembrados. Os valores ficam como foram gravados; o ajuste ao que vale agora (saldo,
- * regras salvas, modo com muitos marcados) é da interface, ao carregar.
+ * Última configuração da mesa (§14.4, docs/telas.md 3.2), lembrada no aparelho: **modo, nível dos robôs, aposta, regras e
+ * pontuação-alvo**. Os lugares (robôs e jogadores) **não** são lembrados: a Seleção de jogadores sempre abre com tudo VAGO.
+ * Versões anteriores gravavam também os robôs marcados; esse campo antigo é ignorado ao ler. Os valores ficam como foram
+ * gravados; o ajuste ao que vale agora (saldo, tabela de apostas do nível, regras salvas) é da interface, ao carregar.
  *
  * @property difficultyId `Difficulty.id` do `:ai` (o `:data` não depende dele).
  * @property rules escolha das regras: `CLASSICA`, `PAULISTA` ou `CUSTOM`.
  * @property target pontuação-alvo como foi digitada.
- * @property robots ids dos personagens marcados (`BotProfile.code`).
  */
 @Serializable
 data class TableSetup(
@@ -22,7 +21,6 @@ data class TableSetup(
     val rules: String = "CLASSICA",
     val stake: Int = 0,
     val target: String = "",
-    val robots: List<String> = emptyList(),
 ) {
     fun encode(): String = JSON.encodeToString(serializer(), this)
 

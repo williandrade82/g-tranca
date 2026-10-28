@@ -107,6 +107,7 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNewGame: () -> Unit,
     onContinue: () -> Unit = {},
+    onContinueSession: () -> Unit = {},
     onStats: () -> Unit = {},
     onProfile: () -> Unit = {},
 ) {
@@ -188,6 +189,25 @@ fun HomeScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.home_continue), style = MaterialTheme.typography.titleMedium)
                         Text(description, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+
+            // §16.12 sessão multijogador guardada: "Continuar mesa", ao lado do jogo salvo contra robôs (cada um no seu botão).
+            state.session?.let { session ->
+                GButton(
+                    onClick = onContinueSession,
+                    enabled = state.ready,
+                    kind = if (state.saved == null) GButtonKind.Primary else GButtonKind.Secondary,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("continue-session"),
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.home_continue_table), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.home_continue_table_info, session.hostName, session.seat),
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                        )
                     }
                 }
             }

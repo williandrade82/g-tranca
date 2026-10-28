@@ -269,6 +269,25 @@ fun GChoiceChip(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    GChoiceChip(selected, onClick, modifier, enabled) {
+        Text(
+            text,
+            color = if (selected) GColors.Ivory else GColors.Steel,
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** [GChoiceChip] com conteúdo livre (ex.: o ícone do saco de dinheiro junto do valor da aposta). */
+@Composable
+fun GChoiceChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
     val shape = CircleShape
     val fill = if (selected) GColors.RoyalBlue else GColors.Indigo
     val border = if (selected) GColors.Gold else GColors.Steel.copy(alpha = 0.5f)
@@ -283,14 +302,7 @@ fun GChoiceChip(
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            color = if (selected) GColors.Ivory else GColors.Steel,
-            style = MaterialTheme.typography.labelLarge,
-            textAlign = TextAlign.Center,
-        )
-    }
+    ) { content() }
 }
 
 /** Diálogo padrão do app (painel azul arredondado), sempre com o cabeçalho de marca [BrandHeader] acima do título. */

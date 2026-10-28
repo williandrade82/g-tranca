@@ -11,7 +11,7 @@ Especificação das telas e dos modais do app, para pedir mudanças sem ambiguid
 ---
 
 ## 0. Saldo no topo (todas as telas)
-Em todas as telas, um indicador pequeno no **centro do alto** mostra o **saco de moedas** e o **saldo** do jogador (tag `coin-balance`; leitor de tela: "Seu saldo: N moedas"), atualizado na hora (aposta debitada, prêmio recebido, ganho diário). Fica numa faixa própria acima do conteúdo, para não sobrepor títulos e botões; na **mesa de jogo** ele não ganha faixa: vira um ícone da linha dos ícones do cabeçalho (3.8), no tamanho da engrenagem, com o número embaixo. A linha "Seu saldo: N moedas" do Início (junto do resgate diário) **continua**; Mesas disponíveis não tem linha de saldo nem saldo junto da aposta (só o do topo).
+Em todas as telas, um indicador pequeno no **centro do alto** mostra o **saco de moedas** e o **saldo** do jogador (tag `coin-balance`; leitor de tela: "Seu saldo: N moedas"), atualizado na hora (aposta debitada, prêmio recebido, ganho diário). Fica numa faixa própria acima do conteúdo, para não sobrepor títulos e botões; na **mesa de jogo** ele não ganha faixa: vira um ícone da linha dos ícones do cabeçalho (3.8), no tamanho da engrenagem, com o número embaixo. A linha "Seu saldo: N moedas" do Início (junto do resgate diário) **continua**; Iniciar novo jogo não tem linha de saldo nem saldo junto da aposta (só o do topo).
 
 ## 1. Glossário de componentes
 
@@ -26,8 +26,6 @@ Use estes nomes nos pedidos.
 | **Pílula do assento** | Cartão de cada outro jogador na mesa de jogo: medalhão com o robô, nome, mão em cartas viradas, contador e última jogada. Tocar nela abre o **modal de detalhe do jogador** | mesa de jogo |
 | **Modal de detalhe do jogador** | Mostra o robô (imagem de apresentação), bordão, nome e a última jogada daquele assento | mesa de jogo |
 | **Placar (pílula)** | Cápsula com os totais acumulados ("Nós 200 × 300 Eles") | cabeçalho da mesa |
-| **Pílula de escolha dos participantes** | Primeiro elemento de "Mesas disponíveis": linhas com medalhão (foto ou inicial; robô em círculo) e nome — o jogador (sempre primeiro e marcado), os jogadores próximos (ou "Recrutando") e os 4 robôs; até 3 marcados além do jogador; até 4 linhas, rola se houver mais | Mesas disponíveis |
-| **Card de mesa** | Cartão de uma mesa de outro anfitrião em formação (ou com assento aberto) | Mesas disponíveis |
 | **Bordão** | Frase decorativa em itálico dourado de cada robô | vários |
 | **Medalhão** | Aro dourado com o avatar dentro: robô (em círculo) ou foto/inicial do jogador | pílula, Perfil |
 | **Barra de ações** | Status da vez + botões (Baixar, Comprar, Descartar...) fixos acima da mão | mesa de jogo |
@@ -35,13 +33,21 @@ Use estes nomes nos pedidos.
 | **Mesa** | O feltro verde com o monte, os mortos e o lixo | mesa de jogo |
 | **Verso da carta** | Cor do baralho do jogador + coroa no centro | monte, mãos viradas |
 | **Fundo dos perdedores** | Degradê vermelho escuro (embaixo) → transparente (em cima), que esmaece e reaparece em ciclo, atrás dos robôs que perderam | fim de jogo |
-| **Chip de escolha** | Cápsula selecionável (selecionada: azul royal com borda dourada) | Mesas disponíveis, regras |
-| **Botão de Wi-Fi** | Botão com o símbolo de Wi-Fi (a mesma configuração **Wi-Fi do jogo** do Perfil); ligado, anuncia a presença do jogador e procura jogadores e mesas por perto (§16); desligado, nada de rede é usado | Mesas disponíveis, mesa de jogo |
-| **Banner "Multi player"** | Banner animado com "Multi" na 1ª linha e "player" na 2ª, no card de mesa de outro anfitrião | Mesas disponíveis |
-| **Marca "jogo em andamento"** | Etiqueta na mesa multijogador cujo jogo já começou e que aceita alguém no assento da vez | card de mesa multijogador |
-| **Mesa redonda de posições** | Mesa em círculo com os 4 (ou 2) assentos, todos ocupados (humanos ou robôs), a marca de **confirmado** de cada um, nome sob o assento e os botões de rotacionar à esquerda e à direita | Escolha sua posição |
-| **Marcador do jogador** | O assento onde o jogador está, com aro azul brilhante e o nome em campo editável; sempre na posição de baixo da tela | Escolha sua posição |
+| **Chip de escolha** | Cápsula selecionável (selecionada: azul royal com borda dourada) | Iniciar novo jogo, regras |
+| **Botão de Wi-Fi** | Botão com o símbolo de Wi-Fi (a mesma configuração **Wi-Fi do jogo** do Perfil); ligado, anuncia a presença do jogador e procura jogadores por perto (§16); desligado, nada de rede é usado. Ligar/desligar **nunca trava** a tela onde está | Iniciar novo jogo, Seleção de jogadores (bloco Multiplayer), mesa de jogo |
 | **Pílula de humano remoto** | Pílula do assento de outro humano: medalhão com a **foto** dele (se tiver e se a opção *Ver fotos nas mesas compartilhadas* do Perfil estiver ligada) ou com a inicial, nome, mão em cartas viradas e última jogada; a vez dele é indicada como a dos robôs | mesa de jogo |
+| **Quadro de opções** | Cartão com Modo, Dificuldade dos robôs, Aposta, Regras e Pontuação-alvo | Iniciar novo jogo |
+| **Valor de aposta** | Chip com o **ícone do saco de dinheiro** e o valor (três por nível de dificuldade, §14.6); desabilitado acima do saldo | Iniciar novo jogo |
+| **Botão "Ver detalhes da regra"** | Botão discreto (texto/ícone pequeno) **dentro do quadro de regras**; abre o modal *Detalhes da regra* | Iniciar novo jogo, Convite |
+| **Avatar de jogador próximo** | Foto do perfil em círculo (inicial se não tiver foto, se a opção *Ver fotos nas mesas compartilhadas* estiver desligada ou antes de a foto chegar) com o **nome abaixo** (uma linha, "…" se não couber), no mesmo formato da antiga grade de participantes | listas das telas 3.2 e 3.3 |
+| **Lista de recrutadores** | Fileira de avatares dos outros jogadores próximos que estão **recrutando** (sem o próprio); só informativa, tocar não faz nada | Iniciar novo jogo |
+| **Mesa de lugares** | Mesa (feltro verde, aro de madeira) com 2 lugares (individual: um em cima, um embaixo) ou 4 (duplas, em cruz); o jogador sempre embaixo; cada lugar é **VAGO** (círculo tracejado com "VAGO"), **robô**, **Chamado**, **Recrutado** ou o próprio jogador; o nome sob o avatar | Seleção de jogadores, Mesa do recrutado |
+| **Lugar VAGO** | Lugar sem ninguém: círculo tracejado com "VAGO"; tocar nele o seleciona (aro dourado) para receber um robô ou um jogador | Seleção de jogadores |
+| **Lista de robôs** | Fileira horizontal dos 4 robôs (Bolt, Domino, Turbo, Zen): **foto de apresentação em círculo** e o nome embaixo; o robô já sentado fica **esmaecido** na lista | Seleção de jogadores |
+| **Bloco Multiplayer** | Texto "Multiplayer" à esquerda e o **sinal de Wi-Fi** à direita (reflete e altera o Wi-Fi do jogo do Perfil), seguido da lista de jogadores próximos livres | Seleção de jogadores |
+| **Selo "Chamado"** | Imagem (`seal_chamado`) sobre o avatar de quem recebeu o convite e ainda não respondeu; o avatar fica esmaecido; no recrutador ganha um **anel fino de contagem regressiva** de 25 s (o prazo do convite) | listas e mesa de lugares |
+| **Selo "Recrutado"** | Imagem (`seal_recrutado`) sobre o avatar de quem aceitou (avatar sem esmaecimento); também mostrado a **outros** recrutadores na lista (jogador não selecionável) | listas e mesa de lugares |
+| **Imagem "Prepare-se!"** | Camada sobre a **própria tela**, que fica ao fundo esmaecida (preto ~50 %): a imagem "Prepare-se! O jogo vai começar!" centralizada, entrando com leve escala e fade; bloqueia os toques; por **no mínimo 1,5 s** em todos os celulares, até o jogo começar | Seleção de jogadores, Mesa do recrutado |
 
 ---
 
@@ -49,19 +55,19 @@ Use estes nomes nos pedidos.
 
 ```
 (abertura sem nome no perfil) Boas-vindas ──► Perfil ──(com nome)──► Início
-Início ──► Mesas disponíveis (montagem; ⇄ Personalizar regra) ──Escolher posições──► Escolha sua posição ──(todos confirmados + 2 s)──► JOGO
+Início ──► Iniciar novo jogo (opções; ⇄ Personalizar regra) ──Selecionar jogadores──► Seleção de jogadores ──Começar Partida──► Prepare-se! (camada, ≥ 1,5 s) ──► JOGO
   ├──► Continuar ─────────────────────────────────────────────────────────────────► JOGO
   ├──► Perfil ──► Personalizar regra
   └──► Estatísticas
 
-(qualquer tela, Wi-Fi do jogo ligado) modal Convite ──(aceito ou 10 s)──► Escolha sua posição ──► JOGO (multijogador)
-Mesas disponíveis ──card de outro anfitrião──► pedido de entrada ──(aceito)──► Escolha sua posição ──► JOGO (multijogador)
+(qualquer tela fora de um jogo, Wi-Fi do jogo ligado) modal Convite ──Aceitar──► Mesa do recrutado (só leitura) ──(Começar do recrutador: Prepare-se!)──► JOGO (multijogador)
+                                                        └─Recusar──► (continua onde estava)
 Início ──► Continuar (sessão multijogador) ──► reingresso na mesa ──► JOGO (multijogador)
 
 JOGO: mesa ─(fim da partida: banner e animação de 2 s)─► mesa final (banner minimizado + Seguir) ─► pontos da partida ─► (próxima partida | fim de jogo) ─► Início
 ```
 
-Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/AppNavHost.kt`.
+Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Seleção de jogadores leva a Iniciar novo jogo e encerra o recrutamento. Rotas em `ui/AppNavHost.kt`.
 
 ---
 
@@ -79,41 +85,53 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 2. **Logotipo** e a descrição ("Um jogo de tranca robotizado pra jogar entre família").
 3. **Saldo** ("Seu saldo: N moedas") e, quando disponível, o botão **Resgatar +200 moedas** (§14.6).
 4. **Continuar** (só com jogo salvo): botão dourado com modo, dificuldade, partida e placar.
-5. **Ver mesas - Iniciar** (abre *Mesas disponíveis*): dourado sem jogo salvo; secundário com jogo salvo.
+5. **Ver mesas - Iniciar** (abre *Iniciar novo jogo*): dourado sem jogo salvo; secundário com jogo salvo.
 6. **Barra fixa** embaixo: Perfil · Estatísticas; versão discreta logo abaixo.
 7. Botão de **som** no canto superior direito, sempre à vista.
 
-**Variações:** "Ver mesas - Iniciar" com jogo salvo abre o modal *Começar um novo jogo?* (o jogo salvo conta como derrota por desistência). Com uma **sessão multijogador** guardada (§16.12), **Continuar** a mostra ao lado do jogo salvo contra robôs (cada um no seu botão): tocar nela reingressa na mesa como jogador comum, mesmo para quem era anfitrião.
+**Variações:** "Ver mesas - Iniciar" com jogo salvo abre o modal *Começar um novo jogo?* (o jogo salvo conta como derrota por desistência). Com uma **sessão multijogador** guardada (§16.12), um segundo botão **Continuar mesa** (tag `continue-session`) aparece ao lado do jogo salvo contra robôs (cada um no seu botão), com o nome do anfitrião ("Mesa de <anfitrião>") e o assento ("Você: lugar 3"): tocar nele leva a *Voltar à mesa* (3.17) e reingressa como jogador comum, mesmo para quem era anfitrião. A sessão some quando o jogo termina e o resultado é entregue (§16.11), quando o jogador desiste e não volta, quando a mesa é encerrada ou a vaga é preenchida, quando ele sai da mesa pelo botão e **12 h** depois de gravada.
 **Regras:** §14 (jogo salvo), §14.6 (moedas), §13.1 (desistência).
-**Tags:** `home-bots`, `new-game`, `continue`, `home-balance`, `claim-daily`, `profile`, `stats`, `home-version`.
+**Tags:** `home-bots`, `new-game`, `continue`, `continue-session`, `home-balance`, `claim-daily`, `profile`, `stats`, `home-version`.
 
-### 3.2 Mesas disponíveis (`TablesScreen`)
-**Objetivo:** montar a mesa (§14.4) — escolher quem joga e as regras — ou entrar na mesa de outro anfitrião por perto (§16.2). Absorve a antiga *Criar mesa*; *Regras da mesa* e *Criar mesa* deixaram de existir.
+### 3.2 Iniciar novo jogo (`TablesScreen`)
+**Objetivo:** escolher as **opções da mesa** (§14.4): modo, dificuldade dos robôs, aposta, regras e pontuação-alvo; os jogadores são escolhidos na tela seguinte (3.3). Substitui a antiga *Mesas disponíveis*: a grade de participantes, os cards de mesas de outros anfitriões e o pedido de entrada deixaram de existir; **só se entra numa mesa sendo chamado** (§16.2).
 **De cima para baixo (rola):**
-1. Título **"Iniciar novo jogo"** (a tela continua chamada *Mesas disponíveis* nestes documentos), o ícone do tour e o **botão de Wi-Fi** (configuração **Wi-Fi do jogo**, a mesma do Perfil: tocar alterna e grava; ao ligar, passa pelo modal *Procurar mesas por perto*; recusar deixa desligado). Sem linha de saldo (só o do topo, seção 0).
-2. **Pílula de escolha dos participantes:** uma **grade de avatares**, até **6 por linha** (o jogador conta), um ao lado do outro; cada avatar é a imagem **em círculo** (foto do perfil; inicial só para quem não tem foto ou enquanto a foto do jogador próximo não chegou; robô no círculo) com o **nome abaixo** (uma linha, "…" se não couber). **Marcado:** aro dourado grosso e um **✓ dourado** no canto; **desmarcado:** aro fino e a imagem um pouco apagada. A ordem:
-   - **o jogador**, sempre o primeiro e sempre com aparência de **marcado** (não desmarca);
-   - com o Wi-Fi ligado, cada **jogador próximo** encontrado, com a **foto** do perfil (pedida uma vez ao achá-lo; inicial se não tiver foto ou com "Ver fotos nas mesas compartilhadas" desligada). A lista acompanha a busca: quem desliga o Wi-Fi do jogo some na hora (aviso de "saindo"), quem some sem avisar sai em até cerca de 20 s (§16.15) e quem continua não pisca; sem nenhum, o avatar **"Recrutando"** (círculo girando, não selecionável), logo depois do jogador. Com o Wi-Fi desligado, essa parte não aparece;
-   - os **4 robôs** (Bolt, Domino, Turbo, Zen).
-   Tocar numa linha marca ou desmarca; no máximo **3** marcados além do jogador (o 4º toque não marca). Marcar um jogador próximo **envia o convite na hora** (§16.2); enquanto ele não responde, o avatar mostra "aguardando"; recusou, ele volta desmarcado. Desmarcar cancela o convite (ou tira da mesa quem já aceitou). Jogador próximo recrutado por **outro** anfitrião aparece como **"Recrutado"** e não pode ser marcado. A pílula mostra até **4 linhas** de avatares e rola a partir da 5ª.
-3. **Mesas de outros anfitriões** (só com o Wi-Fi ligado): card com o **banner "Multi player"**, "Mesa de <anfitrião>" e a marca "jogo em andamento" quando for o caso. Aparecem enquanto a mesa está na escolha de posições com algum robô (ou com assento aberto no meio do jogo, §16.7). Tocar envia o **pedido de entrada**; aceito pelo anfitrião, abre *Escolha sua posição* (3.13). As regras, a aposta e o nível aparecem lá; saldo menor que a aposta é avisado lá (só pode sair).
-4. **Opções da mesa** (as da antiga *Criar mesa*, sempre preenchidas com a última configuração gravada):
-   - **Modo** (Individual / Duplas): com **3 ou 4** participantes marcados (contando o jogador), fica em **Duplas** e Individual desabilitado; com **1 ou 2**, os dois habilitados.
-   - **Dificuldade dos Robôs**.
-   - **Aposta (moedas)**, sem o saldo ao lado; apostas acima do saldo desabilitadas.
-   - **Regras** (Clássica, Tranca Paulista, Personalizada — "Personalizada" sempre abre *Personalizar regra*).
+1. Título **"Iniciar novo jogo"**, o ícone do tour e o **botão de Wi-Fi** (configuração **Wi-Fi do jogo**, a mesma do Perfil: tocar alterna e grava; ao ligar, passa pelo modal *Procurar mesas por perto*; recusar deixa desligado). É ele que torna o jogador **livre** para ser chamado (§16.2). Sem linha de saldo (só o do topo, seção 0).
+2. **Lista de recrutadores** (só com o Wi-Fi ligado): título "Jogadores recrutando" e os **avatares de jogador próximo** dos outros jogadores que estão na *Seleção de jogadores* (sem o próprio jogador). **Só informativa:** tocar não faz nada. Vazia, mostra só uma legenda discreta ("Ninguém recrutando por perto"). A lista acompanha a busca: quem desliga o Wi-Fi do jogo some na hora (aviso de "saindo"), quem some sem avisar sai em até cerca de 31 s (§16.15; no modo ativo, cerca de 16 s), quem continua não pisca. A foto dos recrutadores aparece como **inicial** (limitação do `P2P_STAR`, §16.2). À direita do título da lista fica o **botão de atualizar** (ícone discreto de duas setas em círculo, alvo de 48 dp, descrição "Atualizar jogadores por perto", tag `refresh-players`): faz a busca em rajada (até 2 recomeços rápidos dentro do orçamento de buscas, §16.15); enquanto a rajada roda o ícone **gira** e fica desabilitado. Só aparece com o Wi-Fi ligado. "Puxar para atualizar" não existe (conflita com a rolagem da tela).
+3. **Quadro de opções** (sempre preenchido com a última configuração gravada):
+   - **Modo** (Individual / Duplas): define 2 ou 4 lugares na tela 3.3.
+   - **Dificuldade dos Robôs** (Iniciante / Maduro / Sênior).
+   - **Aposta (moedas):** três **valores de aposta** (cada um com o ícone do saco de dinheiro) que dependem da dificuldade: Iniciante 50/80/100, Maduro 100/150/200, Sênior 200/300/500 (§14.6). Ao trocar a dificuldade a aposta mantém o **mesmo índice**; valor acima do saldo fica desabilitado, e o que passa do saldo ao trocar de nível vira o maior valor coberto. Sem linha de saldo ao lado.
+   - **Regras:** chips Clássica, Tranca Paulista e Personalizada ("Personalizada" sempre abre *Personalizar regra*, 3.5). O **resumo das regras não fica na tela**: o botão discreto **"Ver detalhes da regra"**, dentro do quadro de regras, abre o modal *Detalhes da regra* (4).
    - **Pontuação-alvo** (campo numérico, padrão 3000, com mensagens de erro).
-5. Barra fixa: **Voltar** e **Escolher posições** (habilitado quando válido e com saldo).
+4. Barra fixa: **Voltar** (sempre habilitado, mais estreito que o outro botão) e **Selecionar jogadores** (habilitado quando as opções são válidas e há saldo para a aposta). O texto de cada botão fica **numa linha só**: com fonte grande a letra diminui, nunca quebra.
 
-**Escolher posições:** grava a configuração e abre *Escolha sua posição* (3.13) como anfitrião. Os jogadores próximos que **aceitaram** vão direto à escolha de posições; quem ainda não respondeu tem o convite cancelado e vira robô sorteado, como as posições que sobram.
-**Recrutado (aceitou o convite de outro anfitrião):** a tela mostra a pílula e as opções **do anfitrião**, sincronizadas ao vivo e **só para leitura**; "Escolher posições" vira **"Aguardando..."** (desabilitado) e "Voltar" vira **"Sair da mesa"** (volta à própria configuração e fica disponível). Avisos: "<anfitrião> tirou você da mesa", "Saldo insuficiente" (a aposta passou do saldo; sai sozinho) e *Mesa encerrada* (o anfitrião saiu ou desligou o Wi-Fi). Quem estava em *Personalizar regra* ao aceitar volta à tela anterior sem salvar.
-**Lembra a última mesa:** grava no aparelho modo, nível dos robôs, regras, aposta, pontuação-alvo e os robôs marcados (jogadores próximos não são lembrados). Ao carregar, o que ficou inválido é ajustado sem aviso: aposta acima do saldo vira a maior aposta que o saldo cobre; "Personalizada" sem regras salvas vira Clássica; pontuação-alvo inválida volta ao padrão; Individual com mais de 2 marcados vira Duplas.
+**Selecionar jogadores:** grava a configuração (**modo, dificuldade, aposta, regras e pontuação-alvo**; os lugares **não** são gravados) e abre a *Seleção de jogadores* (3.3).
+**Chamado por outro recrutador:** o modal *Convite* (4) aparece sobre esta tela (ou qualquer tela fora de um jogo). Aceito, a tela vira a *Mesa do recrutado* (3.13); quem estava em *Personalizar regra* volta à tela anterior **sem salvar**.
+**Lembra a última mesa:** ao carregar, o que ficou inválido é ajustado sem aviso: aposta que não existe na tabela do nível vira o valor mais próximo (empate: o menor); aposta acima do saldo vira a maior que o saldo cobre; "Personalizada" sem regras salvas vira Clássica; pontuação-alvo inválida volta ao padrão.
 **Wi-Fi ligado sem permissão:** ao abrir, aparece o modal *Procurar mesas por perto*; **Agora não** desliga a configuração. Se o Nearby recusar a busca, um aviso explica e a configuração é desligada.
-**Regras:** §14.4, §14.5, §14.6, §16.2.
-**Tags:** `tables-screen`, `tables-wifi`, `participants`, `participant-self`, `participant-near-<id>`, `participant-recruiting`, `participant-bot-<perfil>`, `table-<id>`, `table-<id>-multi-banner`, `table-<id>-in-progress`, `mode-individual`, `mode-duplas`, `rules-custom`, `choose-seats`, `tables-back`.
+**Regras:** §14.4, §14.6, §16.2.
+**Tags:** `tables-screen`, `tables-wifi`, `recruiters`, `recruiter-<id>`, `recruiters-empty`, `refresh-players`, `mode-individual`, `mode-duplas`, `difficulty-<nível>`, `stake-<valor>`, `rules-classic`, `rules-paulista`, `rules-custom`, `rules-details`, `target-score`, `select-players`, `tables-back`.
+
+### 3.3 Seleção de jogadores (`PlayerSelectionScreen`)
+**Objetivo:** montar a mesa — quem ocupa cada lugar — e começar a partida (§14.4, §16.2). As opções (3.2) aparecem só como resumo e **não mudam** aqui.
+**De cima para baixo:**
+1. Título **"Seleção de jogadores"** e o ícone do tour; um resumo das opções (tipo, nível, aposta, regras). O **Voltar** fica na barra fixa, ao lado de **Começar Partida** (volta a *Iniciar novo jogo* e **encerra o recrutamento**: chamados cancelados, recrutados recebem "Mesa encerrada").
+2. **Mesa de lugares:** 2 lugares (individual, um **em cima** e um **embaixo**) ou 4 (duplas). O **jogador fica sempre embaixo**, com o nome e a foto/inicial; os demais lugares começam **VAGO**. Um lugar pode estar: **VAGO**, com um **robô** (retrato e nome), com um **Chamado** (avatar esmaecido com o selo **Chamado**) ou com um **Recrutado** (avatar com o selo **Recrutado**). Em duplas, o lugar da frente é o do **parceiro**. A imagem da mesa é **20 % menor** que a do desenho original e fica **centralizada**; o espaço que sobra volta ao conteúdo. Embaixo da mesa, uma **dica de uma linha** explica o estado da seleção (tag `seat-hint`), p.ex. "Escolha um lugar para o Bolt", "Escolha quem vai para este lugar" ou "Toque em outro lugar para trocar, ou na lista para retirar".
+   - **Selecionar e tocar, nos dois sentidos:** o jogador escolhe um **item da lista** (robô ou jogador próximo livre) **e depois um lugar VAGO**, ou **um lugar VAGO e depois o item**: o robô é **colocado** (e fica esmaecido na lista) ou o jogador remoto é **chamado** (o convite só sai quando **os dois** estão escolhidos: jogador + lugar). A seleção pendente fica **destacada**; tocar de novo no mesmo item ou numa área vazia a **cancela**.
+   - **Trocar:** escolher **dois lugares** da mesa (ocupados ou VAGO) **troca** os lugares (VAGO ↔ ocupado **move**); nunca envolve o lugar do próprio jogador. Pode trocar também um **Chamado** (a posição no convite dele acompanha).
+   - **Retirar:** escolher primeiro um **robô ou jogador que já está na mesa** e depois **qualquer item da lista de baixo** (robô ou jogador) **retira** o da mesa: o robô volta à lista; o **Chamado** tem o convite cancelado (some sem aviso); o **Recrutado** recebe "<nome> tirou você da mesa". O item tocado na lista **não** entra no lugar: só retira.
+   - **Arrastar e soltar** continua valendo: arrastar o avatar para outro lugar **troca** (ocupado) ou **move** (VAGO), pelas mesmas regras de Trocar. O menu "Remover / Mover" do lugar deixou de existir (substituído por Trocar e Retirar). Cada avatar tem descrição para o leitor de tela ("Bolt, robô, disponível", "Ana, chamado", "Ana, recrutado").
+3. **Lista de robôs:** os 4 robôs (**foto de apresentação em círculo** e o nome embaixo), numa fileira horizontal.
+4. **Bloco Multiplayer:** "Multiplayer" à esquerda e o **sinal de Wi-Fi** à direita (reflete a configuração do Perfil; ligar e desligar **não trava** a tela). Com o Wi-Fi ligado o jogador é **recrutador**: aparece na lista da tela 3.2 dos outros e, **abaixo do título "Multiplayer"**, aparece a lista de **jogadores próximos livres** (os que estão em *Iniciar novo jogo* com o Wi-Fi ligado). Recrutar: escolher o jogador remoto e o lugar (em qualquer ordem); ele fica **esmaecido com o selo Chamado** na lista (e o lugar na mesa ganha o avatar dele com o selo); tocar nele não faz mais nada. Jogador já chamado/recrutado por **outro** recrutador aparece como **Recrutado** e não é selecionável. O selo **Chamado** leva um **anel fino de contagem regressiva** (25 s, o prazo do convite, §16.15); sem resposta, vale como recusa. Recusou ou não respondeu: modal do recrutado fecha, o recrutador é avisado (toast com o motivo), o lugar volta a **VAGO**, o avatar perde o selo e pode ser chamado de novo. Aceitou: o selo vira **Recrutado** e o avatar perde o esmaecimento. Ao lado do título "Multiplayer", o mesmo **botão de atualizar** (tag `selection-refresh`) refaz a busca dos jogadores próximos; só com o Wi-Fi ligado.
+5. **Completar com robôs:** atalho (botão secundário) que sorteia robôs **ainda não usados** nos lugares VAGO.
+6. **Começar Partida** (botão dourado no fim): **desabilitado** até todos os lugares estarem preenchidos **e** sem nenhum **Chamado** pendente. Ao tocar, a camada **"Prepare-se! O jogo vai começar!"** aparece **sobre a própria tela, esmaecida,** em **todos** os celulares por **no mínimo 1,5 s** (sem apagar a tela de baixo), e então o jogo começa.
+**Sem Wi-Fi (ou ninguém por perto):** a mesma tela, sem a lista de jogadores; só com robôs, e o jogo começa no próprio aparelho.
+**Regras:** §14.4, §14.5, §16.2, §16.3.
+**Tags:** `player-selection`, `seat-<n>` (`seat-<n>-vacant`, `seat-<n>-called`, `seat-<n>-recruited`), `seat-hint`, `seat-<n>-timer`, `robot-<perfil>`, `selection-wifi`, `selection-refresh`, `nearby-free-<id>`, `fill-with-robots`, `start-match`, `get-ready`, `selection-back`.
 
 ### 3.5 Personalizar regra (`RulesEditorScreen`)
-**Objetivo:** editar o perfil de regras personalizado do jogador (§14.2, §14.4). Hoje se chega por **Mesas disponíveis** ("Personalizada") e pelo **Perfil** ("Minhas regras").
+**Objetivo:** editar o perfil de regras personalizado do jogador (§14.2, §14.4). Hoje se chega por **Iniciar novo jogo** ("Personalizada") e pelo **Perfil** ("Minhas regras").
 **Conteúdo:** dica, "Começar a partir de" (perfil de origem), grupos (qualquer / só A, K, Q, J / sem grupos), coringas por jogo, "morto vira monte" (chave), pontos da canastra (limpa/suja), bater exige canastra limpa (chave), pontos do 3 preto. Barra fixa: **Voltar** e **Salvar regras**.
 **Tags:** `groups-*`, `wilds-*`, `switch-*`, `points-*`, `rules-save`, `rules-back`.
 
@@ -155,6 +173,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 **Pílula do assento:** medalhão com o robô — **com as cartas na mão por padrão** e a pose de **pensador** só na vez dele —, nome sem posição (o parceiro leva a legenda "Parceiro"), mão em cartas viradas, contador e símbolos da última jogada. Tocar abre o modal de detalhe.
 **Multijogador (§16):** os outros assentos humanos usam a **pílula de humano remoto**; o **indicador de vez** (destaque e texto "Vez de <nome>") vale para humanos remotos e robôs. Cada aparelho anima na própria velocidade (§16.6). Se quem tem a vez caiu, a mesa mostra *Aguardando <nome>* (modais em 4). O jogo só entrega a vez ao jogador depois de a animação do seu aparelho terminar. A **bandeira** (desistir) leva ao modal de desistência de grupo.
 **Faixas e encenações:** troca de 3 vermelho de outro assento (faixa breve); cartas em voo; selo e pulso de canastra.
+**Camadas (z-order):** a **barra superior de ícones** (cabeçalho) fica **à frente** das animações da mesa: as cartas em voo e os fogos de artifício da batida passam **por baixo** dela e nunca por cima (são cortados na borda do cabeçalho). Só os avisos, banners e modais (troca de 3 vermelho, banner de fim de partida, diálogos) cobrem a tela inteira, cabeçalho incluído.
 **Regras:** §3 a §10 (jogada), §3.5 e §6.5 (3 vermelhos), §5 (lixo), §7 (canastras).
 **Tags:** `table-screen`, `table-scroll`, `score`, `seat-<n>`, `seat-hand-<n>`, `stock`, `mortos`, `discard-pile`, `discard-empty` (lixo vazio: lugar de uma carta com ícone de lixeira), `show-discard-pile` (contador sempre visível, mostra 0 com o lixo vazio), `action-bar`, `turn-status`, `hand`, `hand-card-<carta>`, `action-legend`, `action-resign`.
 
@@ -167,7 +186,13 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 - O leitor de tela lê a frase completa ("Você bateu!", "Sua dupla perdeu", "Fim das cartas do monte"...).
 - Ao terminar, o banner é **minimizado** com animação (encolhe e desliza) até a barra de baixo, junto do botão **Seguir** (3.12), e **fica ali** enquanto a mesa final estiver aberta, sem cobrir a mão nem os jogos. Com as animações do Android desligadas: sem movimento (só a mensagem e o escurecimento; o banner troca direto para a forma minimizada). Os sons respeitam o botão de som.
 - **Desistência** (§13.1) vai ao fim de jogo como antes. **Multijogador:** cada aparelho mostra no seu tempo (§16.11).
-**Tags:** `go-out-overlay`, `go-out-message`, `go-out-banner` (grande), `go-out-banner-mini` (minimizado).
+
+**Dramatização da batida (antes do banner):** a batida é encenada em três tempos, para o jogador entender o que aconteceu. Vale para qualquer jogador que bata (o próprio, o parceiro, um robô ou outro humano da mesa online) e para a batida que encerra o jogo; o banner só aparece no fim.
+1. **Última jogada em câmera lenta:** o voo das cartas da última ação da partida (o descarte ou as cartas baixadas por quem bateu) dura **3 vezes** o normal (a pausa entre as cartas do mesmo movimento também), respeitando a velocidade das animações do Perfil e a escala do sistema. Nesse voo a carta **cresce até 1,4 vez** o tamanho nos primeiros 40% do trajeto, **fica grande** nos 20% seguintes e **volta ao normal** nos últimos 40%, chegando à posição final no tamanho de sempre. A mesa continua visível e a última jogada nunca é cortada pelo banner: ele espera o voo pousar.
+2. **Fogos de artifício por 1,5 s** depois que a carta chega, sobre a mesa final (sem escurecê-la); no instante da chegada a **mesa treme** (shake curto de ~450 ms, amortecido, deslocamento de poucos dp e rotação mínima, só a mesa: o banner depois não treme e os toques não são afetados; sem tremida com as animações do Android desligadas): **verdes** se o jogador (ou a dupla dele) venceu a partida, **vermelhos** se perdeu. Desenhados em Canvas (partículas), não bloqueiam a mesa além do necessário (um toque pula os fogos) e cancelam limpo se a tela sair. Não há fogos no fim sem batida (§11.2).
+3. **Banner de bateu/perdeu** (acima), com o confete, a borda vermelha e os sons de sempre.
+Com as animações do Android desligadas: sem voo lento e sem fogos (vai direto ao banner).
+**Tags:** `go-out-overlay`, `go-out-message`, `go-out-banner` (grande), `go-out-banner-mini` (minimizado), `go-out-fireworks`.
 
 ### 3.10 Pontos da partida (`RoundSummaryScreen`)
 **Topo:** abaixo do título, a **mesma arte do banner de fim de partida** (3.9: Bateu! / Perdeu! / Ninguém Bateu, com a legenda em duplas), em tamanho menor, no lugar da faixa de texto antiga. **Objetivo:** detalhar a pontuação da partida (§12) por lado: cartas na mesa e na mão (3 vermelhos, canastras, batida, morto, cartas por valor), subtotais, total da partida e acumulado, com o rosto vencedor/perdedor/pensador por lado. **Coluna do item:** nas linhas de cartas, no lugar da descrição, **cartas de exemplo** pequenas em leque, de naipes variados e sem explicação (3 vermelhos: 3♥ 3♦; 3 pretos: 3♠ 3♣; canastra limpa: 9♥ 10♥ J♥ Q♥; suja: 9♣ 2♦ J♣ Q♣; 4 a 10: 4♣ 7♥ 10♠; figuras e ás: J♦ K♠ A♥; coringas: 2♠ 2♥); o leitor de tela lê a descrição. Batida, morto não pego, subtotais e totais continuam em texto. **Títulos das colunas** (Valor e, para cada lado, Qtd e Pontos) no topo da tabela e **repetidos** no topo de cada seção (Cartas na mesa e Cartas na mão). **Tour** (3.16): ícone ao lado do título; abre sozinho na primeira vez e explica, de forma didática, cada coluna e cada linha (as de coringa e canastra suja só quando a mesa tem coringa), rolando a tabela até a linha do passo. **Coluna Valor:** logo depois do item, o valor de cada carta, canastra, batida ou morto pelas regras da mesa (§12), com sinal; vazia nos subtotais e totais. Sem a observação do 3 vermelho abaixo da linha. **Colunas:** item | valor | e, para cada lado, **Qtd** e **Pontos** (a quantidade de cartas numa coluna própria, sem parênteses; linhas sem quantidade — batida, morto não pego, subtotais e totais — deixam a de quantidade vazia). No título de cada lado, o avatar e, abaixo, o **ícone de 3 cartas** (na cor do baralho do perfil para o seu lado, cinza-claro para o adversário) junto do nome do lado ("Nós"/"Eles" ou o nome no individual). Números com largura fixa; cabe em 360 dp com fonte 1,3×. Tags: `count-<item>-<lado>`. Aviso de empate quando for o caso. Botão **Próxima partida** ou **Continuar** (fim do jogo: vai direto ao *Fim de jogo*, 3.11). Sem desistir (decisão do usuário).
@@ -181,18 +206,16 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Rotas em `ui/Ap
 ### 3.12 Revisão da mesa final
 Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jogo vendo a **mesa final**, "só para olhar": a barra de ações mostra o **banner de fim de partida minimizado** (3.9) e o botão **Seguir**, que vai direto a *Pontos da partida* (3.10). Desistir continua pela engrenagem. No multijogador, o Seguir do anfitrião segue para os pontos e, de lá, a próxima partida, como antes (§16.11). Tag `final-table-continue`.
 
-### 3.13 Escolha sua posição (`SeatPickerScreen`)
-**Objetivo:** cada jogador escolhe o assento (§16.2) e o jogo começa quando todos confirmam. Imagem de referência: `docs/telas/escolha-posicao-multiplayer.png`.
-**De cima para baixo:** botão de **voltar/sair** no canto (sempre disponível), título "Escolha sua posição" e subtítulo ("Você sempre joga na posição de baixo. Escolha onde deseja ficar na mesa."); a **mesa redonda de posições** (feltro verde, aro de madeira); à esquerda e à direita os botões **rotacionar à esquerda** e **rotacionar à direita**; embaixo, o botão dourado **Confirmar posição**.
-**Mesa redonda:** **sem "VAGO"**: todo assento tem um humano ou um robô (retrato do robô; foto ou inicial do humano, §16.2, as dos outros só com *Ver fotos nas mesas compartilhadas* ligada). Cada assento mostra o nome e a marca de **confirmado** (✓) quando for o caso. O **marcador do jogador** (aro azul brilhante) fica sempre embaixo, com o nome em **campo editável** (iniciado com o nome do perfil; em branco vira "Jogador N").
-**Rotação (todos, inclusive o anfitrião):** girar **troca de lugar** com o próximo ocupante naquela direção que **ainda não confirmou** (humano ou robô), pulando quem já confirmou; sem ninguém para trocar, o botão fica indisponível. Quando outro jogador troca com você, **a sua tela também muda** (você passa a ver a mesa a partir do novo lugar).
-**Confirmar posição:** trava o lugar (o botão vira **Aguardando os outros jogadores**, desabilitado, e as rotações somem); ninguém mais troca com você. Quando **todos os humanos** confirmam, os **robôs confirmam sozinhos** (as marcas ✓ aparecem neles), e **2 s depois** o jogo começa em todos os aparelhos.
-**Mesa só com robôs:** a mesma tela, sem rede; ao confirmar, os robôs confirmam e o jogo começa em 2 s.
-**Anfitrião:** recebe o modal **Pedido de entrada** (4) de quem tocou na mesa dele em *Mesas disponíveis*; aceito, o novo jogador entra no lugar do primeiro robô e todos veem. Convidado que **recusa**, não responde ao alcance ou **sai** vira robô sorteado, com um aviso "<nome> saiu; <robô> assume o lugar". **Sair** do anfitrião desfaz a mesa (os convidados veem *Mesa encerrada*).
-**Regras da mesa na sala:** abaixo da mesa redonda, um painel com "Mesa de <anfitrião>", dificuldade dos robôs (estrelas), aposta e o resumo das regras (§14.2), para o convidado ver o que aceita. Saldo menor que a aposta: aviso vermelho e **Confirmar posição** desabilitado.
+### 3.13 Mesa do recrutado (`RecruitedTableScreen`, ex-*Escolha sua posição*)
+**Objetivo:** mostrar a quem **aceitou o convite** (§16.2) a mesa do recrutador, **só para leitura**, sincronizada ao vivo. Não há rotação, confirmação de posição, nome editável nem lista de jogadores próximos.
+**De cima para baixo:** título "Mesa de <recrutador>"; a **mesa de lugares** (com os lugares e quem os ocupa: o recrutador, robôs, outros recrutados e chamados com os selos; **o recrutado se vê embaixo**, com a mesa girada para o lugar dele — *decisão provisória*); o **resumo da montagem**: modo, dificuldade dos robôs (estrelas), aposta (com o ícone do saco de dinheiro), pontuação-alvo e o título das regras com o botão **"Ver detalhes da regra"**; embaixo, o botão **Sair da mesa** (secundário) e um aviso "Aguardando o recrutador começar a partida".
+**Sincronização:** tudo o que o recrutador muda (lugares, robôs, remoções) aparece na hora; a tela só lê de `Recruited.table` (nunca do estado local do jogador). Enquanto a primeira sincronização não chega, mostra o indicador de espera.
+**Sair da mesa:** o lugar volta a VAGO, o recrutador é avisado, e a tela volta a *Iniciar novo jogo* com as **opções do próprio jogador** (o espelho nunca altera a última mesa gravada).
+**Avisos:** "<recrutador> tirou você da mesa" (removido), "Saldo insuficiente" (não ocorre com opções fixas; só se a conexão for restabelecida com outra aposta), *Mesa encerrada* (o recrutador voltou, saiu ou desligou o Wi-Fi, ou a conexão não voltou em 8 s). Depois de **Começar Partida**, se o recrutado não chega à mesa do jogo, o modal *Mesa encerrada* traz a causa: *Mesa não encontrada por perto.*, *Não foi possível conectar à mesa.*, *A mesa não respondeu a tempo.* ou *O lugar passou para um robô porque você não chegou a tempo.*; o botão **Voltar ao início** leva ao Início.
+**Início:** quando o recrutador toca em **Começar Partida**, a camada **"Prepare-se! O jogo vai começar!"** aparece sobre a tela da mesa do recrutador, esmaecida, por **no mínimo 1,5 s** (até o jogo começar) e o jogador entra na mesa do jogo (3.8); a camada só sai quando todos os recrutados confirmaram **Pronto** ou viraram robô (até 30 s).
 **Regras:** §16.2, §16.3.
-**Origem:** *Mesas disponíveis* (anfitrião, por **Escolher posições**; ou quem teve o pedido de entrada aceito) ou o modal **Convite** (convidado).
-**Tags:** `seat-picker`, `seat-picker-table`, `seat-slot-<n>`, `seat-slot-<n>-confirmed`, `seat-picker-name`, `seat-picker-rotate-left`, `seat-picker-rotate-right`, `seat-picker-confirm`, `seat-picker-waiting`, `seat-picker-leave`.
+**Origem:** o modal **Convite** (Aceitar).
+**Tags:** `recruited-table`, `recruited-seat-<n>`, `recruited-summary`, `recruited-rules-details`, `recruited-leave`, `recruited-waiting`, `get-ready`.
 
 ### 3.14 Mesa multijogador durante o jogo
 **Botão de Wi-Fi (cabeçalho da mesa de jogo, 3.8):** na linha do saco de moedas. Reflete o **Wi-Fi do jogo**.
@@ -223,13 +246,22 @@ Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jo
 ### 3.16 Tour guiado
 **Objetivo:** apresentar as telas na primeira vez do jogador. Cada tela com tour mostra o seu **uma única vez** (registro por tela, guardado no aparelho); o ícone do tour (letra "i" num círculo, tag `tour-button`) no alto da tela o mostra de novo a qualquer momento, e a chave **Tour guiado** do Perfil (3.6) liga ou desliga a abertura automática (ligar zera o registro de todas).
 **Formato:** a tela escurece e um **recorte** destaca o elemento real do passo; por cima do véu, um **balão** de fundo marfim com texto azul-marinho (contraste AA, ≥ 4,5:1) e borda dourada, com texto curto (até ~2 linhas), o **indicador de passo** ("2/6") e os botões **Voltar**, **Próximo** (no último, **Concluir**) e **Pular**. O tour **nunca joga nem executa nada**: tocar fora do balão não faz nada; só os botões do balão funcionam. O leitor de tela lê o texto do passo. Tags: `tour-overlay`, `tour-text`, `tour-step`, `tour-next`, `tour-back`, `tour-skip`.
-**Mesas disponíveis (3.2)** — aparece ao abrir a tela pela primeira vez; ícone ao lado do título (junto do Wi-Fi):
+**Iniciar novo jogo (3.2)** — aparece ao abrir a tela pela primeira vez; ícone ao lado do título (junto do Wi-Fi):
 (passos na ordem da tela, de cima para baixo e, na mesma linha, da esquerda para a direita)
 1. Ícone do tour: "Toque aqui para rever este tour quando quiser."
-2. Botão de Wi-Fi: "Wi-Fi do jogo: ligado, aparecem os jogadores e as mesas de outros celulares por perto para jogar junto."
-3. Pílula de participantes: "Escolha até 3 companheiros de mesa: jogadores por perto ou robôs. Você sempre joga."
-4. Opções: "Modo, nível dos robôs, aposta, regras e pontuação-alvo. A última escolha fica guardada."
-5. Escolher posições: "Pronto? Os jogadores escolhidos recebem o convite e todos escolhem o lugar na mesa."
+2. Botão de Wi-Fi: "Wi-Fi do jogo: ligado, outros jogadores por perto podem te chamar para jogar junto."
+3. Lista de recrutadores: "Jogadores por perto que estão montando uma mesa. Eles podem te chamar; você aceita ou recusa."
+4. Atualizar: "Procura de novo, por alguns segundos, quem está por perto."
+5. Quadro de opções: "Modo, nível dos robôs, aposta, regras e pontuação-alvo. A última escolha fica guardada."
+6. Selecionar jogadores: "Pronto? Escolha quem joga com você: robôs ou jogadores por perto."
+**Seleção de jogadores (3.3)** — aparece ao abrir a tela pela primeira vez:
+1. Ícone do tour: "Toque aqui para rever este tour quando quiser."
+2. Mesa de lugares: "A mesa: você fica embaixo. Toque num robô ou jogador e depois num lugar, ou ao contrário; toque em dois lugares para trocar. A dica embaixo da mesa explica cada passo."
+3. Lista de robôs: "Os robôs que podem ocupar os lugares. O que já está sentado fica esmaecido. Para tirar alguém da mesa, toque nele e depois num item desta lista."
+4. Bloco Multiplayer: "Com o Wi-Fi ligado, você chama jogadores por perto. Eles aparecem aqui; quem você chamou fica com o selo Chamado até responder."
+5. Atualizar: "Procura de novo, por alguns segundos, quem está por perto."
+6. Completar com robôs: "Preenche os lugares vagos com robôs."
+7. Começar Partida: "Fica ativo quando todos os lugares estão preenchidos e ninguém está sendo chamado."
 **Mesa de jogo (3.8)** — aparece **só na primeira vez em que é a vez do jogador**, depois das animações iniciais (distribuição e trocas de 3 vermelho) e com a vez já liberada; vale contra robôs e no multijogador:
 (passos na ordem da tela, de cima para baixo e, na mesma linha, da esquerda para a direita)
 1. Placar: "O placar: os pontos de cada lado no jogo."
@@ -245,6 +277,16 @@ Depois da batida (ou do fim sem batida, §11.2) o jogador continua na mesa de jo
 11. Barra de ações: "Aqui ficam as ações que valem agora: comprar, baixar, acrescentar e descartar."
 **Multijogador:** o tour é só da tela deste aparelho e não pausa o jogo; a vez continua aberta enquanto ele está na tela (não há limite de tempo para jogar, §16).
 
+### 3.17 Voltar à mesa (`RejoinScreen`)
+**Objetivo:** reingressar, como jogador comum, na mesa da sessão guardada (§16.5, §16.12), a partir de **Continuar mesa** (3.1).
+**Fluxo:**
+1. **Wi-Fi do jogo desligado:** primeiro o modal *Ligar o Wi-Fi do jogo?* (4); confirmado, passa pelo modal *Procurar mesas por perto* se faltar permissão; recusar volta ao Início.
+2. **Procurando a mesa…:** indicador de espera, o nome do anfitrião e o botão **Cancelar** (tag `rejoin-cancel`). Procura por até **30 s** (a busca é repetida); achada, envia o token e volta ao **mesmo assento**, recebe a vista atual (e o fim da última partida que faltar, §16.5, §16.11) e abre a *Mesa de jogo* (3.8). A aposta retida volta com o assento (§16.9, §14.6).
+3. **Falhas** (modal com **OK**, que volta ao Início; a sessão é apagada nos itens que dizem "apaga"): *Mesa não encontrada por perto* (não apaga: dá para tentar de novo; expira em 12 h); *A vaga foi preenchida.* (token recusado: apaga); *Mesa encerrada.* (apaga).
+Se o jogo já terminou e o resultado ainda não foi recebido, o jogador recebe só o fim do jogo e o prêmio (§16.11).
+**Regras:** §16.5, §16.9, §16.11, §16.12.
+**Tags:** `rejoin`, `rejoin-searching`, `rejoin-cancel`, `rejoin-failed`, `rejoin-wifi`, `rejoin-wifi-on`.
+
 ## 4. Modais
 
 Todos levam o **cabeçalho de marca**.
@@ -254,25 +296,28 @@ Todos levam o **cabeçalho de marca**.
 | Começar um novo jogo? | mensagem (perigo) | Início, "Novo jogo" com jogo salvo | explica que o jogo salvo vira desistência |
 | Voltar ao início? | mensagem (aviso) | voltar durante o jogo | confirma sair |
 | Desistir do jogo? | mensagem (perigo) | bandeira (menu de engrenagem) | §13.1; mostra as **apostas em jogo** (aposta de cada jogador, total em jogo, quanto o jogador perde e que deixa de concorrer ao prêmio) e os **pontos** da mesa (placar de cada lado, com os nomes de quem está nele); cancelar volta ao estado exato |
-| **Convite** | mensagem | jogador próximo marcado na montagem de outro anfitrião (§16.2), em qualquer tela fora de um jogo | "Mesa de <anfitrião>"; **Aceitar** / **Recusar**, **sem prazo** e sem aceite automático; some se o anfitrião desmarcar. Saldo menor que a aposta: recusa automática com aviso. Tags `invite`, `invite-accept`, `invite-refuse` |
+| **Convite** | mensagem | jogador próximo **chamado** por um recrutador (§16.2), em qualquer tela fora de um jogo | "<recrutador> está te recrutando"; **aposta** (com o ícone do saco de dinheiro), **tipo** (individual / duplas), **posição** (**Parceiro** se o lugar é o da frente; senão **Adversário**; no individual, **Adversário**) e **título da regra** (Clássica / Tranca Paulista / Personalizada); botões **Detalhes da regra** (abre o modal *Detalhes da regra*), **Recusar** e **Aceitar**. **25 s para responder, com contagem na tela**: uma **barra de progresso que esvazia** com os **segundos restantes** ao lado, atualizada a cada ~100 ms, que **muda de cor nos últimos 5 s**; o leitor de tela anuncia a contagem sem repetir demais (a cada 10 s e aos 5 s). Ao zerar o modal fecha sozinho (sem resposta vale como recusa, motivo "não respondeu a tempo"; **o aceite nunca é automático**); a posição acompanha o recrutador movendo o chamado; some se o recrutador o remover. Saldo menor que a aposta: recusa automática com aviso. Tags `invite`, `invite-details`, `invite-accept`, `invite-refuse`, `invite-countdown` |
+| **Detalhes da regra** | diálogo | botão "Ver detalhes da regra" (Iniciar novo jogo, Mesa do recrutado) ou "Detalhes da regra" (Convite) | o nome do perfil de regras e o **resumo** das regras da mesa (§14.2: as diferenças em relação à Clássica) e a pontuação-alvo; **Fechar**. Tags `rules-details-dialog` |
+| **Prepare-se!** | camada sobre a tela atual | **Começar Partida** (todos os celulares da mesa) | sobre a própria tela, que fica esmaecida (preto ~50 %), a imagem **"Prepare-se! O jogo vai começar!"** centralizada, entrando com leve escala e fade (sem movimento se as animações do sistema estão desligadas); bloqueia os toques; **no mínimo 1,5 s**, até o jogo começar; não tem botões. Tag `get-ready` |
+| **Ligar o Wi-Fi do jogo?** | mensagem (aviso) | **Continuar mesa** com o Wi-Fi do jogo desligado (3.17) | "Para voltar à mesa de <anfitrião> o Wi-Fi do jogo precisa estar ligado."; **Ligar** / **Cancelar**. Tags `rejoin-wifi`, `rejoin-wifi-on` |
 | **Desconectar a mesa?** | mensagem (aviso) | anfitrião desliga o botão de Wi-Fi na mesa de jogo com humanos (3.14) | "Os jogadores por perto serão substituídos por robôs e o jogo segue só neste celular."; **Desconectar** / **Cancelar** (no convidado, o botão abre *Desistir da mesa?*) |
-| **Recusa** | mensagem (aviso) | convite ou pedido de entrada recusado (§16.2) | quem recusou e o **motivo** (recusou o convite, saldo insuficiente, fora do alcance, o anfitrião recusou, mesa cheia); **OK**. No anfitrião, aviso breve na escolha de posições |
+| **Recusa** | aviso breve (toast) | chamado recusou, saiu ou ficou fora do alcance (§16.2) | quem recusou e o **motivo** (recusou o convite, saldo insuficiente, fora do alcance); o lugar volta a VAGO. No pedido de entrada do meio do jogo (§16.7) também "o anfitrião recusou" e "mesa cheia" |
 | Recusar a compra? | mensagem | monte acabou sem morto | encerra a partida sem batida |
 | Zerar estatísticas? | mensagem | Estatísticas | confirma zerar |
-| **Informações do jogo** | diálogo | tocar em "Partida N · alvo X" ou no placar, na mesa de jogo | **Jogo:** regras (nome do perfil e o resumo, o mesmo de 3.13), modo, nível dos robôs, pontuação-alvo, aposta de cada jogador e quanto recebe cada vencedor (§14.6, §16.13); **Lados:** quem joga em cada lado (avatar, nome, "robô" ou "humano"; no multijogador, quem é o anfitrião); **Partida atual:** número e quem começou; **Partidas:** tabela partida a partida (número, total de cada lado e quem bateu ou "sem batida") e o acumulado. Só informação pública (no multijogador, o histórico recebido). Botão **Fechar**. Tags `match-info`, `match-info-rounds`, `match-info-close` |
+| **Informações do jogo** | diálogo | tocar em "Partida N · alvo X" ou no placar, na mesa de jogo | **Jogo:** regras (nome do perfil e o resumo, o mesmo de *Detalhes da regra*), modo, nível dos robôs, pontuação-alvo, aposta de cada jogador e quanto recebe cada vencedor (§14.6, §16.13); **Lados:** quem joga em cada lado (avatar, nome, "robô" ou "humano"; no multijogador, quem é o anfitrião); **Partida atual:** número e quem começou; **Partidas:** tabela partida a partida (número, total de cada lado e quem bateu ou "sem batida") e o acumulado. Só informação pública (no multijogador, o histórico recebido). Botão **Fechar**. Tags `match-info`, `match-info-rounds`, `match-info-close` |
 | Símbolos das jogadas | diálogo | **?** na mesa | legenda de comprar, pegar, baixar, acrescentar, descartar, recusar |
 | **Detalhe do jogador** | diálogo | tocar na pílula | imagem de apresentação do robô, bordão, nome e a última jogada (com cartas e 3 vermelhos baixados) |
 | Lixo completo | diálogo | ícone na linha do lixo | todas as cartas do lixo |
-| **Procurar mesas por perto** | mensagem | ligar o Wi-Fi do jogo no Perfil ou no botão de Wi-Fi de Mesas disponíveis, abrir Mesas disponíveis com ele ligado e sem permissão, ou criar mesa multijogador | explica, em linguagem simples, as permissões pedidas (Bluetooth, dispositivos próximos ou localização, conforme o Android) e que **nada sai do aparelho e não usa internet**; **Permitir** / **Agora não** (o modo fica desligado) |
+| **Procurar mesas por perto** | mensagem | ligar o Wi-Fi do jogo no Perfil ou no botão de Wi-Fi de Iniciar novo jogo ou da Seleção de jogadores, ou abrir uma delas com ele ligado e sem permissão | explica, em linguagem simples, as permissões pedidas (Bluetooth, dispositivos próximos ou localização, conforme o Android) e que **nada sai do aparelho e não usa internet**; **Permitir** / **Agora não** (o modo fica desligado) |
 | **Versão do jogo diferente** | mensagem (aviso) | entrar em mesa de outra versão | "O anfitrião está com outra versão do jogo (anfitrião: versão N; você: versão M). Atualizem todos os celulares para a mesma versão e criem uma mesa nova."; recusa a entrada |
-| **Pedido de entrada** | mensagem | anfitrião, quando alguém pede para entrar na escolha de posições (§16.2, no lugar de um robô) ou no meio do jogo (§16.7) | nome e foto de quem pede e o assento (robô ou o da vez); **Aceitar** / **Recusar** |
+| **Pedido de entrada** | mensagem | anfitrião, quando alguém pede para entrar **no meio do jogo** (§16.7) (a porta de entrada na tela está em aberto, ver `docs/recrutamento.md`) | nome e foto de quem pede e o assento da vez (ou liberado); **Aceitar** / **Recusar** |
 | **Jogo pausado** | mensagem | convidados, quando o jogo pausa por queda ou recrutamento (§16.8) | quem caiu e o que o anfitrião está fazendo; fecha sozinho quando o jogo segue |
 | **Aguardando <nome>** | diálogo (anfitrião) | chega a vez de quem caiu | três ações: **Aguardar o reingresso**, **Substituir por um robô** e **Recrutar outro jogador** (desativa o que não vale; com o recrutamento ativo vira "Aguardando recrutamento", ainda com **Substituir por robô**) |
 | **Entregar a mesa** | diálogo (anfitrião) | seção Multijogador da engrenagem ou ao desistir | lista os humanos disponíveis pela ordem de entrada (nunca robôs); **Passar** / **Cancelar** |
 | **Você agora é o anfitrião** | mensagem | sucessor, ao assumir (§16.10) | avisa que a mesa passou para ele |
 | **Aguardando os outros jogadores** | mensagem (anfitrião provisório) | sucessor que assumiu e ainda não foi confirmado (§16.10) | explica que a mesa espera alguém reingressar; depois de 30 s (§16.15) mostra o botão **Assumir mesmo assim**, que confirma o cargo e retoma o jogo (*provisório, revisar com produto*) |
 | **Desistir da mesa?** | mensagem (perigo) | bandeira (menu de engrenagem) ou Voltar do Android, em mesa multijogador | explica que um robô assume o lugar, que a aposta se perde e que o jogo segue para os demais; no 1×1 entre humanos, que o outro vence; mostra as mesmas **apostas em jogo** e **pontos** de *Desistir do jogo?* (só o que este aparelho já sabe) |
-| **Mesa encerrada** | mensagem | sem humano para assumir ou o anfitrião fechou (quem volta depois que a entrega do resultado acabou, §16.11, também vê esta mensagem; quem está nas telas de resultado não é interrompido) | volta ao início |
+| **Mesa encerrada** | mensagem | sem humano para assumir ou o anfitrião fechou; falha ao entrar na mesa (texto próprio: não encontrada, falha de conexão, sem resposta ou lugar dado a um robô) (quem volta depois que a entrega do resultado acabou, §16.11, também vê esta mensagem; quem está nas telas de resultado não é interrompido) | volta ao início |
 | Onde baixar? | diálogo | "Baixar" com mais de uma possibilidade | cada opção com cartas, destino e pontos |
 | Como usar o descarte? | diálogo | pegar o lixo com mais de um plano | cada plano; dica "ou selecione as cartas da mão antes de tocar no lixo" |
 
@@ -296,7 +341,7 @@ Tiradas em 2026-10-19 no emulador Pixel 4 (API 33, 1080×2280), versão 0.85, da
 | Tela / modal | Arquivo(s) |
 |---|---|
 | 3.1 Início (sem jogo salvo / com jogo salvo) | `01-inicio.png`, `01b-inicio-com-jogo-salvo.png` |
-| 3.2 Mesas disponíveis (individual / duplas, rolada) | `02-mesas-disponiveis.png`, `02b-mesas-disponiveis-duplas.png` |
+| 3.2 Iniciar novo jogo (**capturas antigas da *Mesas disponíveis*, mantidas como histórico**; novas a fazer) | `02-mesas-disponiveis.png`, `02b-mesas-disponiveis-duplas.png` |
 | Regras da mesa e Criar mesa (telas removidas; capturas antigas mantidas como histórico) | `03-regras-da-mesa.png`, `04-criar-mesa.png` e variações |
 | 3.5 Personalizar regra | `05-personalizar-regra.png`, `05b-personalizar-regra-rolado.png` |
 | 3.6 Perfil | `07-perfil.png`, `07b-perfil-rolado.png` |
@@ -310,7 +355,7 @@ Tiradas em 2026-10-19 no emulador Pixel 4 (API 33, 1080×2280), versão 0.85, da
 | Modal Começar um novo jogo? | `15-modal-novo-jogo.png` |
 | Modal Lixo completo | `18-modal-lixo-completo.png` |
 | 3.11 Fim de jogo (derrota por desistência) | `24-fim-de-jogo-derrota.png` |
-| 3.13 Escolha sua posição (**referência de design**, ainda não implementada) | `escolha-posicao-multiplayer.png` |
+| 3.3 / 3.13 Seleção de jogadores e Mesa do recrutado (**a fazer**; a antiga referência *Escolha sua posição* fica como histórico) | `escolha-posicao-multiplayer.png` |
 
 **Sem captura (a fazer depois)** — dependem de situações que o emulador não força por toques:
 - 3.9 Animação da batida, 3.10 Pontos da partida, 3.12 Revisão da mesa final e a variação de **vitória** do Fim de jogo: exigem terminar uma partida jogando. Desistir leva direto ao Fim de jogo (derrota), sem passar pela mesa final. Caminho sugerido: adaptar [EndScreensTest.kt](../app/src/androidTest/kotlin/com/gtranca/EndScreensTest.kt), que monta essas telas com dados fixos.

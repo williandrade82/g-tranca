@@ -427,13 +427,19 @@ class GameViewModel(
         // Cada voo/destaque some sozinho depois da sua duração (o desenho também para; isto só limpa o estado).
         viewModelScope.launch {
             val scheduled = mutableSetOf<Long>()
-            local.map { state -> state.flights.map { it.id to it.delayMillis } + state.flashes.map { it.id to 0L } }
+            // (id, atraso, vezes que o voo dura o normal): a batida dura mais e libera o anúncio logo que pousa.
+            local.map { state ->
+                state.flights.map { Triple(it.id, it.delayMillis, if (it.finale) it.durationFactor else 0f) } +
+                    state.flashes.map { Triple(it.id, 0L, 0f) }
+            }
                 .distinctUntilChanged()
                 .collect { items ->
-                    items.filter { (id, _) -> scheduled.add(id) }.forEach { (id, delayMillis) ->
+                    items.filter { (id, _, _) -> scheduled.add(id) }.forEach { (id, delayMillis, finaleFactor) ->
                         launch {
-                            // O desenho dura no máximo 2 × a duração efetiva (pulso: sobe e desce) após o atraso.
-                            delay(delayMillis + effectiveMillis(local.value) * 2 + EXPIRY_MARGIN_MILLIS)
+                            // O desenho dura no máximo 2 × a duração efetiva (pulso: sobe e desce) após o atraso; o voo
+                            // da batida, o seu tempo (2 × o normal) e nada mais.
+                            val draw = if (finaleFactor > 0f) (effectiveMillis(local.value) * finaleFactor).toLong() + 300 else effectiveMillis(local.value) * 2
+                            delay(delayMillis + draw + EXPIRY_MARGIN_MILLIS)
                             local.update { state ->
                                 state.copy(flights = state.flights.filterNot { it.id == id }, flashes = state.flashes.filterNot { it.id == id })
                             }
@@ -545,8 +551,11 @@ class GameViewModel(
             hidden = hidden + hiddenNow
         }
         // Animações da mesa a partir das diferenças com o último snapshot incorporado.
-        val (newFlights, newFlashes) = if (effectiveMillis(state) > 0 && previous != null && snapshot.stage == Stage.PLAYING) {
-            TableAnimations.derive(old, snapshot, hidden.values.flatten().toSet(), animationIds::incrementAndGet)
+        // O fim da partida (ROUND_OVER/GAME_OVER) chega junto da última jogada: ela também é animada (a batida, em
+        // câmera lenta) e o anúncio espera o voo pousar. A desistência não anima nada.
+        val keepFlights = sameRound && (snapshot.stage == Stage.PLAYING || !snapshot.resigned)
+        val (newFlights, newFlashes) = if (effectiveMillis(state) > 0 && previous != null && keepFlights) {
+            TableAnimations.derive(old, snapshot, hidden.values.flatten().toSet(), goOut = snapshot.view.phase == Phase.FINISHED, nextId = animationIds::incrementAndGet)
                 .let { (flights, flashes) -> flights.map { it.scaled(state.animationScale) } to flashes }
         } else {
             emptyList<CardFlight>() to emptyList()
@@ -572,11 +581,11 @@ class GameViewModel(
             newCards = newCards,
             swaps = if (playing) swaps else emptyList(),
             mortoSwaps = if (playing) mortoSwaps.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
-            flights = if (playing && sameRound) state.flights + newFlights + dealFlights else dealFlights,
+            flights = if (keepFlights) state.flights + newFlights + dealFlights else dealFlights,
             dealIds = (if (playing && sameRound) state.dealIds else emptySet()) + dealFlights.map { it.id },
             dealDone = if (previous == null || !sameRound) !dealing else state.dealDone,
             afterDeal = if (dealing) fresh.isNotEmpty() else state.afterDeal,
-            flashes = if (playing && sameRound) state.flashes + newFlashes else emptyList(),
+            flashes = if (keepFlights) state.flashes + newFlashes else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             delivers = if (playing) delivers.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },

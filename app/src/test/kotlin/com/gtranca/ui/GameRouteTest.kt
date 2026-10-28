@@ -21,11 +21,11 @@ class GameRouteTest {
     }
 
     @Test
-    fun `§14_4 a montagem leva os robos marcados na ordem a escolha de posicoes`() {
-        val route = LocalSeatsRoute.of(GameConfig(GameMode.DUPLAS), listOf("zen", "jovem"), 9L)
-        route.robotList() shouldBe listOf("zen", "jovem")
-        route.toConfig().mode shouldBe GameMode.DUPLAS
-        LocalSeatsRoute.of(GameConfig(), emptyList(), 1L).robotList() shouldBe emptyList()
+    fun `§14_4 a selecao de jogadores leva so a configuracao escolhida`() {
+        val config = GameConfig(GameMode.DUPLAS, stake = 150)
+        val route = SelectionRoute.of(config)
+        route.toConfig() shouldBe config
+        route.stake shouldBe 150
     }
 
     @Test

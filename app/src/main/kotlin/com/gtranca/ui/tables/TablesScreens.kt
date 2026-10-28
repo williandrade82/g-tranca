@@ -49,6 +49,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.Role
@@ -62,11 +68,7 @@ import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
 import com.gtranca.game.Persona
-import com.gtranca.game.BotCharacter
-import com.gtranca.game.BotProfile
-import androidx.compose.foundation.selection.toggleable
 import com.gtranca.ui.game.plainPoints
-import com.gtranca.ui.home.ModeCard
 import com.gtranca.ui.home.labelRes
 import com.gtranca.ui.persona.CharacterPortrait
 import com.gtranca.ui.persona.LevelStars
@@ -87,7 +89,7 @@ import com.gtranca.ui.theme.Spacing
 
 /** Moldura das telas de mesa: fundo, título, conteúdo rolável e barra de botões fixa embaixo. */
 @Composable
-private fun TableFrame(
+internal fun TableFrame(
     title: String,
     tag: String,
     bottom: @Composable RowScope.() -> Unit,
@@ -120,9 +122,10 @@ private fun TableFrame(
 }
 
 @Composable
-private fun RowScope.BottomButton(text: String, tag: String, kind: GButtonKind, enabled: Boolean = true, onClick: () -> Unit) {
-    GButton(onClick, Modifier.weight(1f).heightIn(min = 52.dp).testTag(tag).tourTarget(tag), enabled = enabled, kind = kind) {
-        Text(text, style = MaterialTheme.typography.titleMedium)
+internal fun RowScope.BottomButton(text: String, tag: String, kind: GButtonKind, enabled: Boolean = true, weight: Float = 1f, onClick: () -> Unit) {
+    GButton(onClick, Modifier.weight(weight).heightIn(min = 52.dp).testTag(tag).tourTarget(tag), enabled = enabled, kind = kind) {
+        // O texto fica numa linha só: com fonte grande a letra diminui, nunca quebra.
+        com.gtranca.ui.theme.FitText(text, MaterialTheme.typography.titleMedium, minFontSp = 10)
     }
 }
 
@@ -136,69 +139,55 @@ fun rulesName(rules: RuleSet): String = when (rules.id) {
     else -> stringResource(R.string.rules_custom)
 }
 
-// ---------- Mesas disponíveis (montagem da mesa) ----------
+// ---------- Iniciar novo jogo (opções da mesa) ----------
 
-/** §16 a parte de rede de "Mesas disponíveis": o Wi-Fi do jogo (Perfil) e as mesas de outros anfitriões por perto. */
-class TablesMultiplayer(
-    val wifiOn: Boolean,
-    val onToggle: () -> Unit,
-    val tables: List<com.gtranca.net.TableAdvert>,
-    val onOpen: (com.gtranca.net.TableAdvert) -> Unit,
-)
+/** §16 o botão de Wi-Fi do jogo: o estado (a configuração do Perfil) e o toque, que liga (passando pelas permissões) ou desliga. */
+class WifiControl(val on: Boolean, val toggle: () -> Unit)
 
 /**
- * §14.4 "Mesas disponíveis" (docs/telas.md 3.2): a montagem da mesa — participantes (o jogador, os jogadores próximos e os
- * 4 robôs), as mesas de outros anfitriões por perto (pedido de entrada) e as opções; "Escolher posições" abre a escolha de
- * posições ([onChooseSeats]).
+ * §14.4 *Iniciar novo jogo* (docs/telas.md 3.2): as opções da mesa e, com o Wi-Fi do jogo ligado, a lista (só informativa)
+ * dos jogadores por perto que estão recrutando. "Selecionar jogadores" grava a configuração e abre a tela 3.3.
  */
 @Composable
 fun TablesScreen(
     viewModel: TablesViewModel,
-    self: Persona,
-    onChooseSeats: (ChosenTable) -> Unit,
+    recruiters: List<com.gtranca.net.PresenceAdvert>,
+    wifi: WifiControl?,
+    onRefresh: () -> Unit,
+    onSelectPlayers: (GameConfig) -> Unit,
     onCustomize: () -> Unit,
     onBack: () -> Unit,
-    multiplayer: TablesMultiplayer? = null,
-    /** §16.2 recrutado que aceitou: a montagem do anfitrião, só para leitura (`null` = a própria). */
-    joined: com.gtranca.net.RecruitStatus.Joined? = null,
-    /** §16.2 "Sair da mesa" do recrutado. */
-    onLeaveTable: () -> Unit = {},
-    /** §16.2 fotos dos jogadores próximos por chave de presença (só em memória; vazio = iniciais). */
-    joinedPhotos: Map<String, ByteArray> = emptyMap(),
 ) {
-    if (joined != null) return JoinedTableScreen(joined, joinedPhotos, onLeaveTable)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showDetails by rememberSaveable { mutableStateOf(false) }
     // Tour guiado (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
     TourHost(Tours.TABLES, Tours.tablesSteps, autoStart = true) { startTour ->
     TableFrame(
         stringResource(R.string.tables_title),
         "tables-screen",
         bottom = {
-            BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, onClick = onBack)
-            BottomButton(stringResource(R.string.tables_choose_seats), "choose-seats", GButtonKind.Primary, enabled = state.canChoose) {
-                viewModel.onChooseSeats()?.let(onChooseSeats)
+            BottomButton(stringResource(R.string.back), "tables-back", GButtonKind.Secondary, weight = 0.7f, onClick = onBack)
+            BottomButton(stringResource(R.string.tables_select_players), "select-players", GButtonKind.Primary, enabled = state.canSelect, weight = 1.3f) {
+                viewModel.onSelectPlayers()?.let(onSelectPlayers)
             }
         },
         titleExtra = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TourButton(startTour)
-                multiplayer?.let { mp -> WifiButton(mp.wifiOn, mp.onToggle) }
+                wifi?.let { WifiButton(it.on, it.toggle) }
             }
         },
     ) {
-        val wifiOn = multiplayer?.wifiOn == true
-        ParticipantsPill(state, self, wifiOn, viewModel::onToggle)
-        if (multiplayer != null && wifiOn) {
-            // §16.2 mesas de outros anfitriões por perto (aparecem e somem conforme a busca); tocar pede a entrada.
-            multiplayer.tables.forEach { advert -> MultiplayerTableCard(advert) { multiplayer.onOpen(advert) } }
-        }
-        TableOptions(state, viewModel, onCustomize)
-        RulesSummary(state.rules, state.targetScore ?: state.rules.targetScore)
+        if (wifi?.on == true) RecruitersList(recruiters, onRefresh)
+        TableOptions(state, viewModel, onCustomize, onShowDetails = { showDetails = true })
     }
+    }
+    if (showDetails) {
+        RulesDetailsDialog(rulesName(state.rules), state.rules, state.targetScore ?: state.rules.targetScore) { showDetails = false }
     }
 }
 
-/** §16 botão do Wi-Fi do jogo (3.2): reflete e grava a configuração do Perfil; aceso, procurando jogadores e mesas por perto. */
+/** §16 botão do Wi-Fi do jogo (3.2): reflete e grava a configuração do Perfil; aceso, o jogador pode ser chamado e chamar. */
 @Composable
 fun WifiButton(on: Boolean, onToggle: () -> Unit, tag: String = "tables-wifi") {
     val description = stringResource(if (on) R.string.mp_wifi_on_desc else R.string.mp_wifi_off_desc)
@@ -218,232 +207,98 @@ fun WifiButton(on: Boolean, onToggle: () -> Unit, tag: String = "tables-wifi") {
 }
 
 /**
- * §14.4 pílula de escolha dos participantes (docs/telas.md 3.2): grade de avatares, até 6 por linha — o jogador (sempre
- * o primeiro e marcado), os jogadores próximos (ou "Recrutando", só com o Wi-Fi ligado) e os 4 robôs; até 3 marcados
- * além do jogador; mostra até 4 linhas e rola a partir da 5ª.
+ * §16.2 "Jogadores recrutando": os outros jogadores que estão na *Seleção de jogadores* (sem o próprio), só informativa:
+ * tocar não faz nada. A foto aparece como inicial (limitação do `P2P_STAR`).
  */
 @Composable
-private fun ParticipantsPill(state: TableSetupUiState, self: Persona, wifiOn: Boolean, onToggle: (Pick) -> Unit) {
-    val shape = RoundedCornerShape(Corner.md)
-    val level = BotLevel.of(state.difficulty)
-    val tiles = buildList<@Composable RowScope.() -> Unit> {
-        add { ParticipantTile(self, self.firstName, checked = true, enabled = false, tag = "participant-self") {} }
-        if (wifiOn) {
-            if (state.nearby.isEmpty()) add { RecruitingTile() }
-            state.nearby.forEach { player ->
-                val pick = Pick.Near(player.key)
-                val picked = state.isPicked(pick)
-                add {
-                    ParticipantTile(
-                        Persona(player.name, color = player.key.hashCode().mod(Persona.COLORS), photoBytes = player.photo),
-                        player.name,
-                        checked = picked,
-                        // §16.2 recrutado por outro anfitrião: não selecionável.
-                        enabled = !player.recruitedElsewhere || picked,
-                        tag = "participant-near-${player.key}",
-                        badge = when {
-                            player.recruitedElsewhere && !picked -> stringResource(R.string.recruit_recruited)
-                            picked && player.key !in state.accepted -> stringResource(R.string.recruit_waiting)
-                            else -> null
-                        },
-                    ) { onToggle(pick) }
-                }
-            }
+private fun RecruitersList(recruiters: List<com.gtranca.net.PresenceAdvert>, onRefresh: () -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag("recruiters").tourTarget("recruiters"), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.tables_recruiters_title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = GColors.Champagne)
+            RefreshButton("refresh-players", onRefresh)
         }
-        BotProfile.entries.forEach { profile ->
-            val pick = Pick.Bot(profile)
-            add {
-                ParticipantTile(
-                    Persona(profile.botName, "", BotCharacter(profile, level)),
-                    profile.botName,
-                    checked = state.isPicked(pick),
-                    enabled = true,
-                    tag = "participant-bot-${profile.code}",
-                ) { onToggle(pick) }
-            }
-        }
-    }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(GColors.Indigo, shape)
-            .border(1.dp, GColors.Gold.copy(alpha = 0.6f), shape)
-            .heightIn(max = PARTICIPANT_TILE * PARTICIPANT_ROWS_VISIBLE + Spacing.sm * 2)
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = Spacing.sm)
-            .testTag("participants")
-            .tourTarget("participants"),
-    ) {
-        tiles.chunked(PARTICIPANTS_PER_ROW).forEach { row ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.xs)) {
-                row.forEach { it() }
-                repeat(PARTICIPANTS_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
-    }
-}
-
-/**
- * Um avatar da pílula de participantes: imagem em círculo e o nome embaixo. Marcado: aro dourado grosso e um ✓ dourado
- * no canto; desmarcado: aro fino e a imagem um pouco apagada.
- */
-@Composable
-private fun RowScope.ParticipantTile(avatar: Persona, name: String, checked: Boolean, enabled: Boolean, tag: String, badge: String? = null, onClick: () -> Unit) {
-    Column(
-        Modifier
-            .weight(1f)
-            .heightIn(min = PARTICIPANT_TILE)
-            .clip(RoundedCornerShape(Corner.sm))
-            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
-            .padding(vertical = Spacing.xs)
-            .testTag(tag),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(Modifier.size(PARTICIPANT_AVATAR + 8.dp)) {
-            Box(
-                Modifier
-                    .align(Alignment.Center)
-                    .size(PARTICIPANT_AVATAR + 6.dp)
-                    .border(if (checked) 3.dp else 1.dp, GColors.Gold.copy(alpha = if (checked) 1f else 0.4f), androidx.compose.foundation.shape.CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(Modifier.size(PARTICIPANT_AVATAR).then(if (checked) Modifier else Modifier.alpha(0.55f))) {
-                    PersonaAvatar(avatar, PARTICIPANT_AVATAR)
-                }
-            }
-            if (checked) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .size(16.dp)
-                        .background(GColors.Gold, androidx.compose.foundation.shape.CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) { Text("✓", color = GColors.Indigo, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-            }
-        }
-        Text(
-            name,
-            Modifier.padding(horizontal = 2.dp),
-            color = if (checked) GColors.Champagne else GColors.Steel,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        // §16.2 selo "Recrutado" (por outro anfitrião) ou "aguardando" (convite ainda sem resposta).
-        badge?.let {
+        if (recruiters.isEmpty()) {
             Text(
-                it,
-                Modifier
-                    .background(GColors.Bordeaux, RoundedCornerShape(Corner.sm))
-                    .padding(horizontal = 4.dp)
-                    .testTag("$tag-badge"),
-                color = GColors.Ivory,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
+                stringResource(R.string.tables_recruiters_empty),
+                Modifier.testTag("recruiters-empty"),
+                style = MaterialTheme.typography.bodySmall,
+                color = GColors.Steel,
             )
-        }
-    }
-}
-
-/**
- * §16.2 recrutado que aceitou o convite (docs/telas.md 3.2): a pílula e as opções **do anfitrião**, sincronizadas ao vivo
- * e só para leitura; "Escolher posições" vira "Aguardando..." (desabilitado) e "Voltar" vira "Sair da mesa".
- */
-@Composable
-private fun JoinedTableScreen(joined: com.gtranca.net.RecruitStatus.Joined, photos: Map<String, ByteArray>, onLeave: () -> Unit) {
-    androidx.activity.compose.BackHandler(onBack = onLeave)
-    TableFrame(
-        stringResource(R.string.tables_title),
-        "tables-screen",
-        bottom = {
-            BottomButton(stringResource(R.string.recruit_leave), "tables-leave", GButtonKind.Secondary, onClick = onLeave)
-            BottomButton(stringResource(R.string.recruit_waiting_host), "choose-seats", GButtonKind.Primary, enabled = false) {}
-        },
-    ) {
-        Text(stringResource(R.string.tables_host, joined.hostName), style = MaterialTheme.typography.titleMedium, color = GColors.Gold)
-        val config = joined.config
-        if (config == null) {
-            androidx.compose.material3.CircularProgressIndicator(color = GColors.Gold)
-            return@TableFrame
-        }
-        val level = BotLevel.of(Difficulty.fromId(config.difficulty))
-        val shape = RoundedCornerShape(Corner.md)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(GColors.Indigo, shape)
-                .border(1.dp, GColors.Gold.copy(alpha = 0.6f), shape)
-                .padding(Spacing.sm)
-                .testTag("participants"),
-        ) {
-            config.participants.forEachIndexed { i, p ->
-                val profile = p.persona?.let { code -> BotProfile.entries.firstOrNull { it.code == code } }
-                // O primeiro é o anfitrião (a chave dele vem do status); os jogadores próximos trazem a própria chave.
-                val key = if (i == 0) joined.hostKey else p.key
-                val persona = if (profile != null) Persona(profile.botName, "", BotCharacter(profile, level))
-                else Persona(p.name, color = (key ?: p.name).hashCode().mod(Persona.COLORS), photoBytes = key?.let { photos[it] })
-                ParticipantTile(
-                    persona, p.name, checked = true, enabled = false, tag = "participant-joined-$i",
-                    badge = if (!p.accepted) stringResource(R.string.recruit_waiting) else null,
-                ) {}
+        } else {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                recruiters.forEach { who ->
+                    val persona = Persona(who.name, color = who.key.hashCode().mod(Persona.COLORS))
+                    Column(
+                        Modifier.width(64.dp).testTag("recruiter-${who.key}")
+                            .semantics(mergeDescendants = true) { contentDescription = who.name },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        PersonaAvatar(persona, 44.dp)
+                        Text(who.name, style = MaterialTheme.typography.bodySmall, color = GColors.Champagne, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
         }
-        GPanel(Modifier.fillMaxWidth()) {
-            Text("${modeLabel(config.mode)} · ${stringResource(R.string.tables_difficulty)}: ${stringResource(level.labelRes())}", color = GColors.Champagne)
-            Text(stringResource(R.string.stake_line, config.stake), color = GColors.Gold)
-        }
-        RulesSummary(config.rules, config.targetScore)
     }
 }
 
-/** "Recrutando" (Wi-Fi ligado e ninguém por perto): círculo girando no lugar do avatar, logo depois do jogador. */
+/** Duração da rajada de busca da atualização imediata (§16.15: 5 s a cada 1 s). */
+private const val REFRESH_BURST_MILLIS = 5_000L
+
+/**
+ * O botão discreto de **atualizar** jogadores por perto (docs/telas.md 3.2 e 3.3): duas setas em círculo, alvo de 48 dp.
+ * Chama [onRefresh] (a busca em rajada de 5 s); enquanto ela roda o ícone gira e o botão fica desabilitado. Sem
+ * animações do sistema, o ícone fica parado (só desabilita).
+ */
 @Composable
-private fun RowScope.RecruitingTile() {
-    Column(
-        Modifier.weight(1f).heightIn(min = PARTICIPANT_TILE).padding(vertical = Spacing.xs).testTag("participant-recruiting"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(Modifier.size(PARTICIPANT_AVATAR + 8.dp), contentAlignment = Alignment.Center) {
-            androidx.compose.material3.CircularProgressIndicator(Modifier.size(PARTICIPANT_AVATAR - 8.dp), color = GColors.Gold, strokeWidth = 2.dp)
+fun RefreshButton(tag: String, onRefresh: () -> Unit) {
+    var refreshing by rememberSaveable { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(refreshing) {
+        if (refreshing) {
+            kotlinx.coroutines.delay(REFRESH_BURST_MILLIS)
+            refreshing = false
         }
-        Text(
-            stringResource(R.string.tables_recruiting),
-            color = GColors.Steel,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+    }
+    val motion = com.gtranca.ui.theme.rememberMotionEnabled()
+    val angle = if (refreshing && motion) {
+        val a by androidx.compose.animation.core.rememberInfiniteTransition(label = "refresh").animateFloat(
+            0f, 360f,
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing)),
+            label = "refresh-angle",
+        )
+        a
+    } else {
+        0f
+    }
+    val description = stringResource(R.string.refresh_players_desc)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .clickable(enabled = !refreshing, onClickLabel = description, role = Role.Button) {
+                refreshing = true
+                onRefresh()
+            }
+            .semantics { contentDescription = description }
+            .testTag(tag)
+            .tourTarget(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        com.gtranca.ui.theme.RecycleIcon(
+            if (refreshing) GColors.Steel else GColors.Gold,
+            Modifier.graphicsLayer { rotationZ = angle },
+            size = 24.dp,
         )
     }
 }
 
-/** Diâmetro do avatar na grade de participantes. */
-private val PARTICIPANT_AVATAR = 42.dp
-
-/** Altura de cada linha da grade (avatar com aro + nome). */
-private val PARTICIPANT_TILE = 76.dp
-
-/** §14.4 até 6 avatares por linha (o jogador conta); em 360 dp cada coluna fica com ~53 dp. */
-private const val PARTICIPANTS_PER_ROW = 6
-
-/** §14.4 a pílula mostra até 4 linhas e rola a partir da 5ª. */
-private const val PARTICIPANT_ROWS_VISIBLE = 4
-
-/** §14.4 opções da mesa (as da antiga "Criar mesa"): modo, dificuldade dos robôs, aposta, regras e pontuação-alvo. */
+/** §14.4 quadro de opções: modo, dificuldade dos robôs, aposta, regras (com "Ver detalhes da regra") e pontuação-alvo. */
 @Composable
-private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, onCustomize: () -> Unit) {
+private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, onCustomize: () -> Unit, onShowDetails: () -> Unit) {
     GPanel(Modifier.fillMaxWidth().tourTarget("table-options-panel")) {
         Section(stringResource(R.string.home_mode)) {
-            // §14.4 com 3 ou 4 participantes o modo é duplas (Individual desabilitado).
-            ModeChoice(stringResource(R.string.mode_individual), state.effectiveMode == GameMode.INDIVIDUAL, !state.modeLocked, "mode-individual") {
-                viewModel.onModeChange(GameMode.INDIVIDUAL)
-            }
-            ModeChoice(stringResource(R.string.mode_duplas_short), state.effectiveMode == GameMode.DUPLAS, true, "mode-duplas") {
-                viewModel.onModeChange(GameMode.DUPLAS)
-            }
+            ModeChoice(stringResource(R.string.mode_individual), state.mode == GameMode.INDIVIDUAL, "mode-individual") { viewModel.onModeChange(GameMode.INDIVIDUAL) }
+            ModeChoice(stringResource(R.string.mode_duplas_short), state.mode == GameMode.DUPLAS, "mode-duplas") { viewModel.onModeChange(GameMode.DUPLAS) }
         }
         Section(stringResource(R.string.tables_difficulty)) {
             Difficulty.entries.forEach { difficulty ->
@@ -453,25 +308,37 @@ private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, o
             }
         }
         Section(stringResource(R.string.create_stake)) {
-            // §14.6 apostas acima do saldo ficam desabilitadas (o saldo fica só no topo).
-            Coins.STAKES.forEach { stake ->
+            // §14.6 três valores por nível, cada um com o saco de dinheiro; acima do saldo, desabilitado.
+            state.stakes.forEach { stake ->
                 GChoiceChip(
-                    stake.toString(),
                     state.stake == stake,
                     { viewModel.onStakeChange(stake) },
                     Modifier.weight(1f).testTag("stake-$stake"),
                     enabled = Coins.canJoin(state.balance, stake),
-                )
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Image(painterResource(R.drawable.coin_bag_small), null, Modifier.size(20.dp))
+                        Text(
+                            stake.toString(),
+                            color = if (state.stake == stake) GColors.Ivory else GColors.Steel,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
             }
         }
         if (!state.canAfford) {
             Text(stringResource(R.string.stake_insufficient), Modifier.testTag("tables-insufficient"), style = MaterialTheme.typography.bodyMedium, color = GColors.Ruby)
         }
         Section(stringResource(R.string.create_rules)) {
-            Chip(RuleSet.CLASSICA.name, state.rulesChoice == RulesChoice.CLASSICA, "rules-classica") { viewModel.onRulesChange(RulesChoice.CLASSICA) }
+            Chip(RuleSet.CLASSICA.name, state.rulesChoice == RulesChoice.CLASSICA, "rules-classic") { viewModel.onRulesChange(RulesChoice.CLASSICA) }
             Chip(RuleSet.PAULISTA.name, state.rulesChoice == RulesChoice.PAULISTA, "rules-paulista") { viewModel.onRulesChange(RulesChoice.PAULISTA) }
             // §14.4 "Personalizada" sempre abre o editor; ao salvar, volta com ela escolhida.
             Chip(stringResource(R.string.rules_custom), state.rulesChoice == RulesChoice.CUSTOM, "rules-custom", onCustomize)
+        }
+        // §14.4 o resumo das regras não fica na tela: este botão discreto o abre num modal.
+        androidx.compose.material3.TextButton(onShowDetails, Modifier.heightIn(min = 48.dp).testTag("rules-details")) {
+            Text(stringResource(R.string.rules_view_details), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
         }
         OutlinedTextField(
             value = state.targetText,
@@ -490,81 +357,31 @@ private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, o
             singleLine = true,
             shape = MaterialTheme.shapes.medium,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth().testTag("target-field"),
+            modifier = Modifier.fillMaxWidth().testTag("target-score"),
         )
     }
 }
 
-/** Escolha do modo (Individual / Duplas), desabilitável. */
+/** Escolha do modo (Individual / Duplas). */
 @Composable
-private fun RowScope.ModeChoice(text: String, selected: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
-    GChoiceChip(text, selected, onClick, Modifier.weight(1f).testTag(tag), enabled = enabled)
+private fun RowScope.ModeChoice(text: String, selected: Boolean, tag: String, onClick: () -> Unit) {
+    GChoiceChip(text, selected, onClick, Modifier.weight(1f).testTag(tag))
 }
 
-/**
- * §16.2 card de mesa de outro anfitrião (docs/telas.md 3.2): banner "Multi player", "Mesa de <anfitrião>" e a marca
- * "jogo em andamento"; tocar envia o pedido de entrada. Regras, aposta e nível aparecem na escolha de posições.
- */
+/** Modal *Detalhes da regra* (docs/telas.md 4): o resumo das regras da mesa (§14.2) e a pontuação-alvo. */
 @Composable
-private fun MultiplayerTableCard(advert: com.gtranca.net.TableAdvert, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(Corner.md)
-    val id = advert.tableId
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(GColors.Indigo, shape)
-            .border(1.dp, GColors.Gold.copy(alpha = 0.8f), shape)
-            .clickable(onClick = onClick)
-            .padding(Spacing.md)
-            .testTag("table-$id"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-    ) {
-        MultiBanner(Modifier.width(96.dp).testTag("table-$id-multi-banner"))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(stringResource(R.string.tables_host, advert.hostName), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GColors.Champagne, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (advert.inProgress) {
-                Text(
-                    stringResource(R.string.mp_in_progress),
-                    Modifier
-                        .background(GColors.Bordeaux, RoundedCornerShape(Corner.sm))
-                        .padding(horizontal = Spacing.sm, vertical = 2.dp)
-                        .testTag("table-$id-in-progress"),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = GColors.Ivory,
-                )
+fun RulesDetailsDialog(title: String, rules: RuleSet, targetScore: Int, onClose: () -> Unit) {
+    com.gtranca.ui.theme.GDialog(
+        onDismissRequest = onClose,
+        modifier = Modifier.testTag("rules-details-dialog"),
+        title = { Text(title) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { RulesSummary(rules, targetScore) } },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClose, Modifier.heightIn(min = 48.dp).testTag("rules-details-close")) {
+                Text(stringResource(R.string.rules_details_close))
             }
-        }
-    }
-}
-
-/** §16 banner animado "Multi" / "player" (o brilho dourado pulsa; parado sem animações do sistema). */
-@Composable
-private fun MultiBanner(modifier: Modifier) {
-    val motion = com.gtranca.ui.theme.rememberMotionEnabled()
-    val glow = if (motion) {
-        val value by androidx.compose.animation.core.rememberInfiniteTransition(label = "multi").animateFloat(
-            0.55f, 1f,
-            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween<Float>(1200), androidx.compose.animation.core.RepeatMode.Reverse),
-            label = "glow",
-        )
-        value
-    } else {
-        1f
-    }
-    val shape = RoundedCornerShape(Corner.sm)
-    Column(
-        modifier
-            .clip(shape)
-            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(GColors.RoyalStart, GColors.Midnight)), shape)
-            .border(2.dp, GColors.Gold.copy(alpha = glow), shape)
-            .padding(vertical = Spacing.sm),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(stringResource(R.string.mp_banner_multi), color = GColors.Gold.copy(alpha = glow), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-        Text(stringResource(R.string.mp_banner_player), color = GColors.Champagne, style = MaterialTheme.typography.titleSmall)
-    }
+        },
+    )
 }
 
 // ---------- Resumo das regras ----------

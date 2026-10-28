@@ -74,6 +74,15 @@ import com.gtranca.engine.RuleSet
 import com.gtranca.ui.tables.RulesEditorScreen
 import com.gtranca.ui.tables.RulesEditorViewModel
 import com.gtranca.ui.tables.TablesScreen
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import com.gtranca.ui.tables.TablesViewModel
 
 @Serializable
@@ -85,37 +94,36 @@ object ProfileRoute
 @Serializable
 object StatsRoute
 
-/** §14.4 "Mesas disponíveis": a montagem da mesa e as mesas de outros anfitriões por perto. */
+/** §14.4 *Iniciar novo jogo*: as opções da mesa (docs/telas.md 3.2). */
 @Serializable
 object TablesRoute
 
 /**
- * §16.2 "Mesa só com robôs": a escolha de posições no próprio aparelho, sem rede. [robots] são os personagens marcados na
- * montagem, na ordem da escolha (separados por vírgula); [seed] é a semente da mesa (sorteio dos que sobram e do jogo).
+ * §14.4 *Seleção de jogadores* (docs/telas.md 3.3): a configuração escolhida em *Iniciar novo jogo*. Os lugares não são
+ * parâmetro (sempre começam VAGO).
  */
 @Serializable
-data class LocalSeatsRoute(
+data class SelectionRoute(
     val mode: String,
     val difficulty: String,
     val targetScore: Int,
     val rulesJson: String,
     val stake: Int,
-    val robots: String,
-    val seed: Long,
 ) {
     fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson, stake = stake).toConfig()
 
-    fun robotList(): List<String> = robots.split(',').filter { it.isNotBlank() }
-
     companion object {
-        fun of(config: GameConfig, robots: List<String>, seed: Long) =
-            GameRoute.of(config).let { LocalSeatsRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, it.stake, robots.joinToString(","), seed) }
+        fun of(config: GameConfig) = GameRoute.of(config).let { SelectionRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, it.stake) }
     }
 }
 
-/** §16.2 sala da mesa multijogador ("Escolha sua posição"); a mesa está em [com.gtranca.multiplayer.MultiplayerHub]. */
+/** §16.5, §16.12 *Voltar à mesa*: reingressa na mesa da sessão guardada (docs/telas.md 3.17). */
 @Serializable
-object SeatPickerRoute
+object RejoinRoute
+
+/** §16.2 *Mesa do recrutado* (docs/telas.md 3.13): a mesa de quem chamou, só para leitura. */
+@Serializable
+object RecruitedRoute
 
 /** §16 jogo da mesa multijogador. */
 @Serializable
@@ -254,9 +262,10 @@ fun AppNavHost() {
                 null -> Unit
                 true -> com.gtranca.ui.home.WelcomeScreen { navController.navigateFromHome(ProfileRoute) }
                 false -> HomeScreen(
-                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet) },
+                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet, sessions = data.multiplayerSession) },
                 onNewGame = { navController.navigateFromHome(TablesRoute) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
+                onContinueSession = { navController.navigateFromHome(RejoinRoute) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
             )
@@ -271,8 +280,8 @@ fun AppNavHost() {
             ) { navController.popBackStack() }
         }
         composable<TablesRoute> { entry ->
-            // §16 Wi-Fi do jogo (Perfil, guardado): ligado, procura jogadores e mesas por perto ao abrir, sem tocar em nada.
-            // Se as permissões foram retiradas, a explicação aparece de novo; "Agora não" desliga a configuração.
+            // §14.4 *Iniciar novo jogo* (docs/telas.md 3.2): as opções da mesa. Com o Wi-Fi do jogo ligado o jogador fica
+            // livre para ser chamado (setFree, em NearbyPresence) e vê quem está recrutando.
             val tablesVm = viewModel { TablesViewModel(data.settings, WriteQueue.app, data.wallet) }
             // Voltando do editor de regras: relê as regras personalizadas (e escolhe "Personalizada" se salvou).
             val saved by entry.savedStateHandle.getStateFlow(CUSTOM_RULES_SAVED, false).collectAsStateWithLifecycle()
@@ -282,239 +291,26 @@ fun AppNavHost() {
                     tablesVm.reloadCustomRules(select = true)
                 }
             }
-            val wifiSetting by tablesVm.wifiOn.collectAsStateWithLifecycle()
-            var granted by remember { mutableStateOf(com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) }
-            var asking by remember { mutableStateOf(false) }
-            // §16.2 recrutamento imediato (anfitrião montando a mesa e/ou recrutado), com o Wi-Fi do jogo ligado.
-            val navScope = androidx.compose.runtime.rememberCoroutineScope()
+            val wifi = rememberWifiControl(data)
             val rec by com.gtranca.multiplayer.MultiplayerHub.recruitment.collectAsStateWithLifecycle()
-            val recStatus by remember(rec) { rec?.status ?: kotlinx.coroutines.flow.flowOf(com.gtranca.net.RecruitStatus.Free) }
-                .collectAsStateWithLifecycle(com.gtranca.net.RecruitStatus.Free)
-            // §16.2 com a montagem aberta (ou o editor de regras, que volta a ela) os jogadores próximos mantêm a conexão de
-            // espera, e o convite chega na hora; ao sair da montagem, o recrutamento é encerrado.
-            val navEntryNow by navController.currentBackStackEntryAsState()
-            val onSetup = navEntryNow?.destination?.let { it.hasRoute<TablesRoute>() || it.hasRoute<RulesEditorRoute>() } == true
-            LaunchedEffect(rec, onSetup) { rec?.let { r -> runCatching { r.setHosting(onSetup) } } }
-            LaunchedEffect(rec) {
-                val r = rec
-                tablesVm.recruiter = r?.let { live ->
-                    object : com.gtranca.ui.tables.Recruiter {
-                        override suspend fun mark(player: com.gtranca.ui.tables.NearbyPlayer) =
-                            live.mark(com.gtranca.net.PresenceAdvert(player.key, player.name))
-                        override suspend fun unmark(key: String) = live.unmark(key)
-                    }
-                }
-                if (r == null) {
-                    tablesVm.onRecruits(emptyList())
-                    return@LaunchedEffect
-                }
-                launch { r.recruits.collect { tablesVm.onRecruits(it) } }
-                // §16.2 avisos ao anfitrião: recusou, saiu ou saldo insuficiente.
-                r.notices.collect { n ->
-                    val text = when {
-                        n.reason == com.gtranca.net.RefusalReason.INSUFFICIENT_BALANCE -> context.getString(com.gtranca.R.string.recruit_balance, n.name)
-                        n.refused -> context.getString(com.gtranca.R.string.recruit_refused, n.name)
-                        else -> context.getString(com.gtranca.R.string.recruit_left, n.name)
-                    }
-                    android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-            LaunchedEffect(tablesVm) {
-                tablesVm.notices.collect {
-                    val text = context.getString(
-                        if (it == com.gtranca.ui.tables.TablesNotice.RECRUITED_ELSEWHERE) com.gtranca.R.string.recruit_recruited else com.gtranca.R.string.recruit_mark_failed,
-                    )
-                    android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-            val turnOff = {
-                // §16.2 o anfitrião desliga o Wi-Fi do jogo: os recrutados recebem "Mesa encerrada".
-                rec?.let { r -> navScope.launch { runCatching { r.closeHosting() } } }
-                tablesVm.setWifi(false)
-            }
-            // O botão liga: explicação e permissões; recusar deixa desligado (no botão e no Perfil).
-            if (asking || (wifiSetting && !granted)) {
-                com.gtranca.net.nearby.MultiplayerAccessGate(
-                    onReady = { granted = true; if (asking) tablesVm.setWifi(true); asking = false },
-                    onCancel = { if (!asking) turnOff(); asking = false },
-                )
-            }
-            val wifiOn = wifiSetting && granted
-            val failed: (Throwable) -> Unit = { e ->
-                // O Nearby recusou a busca (ex.: ApiException com código de status): avisa e desliga, sem fechar o app.
-                android.widget.Toast.makeText(
-                    context,
-                    context.getString(com.gtranca.R.string.mp_discovery_failed, e.message ?: e.javaClass.simpleName),
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
-                turnOff()
-            }
-            val adverts by remember(wifiOn) {
-                if (wifiOn) com.gtranca.multiplayer.MultiplayerHub.discover(context).map { list -> list.filter { it.listed } }
-                    .catch { e -> failed(e); emit(emptyList()) }
-                else kotlinx.coroutines.flow.flowOf(emptyList())
-            }.collectAsStateWithLifecycle(emptyList())
-            // §16.2 jogadores próximos (presença): aparecem e somem conforme a busca.
-            val presences by remember(wifiOn) {
-                if (wifiOn) com.gtranca.multiplayer.MultiplayerHub.discoverPresence(context).catch { emit(emptyList()) }
-                else kotlinx.coroutines.flow.flowOf(emptyList())
-            }.collectAsStateWithLifecycle(emptyList())
-            // §16.2 a foto de cada um (pedida uma vez, só em memória), se "Ver fotos nas mesas compartilhadas" está ligada.
-            val nearbyPhotos by com.gtranca.multiplayer.MultiplayerHub.presencePhotos.collectAsStateWithLifecycle()
-            val seePhotos by remember(data) { data.settings.settings.map { it.showSharedPhotos }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
-            val decoded = remember(nearbyPhotos) {
-                nearbyPhotos.mapNotNull { (k, v) -> v.takeIf { it.isNotEmpty() }?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }?.let { k to it } }.toMap()
-            }
-            LaunchedEffect(presences, decoded, seePhotos) {
-                val myKey = com.gtranca.multiplayer.MultiplayerHub.myPresenceKey
-                tablesVm.onNearby(
-                    presences.map {
-                        com.gtranca.ui.tables.NearbyPlayer(
-                            it.key, it.name, if (seePhotos) decoded[it.key] else null,
-                            recruitedElsewhere = it.recruitedBy != null && it.recruitedBy != myKey,
-                        )
-                    },
-                )
-            }
-            val profile = rememberProfile(data)
-            val selfName = profile?.name?.takeIf { it.isNotBlank() } ?: PlayerProfile.DEFAULT_NAME
-            val self = (profile ?: PlayerProfile()).persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context))
-            val tableName = androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, selfName)
-            // §16.2 cada mudança da montagem vai na hora a quem aceitou (só para leitura).
-            val setupState by tablesVm.uiState.collectAsStateWithLifecycle()
-            LaunchedEffect(rec, setupState, selfName) {
-                val r = rec ?: return@LaunchedEffect
-                val s = setupState
-                val participants = listOf(com.gtranca.net.RecruitParticipant(selfName)) + s.picks.map { pick ->
-                    when (pick) {
-                        is com.gtranca.ui.tables.Pick.Bot -> com.gtranca.net.RecruitParticipant(pick.profile.botName, pick.profile.code)
-                        is com.gtranca.ui.tables.Pick.Near -> com.gtranca.net.RecruitParticipant(
-                            s.nearby.firstOrNull { it.key == pick.key }?.name.orEmpty(), accepted = pick.key in s.accepted, key = pick.key,
-                        )
-                    }
-                }
-                runCatching {
-                    r.updateConfig(
-                        com.gtranca.net.RecruitConfig(
-                            selfName, s.effectiveMode, s.difficulty.id, s.stake, s.rules, s.targetScore ?: s.rules.targetScore, participants,
-                        ),
-                    )
-                }
-            }
-            val joinedNow = recStatus as? com.gtranca.net.RecruitStatus.Joined
-            // §16.2 diagnóstico: a tela do recrutado espelhou a montagem do anfitrião (versão, sem nomes).
-            LaunchedEffect(joinedNow?.version, joinedNow?.config != null) {
-                if (joinedNow != null) com.gtranca.multiplayer.MultiplayerHub.debug("rec ui mirrored v=${joinedNow.version} config=${joinedNow.config != null}")
-            }
+            val recruiters by remember(rec) { rec?.recruiters ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsStateWithLifecycle(emptyList())
             TablesScreen(
                 tablesVm,
-                joinedPhotos = if (seePhotos) decoded else emptyMap(),
-                joined = joinedNow,
-                onLeaveTable = { rec?.let { r -> navScope.launch { runCatching { r.leave() } } } },
-                self = self,
-                onChooseSeats = { chosen ->
-                    val config = chosen.config
-                    if (chosen.nearby.isNotEmpty()) navScope.launch {
-                        // §16.2 quem aceitou vai direto à escolha de posições; quem não respondeu vira robô sorteado.
-                        val tableId = com.gtranca.net.nearby.newTableId()
-                        val accepted = runCatching { rec?.start(tableId) }.getOrNull().orEmpty()
-                        com.gtranca.multiplayer.MultiplayerHub.stopRecruiting()
-                        val rules = com.gtranca.net.TableRules(
-                            tableName = tableName,
-                            mode = config.mode,
-                            rules = config.rules,
-                            targetScore = config.targetScore,
-                            stake = config.stake,
-                            difficulty = config.difficulty.id,
-                        )
-                        val others = chosen.picks.mapNotNull { pick ->
-                            when (pick) {
-                                is com.gtranca.ui.tables.Pick.Bot -> com.gtranca.net.Participant.Robot(pick.profile.code)
-                                is com.gtranca.ui.tables.Pick.Near -> accepted.firstOrNull { it.key == pick.key }?.let { com.gtranca.net.Participant.Nearby(it) }
-                            }
-                        }
-                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, com.gtranca.multiplayer.SharedPhoto.encode(context, profile))
-                            .hostAsync(rules, selfName, tableId, com.gtranca.net.LobbySetup(others, com.gtranca.game.Tables.personaPool, Random.nextLong()))
-                        navController.navigate(SeatPickerRoute) { launchSingleTop = true }
-                    } else {
-                        // §16.2 mesa só com robôs: a escolha de posições sem rede.
-                        val robots = chosen.picks.filterIsInstance<com.gtranca.ui.tables.Pick.Bot>().map { it.profile.code }
-                        navController.navigate(LocalSeatsRoute.of(config, robots, Random.nextLong())) { launchSingleTop = true }
-                    }
-                },
+                recruiters = recruiters,
+                wifi = wifi,
+                onRefresh = { rec?.refreshNow() },
+                onSelectPlayers = { config -> navController.navigate(SelectionRoute.of(config)) { launchSingleTop = true } },
                 onCustomize = { navController.navigate(RulesEditorRoute(fromCreate = true)) { launchSingleTop = true } },
-                onBack = {
-                    // §16.2 o anfitrião sai da montagem: os recrutados recebem "Mesa encerrada".
-                    rec?.let { r -> navScope.launch { runCatching { r.closeHosting() } } }
-                    navController.popBackStack()
-                },
-                multiplayer = com.gtranca.ui.tables.TablesMultiplayer(
-                    wifiOn = wifiOn,
-                    onToggle = { if (wifiSetting) turnOff() else asking = true },
-                    tables = adverts.distinctBy { it.tableId },
-                    onOpen = { advert ->
-                        // §16.2 pedido de entrada: aceito pelo anfitrião, abre a escolha de posições.
-                        com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, com.gtranca.multiplayer.SharedPhoto.encode(context, profile)).joinAsync(advert.tableId, selfName)
-                        navController.navigate(SeatPickerRoute) { launchSingleTop = true }
-                    },
-                ),
+                onBack = { navController.popBackStack() },
             )
         }
-        composable<LocalSeatsRoute> { entry ->
-            val route = entry.toRoute<LocalSeatsRoute>()
-            val config = remember(route) { route.toConfig() }
-            val picker = viewModel { com.gtranca.ui.multiplayer.LocalSeatPicker(config.mode, route.robotList(), route.seed) }
-            val seating by picker.seating.collectAsStateWithLifecycle()
-            val start by picker.start.collectAsStateWithLifecycle()
-            LaunchedEffect(start) { start?.let { navController.startGame(config, route.seed, it) } }
-            val balance by remember(data) { data.wallet.wallet.map { it.balance }.catch { emit(0) } }.collectAsStateWithLifecycle(Int.MAX_VALUE)
-            val profile = rememberProfile(data)
-            val selfName = profile?.name?.takeIf { it.isNotBlank() } ?: PlayerProfile.DEFAULT_NAME
-            var shownName by rememberSaveable { mutableStateOf<String?>(null) }
-            val rules = com.gtranca.net.TableRules(
-                tableName = androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, selfName),
-                mode = config.mode,
-                rules = config.rules,
-                targetScore = config.targetScore,
-                stake = config.stake,
-                difficulty = config.difficulty.id,
-            )
-            if (profile != null) {
-                com.gtranca.ui.multiplayer.SeatPickerScreen(
-                    com.gtranca.ui.multiplayer.SeatPickerUi(
-                        seating = seating,
-                        myId = com.gtranca.ui.multiplayer.LocalSeatPicker.ME,
-                        names = mapOf(com.gtranca.ui.multiplayer.LocalSeatPicker.ME to (shownName?.ifBlank { null } ?: selfName)),
-                        rules = rules,
-                    ),
-                    balance = balance,
-                    actions = com.gtranca.ui.multiplayer.SeatPickerActions(
-                        rotate = picker::rotate,
-                        confirm = picker::confirm,
-                        rename = { shownName = it },
-                        leave = { navController.popBackStack() },
-                    ),
-                    self = profile.persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context)),
-                    initialName = selfName,
-                )
-            }
+        composable<SelectionRoute> { entry ->
+            val route = entry.toRoute<SelectionRoute>()
+            PlayerSelectionDestination(route, data, navController)
         }
-        composable<SeatPickerRoute> {
-            val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
-            val current = table
-            if (current == null) {
-                LaunchedEffect(Unit) { navController.popBackStack() }
-            } else {
-                NetworkSeatPicker(current, data, onStarted = {
-                    navController.navigate(MultiplayerGameRoute) {
-                        popUpTo(HomeRoute) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                }) {
-                    com.gtranca.multiplayer.MultiplayerHub.leave()
-                    navController.popBackStack()
-                }
-            }
+        composable<RejoinRoute> { RejoinDestination(data, navController) }
+        composable<RecruitedRoute> {
+            RecruitedDestination(data, navController)
         }
         composable<MultiplayerGameRoute> { MultiplayerGameDestination(data, navController) }
         composable<RulesEditorRoute> { entry ->
@@ -725,69 +521,10 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
 }
 
 /**
- * §16.2 "Escolha sua posição" da mesa com jogadores por perto: a mesa ([com.gtranca.multiplayer.MultiplayerTable]) conduz
- * a escolha e o início (2 s depois de todos confirmarem); [onStarted] abre o jogo e [onLeave] sai da mesa.
- */
-@Composable
-private fun NetworkSeatPicker(table: com.gtranca.multiplayer.MultiplayerTable, data: GameData, onStarted: () -> Unit, onLeave: () -> Unit) {
-    val context = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val role by table.role.collectAsStateWithLifecycle()
-    val seating by table.seating.collectAsStateWithLifecycle()
-    val roster by table.roster.collectAsStateWithLifecycle()
-    val rules by table.rules.collectAsStateWithLifecycle()
-    val photos by table.photos.collectAsStateWithLifecycle()
-    val requests by table.joinRequests.collectAsStateWithLifecycle()
-    val status by table.guestStatus.collectAsStateWithLifecycle()
-    val end by table.end.collectAsStateWithLifecycle()
-    val balance by remember(data) { data.wallet.wallet.map { it.balance }.catch { emit(0) } }.collectAsStateWithLifecycle(Int.MAX_VALUE)
-    val showPhotos by remember(data) { data.settings.settings.map { it.showSharedPhotos }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
-    val started = (role as? com.gtranca.multiplayer.MpRole.Hosting)?.host != null || status == com.gtranca.net.GuestStatus.Playing
-    LaunchedEffect(started) { if (started) onStarted() }
-    // §16.2 avisos breves da escolha de posições ("<nome> saiu; <robô> assume o lugar", com o motivo).
-    var notice by remember { mutableStateOf<com.gtranca.multiplayer.MpNotice?>(null) }
-    LaunchedEffect(table) { table.notices.collect { if (it.lobby) notice = it } }
-    LaunchedEffect(notice?.id) {
-        if (notice != null) {
-            kotlinx.coroutines.delay(LOBBY_NOTICE_MILLIS)
-            notice = null
-        }
-    }
-    val profile = rememberProfile(data)
-    val myId = remember(role, roster, seating) { table.myId }
-    com.gtranca.ui.multiplayer.SeatPickerScreen(
-        com.gtranca.ui.multiplayer.SeatPickerUi(
-            seating = seating,
-            myId = myId,
-            names = roster.associate { it.id to it.name },
-            photos = if (showPhotos) photos else emptyMap(),
-            rules = rules,
-            waitingApproval = status == com.gtranca.net.GuestStatus.WaitingApproval,
-            joinRequests = requests,
-            notice = notice?.let { com.gtranca.ui.multiplayer.noticeText(it) },
-        ),
-        balance = balance,
-        actions = com.gtranca.ui.multiplayer.SeatPickerActions(
-            rotate = { dir -> scope.launch { table.rotate(dir) } },
-            confirm = { scope.launch { table.confirmSeat() } },
-            rename = { name -> scope.launch { table.rename(name) } },
-            leave = onLeave,
-            approve = { id -> scope.launch { table.approveJoin(id) } },
-            refuse = { id -> scope.launch { table.refuseJoin(id) } },
-        ),
-        self = profile?.persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context)),
-        initialName = table.name,
-        end = end,
-    )
-}
-
-/** Quanto tempo o aviso breve fica na escolha de posições. */
-private const val LOBBY_NOTICE_MILLIS = 3_500L
-
-/**
- * §16.2 com o Wi-Fi do jogo ligado e fora de um jogo: anuncia a presença do jogador (nome) e procura convites; o modal
- * **Convite** aparece em qualquer tela fora de um jogo (10 s, aceito sozinho sem resposta) e, aceito, abre a escolha de
- * posições. Recusa (do convidado ou automática por saldo) mostra o modal **Recusa** com o motivo.
+ * §16.2 com o Wi-Fi do jogo ligado e fora de um jogo: anuncia a presença do jogador (nome) e atende o recrutamento. Em
+ * qualquer tela fora de um jogo aparece o modal **Convite** (sem prazo); aceito, abre a *Mesa do recrutado*, e quando o
+ * recrutador começa a partida o jogador entra na mesa ("Prepare-se!"). Só fica **livre** (pode ser chamado) nas telas
+ * *Iniciar novo jogo* e *Personalizar regra*.
  */
 @Composable
 private fun NearbyPresence(data: GameData, navController: NavHostController, onGame: Boolean) {
@@ -805,20 +542,37 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
     LaunchedEffect(presenceOn) {
         if (!presenceOn) return@LaunchedEffect
         val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
-        runCatching { com.gtranca.multiplayer.MultiplayerHub.runPresence(context, data, name, photo) }
+        try {
+            com.gtranca.multiplayer.MultiplayerHub.runPresence(context, data, name, photo)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // O Nearby recusou a busca (ex.: ApiException com código de status): avisa e desliga, sem fechar o app.
+            android.widget.Toast.makeText(
+                context,
+                context.getString(com.gtranca.R.string.mp_discovery_failed, e.message ?: e.javaClass.simpleName),
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+            WriteQueue.app.enqueue { data.settings.setWifiOn(false) }
+        }
     }
     LaunchedEffect(name) { com.gtranca.multiplayer.MultiplayerHub.renamePresence(name) }
-    // §16.2 recrutamento imediato: o convite (sem prazo) e os avisos ao recrutado, em qualquer tela fora de jogo.
     val rec by com.gtranca.multiplayer.MultiplayerHub.recruitment.collectAsStateWithLifecycle()
     val recStatus by remember(rec) { rec?.status ?: kotlinx.coroutines.flow.flowOf(com.gtranca.net.RecruitStatus.Free) }
         .collectAsStateWithLifecycle(com.gtranca.net.RecruitStatus.Free)
     val entry by navController.currentBackStackEntryAsState()
+    // §16.2 só quem está em *Iniciar novo jogo* (ou no editor de regras que volta a ela) está livre para ser chamado.
+    val onFreeScreen = entry?.destination?.let { it.hasRoute<TablesRoute>() || it.hasRoute<RulesEditorRoute>() } == true
+    LaunchedEffect(rec, onFreeScreen) { rec?.let { r -> runCatching { r.setFree(onFreeScreen) } } }
+    // Avisos ao recrutado: tirado da mesa, mesa encerrada.
     LaunchedEffect(Unit) {
         com.gtranca.multiplayer.MultiplayerHub.recruitEvents.collect { event ->
             val text = when (event) {
                 is com.gtranca.net.RecruitEvent.Removed -> context.getString(com.gtranca.R.string.recruit_removed, event.hostName)
                 is com.gtranca.net.RecruitEvent.Closed -> context.getString(com.gtranca.R.string.mp_closed_title)
-                is com.gtranca.net.RecruitEvent.InsufficientBalance -> context.getString(com.gtranca.R.string.mp_refusal_balance)
+                is com.gtranca.net.RecruitEvent.Refused -> context.getString(
+                    if (event.reason == com.gtranca.net.RefusalReason.NO_RESPONSE) com.gtranca.R.string.recruit_no_response else com.gtranca.R.string.recruit_balance_table,
+                )
                 is com.gtranca.net.RecruitEvent.Start -> null
             }
             text?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
@@ -826,43 +580,135 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
     }
     val invited = recStatus as? com.gtranca.net.RecruitStatus.Invited
     if (invited != null && !onGame) {
-        com.gtranca.ui.theme.GMessage(
-            modifier = androidx.compose.ui.Modifier.testTag("invite"),
-            title = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_invite_title),
-            text = androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, invited.hostName),
-            illustration = com.gtranca.ui.theme.MessageIllustration.Question,
-            confirmText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_invite_accept),
-            confirmTag = "invite-accept",
-            onConfirm = {
+        InviteDialog(
+            invited,
+            now = { rec?.nowMillis() ?: 0L },
+            onAccept = {
                 scope.launch {
                     if (rec?.accept() == true) {
-                        // §16.2 quem estava em Personalizar regra volta sem salvar; a montagem mostra a mesa do anfitrião.
-                        val dest = navController.currentBackStackEntry?.destination
-                        if (dest?.hasRoute<RulesEditorRoute>() == true) navController.popBackStack()
-                        if (navController.currentBackStackEntry?.destination?.hasRoute<TablesRoute>() != true) {
-                            navController.navigate(TablesRoute) { launchSingleTop = true }
-                        }
+                        // §16.2 quem estava em Personalizar regra volta sem salvar; a tela vira a mesa do recrutador (só leitura).
+                        if (navController.currentBackStackEntry?.destination?.hasRoute<RulesEditorRoute>() == true) navController.popBackStack()
+                        navController.navigate(RecruitedRoute) { launchSingleTop = true }
                     }
                 }
             },
-            dismissText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_invite_refuse),
-            dismissTag = "invite-refuse",
-            onDismiss = { scope.launch { rec?.refuse() } },
-            onDismissRequest = {},
+            onRefuse = { scope.launch { rec?.refuse() } },
         )
     }
     val current = table ?: return
-    val status by current.guestStatus.collectAsStateWithLifecycle()
     val end by current.end.collectAsStateWithLifecycle()
-    val onPicker = entry?.destination?.hasRoute<SeatPickerRoute>() == true
-    // §16.2 recrutado que recebeu o início (ou pedido de entrada aceito): a escolha de posições.
-    LaunchedEffect(status, onPicker, onGame) {
-        if (status == com.gtranca.net.GuestStatus.Lobby && !onPicker && !onGame) navController.navigate(SeatPickerRoute) { launchSingleTop = true }
-    }
-    // Fora da escolha de posições (ela mostra o seu): recusa ou mesa encerrada antes de entrar.
+    // A mesa encerrada aparece na própria tela de seleção ou do recrutado (que a mostram); aqui, nas outras.
+    val onOwnScreen = entry?.destination?.let { it.hasRoute<SelectionRoute>() || it.hasRoute<RecruitedRoute>() || it.hasRoute<RejoinRoute>() } == true
     val reason = end
-    if (reason != null && !onPicker && !onGame) {
+    if (reason != null && !onOwnScreen && !onGame) {
         com.gtranca.ui.multiplayer.MpEndMessage(reason) { com.gtranca.multiplayer.MultiplayerHub.leave() }
+    }
+}
+
+/**
+ * §16.2 modal **Convite** (docs/telas.md 4): "<recrutador> está te recrutando", a aposta, o tipo (individual/duplas), a
+ * posição (Parceiro/Adversário) e o título da regra; **Detalhes da regra**, **Recusar** e **Aceitar**. Tem **25 s** para
+ * responder (§16.15), com uma barra que esvazia e os segundos restantes (vermelha nos últimos 5 s); ao zerar a rede
+ * devolve o jogador a "livre" e o modal some. O aceite nunca é automático. [now] é o relógio de `Recruitment.nowMillis`.
+ */
+@Composable
+private fun InviteDialog(invited: com.gtranca.net.RecruitStatus.Invited, now: () -> Long, onAccept: () -> Unit, onRefuse: () -> Unit) {
+    var details by rememberSaveable { mutableStateOf(false) }
+    val rules = invited.table.rules
+    val partner = invited.table.layout.relationOf(invited.you) == com.gtranca.net.SeatRelation.PARTNER
+    val title = rules.rulesTitle.ifBlank { rules.rules.name }
+    // O que falta, a cada ~100 ms.
+    val remaining by androidx.compose.runtime.produceState(invited.remainingMillis(now()), invited.deadlineMillis) {
+        while (true) {
+            value = invited.remainingMillis(now())
+            kotlinx.coroutines.delay(100)
+        }
+    }
+    com.gtranca.ui.theme.GDialog(
+        onDismissRequest = {},
+        modifier = Modifier.testTag("invite"),
+        title = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_recruiting, invited.hostName)) },
+        text = {
+            androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_stake)) {
+                    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.gtranca.R.drawable.coin_bag_small), null, Modifier.size(20.dp))
+                    androidx.compose.material3.Text(rules.stake.toString())
+                }
+                InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_type)) {
+                    androidx.compose.material3.Text(com.gtranca.ui.tables.modeLabel(rules.mode))
+                }
+                InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_position)) {
+                    androidx.compose.material3.Text(
+                        androidx.compose.ui.res.stringResource(if (partner) com.gtranca.R.string.invite_partner else com.gtranca.R.string.invite_opponent),
+                    )
+                }
+                InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_rules)) { androidx.compose.material3.Text(title) }
+                InviteCountdown(remaining)
+                androidx.compose.material3.TextButton({ details = true }, Modifier.heightIn(min = 48.dp).testTag("invite-details")) {
+                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_details), color = com.gtranca.ui.theme.GColors.Gold)
+                }
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onRefuse, Modifier.heightIn(min = 48.dp).testTag("invite-refuse")) {
+                androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_invite_refuse))
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onAccept, Modifier.heightIn(min = 48.dp).testTag("invite-accept")) {
+                androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_invite_accept), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+        },
+    )
+    if (details) com.gtranca.ui.tables.RulesDetailsDialog(title, rules.rules, rules.targetScore) { details = false }
+}
+
+/**
+ * A contagem do convite: barra que esvazia + segundos restantes, vermelha nos últimos 5 s. O leitor de tela lê só nos
+ * marcos de 25, 20, 10 e 5 s (sem repetir a cada quadro).
+ */
+@Composable
+private fun InviteCountdown(remainingMillis: Long) {
+    val fraction = (remainingMillis / com.gtranca.net.INVITE_TIMEOUT_MILLIS.toFloat()).coerceIn(0f, 1f)
+    val seconds = kotlin.math.ceil(remainingMillis / 1000.0).toInt()
+    val urgent = remainingMillis <= 5_000
+    val color = if (urgent) com.gtranca.ui.theme.GColors.Ruby else com.gtranca.ui.theme.GColors.Gold
+    val milestone = listOf(25, 20, 10, 5).lastOrNull { it >= seconds } ?: 5
+    val description = androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_countdown_a11y, milestone)
+    androidx.compose.foundation.layout.Row(
+        Modifier
+            .fillMaxWidth()
+            .clearAndSetSemantics {
+                contentDescription = description
+                liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite
+            }
+            .testTag("invite-countdown"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) {
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier.weight(1f).height(8.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+            color = color,
+            trackColor = com.gtranca.ui.theme.GColors.Midnight,
+        )
+        androidx.compose.material3.Text(
+            androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_countdown_seconds, seconds),
+            color = color,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun InviteLine(label: String, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) {
+        androidx.compose.material3.Text(label, color = com.gtranca.ui.theme.GColors.Steel)
+        content()
     }
 }
 
@@ -920,4 +766,359 @@ private fun rememberLocalWifi(viewModel: GameViewModel, data: GameData, navContr
     return com.gtranca.ui.game.TableWifi(on = false) {
         if (com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) goOnline() else asking = true
     }
+}
+
+/**
+ * §16.7 o Wi-Fi do jogo (configuração do Perfil): o estado e o toque. Ligar passa pela explicação das permissões (recusar
+ * deixa desligado); desligar é imediato. Nada trava: a tela segue usável enquanto a rede liga ou desliga.
+ */
+@Composable
+private fun rememberWifiControl(data: GameData): com.gtranca.ui.tables.WifiControl {
+    val context = LocalContext.current
+    val setting by remember(data) { data.settings.settings.map { it.wifiOn }.catch { emit(false) } }.collectAsStateWithLifecycle(false)
+    var granted by remember { mutableStateOf(com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) }
+    var asking by remember { mutableStateOf(false) }
+    val write = { on: Boolean -> WriteQueue.app.enqueue { data.settings.setWifiOn(on) } }
+    // Permissões retiradas com a configuração ligada: a explicação aparece de novo; "Agora não" desliga a configuração.
+    if (asking || (setting && !granted)) {
+        com.gtranca.net.nearby.MultiplayerAccessGate(
+            onReady = { granted = true; if (asking) write(true); asking = false },
+            onCancel = { if (!asking) write(false); asking = false },
+        )
+    }
+    return com.gtranca.ui.tables.WifiControl(setting && granted) { if (setting) write(false) else asking = true }
+}
+
+/** Fotos dos jogadores próximos por chave de presença (só em memória), já vazias se "Ver fotos nas mesas compartilhadas" está desligada. */
+@Composable
+private fun rememberNearbyPhotos(data: GameData): Map<String, ByteArray> {
+    val raw by com.gtranca.multiplayer.MultiplayerHub.presencePhotos.collectAsStateWithLifecycle()
+    val see by remember(data) { data.settings.settings.map { it.showSharedPhotos }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
+    return remember(raw, see) {
+        if (!see) emptyMap() else raw.mapNotNull { (k, v) ->
+            v.takeIf { it.isNotEmpty() }?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }?.let { k to it }
+        }.toMap()
+    }
+}
+
+/** §16.2 as operações de lugares na rede: o `Recruitment` atrás da interface que a *Seleção de jogadores* usa. */
+private class RecruitmentSeats(
+    private val rec: com.gtranca.net.Recruitment,
+    private val rules: com.gtranca.net.TableRules,
+    private val hostName: String,
+) : com.gtranca.ui.selection.SeatRecruiter {
+    override suspend fun open() = rec.openTable(rules, hostName)
+    override suspend fun call(seat: Int, presence: com.gtranca.net.PresenceAdvert) = rec.call(seat, presence)
+    override suspend fun placeRobot(seat: Int, persona: String) = rec.placeRobot(seat, persona)
+    override suspend fun removeSeat(seat: Int) = rec.removeSeat(seat)
+    override suspend fun move(from: Int, to: Int) = rec.move(from, to)
+    override suspend fun fillWithRobots(pool: List<String>, seed: Long) = rec.fillWithRobots(pool, seed)
+}
+
+/** §14.4, §16.2 *Seleção de jogadores* (docs/telas.md 3.3): monta os lugares e começa a partida (local ou em rede). */
+@Composable
+private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, navController: NavHostController) {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val config = remember(route) { route.toConfig() }
+    val vm = viewModel { com.gtranca.ui.selection.PlayerSelectionViewModel(config) }
+    val profile = rememberProfile(data)
+    val selfName = profile?.name?.takeIf { it.isNotBlank() } ?: PlayerProfile.DEFAULT_NAME
+    val self = (profile ?: PlayerProfile()).persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context))
+    val wifi = rememberWifiControl(data)
+    val photos = rememberNearbyPhotos(data)
+    val rec by com.gtranca.multiplayer.MultiplayerHub.recruitment.collectAsStateWithLifecycle()
+    val free by remember(rec) { rec?.free ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsStateWithLifecycle(emptyList())
+    val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
+    var starting by rememberSaveable { mutableStateOf(false) }
+    var started by remember { mutableStateOf(false) }
+    val tableName = androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, selfName)
+    val rulesTitle = com.gtranca.ui.tables.rulesName(config.rules)
+    val rules = remember(config, tableName, rulesTitle) {
+        com.gtranca.net.TableRules(
+            tableName = tableName, mode = config.mode, rules = config.rules, targetScore = config.targetScore,
+            stake = config.stake, difficulty = config.difficulty.id, rulesTitle = rulesTitle,
+        )
+    }
+    // §16.2 com o Wi-Fi ligado a mesa de lugares passa a viver no recrutamento (e os chamados aparecem); sem ele, é local.
+    LaunchedEffect(rec, profile != null) {
+        val live = rec
+        if (live == null) {
+            vm.detach()
+            return@LaunchedEffect
+        }
+        if (profile == null) return@LaunchedEffect
+        vm.attach(RecruitmentSeats(live, rules, selfName))
+        launch { live.layout.collect { it?.let(vm::onRemoteLayout) } }
+        // §16.2 avisos ao recrutador: recusou, saiu, não respondeu a tempo ou saldo insuficiente (com o motivo).
+        live.notices.collect { n ->
+            val text = when {
+                n.reason == com.gtranca.net.RefusalReason.INSUFFICIENT_BALANCE -> context.getString(com.gtranca.R.string.recruit_balance, n.name)
+                n.reason == com.gtranca.net.RefusalReason.NO_RESPONSE -> context.getString(com.gtranca.R.string.recruit_no_response_host, n.name)
+                n.refused -> context.getString(com.gtranca.R.string.recruit_refused, n.name)
+                else -> context.getString(com.gtranca.R.string.recruit_left, n.name)
+            }
+            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    // §16.2 sair da tela sem começar encerra o recrutamento (chamados cancelados, recrutados recebem "Mesa encerrada").
+    DisposableEffect(Unit) {
+        onDispose { if (!started) com.gtranca.multiplayer.MultiplayerHub.closeRecruiting() }
+    }
+    val start: () -> Unit = start@{
+        if (!vm.canStart || starting) return@start
+        starting = true
+        scope.launch {
+            val live = rec
+            if (live != null && vm.hasRemotes) {
+                // §16.2 em rede: os recrutados entram direto; a camada "Prepare-se!" cobre a tela até o jogo começar.
+                val tableId = com.gtranca.net.nearby.newTableId()
+                // §16.2, §16.15 ordem do início: 1) plano; 2) larga a leitura dos eventos; 3) abre a mesa e ANUNCIA; 4) só então envia
+                // o início aos recrutados (assim o anúncio da mesa já está no ar quando eles a procuram).
+                val plan = live.plan(com.gtranca.game.Tables.personaPool, vm.seed)
+                if (plan == null) {
+                    starting = false
+                    return@launch
+                }
+                started = true
+                com.gtranca.multiplayer.MultiplayerHub.stopRecruiting()
+                val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
+                com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).hostAsync(rules, selfName, tableId, plan) {
+                    com.gtranca.multiplayer.MultiplayerHub.debug("start: table advertised, sending start")
+                    live.sendStart(tableId, plan)
+                }
+            } else {
+                // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede, depois de no mínimo 1,5 s de "Prepare-se!".
+                started = true
+                live?.closeHosting()
+                kotlinx.coroutines.delay(com.gtranca.net.PREPARE_MILLIS)
+                navController.startGame(config, vm.seed, com.gtranca.game.Tables.relativeRobots(config.mode, com.gtranca.engine.model.Seat(0), vm.layout.robots))
+            }
+        }
+    }
+    com.gtranca.ui.selection.PlayerSelectionScreen(
+        vm = vm, self = self, hostName = selfName, wifi = wifi, free = free,
+        myKey = com.gtranca.multiplayer.MultiplayerHub.myPresenceKey, photos = photos, starting = starting,
+        onRefresh = { rec?.refreshNow() },
+        onStart = start,
+        onBack = {
+            com.gtranca.multiplayer.MultiplayerHub.closeRecruiting()
+            navController.popBackStack()
+        },
+    )
+    if (starting) com.gtranca.ui.selection.GetReadyOverlay()
+    // Em rede: a mesa do jogo é criada; quando começa, abre o jogo (depois de no mínimo 1,5 s de camada).
+    val current = table
+    if (started && current != null) {
+        GetReadyEffect(current) {
+            navController.navigate(MultiplayerGameRoute) {
+                popUpTo(HomeRoute) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+        val end by current.end.collectAsStateWithLifecycle()
+        end?.let { reason ->
+            com.gtranca.ui.multiplayer.MpEndMessage(reason) {
+                com.gtranca.multiplayer.MultiplayerHub.leave()
+                navController.popBackStack()
+            }
+        }
+    }
+}
+
+/**
+ * §16.2 *Mesa do recrutado* (docs/telas.md 3.13): só leitura; volta à tela anterior quando deixa de estar na mesa. Quando
+ * o recrutador começa a partida, a camada "Prepare-se!" cobre a própria tela até o jogo começar.
+ */
+@Composable
+private fun RecruitedDestination(data: GameData, navController: NavHostController) {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val rec by com.gtranca.multiplayer.MultiplayerHub.recruitment.collectAsStateWithLifecycle()
+    // O StateFlow dá o valor atual já na 1ª composição (com um inicial "Free" a tela fecharia antes de ler o Joined).
+    val statusFlow = rec?.status
+    val status = if (statusFlow != null) statusFlow.collectAsStateWithLifecycle().value else com.gtranca.net.RecruitStatus.Free
+    val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
+    val joining by com.gtranca.multiplayer.MultiplayerHub.joining.collectAsStateWithLifecycle()
+    val profile = rememberProfile(data)
+    val photos = rememberNearbyPhotos(data)
+    val joined = status as? com.gtranca.net.RecruitStatus.Joined
+    // Depois do início o recrutamento se encerra (Free): a tela continua desenhando a última mesa por baixo da camada.
+    var lastJoined by remember { mutableStateOf<com.gtranca.net.RecruitStatus.Joined?>(null) }
+    if (joined != null) lastJoined = joined
+    val gettingReady = joining || table != null
+    // Saiu, foi removido ou a mesa acabou: de volta à *Iniciar novo jogo* com as opções do próprio jogador.
+    LaunchedEffect(joined == null, gettingReady) { if (joined == null && !gettingReady) navController.popBackStack() }
+    val shown = joined ?: lastJoined
+    if (shown != null) {
+        com.gtranca.ui.multiplayer.RecruitedTableScreen(
+            shown,
+            self = (profile ?: PlayerProfile()).persona(PlayerProfile.DEFAULT_NAME, com.gtranca.ui.profile.ProfilePhoto.savedPath(context)),
+            photos = photos,
+            onLeave = {
+                if (table != null) {
+                    com.gtranca.multiplayer.MultiplayerHub.leave()
+                } else {
+                    scope.launch { runCatching { rec?.leave() } }
+                }
+            },
+        )
+    }
+    if (gettingReady) {
+        com.gtranca.ui.selection.GetReadyOverlay()
+        val current = table
+        if (current != null) {
+            GetReadyEffect(current) {
+                navController.navigate(MultiplayerGameRoute) {
+                    popUpTo(HomeRoute) { inclusive = false }
+                    launchSingleTop = true
+                }
+            }
+            val end by current.end.collectAsStateWithLifecycle()
+            end?.let { reason ->
+                com.gtranca.ui.multiplayer.MpEndMessage(reason) { com.gtranca.multiplayer.MultiplayerHub.leave() }
+            }
+        }
+    }
+}
+
+/**
+ * §16.2 "Prepare-se!": com a camada na tela, espera a mesa do jogo começar (anfitrião com o jogo criado, convidado
+ * jogando) e abre o jogo ([onStarted]) depois de no mínimo 1,5 s de camada. Não desenha nada.
+ */
+@Composable
+private fun GetReadyEffect(table: com.gtranca.multiplayer.MultiplayerTable, onStarted: () -> Unit) {
+    val role by table.role.collectAsStateWithLifecycle()
+    val status by table.guestStatus.collectAsStateWithLifecycle()
+    val shownAt = remember { System.nanoTime() / 1_000_000 }
+    val started = (role as? com.gtranca.multiplayer.MpRole.Hosting)?.host != null || status == com.gtranca.net.GuestStatus.Playing
+    LaunchedEffect(started) {
+        if (!started) return@LaunchedEffect
+        val left = com.gtranca.net.PREPARE_MILLIS - (System.nanoTime() / 1_000_000 - shownAt)
+        if (left > 0) kotlinx.coroutines.delay(left)
+        onStarted()
+    }
+}
+
+/**
+ * §16.5, §16.12 *Voltar à mesa* (docs/telas.md 3.17): reingressa, como jogador comum, na mesa da sessão guardada. Com o
+ * Wi-Fi do jogo desligado, pede confirmação para ligá-lo (com o modal de permissões); depois mostra "Procurando a
+ * mesa…" (até 30 s, com Cancelar) e, com o assento de volta, abre a mesa de jogo.
+ */
+@Composable
+private fun RejoinDestination(data: GameData, navController: NavHostController) {
+    val context = LocalContext.current
+    // `null` = ainda lendo; Optional vazio = não há sessão (sumiu ou expirou entre o Início e aqui).
+    val loaded by produceState<java.util.Optional<com.gtranca.data.MultiplayerSession>?>(null, data) {
+        value = java.util.Optional.ofNullable(data.multiplayerSession.load())
+    }
+    val wifiSetting by remember(data) { data.settings.settings.map { it.wifiOn }.catch { emit(false) } }.collectAsStateWithLifecycle(null)
+    val table by com.gtranca.multiplayer.MultiplayerHub.table.collectAsStateWithLifecycle()
+    var granted by remember { mutableStateOf(com.gtranca.net.nearby.MultiplayerAccess.check(context) == null) }
+    var asking by remember { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    val leave: () -> Unit = {
+        com.gtranca.multiplayer.MultiplayerHub.leaveKeepingSession()
+        navController.popBackStack()
+    }
+    val current = loaded?.orElse(null)
+    val wifi = wifiSetting
+    if (loaded?.isPresent == false) {
+        LaunchedEffect(Unit) { navController.popBackStack() }
+        return
+    }
+    if (current == null || wifi == null) {
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().testTag("rejoin"), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    // 1. Wi-Fi do jogo desligado (ou sem permissão): confirmação antes de ligar.
+    if (!searching && (!wifi || !granted)) {
+        if (asking) {
+            com.gtranca.net.nearby.MultiplayerAccessGate(
+                onReady = { granted = true; WriteQueue.app.enqueue { data.settings.setWifiOn(true) }; asking = false; searching = true },
+                onCancel = { asking = false; navController.popBackStack() },
+            )
+        } else {
+            com.gtranca.ui.theme.GMessage(
+                modifier = Modifier.testTag("rejoin-wifi"),
+                title = androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_wifi_title),
+                text = androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_wifi_text, current.hostName),
+                illustration = com.gtranca.ui.theme.MessageIllustration.Question,
+                confirmText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_wifi_on),
+                confirmTag = "rejoin-wifi-on",
+                onConfirm = { asking = true },
+                dismissText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.cancel),
+                onDismissRequest = { navController.popBackStack() },
+            )
+        }
+        return
+    }
+    // 2. Procurando a mesa e reingressando com o token.
+    LaunchedEffect(Unit) {
+        if (!searching) searching = true
+        if (com.gtranca.multiplayer.MultiplayerHub.table.value == null) {
+            val profile = data.settings.settings.catch { emit(Settings()) }.first().let { PlayerProfile.decode(it.profileId) }
+            val photo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
+            com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).rejoinAsync(current)
+        }
+    }
+    val mine = table
+    val status = mine?.guestStatus?.collectAsStateWithLifecycle()?.value
+    val end = mine?.end?.collectAsStateWithLifecycle()?.value
+    LaunchedEffect(status) {
+        if (status == com.gtranca.net.GuestStatus.Playing) {
+            navController.navigate(MultiplayerGameRoute) {
+                popUpTo(HomeRoute) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxSize().padding(24.dp).testTag("rejoin"),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(color = com.gtranca.ui.theme.GColors.Gold)
+        androidx.compose.material3.Text(
+            androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_searching),
+            Modifier.testTag("rejoin-searching"),
+            color = com.gtranca.ui.theme.GColors.Ivory,
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+        )
+        androidx.compose.material3.Text(
+            androidx.compose.ui.res.stringResource(com.gtranca.R.string.tables_host, current.hostName),
+            color = com.gtranca.ui.theme.GColors.Steel,
+        )
+        com.gtranca.ui.theme.GButton(leave, Modifier.heightIn(min = 48.dp).testTag("rejoin-cancel"), kind = com.gtranca.ui.theme.GButtonKind.Secondary) {
+            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.rejoin_cancel))
+        }
+    }
+    // 3. Falhas: mesa não encontrada, vaga preenchida, mesa encerrada (ou a mensagem do anfitrião, ex.: outra versão).
+    end?.let { reason ->
+        val failure = rejoinFailure(reason)
+        com.gtranca.ui.theme.GMessage(
+            modifier = Modifier.testTag("rejoin-failed"),
+            title = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_closed_title),
+            text = failure.res?.let { androidx.compose.ui.res.stringResource(it) } ?: failure.text,
+            illustration = com.gtranca.ui.theme.MessageIllustration.Info,
+            tone = com.gtranca.ui.theme.MessageTone.Warning,
+            confirmText = androidx.compose.ui.res.stringResource(com.gtranca.R.string.mp_ok_short),
+            onConfirm = leave,
+            onDismissRequest = leave,
+        )
+    }
+}
+
+/** O texto de uma falha ao voltar à mesa: um texto do app ([res]) ou a mensagem do anfitrião ([text]). */
+data class RejoinFailure(val res: Int?, val text: String? = null)
+
+/** §16.5, §16.12 a mensagem de cada fim de "Voltar à mesa": mesa não encontrada, vaga preenchida ou mesa encerrada. */
+internal fun rejoinFailure(end: com.gtranca.multiplayer.MpEnd): RejoinFailure = when (end) {
+    com.gtranca.multiplayer.MpEnd.NotFound, com.gtranca.multiplayer.MpEnd.ConnectFailed, com.gtranca.multiplayer.MpEnd.Timeout ->
+        RejoinFailure(com.gtranca.R.string.rejoin_not_found)
+    com.gtranca.multiplayer.MpEnd.Closed, is com.gtranca.multiplayer.MpEnd.Ended -> RejoinFailure(com.gtranca.R.string.rejoin_closed)
+    // O anfitrião recusou o token: o assento já foi ocupado (ou substituído). Outra versão do jogo traz a própria mensagem.
+    is com.gtranca.multiplayer.MpEnd.Refused ->
+        if (end.message.contains("ocupado") || end.message.contains("preenchida")) RejoinFailure(com.gtranca.R.string.rejoin_taken)
+        else RejoinFailure(null, end.message)
 }

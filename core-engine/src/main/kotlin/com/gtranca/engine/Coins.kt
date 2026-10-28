@@ -5,11 +5,38 @@ package com.gtranca.engine
  * do dia chega como parâmetro.
  */
 object Coins {
-    /** §14.6 apostas possíveis de uma mesa. */
-    val STAKES: List<Int> = listOf(50, 100, 250, 500)
+    /**
+     * §14.6 os três valores de aposta de cada nível dos robôs (0 = Iniciante/Fácil, 1 = Maduro/Médio, 2 = Sênior/Difícil).
+     * Ao trocar de nível a aposta mantém o **mesmo índice** (1º, 2º ou 3º valor).
+     */
+    val STAKES_BY_LEVEL: List<List<Int>> = listOf(listOf(50, 80, 100), listOf(100, 150, 200), listOf(200, 300, 500))
 
-    /** Aposta padrão (e a menor). */
-    val DEFAULT_STAKE: Int = STAKES.first()
+    /** Aposta padrão: o 1º valor do nível padrão (Maduro/Médio), 100. */
+    val DEFAULT_STAKE: Int = STAKES_BY_LEVEL[1].first()
+
+    /** §14.6 os três valores do [level] (0..2). */
+    fun stakesFor(level: Int): List<Int> = STAKES_BY_LEVEL[level.coerceIn(0, STAKES_BY_LEVEL.lastIndex)]
+
+    /**
+     * §14.6 o valor de [stake] na tabela do [level]: o próprio, ou o **mais próximo** (empate: o menor). Cobre apostas
+     * gravadas por versões anteriores (50, 100, 250 e 500).
+     */
+    fun nearestStake(level: Int, stake: Int): Int =
+        stakesFor(level).minWith(compareBy<Int>({ kotlin.math.abs(it - stake) }, { it }))
+
+    /** §14.6 o índice (0..2) de [stake] na tabela do [level] (o do valor mais próximo). */
+    fun stakeIndexOf(level: Int, stake: Int): Int = stakesFor(level).indexOf(nearestStake(level, stake))
+
+    /**
+     * §14.6 a aposta de índice [index] no [level] que o [balance] cobre: o próprio valor, ou o **maior valor do nível que
+     * o saldo cobre**; se nem o menor é coberto, o menor (a mesa fica bloqueada por saldo insuficiente).
+     */
+    fun fitStake(level: Int, index: Int, balance: Int): Int {
+        val values = stakesFor(level)
+        val wanted = values[index.coerceIn(0, values.lastIndex)]
+        if (wanted <= balance) return wanted
+        return values.filter { it <= balance }.maxOrNull() ?: values.first()
+    }
 
     /** §14.6 saldo inicial da carteira. */
     const val INITIAL_BALANCE: Int = 1_000

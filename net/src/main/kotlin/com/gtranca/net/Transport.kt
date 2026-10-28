@@ -60,8 +60,10 @@ data class PresenceAdvert(
     val recruitedBy: String? = null,
     /** §16.2 chaves que este jogador (como anfitrião) marcou e ainda não responderam: o convite imediato (até 3). */
     val inviting: List<String> = emptyList(),
-    /** §16.2 este jogador está com a montagem da mesa aberta: aceita conexões de espera dos jogadores próximos. */
+    /** §16.2 **recrutando**: este jogador está na *Seleção de jogadores* e aceita conexões de espera dos jogadores livres. */
     val hosting: Boolean = false,
+    /** §16.2 **livre**: na tela *Iniciar novo jogo* (ou já chamado/recrutado), com o Wi-Fi ligado: pode ser chamado. */
+    val free: Boolean = false,
 )
 
 /** §16.2 chave de presença nova (6 caracteres, cabe no anúncio). Não identifica o jogador fora desta sessão de busca. */
@@ -115,7 +117,7 @@ interface LocalTransport {
     suspend fun advertisePresence(presence: PresenceAdvert) {}
 
     /** §16.2 deixa de anunciar a presença (entrou num jogo ou desligou o Wi-Fi do jogo). */
-    suspend fun stopPresence() {}
+    suspend fun stopPresence(announceLeaving: Boolean = true) {}
 
     /**
      * §16.2 chaves de presença que a busca não pode tirar da lista só por não terem sido revistas (marcadas, recrutadas ou
@@ -125,6 +127,28 @@ interface LocalTransport {
 
     /** §16.2 conecta-se ao jogador próximo que anuncia [presence] (só para pedir a foto, [PresencePhotos]). */
     suspend fun connectPresence(presence: PresenceAdvert): EndpointId = error("Presença não encontrada")
+
+    /**
+     * §16.2, §16.15 modo ativo: as telas *Iniciar novo jogo* e *Seleção de jogadores* estão abertas, então as mudanças dos
+     * outros devem ser percebidas em cerca de 1 s (busca que recomeça mais depressa; mais bateria). Fora delas, o modo
+     * econômico.
+     */
+    fun setActiveMode(active: Boolean) {}
+
+    /**
+     * §16.2, §16.15 atualização imediata (botão ou puxar para atualizar): no modo ativo, a busca recomeça a cada 1 s por
+     * [durationMillis] e volta ao ritmo normal; pedido durante uma rajada em andamento é ignorado.
+     */
+    fun burst(durationMillis: Long = 5_000) {}
+
+    /**
+     * §16.2, §16.15 quem procura uma mesa ([discover]) para entrar nela pede a busca "viva" enquanto espera: no rádio real
+     * o anúncio novo só é visto quando a busca recomeça (dentro do orçamento de buscas). `true` liga, `false` solta.
+     */
+    suspend fun holdSearch(on: Boolean) {}
+
+    /** §16.2 tira da lista a presença de [key] (aviso explícito de saída ou conexão caída); reaparece se for vista de novo. */
+    fun forgetPresence(key: String) {}
 
     /** §16.2 jogadores próximos que anunciam presença agora (sem este aparelho). */
     fun discoverPresence(): Flow<List<PresenceAdvert>> = kotlinx.coroutines.flow.flowOf(emptyList())
@@ -300,9 +324,14 @@ class MemoryTransport internal constructor(private val network: MemoryNetwork, v
 
     override suspend fun advertisePresence(presence: PresenceAdvert) = network.advertisePresence(presence, id)
 
-    override suspend fun stopPresence() = network.stopPresence(id)
+    override suspend fun stopPresence(announceLeaving: Boolean) = network.stopPresence(id)
 
-    override fun discoverPresence(): Flow<List<PresenceAdvert>> = network.presencesVisibleTo(id)
+    private val hidden = MutableStateFlow<Set<String>>(emptySet())
+
+    override fun forgetPresence(key: String) = hidden.update { it + key }
+
+    override fun discoverPresence(): Flow<List<PresenceAdvert>> =
+        combine(network.presencesVisibleTo(id), hidden) { list, gone -> list.filter { it.key !in gone } }.distinctUntilChanged()
 
     override suspend fun connectPresence(presence: PresenceAdvert): EndpointId = network.connectPresence(id, presence)
 }

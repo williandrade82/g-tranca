@@ -35,7 +35,7 @@ class TourTest {
 
     @Test
     fun `os passos apontam para elementos distintos e incluem o icone do tour`() {
-        listOf(Tours.tablesSteps, Tours.tableSteps).forEach { steps ->
+        listOf(Tours.tablesSteps, Tours.selectionSteps, Tours.tableSteps).forEach { steps ->
             steps.map { it.target }.distinct().size shouldBe steps.size
             steps.map { it.target } shouldContain Tours.BUTTON
         }
@@ -43,7 +43,8 @@ class TourTest {
 
     @Test
     fun `os passos seguem a tela de cima para baixo`() {
-        Tours.tablesSteps.map { it.target } shouldBe listOf(Tours.BUTTON, "tables-wifi", "participants", "table-options-panel", "choose-seats")
+        Tours.tablesSteps.map { it.target } shouldBe listOf(Tours.BUTTON, "tables-wifi", "recruiters", "refresh-players", "table-options-panel", "select-players")
+        Tours.selectionSteps.map { it.target } shouldBe listOf(Tours.BUTTON, "seat-table", "robot-row", "multiplayer-block", "selection-refresh", "fill-with-robots", "start-match")
         Tours.tableSteps.map { it.target } shouldBe listOf(
             "score", "table-pot", "coin-balance", Tours.BUTTON, "table-options", "seats", "stock", "mortos", "discard-pile", "hand", "action-bar",
         )

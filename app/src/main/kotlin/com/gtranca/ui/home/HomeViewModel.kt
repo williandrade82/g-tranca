@@ -35,9 +35,18 @@ data class HomeUiState(
     /** §14.6 saldo da carteira e se o ganho diário de hoje está disponível. */
     val balance: Int = Coins.INITIAL_BALANCE,
     val canClaimDaily: Boolean = false,
+    /** §16.12 sessão multijogador guardada para "Continuar mesa", ou `null`. */
+    val session: SessionSummary? = null,
 ) {
     /** Pode agir nos botões de jogo (tudo carregado, nada em andamento). */
     val ready: Boolean get() = loadedSaved && !starting && !pendingNewGame
+}
+
+/** §16.12 o que o botão "Continuar mesa" mostra da sessão guardada: o anfitrião e o assento (nunca o token). */
+data class SessionSummary(val hostName: String, val seat: Int, val wasHost: Boolean) {
+    companion object {
+        fun of(session: com.gtranca.data.MultiplayerSession) = SessionSummary(session.hostName, session.seat + 1, session.wasHost)
+    }
 }
 
 /**
@@ -73,6 +82,8 @@ class HomeViewModel(
     private val stats: StatsRepository? = null,
     /** §14.6 carteira local (saldo e ganho diário). */
     private val wallet: WalletRepository? = null,
+    /** §16.12 a sessão multijogador guardada (espaço separado do jogo salvo contra robôs). */
+    private val sessions: com.gtranca.data.MultiplayerSessionStore? = null,
     /** Dia de hoje (dias desde 1970, data do aparelho); injetável nos testes. */
     private val today: () -> Long = { java.time.LocalDate.now().toEpochDay() },
 ) : ViewModel() {
@@ -107,6 +118,12 @@ class HomeViewModel(
     /** Relê o jogo salvo (ao voltar para a tela, ele pode ter mudado ou terminado). */
     fun refresh() {
         publishWallet() // o dia pode ter virado desde a última vez
+        sessions?.let { repo ->
+            viewModelScope.launch {
+                val session = safely { repo.load() }
+                _uiState.update { it.copy(session = session?.let(SessionSummary::of)) }
+            }
+        }
         val store = savedGames ?: return
         _uiState.update { it.copy(loadedSaved = false) }
         viewModelScope.launch {

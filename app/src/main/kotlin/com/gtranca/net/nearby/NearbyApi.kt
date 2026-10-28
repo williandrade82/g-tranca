@@ -21,6 +21,9 @@ interface NearbyApi {
     val maxBytes: Int
 }
 
+/** O endpoint pedido já não existe no Nearby (8011): o anúncio antigo morreu quando o aparelho reanunciou. */
+class EndpointUnknownException(message: String) : Exception(message)
+
 interface ConnectionCallback {
     fun onInitiated(endpointId: String)
     fun onResult(endpointId: String, success: Boolean)

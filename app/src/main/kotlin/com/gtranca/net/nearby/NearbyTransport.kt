@@ -61,8 +61,23 @@ class NearbyTransport(
     private val sweepGraceMillis: Long = PRESENCE_SWEEP_GRACE_MILLIS,
     private val leavingMillis: Long = PRESENCE_LEAVING_MILLIS,
     private val lostGraceMillis: Long = PRESENCE_LOST_GRACE_MILLIS,
+    /** §16.15 modo ativo (telas *Iniciar novo jogo* e *Seleção de jogadores*): busca e folgas mais curtas. */
+    private val activeRefreshMillis: Long = ACTIVE_REFRESH_MILLIS,
+    private val activeSweepGraceMillis: Long = ACTIVE_SWEEP_GRACE_MILLIS,
+    private val activeLostGraceMillis: Long = ACTIVE_LOST_GRACE_MILLIS,
+    /** §16.15 rajada da atualização imediata: busca a cada [burstRefreshMillis] por [BURST_MILLIS]. */
+    private val burstRefreshMillis: Long = BURST_REFRESH_MILLIS,
+    /** §16.15 orçamento de buscas: no máximo [restartBudget] recomeços por janela de [restartWindowMillis], com [minRestartGapMillis] entre eles. */
+    private val restartBudget: Int = RESTART_BUDGET,
+    private val restartWindowMillis: Long = RESTART_WINDOW_MILLIS,
+    private val minRestartGapMillis: Long = MIN_RESTART_GAP_MILLIS,
+    private val burstSweepGraceMillis: Long = BURST_SWEEP_GRACE_MILLIS,
     /** Diagnóstico (só no build debug): eventos sem nomes, fotos nem bytes. */
     private val log: (String) -> Unit = {},
+    /** §16.15 prazo de cada chamada ao Nearby (iniciar anúncio/busca, pedir/aceitar conexão). */
+    private val apiTimeoutMillis: Long = API_TIMEOUT_MILLIS,
+    /** §16.15 prazo de iniciar a busca (mais longo: até 2,5 s medidos nos aparelhos). */
+    private val discoveryTimeoutMillis: Long = DISCOVERY_TIMEOUT_MILLIS,
 ) : LocalTransport {
 
     /** §16.2 quando cada presença foi vista (achada) pela última vez, por endpoint. */
@@ -79,6 +94,94 @@ class NearbyTransport(
         pinnedKeys = keys
     }
 
+    @Volatile
+    private var active = false
+
+    /** Acorda o laço da busca quando o modo muda (o recomeço não espera o intervalo econômico). */
+    private val modeChanged = Channel<Unit>(Channel.CONFLATED)
+
+    /** Recomeços rápidos que ainda restam da rajada (a atualização imediata). */
+    @Volatile
+    private var burstLeft = 0
+
+    /** Quando cada início de busca aconteceu (o inicial e os recomeços), para o orçamento de §16.15. */
+    private val startTimes = ArrayDeque<Long>()
+
+    /** Registra um início de busca (exige a trava `control`). */
+    private fun recordStartLocked() {
+        startTimes.addLast(now())
+        while (startTimes.size > 16) startTimes.removeFirst()
+    }
+
+    /**
+     * §16.15 quanto falta para poder recomeçar a busca: espera a janela de 30 s liberar quando o orçamento acabou e
+     * respeita o intervalo mínimo entre inícios. 0 = pode agora. O Android limita os inícios de varredura por app e, acima
+     * do limite, a varredura volta vazia sem aviso.
+     */
+    private fun restartWaitLocked(): Long {
+        val t = now()
+        while (startTimes.isNotEmpty() && t - startTimes.first() >= restartWindowMillis) startTimes.removeFirst()
+        val gap = startTimes.lastOrNull()?.let { minRestartGapMillis - (t - it) } ?: 0
+        val budget = if (startTimes.size >= restartBudget) startTimes.first() + restartWindowMillis - t else 0
+        return maxOf(gap, budget, 0)
+    }
+
+    private fun bursting() = active && burstLeft > 0
+    private fun refreshInterval() =
+        if (bursting()) burstRefreshMillis else if (searchHolds > 0) SEARCH_HOLD_REFRESH_MILLIS else if (active) activeRefreshMillis else refreshMillis
+
+    /** Quantos aparelhos pedem a busca "viva" para entrar numa mesa ([holdSearch]); o laço de recomeço roda enquanto houver. */
+    private var searchHolds = 0
+
+    /**
+     * §16.2, §16.15 quem procura a mesa para entrar nela: a busca recomeça a cada [SEARCH_HOLD_REFRESH_MILLIS] (dentro do
+     * orçamento de buscas), porque o anúncio novo só é visto quando a busca recomeça.
+     */
+    override suspend fun holdSearch(on: Boolean) {
+        control.withLock {
+            if (on) {
+                log("search hold on")
+                if (searchHolds++ == 0 && refresher == null) refresher = scope.launch { refreshPresence() }
+            } else if (searchHolds > 0 && --searchHolds == 0 && presenceSubscribers == 0) {
+                refresher?.cancel()
+                refresher = null
+            }
+        }
+        modeChanged.trySend(Unit)
+    }
+    private fun sweepGrace() = if (bursting()) burstSweepGraceMillis else if (active) activeSweepGraceMillis else sweepGraceMillis
+
+    /**
+     * §16.2, §16.15 atualização imediata: até [BURST_RESTARTS] recomeços rápidos da busca (2,5 s um do outro), sempre dentro
+     * do orçamento de buscas, e volta ao ritmo do modo ativo. Só vale no modo ativo; pedido durante uma rajada em andamento
+     * é ignorado (toques repetidos não somam). [durationMillis] é só a compatibilidade com a interface.
+     */
+    override fun burst(durationMillis: Long) {
+        if (!active) return
+        if (bursting()) {
+            log("burst ignored: running")
+            return
+        }
+        burstLeft = BURST_RESTARTS
+        log("burst start restarts=$BURST_RESTARTS")
+        modeChanged.trySend(Unit)
+    }
+
+    override fun setActiveMode(active: Boolean) {
+        if (this.active == active) return
+        this.active = active
+        log("active mode=$active")
+        modeChanged.trySend(Unit)
+    }
+
+    override fun forgetPresence(key: String) {
+        val gone = foundPresence.value.filterValues { it.key == key }.keys
+        if (gone.isEmpty()) return
+        synchronized(presenceSeen) { gone.forEach { presenceSeen.remove(it); presenceMisses.remove(it); lostJobs.remove(it)?.cancel() } }
+        log("remove ${key.take(2)}: forgotten t=${now()}")
+        foundPresence.update { it - gone }
+    }
+
     /** §16.2 varreduras seguidas em que a presença não foi revista (sai da lista na [SWEEPS_TO_REMOVE]ª). */
     private val presenceMisses = mutableMapOf<String, Int>()
     private var presenceSubscribers = 0
@@ -92,7 +195,18 @@ class NearbyTransport(
     private val pending = mutableMapOf<String, CompletableDeferred<Boolean>>()
 
     private val control = Mutex()
+
+    /** Trava do anúncio (estado de [advertised]): separada da da busca, para um anúncio lento do Nearby não segurar a busca nem a entrada na mesa. */
+    private val adLock = Mutex()
     private var advertised: ByteArray? = null
+
+    /** Quando o anúncio mudou pela última vez: o pedido de conexão espera a calma depois de uma troca ([ADVERT_SETTLE_MILLIS]). */
+    @Volatile
+    private var lastAdvertChangeAt = Long.MIN_VALUE / 2
+
+    /** Pedido de busca imediata (endpoint morto): o laço de recomeço não espera o intervalo. */
+    @Volatile
+    private var kicked = false
 
     /** O que está anunciado agora é a presença (§16.2), não uma mesa: um aparelho anuncia uma coisa por vez. */
     private var advertisingPresence = false
@@ -110,7 +224,7 @@ class NearbyTransport(
     private val connectionCallback = object : ConnectionCallback {
         override fun onInitiated(endpointId: String) {
             scope.launch {
-                runCatching { api.acceptConnection(endpointId) { id, bytes -> inbox.trySend(TransportEvent.Received(EndpointId(id), bytes)) } }
+                runCatching { call("acceptConnection") { api.acceptConnection(endpointId) { id, bytes -> inbox.trySend(TransportEvent.Received(EndpointId(id), bytes)) } } }
                     .onFailure { synchronized(lock) { pending.remove(endpointId) }?.complete(false) }
             }
         }
@@ -168,7 +282,7 @@ class NearbyTransport(
             synchronized(presenceSeen) {
                 lostJobs.remove(endpointId)?.cancel()
                 lostJobs[endpointId] = scope.launch {
-                    delay(lostGraceMillis)
+                    delay(if (active) activeLostGraceMillis else lostGraceMillis)
                     synchronized(presenceSeen) { lostJobs.remove(endpointId); presenceSeen.remove(endpointId); presenceMisses.remove(endpointId) }
                     val current = foundPresence.value[endpointId]
                     if (current != null && current.key == presence.key) {
@@ -194,21 +308,30 @@ class NearbyTransport(
         advertiseBytes(AdvertCodec.encodePresence(presence), presence = true)
 
     private suspend fun advertiseBytes(bytes: ByteArray, presence: Boolean) {
-        control.withLock {
+        adLock.withLock {
             val current = advertised
             if (current != null && current.contentEquals(bytes)) return
+            // §16.2, §16.15 a mesa do jogo tem prioridade: a presença nunca a substitui (só o fim da mesa libera o anúncio).
+            if (presence && current != null && !advertisingPresence) {
+                log("advertise presence skipped: table on air")
+                return
+            }
+            if (!presence) log("advertise table")
             if (current != null) api.stopAdvertising()
             advertised = null
             try {
-                api.startAdvertising(bytes, connectionCallback)
+                call("startAdvertising") { api.startAdvertising(bytes, connectionCallback) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // Sem resposta no prazo: pede a parada do que ficou pendente no serviço, para o próximo anúncio começar limpo.
+                runCatching { api.stopAdvertising() }
                 // Falha do rádio não fecha o app nem derruba a mesa: as conexões seguem e o próximo anúncio tenta de novo.
                 return
             }
             advertised = bytes
             advertisingPresence = presence
+            lastAdvertChangeAt = now()
         }
     }
 
@@ -219,20 +342,28 @@ class NearbyTransport(
      * §16.2, §16.15 para a presença (a mesa, se for ela no ar, continua): antes, anuncia "saindo" com a mesma chave por
      * [leavingMillis], para os outros tirarem o jogador da lista na hora.
      */
-    override suspend fun stopPresence() {
-        val leaving = control.withLock {
+    override suspend fun stopPresence(announceLeaving: Boolean) {
+        val leaving = adLock.withLock {
             val current = advertised
             if (current == null || !advertisingPresence) return
+            if (!announceLeaving) {
+                // §16.15 quem vai entrar numa mesa não mexe mais no anúncio (o aviso de saída já foi por mensagem): só para.
+                api.stopAdvertising()
+                advertised = null
+                lastAdvertChangeAt = now()
+                log("advertise stopped (no leaving)")
+                return
+            }
             val presence = AdvertCodec.decodePresence(current) ?: return@withLock null
             if (presence.leaving) return@withLock null
             val bytes = AdvertCodec.encodePresenceLeaving(presence.key)
             api.stopAdvertising()
             advertised = null
-            runCatching { api.startAdvertising(bytes, connectionCallback) }.onSuccess { advertised = bytes; log("advertise leaving") }
+            runCatching { call("startAdvertising") { api.startAdvertising(bytes, connectionCallback) } }.onSuccess { advertised = bytes; log("advertise leaving") }
             bytes.takeIf { advertised === it }
         }
         if (leaving != null) delay(leavingMillis)
-        control.withLock {
+        adLock.withLock {
             // Outra coisa (a mesa, ou a presença de novo) pode ter tomado o lugar durante o aviso.
             if (leaving != null && advertised !== leaving) return
             if (advertised == null || !advertisingPresence) return
@@ -242,10 +373,11 @@ class NearbyTransport(
     }
 
     private suspend fun stopKind(presence: Boolean) {
-        control.withLock {
+        adLock.withLock {
             if (advertised == null || advertisingPresence != presence) return
             api.stopAdvertising()
             advertised = null
+            lastAdvertChangeAt = now()
         }
     }
 
@@ -266,12 +398,12 @@ class NearbyTransport(
     override fun discoverPresence(): Flow<List<PresenceAdvert>> = flow {
         acquireDiscovery()
         control.withLock {
-            if (presenceSubscribers++ == 0) refresher = scope.launch { refreshPresence() }
+            if (presenceSubscribers++ == 0 && refresher == null) refresher = scope.launch { refreshPresence() }
         }
         try {
             emitAll(foundPresence.map { it.values.toList() }.distinctUntilChanged())
         } finally {
-            scope.launch { control.withLock { if (--presenceSubscribers == 0) { refresher?.cancel(); refresher = null } } }
+            scope.launch { control.withLock { if (--presenceSubscribers == 0 && searchHolds == 0) { refresher?.cancel(); refresher = null } } }
             releaseDiscovery()
         }
     }
@@ -282,37 +414,72 @@ class NearbyTransport(
      * Com conexão de presença pendente ou aberta (troca de fotos), o recomeço é adiado (no Nearby ele pode abortá-la).
      */
     private suspend fun refreshPresence() {
-        delay(refreshMillis)
+        waitRefresh(refreshInterval())
         while (true) {
             if (presenceConnectionBusy()) {
                 delay(RESTART_RETRY_MILLIS)
+                continue
+            }
+            // §16.15 orçamento de buscas: sem ele o laço espera; recomeço pulado nunca conta como perda de ninguém.
+            val wait = control.withLock { restartWaitLocked() }
+            if (wait > 0) {
+                log("restart skipped budget=${startTimes.size}/$restartBudget wait=$wait ms")
+                delay(wait)
                 continue
             }
             val restartedAt = control.withLock {
                 if (subscribers == 0) return@withLock null
                 val at = now()
                 if (discovering) runCatching { api.stopDiscovery() }
+                recordStartLocked()
                 try {
-                    api.startDiscovery(discoveryCallback)
+                    call("startDiscovery", discoveryTimeoutMillis) { api.startDiscovery(discoveryCallback) }
                     discovering = true
-                    log("restart ok")
+                    if (burstLeft > 0) burstLeft--
+                    log("restart ok budget=${startTimes.size}/$restartBudget")
                     at
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     discovering = false
-                    log("restart failed ${e.message?.take(40)}")
+                    log("restart failed ${e.message?.take(40)} (no sweep)")
                     null
                 }
             }
             if (restartedAt == null) {
+                // Falha não conta como perda (sem varredura) e o próximo recomeço também respeita o orçamento.
                 delay(RESTART_RETRY_MILLIS)
                 continue
             }
-            delay(sweepGraceMillis)
+            val grace = sweepGrace()
+            delay(grace)
             sweep(restartedAt)
-            delay((refreshMillis - sweepGraceMillis).coerceAtLeast(0))
+            waitRefresh((refreshInterval() - grace).coerceAtLeast(0))
         }
+    }
+
+    /** Espera o intervalo da busca, ou menos se o modo mudou nesse meio tempo. */
+    private suspend fun waitRefresh(millis: Long) {
+        if (kicked) {
+            kicked = false
+            return
+        }
+        modeChanged.tryReceive()
+        withTimeoutOrNull(millis) { modeChanged.receive() }
+        kicked = false
+    }
+
+    /**
+     * §16.2, §16.15 o endpoint não existe mais (8011): esquece só ele e pede uma busca extra (o laço respeita o orçamento de
+     * buscas); o jogador ou a mesa reaparecem com o anúncio novo.
+     */
+    private fun endpointGone(endpointId: String) {
+        synchronized(presenceSeen) { presenceSeen.remove(endpointId); presenceMisses.remove(endpointId); lostJobs.remove(endpointId)?.cancel() }
+        found.update { it - endpointId }
+        foundPresence.update { it - endpointId }
+        log("endpoint gone ${endpointId.take(2)}: forgotten, extra search")
+        kicked = true
+        modeChanged.trySend(Unit)
     }
 
     private fun sweep(restartedAt: Long) {
@@ -343,7 +510,8 @@ class NearbyTransport(
      */
     private fun presenceConnectionBusy(): Boolean {
         val presenceEndpoints = foundPresence.value.keys
-        return synchronized(lock) { pending.keys.any { it in presenceEndpoints } }
+        // Com a busca pedida para entrar numa mesa, qualquer conexão pendente (a da mesa) também adia o recomeço.
+        return synchronized(lock) { pending.keys.any { it in presenceEndpoints } || (searchHolds > 0 && pending.isNotEmpty()) }
     }
 
     /** Liga a busca se preciso; devolve quando ela foi ligada (para o aquecimento). */
@@ -355,7 +523,8 @@ class NearbyTransport(
             found.value = emptyMap()
             foundPresence.value = emptyMap()
             try {
-                api.startDiscovery(discoveryCallback)
+                call("startDiscovery", discoveryTimeoutMillis) { api.startDiscovery(discoveryCallback) }
+                recordStartLocked()
             } catch (e: Exception) {
                 subscribers-- // a busca não começou: quem pediu recebe o erro e não fica contado
                 throw e
@@ -412,10 +581,18 @@ class NearbyTransport(
             if (endpointId in connected) return EndpointId(endpointId)
             pending.getOrPut(endpointId) { CompletableDeferred() }
         }
+        val settle = ADVERT_SETTLE_MILLIS - (now() - lastAdvertChangeAt)
+        if (settle > 0) delay(settle)
         try {
-            api.requestConnection(LOCAL_INFO, endpointId, connectionCallback)
+            // O pedido pode demorar (o serviço está ocupado) e ainda assim completar: o prazo é o da conexão, não o das outras chamadas.
+            call("requestConnection", connectTimeoutMillis) { api.requestConnection(LOCAL_INFO, endpointId, connectionCallback) }
+            if (synchronized(lock) { endpointId in connected }) {
+                synchronized(lock) { pending.remove(endpointId) }
+                return EndpointId(endpointId)
+            }
         } catch (e: Exception) {
             synchronized(lock) { pending.remove(endpointId) }
+            if (e is EndpointUnknownException) endpointGone(endpointId)
             throw IllegalStateException("Falha ao conectar", e)
         }
         val ok = withTimeoutOrNull(connectTimeoutMillis) { waiting.await() } ?: false
@@ -453,13 +630,42 @@ class NearbyTransport(
 
     private fun now(): Long = clock()
 
+    /**
+     * §16.15 chamada ao Nearby com prazo de [apiTimeoutMillis]: o serviço do Google serializa as chamadas e uma delas pode
+     * ficar presa por dezenas de segundos (ex.: troca de meio em andamento). Estourado o prazo, vira falha (quem chamou
+     * trata e tenta de novo) e a trava é liberada. Registra a duração de cada chamada (só no build debug).
+     */
+    private suspend fun <T> call(name: String, timeoutMillis: Long = apiTimeoutMillis, block: suspend () -> T): T {
+        val started = now()
+        try {
+            val result = kotlinx.coroutines.withTimeout(timeoutMillis) { block() }
+            log("api $name ${now() - started} ms")
+            return result
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            log("api timeout $name ${now() - started} ms")
+            throw IllegalStateException("Tempo esgotado: $name", e)
+        }
+    }
+
     companion object {
         const val WARM_UP_MILLIS: Long = 3_000
         const val LINGER_MILLIS: Long = 10_000
         const val CONNECT_TIMEOUT_MILLIS: Long = 20_000
 
+        /** §16.15 prazo de cada chamada ao Nearby. */
+        const val API_TIMEOUT_MILLIS: Long = 5_000
+
+        /** §16.15 calma depois de trocar o anúncio, antes de pedir conexão (a troca no meio do pedido dava erro de rádio). */
+        const val ADVERT_SETTLE_MILLIS: Long = 250
+
+        /** §16.15 prazo de iniciar a busca. */
+        const val DISCOVERY_TIMEOUT_MILLIS: Long = 8_000
+
         /** §16.15 a busca recomeça a cada 8 s enquanto alguém observa os jogadores próximos. */
-        const val PRESENCE_REFRESH_MILLIS: Long = 8_000
+        const val PRESENCE_REFRESH_MILLIS: Long = 15_000
+
+        /** §16.2, §16.15 intervalo de recomeço da busca de quem procura a mesa para entrar (cabe no orçamento de buscas). */
+        const val SEARCH_HOLD_REFRESH_MILLIS: Long = 6_000
 
         /** §16.15 folga depois de cada recomeço para o Nearby reportar de novo quem continua no ar. */
         const val PRESENCE_SWEEP_GRACE_MILLIS: Long = 3_000
@@ -468,7 +674,25 @@ class NearbyTransport(
         const val SWEEPS_TO_REMOVE: Int = 2
 
         /** §16.15 aviso de "saindo" no ar antes de parar a presença. */
-        const val PRESENCE_LEAVING_MILLIS: Long = 2_000
+        const val PRESENCE_LEAVING_MILLIS: Long = 500
+
+        /** §16.15 modo ativo: a busca recomeça a cada 1 s, com folga de 0,5 s, e o aviso de perda vale 1 s. */
+        const val ACTIVE_REFRESH_MILLIS: Long = 7_500
+        const val ACTIVE_SWEEP_GRACE_MILLIS: Long = 1_000
+
+        /** §16.15 atualização imediata: 5 s de busca a cada 1 s (folga de 0,5 s). */
+        const val BURST_MILLIS: Long = 5_000
+        const val BURST_REFRESH_MILLIS: Long = 2_500
+
+        /** §16.15 a atualização imediata faz no máximo 2 recomeços rápidos. */
+        const val BURST_RESTARTS: Int = 2
+
+        /** §16.15 orçamento de buscas: no máximo 4 recomeços por janela móvel de 30 s, nunca em menos de 2,5 s. */
+        const val RESTART_BUDGET: Int = 4
+        const val RESTART_WINDOW_MILLIS: Long = 30_000
+        const val MIN_RESTART_GAP_MILLIS: Long = 2_500
+        const val BURST_SWEEP_GRACE_MILLIS: Long = 500
+        const val ACTIVE_LOST_GRACE_MILLIS: Long = 1_000
 
         /** §16.15 folga depois do aviso de perda do Nearby antes de tirar a presença da lista. */
         const val PRESENCE_LOST_GRACE_MILLIS: Long = 3_000

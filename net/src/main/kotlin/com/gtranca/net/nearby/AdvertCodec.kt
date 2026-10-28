@@ -94,7 +94,7 @@ object AdvertCodec {
         require(key.size in 1..MAX_PRESENCE_KEY_BYTES) { "Chave de presença com tamanho inválido" }
         val out = ByteArrayOutputStream()
         out.write(PRESENCE_FORMAT)
-        out.write(if (presence.hosting) 1 else 0)
+        out.write((if (presence.hosting) 1 else 0) or (if (presence.free) 2 else 0))
         out.writeText(key)
         // §16.2 recrutado por (vazio = livre) e os convites imediatos deste jogador como anfitrião.
         out.writeText(presence.recruitedBy?.let(::keyBytes) ?: ByteArray(0))
@@ -130,7 +130,9 @@ object AdvertCodec {
             return PresenceAdvert(key, "", leaving = true)
         }
         if (format != PRESENCE_FORMAT) return null
-        val hosting = r.byte() and 1 != 0
+        val flags = r.byte()
+        val hosting = flags and 1 != 0
+        val free = flags and 2 != 0
         val key = r.text()
         val recruitedBy = r.text().ifEmpty { null }
         val count = r.byte()
@@ -138,7 +140,7 @@ object AdvertCodec {
         val inviting = List(count) { r.text() }
         val name = r.text()
         if (key.isEmpty() || !r.atEnd) return null
-        PresenceAdvert(key, name, recruitedBy = recruitedBy, inviting = inviting, hosting = hosting)
+        PresenceAdvert(key, name, recruitedBy = recruitedBy, inviting = inviting, hosting = hosting, free = free)
     }.getOrNull()
 
     /** Maior prefixo de [text] (por caractere, sem partir pares substitutos) que cabe em [maxBytes] em UTF-8. */

@@ -16,7 +16,14 @@ class FakeNearbyNetwork {
 
     internal fun advertisers() = nodes.values.filter { it.advertInfo != null }
 
+    /** Endpoints que já não existem (o anúncio antigo morreu ao reanunciar): pedir conexão a eles dá 8011. */
+    val deadEndpoints = mutableSetOf<String>()
+
+    /** O rádio perde o aviso de um anúncio novo (a busca só o vê quando recomeça). */
+    var suppressFound = false
+
     internal fun announce(from: FakeNearbyApi) {
+        if (suppressFound) return
         val info = from.advertInfo ?: return
         nodes.values.filter { it !== from }.forEach { it.discovery?.onFound(from.id, info) }
     }
@@ -50,7 +57,17 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
 
     override val maxBytes: Int = 1047552
 
+    /** Como o serviço do Google preso numa troca de meio: estas chamadas demoram tanto (relógio virtual) antes de responder. */
+    var startAdvertisingDelayMillis = 0L
+    var startDiscoveryDelayMillis = 0L
+    var requestConnectionDelayMillis = 0L
+
+    /** Quando (relógio do teste) cada pedido de conexão começou. */
+    val requestConnectionAt = mutableListOf<Long>()
+    var nowMillis: () -> Long = { 0L }
+
     override suspend fun startAdvertising(endpointInfo: ByteArray, callback: ConnectionCallback) {
+        if (startAdvertisingDelayMillis > 0) kotlinx.coroutines.delay(startAdvertisingDelayMillis)
         check(advertInfo == null) { "STATUS_ALREADY_ADVERTISING" }
         advertiseStarts++
         advertInfo = endpointInfo
@@ -69,6 +86,7 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
     var failNextDiscoveryStarts = 0
 
     override suspend fun startDiscovery(callback: DiscoveryCallback) {
+        if (startDiscoveryDelayMillis > 0) kotlinx.coroutines.delay(startDiscoveryDelayMillis)
         check(discovery == null) { "STATUS_ALREADY_DISCOVERING" }
         if (failNextDiscoveryStarts > 0) {
             failNextDiscoveryStarts--
@@ -76,7 +94,7 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
         }
         discoveryStarts++
         discovery = callback
-        network.advertisers().filter { it !== this }.forEach { callback.onFound(it.id, it.advertInfo!!) }
+        if (!network.suppressFound) network.advertisers().filter { it !== this }.forEach { callback.onFound(it.id, it.advertInfo!!) }
     }
 
     override fun stopDiscovery() {
@@ -85,6 +103,9 @@ class FakeNearbyApi(private val network: FakeNearbyNetwork, val id: String) : Ne
     }
 
     override suspend fun requestConnection(localInfo: ByteArray, endpointId: String, callback: ConnectionCallback) {
+        requestConnectionAt += nowMillis()
+        if (endpointId in network.deadEndpoints) throw EndpointUnknownException("STATUS_ENDPOINT_UNKNOWN")
+        if (requestConnectionDelayMillis > 0) kotlinx.coroutines.delay(requestConnectionDelayMillis)
         val target = network.nodes[endpointId] ?: error("STATUS_ENDPOINT_UNKNOWN")
         val targetCallback = target.advertCallback ?: error("STATUS_ENDPOINT_UNKNOWN")
         links[endpointId] = Link(callback)

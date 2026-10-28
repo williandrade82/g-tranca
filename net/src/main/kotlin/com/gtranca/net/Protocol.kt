@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 13
+const val PROTOCOL_VERSION: Int = 16
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -85,6 +85,8 @@ data class TableRules(
     val stake: Int,
     val difficulty: String,
     val robots: List<String> = emptyList(),
+    /** §16.2 título das regras ("Clássica", "Tranca Paulista" ou "Personalizada"), mostrado no convite. */
+    val rulesTitle: String = "",
 )
 
 /** Etapa do jogo vista por um assento (mesma ideia de `Stage` do `:app`). */
@@ -202,7 +204,7 @@ data class Hello(
     val roundOverSeen: Int = 0,
     /** §16.2 foto do perfil, pequena e comprimida, em Base64 (JPEG); `null` = sem foto. Vai uma vez por conexão. */
     val photo: String? = null,
-    /** §16.2 chave de presença de quem foi convidado (achou-a em [TableAdvert.invited]): o anfitrião responde com o [Invite]. */
+    /** §16.2 chave de presença de quem aceitou o recrutamento: entra no lugar que o recrutador montou (sem novo convite). */
     val inviteKey: String? = null,
 ) : Payload {
     override fun toString(): String = "Hello(name=$name, seat=$seat, photo=${photo?.length ?: 0})" // nunca registrar o token
@@ -229,40 +231,25 @@ data class PresencePhoto(val key: String, val photo: String? = null) : Payload {
     override fun toString(): String = "PresencePhoto(${photo?.length ?: 0})"
 }
 
-/** §16.2 participante da montagem do anfitrião, como o recrutado o vê (só nome; [persona] para robô). */
-@Serializable
-data class RecruitParticipant(
-    val name: String,
-    val persona: String? = null,
-    val accepted: Boolean = true,
-    /** Chave de presença do jogador próximo (para a foto e para o anfitrião marcar quem já aceitou); `null` = anfitrião ou robô. */
-    val key: String? = null,
-)
-
 /**
- * §16.2 a montagem do anfitrião, sincronizada ao vivo com quem aceitou o recrutamento (só para leitura): modo, nível dos
- * robôs, aposta, regras completas, pontuação-alvo e participantes. Nada oculto (ainda não há cartas).
+ * §16.2 a mesa do recrutador como o chamado/recrutado a vê: o nome dele, o que ele definiu na tela *Iniciar novo jogo*
+ * ([rules]) e os lugares ([layout]). Nada oculto (ainda não há cartas nem semente).
  */
 @Serializable
-data class RecruitConfig(
-    val hostName: String,
-    val mode: GameMode,
-    val difficulty: String,
-    val stake: Int,
-    val rules: RuleSet,
-    val targetScore: Int,
-    val participants: List<RecruitParticipant>,
-)
+data class RecruitTable(val hostName: String, val rules: TableRules, val layout: TableLayout)
 
 /** §16.2 resposta ao convite imediato (recrutado → anfitrião, primeira mensagem da conexão). */
 @Serializable
 @SerialName("recruitReply")
 data class RecruitReply(val key: String, val accepted: Boolean, val reason: RefusalReason? = null) : Payload
 
-/** §16.2 a montagem do anfitrião mudou (anfitrião → recrutados que aceitaram). */
+/**
+ * §16.2 os lugares mudaram (recrutador → chamados e recrutados): o estado **completo** e numerado; [you] é o lugar do
+ * destinatário. O destinatário aplica só versão maior que a aplicada.
+ */
 @Serializable
 @SerialName("recruitSync")
-data class RecruitSync(val version: Long, val config: RecruitConfig) : Payload
+data class RecruitSync(val version: Long, val table: RecruitTable, val you: Int) : Payload
 
 /**
  * §16.2 primeira mensagem do jogador próximo ao anfitrião que está montando a mesa (ou que o convidou): conexão de espera
@@ -272,10 +259,40 @@ data class RecruitSync(val version: Long, val config: RecruitConfig) : Payload
 @SerialName("recruitHello")
 data class RecruitHello(val key: String, val name: String, val rejoin: Boolean = false) : Payload
 
-/** §16.2 convite imediato do anfitrião [hostName], sem prazo (a resposta é [RecruitReply]). */
+/**
+ * §16.2 convite imediato do recrutador, sem prazo (a resposta é [RecruitReply]): a mesa ([table], com aposta, tipo e título
+ * da regra) e o lugar [you] do chamado (a posição, Parceiro ou Adversário, vem de [TableLayout.relationOf]).
+ */
 @Serializable
 @SerialName("recruitInvite")
-data class RecruitInvite(val hostName: String) : Payload
+data class RecruitInvite(
+    val version: Long,
+    val table: RecruitTable,
+    val you: Int,
+    /** §16.15 tempo que o chamado tem para responder, contado no relógio de **quem recebe** (sem relógios sincronizados). */
+    val timeoutMillis: Long = INVITE_TIMEOUT_MILLIS,
+) : Payload
+
+/** §16.15 o chamado tem 25 s para responder; sem resposta, vale como recusa. */
+const val INVITE_TIMEOUT_MILLIS: Long = 25_000
+
+/** §16.15 folga da rede que o recrutador espera a mais antes de devolver o lugar a VAGO. */
+const val INVITE_HOST_GRACE_MILLIS: Long = 2_000
+
+/** §16.15 mensagem de teste das conexões abertas de recrutamento (fora da sequência). */
+@Serializable
+@SerialName("recruitPing")
+data object RecruitPing : Payload
+
+/** §16.15 resposta à mensagem de teste. */
+@Serializable
+@SerialName("recruitPong")
+data object RecruitPong : Payload
+
+/** §16.2 aviso explícito de saída (Wi-Fi do jogo desligado ou saída das telas): quem recebe tira o jogador das listas na hora. */
+@Serializable
+@SerialName("recruitBye")
+data class RecruitBye(val key: String) : Payload
 
 /** §16.2 o recrutado saiu da mesa ("Sair da mesa", `null`) ou saiu sozinho ([RefusalReason.INSUFFICIENT_BALANCE]). */
 @Serializable
@@ -300,32 +317,35 @@ enum class RecruitEndReason {
 @SerialName("recruitEnd")
 data class RecruitEnd(val reason: RecruitEndReason) : Payload
 
-/** §16.2 o anfitrião tocou em Escolher posições: entrar na mesa [tableId] com a própria chave (sem novo convite). */
+/**
+ * §16.2 o recrutador tocou em Começar Partida: mostrar "Prepare-se!" por **no mínimo** [prepareMillis] e entrar na mesa
+ * [tableId] com a própria chave (sem novo convite), até o jogo começar.
+ */
 @Serializable
 @SerialName("recruitStart")
-data class RecruitStart(val tableId: String) : Payload
+data class RecruitStart(val tableId: String, val prepareMillis: Long = PREPARE_MILLIS) : Payload
+
+/** §16.15 tempo mínimo do "Prepare-se! O jogo vai começar!" nos celulares da mesa. */
+const val PREPARE_MILLIS: Long = 1_500
 
 /** Limite do texto Base64 da foto aceito na mesa (~15 KB de JPEG); maior é descartado. */
 const val MAX_PHOTO_BASE64: Int = 20_480
 
 
 /**
- * Entrada aceita: o [token] (só deste jogador, §16.5), o id público dele, as regras da mesa (uma vez: `null` quando já
- * foram no [Invite]) e a sala.
+ * Entrada aceita: o [token] (só deste jogador, §16.5), o id público dele, as regras da mesa (uma vez) e a sala.
  */
 @Serializable
 @SerialName("welcome")
 data class Welcome(
     val token: String,
     val you: Int,
-    val rules: TableRules? = null,
+    val rules: TableRules,
     val roster: List<PlayerInfo>,
-    /** O jogo já está em andamento (reingresso ou entrada no meio, §16.5, §16.7): o convidado vai direto à mesa. */
+    /** O jogo já está em andamento (reingresso ou entrada no meio, §16.5, §16.7); `false` = recrutado esperando o início (§16.2). */
     val started: Boolean = false,
     /** Com o jogo em andamento: o personagem de cada assento de robô (índice do assento → id), escolhido pelo anfitrião. */
     val robots: Map<Int, String> = emptyMap(),
-    /** §16.2 escolha de posições em andamento (mesa montada, §14.4); `null` nas mesas antigas ou com o jogo começado. */
-    val seating: SeatingState? = null,
 ) : Payload {
     override fun toString(): String = "Welcome(you=$you)" // nunca registrar o token
 }
@@ -347,6 +367,9 @@ enum class RefusalReason {
 
     /** Não há robô no lugar de quem entrar (ou as posições já travaram). */
     TABLE_FULL,
+
+    /** §16.2, §16.15 o chamado não respondeu ao convite em 25 s: vale como recusa. */
+    NO_RESPONSE,
 }
 
 /** §16.2 texto em pt-BR do motivo (o mesmo nos dois lados). */
@@ -356,55 +379,13 @@ fun refusalMessage(reason: RefusalReason): String = when (reason) {
     RefusalReason.OUT_OF_RANGE -> "Fora do alcance."
     RefusalReason.HOST_REFUSED -> "O anfitrião recusou."
     RefusalReason.TABLE_FULL -> "Mesa cheia."
+    RefusalReason.NO_RESPONSE -> "Não respondeu a tempo."
 }
 
 /** Entrada ou mensagem recusada, com o motivo em pt-BR (ex.: [VERSION_MISMATCH_MESSAGE]) e, se for o caso, o de §16.2. */
 @Serializable
 @SerialName("rejected")
 data class Rejected(val message: String, val reason: RefusalReason? = null) : Payload
-
-/**
- * §16.2 convite (anfitrião → jogador próximo convidado, depois que ele se conecta): o anfitrião, os participantes
- * (humanos em [roster], robôs em [seating]) e as regras da mesa (vão uma única vez, aqui). Aberto por [timeoutMillis]: sem
- * resposta, é aceito sozinho.
- */
-@Serializable
-@SerialName("invite")
-data class Invite(
-    val hostId: Int,
-    /** Id público do convidado nesta mesa. */
-    val you: Int,
-    val rules: TableRules,
-    val roster: List<PlayerInfo>,
-    val seating: SeatingState,
-    val timeoutMillis: Long = INVITE_TIMEOUT_MILLIS,
-) : Payload
-
-/** §16.15 convite sem resposta até ser aceito automaticamente. */
-const val INVITE_TIMEOUT_MILLIS: Long = 10_000
-
-/** §16.15 espera depois de todos confirmarem as posições até o início do jogo. */
-const val START_DELAY_MILLIS: Long = 2_000
-
-/** §16.2 resposta ao convite: aceito, ou recusado com o [reason] (recusou ou saldo insuficiente). */
-@Serializable
-@SerialName("inviteReply")
-data class InviteReply(val accepted: Boolean, val reason: RefusalReason? = null) : Payload
-
-/** §16.2 rotaciona a mesa: troca com o próximo ocupante não confirmado na [direction]. */
-@Serializable
-@SerialName("rotate")
-data class RotateSeat(val direction: RotateDirection) : Payload
-
-/** §16.2 escolha de posições atualizada (troca, confirmação, entrada, saída), redistribuída a todos. */
-@Serializable
-@SerialName("seating")
-data class SeatingUpdate(val seating: SeatingState) : Payload
-
-/** §16.2 todos confirmaram: posições travadas; o jogo começa [startsInMillis] depois em todos os aparelhos. */
-@Serializable
-@SerialName("locked")
-data class SeatsLocked(val seating: SeatingState, val startsInMillis: Long = START_DELAY_MILLIS) : Payload
 
 /** Por que a mesa foi encerrada pelo anfitrião. */
 @Serializable
@@ -421,16 +402,6 @@ enum class CloseReason {
 @SerialName("closed")
 data class TableClosed(val reason: CloseReason) : Payload
 
-/** Mesa antiga (sem escolha de posições, fase 2 remove): convidado troca para um assento **vago**. */
-@Serializable
-@SerialName("chooseSeat")
-data class ChooseSeat(val seat: Seat) : Payload
-
-/** §16.2 convidado confirma a posição ("Aguardando início do jogo"). */
-@Serializable
-@SerialName("confirmSeat")
-data object ConfirmSeat : Payload
-
 /** §16.9 convidado desiste; aceito a qualquer momento depois do início (não depende da vez). */
 @Serializable
 @SerialName("resign")
@@ -445,6 +416,32 @@ data class Rename(val name: String) : Payload
 @Serializable
 @SerialName("leave")
 data object Leave : Payload
+
+/**
+ * §16.2, §16.15 Pronto: o recrutado recebeu o [Welcome] e está na mesa. O anfitrião só conta o recrutado como presente
+ * (e só deixa de esperá-lo para virar robô) depois dele.
+ */
+@Serializable
+@SerialName("ready")
+data object Ready : Payload
+
+/** §16.2 por que o convidado não conseguiu entrar na mesa (cada causa tem o seu texto na tela). */
+enum class JoinFailureKind {
+    /** O anúncio da mesa não apareceu na busca dentro do prazo. */
+    NOT_FOUND,
+
+    /** A mesa apareceu, mas a conexão falhou em todas as tentativas do prazo. */
+    CONNECT_FAILED,
+
+    /** Conectou, mas o anfitrião não respondeu. */
+    TIMEOUT,
+}
+
+/** Falha ao entrar na mesa, com a causa ([kind]). */
+class JoinFailure(val kind: JoinFailureKind, message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** §16.2, §16.15 texto ao recrutado que chega depois de o lugar ter passado para um robô. */
+const val SEAT_LOST_MESSAGE: String = "O lugar passou para um robô porque você não chegou a tempo."
 
 /** Sala atualizada, redistribuída a todos a cada alteração (§16.2). */
 @Serializable

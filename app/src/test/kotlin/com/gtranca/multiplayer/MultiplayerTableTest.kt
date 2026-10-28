@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import java.util.Collections
@@ -43,6 +44,15 @@ class MultiplayerTableTest {
         override suspend fun settle(gameId: String, rules: TableRules, result: GameResult, stake: Int, received: Int) {
             settled += result to received
         }
+    }
+
+    /** §16.12 a sessão guardada, em memória. */
+    private class FakeSessions : MpSessions {
+        val saved = Collections.synchronizedList(mutableListOf<com.gtranca.data.MultiplayerSession>())
+        var clears = 0
+        override suspend fun save(session: com.gtranca.data.MultiplayerSession) { saved += session }
+        override suspend fun clear() { clears++ }
+        val last: com.gtranca.data.MultiplayerSession? get() = saved.lastOrNull()
     }
 
     private class Setup(
@@ -71,6 +81,9 @@ class MultiplayerTableTest {
         robots: List<String> = listOf("jovem", "sobrio", "atleta"),
         hostPhoto: String? = null,
         guestPhoto: String? = null,
+        guestSeat: Int = 1,
+        guestSessions: MpSessions = MpSessions.None,
+        hostSessions: MpSessions = MpSessions.None,
     ): Setup {
         val network = MemoryNetwork()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -82,36 +95,41 @@ class MultiplayerTableTest {
         val bots: (GameConfig) -> ((Seat, kotlin.random.Random) -> com.gtranca.ai.BotPlayer) = { { seat, _ -> testBot(seed, seat) } }
         val hostTransport = network.transport()
         val guestTransport = network.transport()
-        val host = MultiplayerTable(hostTransport, scope, hostCoins, dispatcher, bots, newSeed = { seed })
-        val guest = MultiplayerTable(guestTransport, scope, guestCoins, dispatcher, bots, newSeed = { seed })
+        val host = MultiplayerTable(hostTransport, scope, hostCoins, dispatcher, bots, newSeed = { seed }, sessions = hostSessions)
+        val guest = MultiplayerTable(guestTransport, scope, guestCoins, dispatcher, bots, newSeed = { seed }, sessions = guestSessions)
         host.myPhoto = hostPhoto
         guest.myPhoto = guestPhoto
-        host.host(rules, "Ana", "mesa-1", lobby(robots, seed))
-        advanceUntilIdle()
-        enter(host, guest, "mesa-1", "Beto")
+        host.host(rules, "Ana", "mesa-1", lobby(robots, seed, guestSeat))
+        runCurrent() // o recrutado entra antes de o "Prepare-se!" acabar
+        enter(host, guest, "mesa-1", "Beto", guestSeat)
         val again = { isHost: Boolean ->
-            MultiplayerTable(if (isHost) hostTransport else guestTransport, scope, if (isHost) hostCoins else guestCoins, dispatcher, bots, newSeed = { seed })
+            MultiplayerTable(if (isHost) hostTransport else guestTransport, scope, if (isHost) hostCoins else guestCoins, dispatcher, bots, newSeed = { seed }, sessions = if (isHost) hostSessions else guestSessions)
         }
         return Setup(host, guest, hostCoins, guestCoins, scope, rules, again, { network.kill(hostTransport.id) }, { network.drop(guestTransport.id) }, { on -> if (on) { network.block(guestTransport.id); network.drop(guestTransport.id) } else network.unblock(guestTransport.id) }) {
             MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, bots, newSeed = { seed })
         }
     }
 
-    /** §14.4 a mesa montada só com robôs escolhidos (os que sobram são sorteados). */
-    private fun lobby(robots: List<String>, seed: Long) =
-        com.gtranca.net.LobbySetup(robots.map { com.gtranca.net.Participant.Robot(it) }, com.gtranca.game.Tables.personaPool, seed)
+    /** §16.2 plano de lugares: o convidado ("Beto") recrutado no lugar [guestSeat] e os robôs escolhidos nos outros. */
+    private fun lobby(robots: List<String>, seed: Long, guestSeat: Int = 1): com.gtranca.net.TablePlan {
+        var layout = com.gtranca.net.TableLayout.initial(GameMode.DUPLAS).call(guestSeat, "k$guestSeat", "Beto")!!.accept("k$guestSeat")!!
+        // O robô da vez do lugar do convidado cede o lugar a ele; os outros ficam nos lugares 1 a 3 na ordem escolhida.
+        robots.forEachIndexed { i, persona ->
+            val seat = i + 1
+            if (seat in 1..3 && seat != guestSeat) layout = layout.placeRobot(seat, persona) ?: layout
+        }
+        layout = layout.fillWithRobots(com.gtranca.game.Tables.personaPool, kotlin.random.Random(seed))
+        return com.gtranca.net.TablePlan(layout, com.gtranca.game.Tables.personaPool, seed)
+    }
 
-    /** §16.2 pedido de entrada na escolha de posições, aceito pelo anfitrião: entra no lugar do primeiro robô. */
-    private suspend fun TestScope.enter(host: MultiplayerTable, guest: MultiplayerTable, tableId: String, name: String) {
-        guest.join(tableId, name)
-        advanceUntilIdle()
-        host.approveJoin(host.joinRequests.value.single().requestId)
+    /** §16.2 o recrutado entra na mesa do jogo com a própria chave; o "Prepare-se!" passa no relógio virtual e o jogo começa. */
+    private suspend fun TestScope.enter(host: MultiplayerTable, guest: MultiplayerTable, tableId: String, name: String, seat: Int = 1) {
+        guest.join(tableId, name, inviteKey = "k$seat")
         advanceUntilIdle()
     }
 
-    /** §16.2 o anfitrião confirma a posição; com todos os humanos confirmados, o jogo começa 2 s depois. */
+    /** §16.2 o jogo já começou sozinho depois do "Prepare-se!". */
     private suspend fun TestScope.start(t: Setup) {
-        t.host.confirmSeat()
         advanceUntilIdle()
     }
 
@@ -119,16 +137,9 @@ class MultiplayerTableTest {
     fun `um leitor por transporte - sair da sala e entrar de novo, e o anfitrião que joga duas vezes`() = runTest {
         val seed = 45L
         val t = setup(seed)
-        // Convidado sai da sala e entra de novo pelo mesmo transporte: chega à sala e confirma.
-        t.guest.leave()
-        advanceUntilIdle()
-        t.host.roster.value.size shouldBe 1
-        val guest2 = t.again(false)
-        enter(t.host, guest2, "mesa-1", "Beto")
+        // §16.2 o recrutado entrou no lugar planejado e o jogo começou sozinho depois do "Prepare-se!".
+        val guest2 = t.guest
         guest2.mySeat shouldBe Seat(1)
-        guest2.confirmSeat()
-        advanceUntilIdle()
-        t.host.roster.value.first { it.id == guest2.myId }.confirmed shouldBe true
         // O anfitrião joga até o fim e publica outra mesa no mesmo transporte; o convidado entra nela.
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -142,7 +153,7 @@ class MultiplayerTableTest {
         advanceUntilIdle()
         val host2 = t.again(true)
         host2.host(t.rules.copy(tableName = "Revanche"), "Ana", "mesa-2", lobby(t.rules.robots, seed))
-        advanceUntilIdle()
+        runCurrent()
         val guest3 = t.again(false)
         enter(host2, guest3, "mesa-2", "Beto")
         guest3.mySeat shouldBe Seat(1)
@@ -153,7 +164,6 @@ class MultiplayerTableTest {
     fun `§16_13 quem sai das telas antes do premio chegar ainda recebe`() = runTest {
         val seed = 46L
         val t = setup(seed)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -171,7 +181,6 @@ class MultiplayerTableTest {
     fun `§16_6 a tela do convidado - a vez chega pelo condutor e a compra vai ao anfitrião`() = runTest {
         val seed = 47L
         val t = setup(seed, targetScore = 3000)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -235,11 +244,9 @@ class MultiplayerTableTest {
     @Test
     fun `§16_2 sala, inicio, jogo completo pela tela e moedas de cada aparelho`() = runTest {
         val seed = 41L
-        val t = setup(seed)
-        // §16.2 entra no lugar do primeiro robô e gira para trocar com o vizinho antes de confirmar; nome em branco = "Jogador 1".
-        t.guest.mySeat shouldBe Seat(1)
-        t.guest.rotate(com.gtranca.net.RotateDirection.RIGHT)
-        t.guest.confirmSeat()
+        val t = setup(seed, guestSeat = 2)
+        // §16.2 o recrutado ocupa o lugar que o recrutador deu a ele (aqui, o 2); nome em branco = "Jogador 1".
+        t.guest.mySeat shouldBe Seat(2)
         t.host.rename(" ")
         advanceUntilIdle()
         t.host.roster.value.first { it.isHost }.name shouldBe "Jogador 1"
@@ -287,7 +294,6 @@ class MultiplayerTableTest {
     fun `§16_9 desistencia do convidado, assento VAGO, pausa do anfitrião e robo substituto`() = runTest {
         val seed = 42L
         val t = setup(seed)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -316,7 +322,6 @@ class MultiplayerTableTest {
     fun `§16_10 passar o cargo - o convidado vira anfitrião, o antigo volta como convidado e o jogo segue até o fim`() = runTest {
         val seed = 44L
         val t = setup(seed)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -344,7 +349,6 @@ class MultiplayerTableTest {
     fun `§16_10 passar o cargo depois de o convidado jogar - a vez do novo anfitrião não fica presa ao pedido antigo`() = runTest {
         val seed = 50L
         val t = setup(seed, targetScore = 1000)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -371,7 +375,6 @@ class MultiplayerTableTest {
         val seed = 48L
         // Ordem diferente da dos perfis: um sorteio local no convidado daria outros robôs.
         val t = setup(seed, robots = listOf("atleta", "alternativo", "sobrio"))
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostPersonas = t.host.personas(Persona("Ana"), "VAGO") { it }
@@ -394,7 +397,6 @@ class MultiplayerTableTest {
     fun `§16_6 cada aparelho ve uma jogada por vez, em ordem, no seu ritmo`() = runTest {
         val seed = 49L
         val t = setup(seed, targetScore = 3000)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val pace = 700L
@@ -432,7 +434,6 @@ class MultiplayerTableTest {
         val guestJpeg = byteArrayOf(9, 8, 7, 6)
         val b64 = { b: ByteArray -> java.util.Base64.getEncoder().encodeToString(b) }
         val t = setup(51L, hostPhoto = b64(hostJpeg), guestPhoto = b64(guestJpeg))
-        t.guest.confirmSeat()
         advanceUntilIdle()
         // Na sala: cada um recebe a foto do outro (só em memória).
         t.guest.photos.value[0]!!.toList() shouldBe hostJpeg.toList()
@@ -453,7 +454,6 @@ class MultiplayerTableTest {
     @Test
     fun `§16_10 queda do anfitriao - o sucessor ganha as acoes de anfitriao`() = runTest {
         val t = setup(52L, targetScore = 3000)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         t.host.hostControls.value.shouldNotBeNull()
@@ -462,21 +462,6 @@ class MultiplayerTableTest {
         advanceUntilIdle()
         (t.guest.role.value is MpRole.Hosting) shouldBe true
         t.guest.hostControls.value.shouldNotBeNull()
-    }
-
-    @Test
-    fun `§16_2 sala - avatar de cada assento com a foto, a propria do perfil local, e o robo com o personagem`() {
-        val jpeg = byteArrayOf(1, 2)
-        val self = Persona("Você", photo = "/perfil.jpg")
-        val withPhotos = com.gtranca.ui.multiplayer.SeatPickerUi(null, myId = 1, names = mapOf(0 to "Ana", 1 to "Beto"), photos = mapOf(0 to jpeg), rules = null)
-        val level = com.gtranca.game.BotLevel.MADURO
-        com.gtranca.ui.multiplayer.occupantAvatar(com.gtranca.net.SeatOccupant.Human(1), withPhotos, level, self)
-            .let { it.photo shouldBe "/perfil.jpg"; it.firstName shouldBe "Beto" }
-        com.gtranca.ui.multiplayer.occupantAvatar(com.gtranca.net.SeatOccupant.Human(0), withPhotos, level, self).photoBytes!!.toList() shouldBe jpeg.toList()
-        // Opção desligada (sem fotos recebidas): a inicial.
-        com.gtranca.ui.multiplayer.occupantAvatar(com.gtranca.net.SeatOccupant.Human(0), withPhotos.copy(photos = emptyMap()), level, self).photoBytes shouldBe null
-        com.gtranca.ui.multiplayer.occupantAvatar(com.gtranca.net.SeatOccupant.Robot("atleta"), withPhotos, level, self).character
-            .shouldNotBeNull().profile shouldBe com.gtranca.game.BotProfile.ATLETA
     }
 
     @Test
@@ -511,7 +496,6 @@ class MultiplayerTableTest {
     fun `§16_7 §16_9 vaga de humano que desistiu - outro aparelho entra, e aprovado e joga ate o fim`() = runTest {
         val seed = 95L
         val t = setup(seed, targetScore = 500)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -550,7 +534,6 @@ class MultiplayerTableTest {
     fun `§16_8 §16_10 convidado fora do alcance na vez dele - ao voltar fica um so anfitriao e o jogo segue`() = runTest {
         val seed = 97L
         val t = setup(seed, targetScore = 500)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -576,7 +559,6 @@ class MultiplayerTableTest {
     fun `§16_9 quem desistiu volta a mesa pelo token - a tela sai do fim de jogo e ele joga ate o fim`() = runTest {
         val seed = 98L
         val t = setup(seed, targetScore = 500)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -612,7 +594,6 @@ class MultiplayerTableTest {
     fun `§16_5 convidado cai no meio do jogo e volta pelo token - a tela segue recebendo e a vez anda`() = runTest {
         val seed = 96L
         val t = setup(seed, targetScore = 500)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -632,7 +613,6 @@ class MultiplayerTableTest {
     fun `§16_1 recusa libera o mesmo pedido para jogar de novo quando a vista volta`() = runTest {
         val seed = 43L
         val t = setup(seed, targetScore = 3000)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -660,7 +640,6 @@ class MultiplayerTableTest {
     fun `§16_2 §16_7 anfitriao desliga o Wi-Fi no meio do jogo - o convidado vira robo e o jogo segue so no aparelho dele`() = runTest {
         val seed = 99L
         val t = setup(seed, targetScore = 500)
-        t.guest.confirmSeat()
         advanceUntilIdle()
         start(t)
         val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
@@ -674,25 +653,6 @@ class MultiplayerTableTest {
         drive(t.scope, hostDriver, seed)
         advanceUntilIdle()
         hostDriver.state.value.stage shouldBe Stage.GAME_OVER
-    }
-
-    @Test
-    fun `§16_2 sair do anfitriao na escolha de posicoes desfaz a mesa e o convidado ve Mesa encerrada`() = runTest {
-        val t = setup(100L)
-        t.host.leave()
-        advanceUntilIdle()
-        t.guest.end.value shouldBe MpEnd.Ended(com.gtranca.net.CloseReason.HOST_LEFT)
-    }
-
-    @Test
-    fun `§16_2 pedido de entrada recusado - o candidato ve o motivo`() = runTest {
-        val t = setup(101L)
-        val third = t.newDevice()
-        third.join("mesa-1", "Caio")
-        advanceUntilIdle()
-        t.host.refuseJoin(t.host.joinRequests.value.single().requestId)
-        advanceUntilIdle()
-        (third.end.value as MpEnd.Refused).reason shouldBe com.gtranca.net.RefusalReason.HOST_REFUSED
     }
 
     @Test
@@ -770,5 +730,124 @@ class MultiplayerTableTest {
         } finally {
             kotlinx.coroutines.Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun `§16_12 o jogador comum grava so a sessao ao entrar - mesa, assento, token e nomes - e o anfitriao tambem`() = runTest {
+        val guestSessions = FakeSessions()
+        val hostSessions = FakeSessions()
+        val t = setup(110L, guestSessions = guestSessions, hostSessions = hostSessions)
+        advanceUntilIdle()
+        guestSessions.last.shouldNotBeNull().let {
+            it.tableId shouldBe "mesa-1"
+            it.seat shouldBe 1
+            it.playerName shouldBe "Beto"
+            it.hostName shouldBe "Ana"
+            it.wasHost shouldBe false
+            it.token.isNotBlank() shouldBe true
+        }
+        // §16.12 o anfitrião volta como jogador comum: grava a sessão com o token dele, marcada como anfitrião.
+        hostSessions.last.shouldNotBeNull().let { it.wasHost shouldBe true; it.seat shouldBe 0; it.token.isNotBlank() shouldBe true }
+        // nada mais que a sessão: o jogo não vai a lugar nenhum (o tipo guarda só mesa, assento, token e nomes)
+        guestSessions.saved.map { it.copy(savedAtMillis = 0) }.distinct().size shouldBe 1
+        guestSessions.clears shouldBe 0
+        t.host.role.value.shouldNotBeNull()
+    }
+
+    @Test
+    fun `§16_12 §16_11 a sessao e apagada quando o resultado do jogo e entregue`() = runTest {
+        val seed = 111L
+        val guestSessions = FakeSessions()
+        val hostSessions = FakeSessions()
+        val t = setup(seed, guestSessions = guestSessions, hostSessions = hostSessions)
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        val guestDriver = MultiplayerDriver.create(t.guest, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        drive(t.scope, guestDriver, seed)
+        advanceUntilIdle()
+        guestDriver.state.value.stage shouldBe Stage.GAME_OVER
+        guestSessions.clears shouldBe 1
+        hostSessions.clears shouldBe 1
+    }
+
+    @Test
+    fun `§16_12 §16_9 desistir e sair das telas sem voltar apaga a sessao`() = runTest {
+        val guestSessions = FakeSessions()
+        val t = setup(112L, guestSessions = guestSessions)
+        advanceUntilIdle()
+        t.guest.resign()
+        advanceUntilIdle()
+        guestSessions.clears shouldBe 0 // ainda pode voltar à mesa pelo token
+        t.guest.exitScreens()
+        advanceUntilIdle()
+        guestSessions.clears shouldBe 1
+    }
+
+    @Test
+    fun `§16_5 §16_12 Continuar - com o aplicativo fechado a sessao guardada reingressa no mesmo assento e recebe a vista atual`() = runTest {
+        val seed = 113L
+        val guestSessions = FakeSessions()
+        val t = setup(seed, guestSessions = guestSessions)
+        val hostDriver = MultiplayerDriver.create(t.host, t.scope) { 0 }
+        drive(t.scope, hostDriver, seed)
+        advanceUntilIdle()
+        val saved = guestSessions.last.shouldNotBeNull()
+        // O aplicativo do convidado fechou: a mesa some do aparelho, a sessão fica guardada.
+        t.guest.leave()
+        t.dropGuest() // o aplicativo fechou: a conexão cai
+        advanceUntilIdle()
+        val again = t.again(false)
+        again.rejoin(saved.tableId, saved.playerName, saved.token, Seat(saved.seat), saved.wasHost) shouldBe true
+        advanceUntilIdle()
+        again.guestStatus.value shouldBe com.gtranca.net.GuestStatus.Playing
+        again.mySeat shouldBe Seat(1)
+        again.rules.value.shouldNotBeNull().stake shouldBe 50
+        guestSessions.clears shouldBe 0
+    }
+
+    @Test
+    fun `§16_5 §16_12 token recusado - A vaga foi preenchida - apaga a sessao`() = runTest {
+        val guestSessions = FakeSessions()
+        val t = setup(114L, guestSessions = guestSessions)
+        advanceUntilIdle()
+        val saved = guestSessions.last.shouldNotBeNull()
+        t.guest.leave()
+        t.dropGuest() // o aplicativo fechou: a conexão cai
+        advanceUntilIdle()
+        val again = t.again(false)
+        again.rejoin(saved.tableId, saved.playerName, "token-errado", Seat(saved.seat), false) shouldBe true
+        advanceUntilIdle()
+        (again.end.value as MpEnd.Refused).message.contains("ocupado") shouldBe true
+        guestSessions.clears shouldBe 1
+    }
+
+    @Test
+    fun `§16_5 §16_12 mesa nao encontrada em 30 s - fim Mesa nao encontrada e a sessao fica`() = runTest {
+        val guestSessions = FakeSessions()
+        val t = setup(115L, guestSessions = guestSessions)
+        advanceUntilIdle()
+        val saved = guestSessions.last.shouldNotBeNull()
+        t.guest.leave()
+        t.dropGuest() // o aplicativo fechou: a conexão cai
+        advanceUntilIdle()
+        val again = t.again(false)
+        again.rejoin("mesa-que-nao-existe", saved.playerName, saved.token, Seat(saved.seat), false) shouldBe false
+        again.end.value shouldBe MpEnd.NotFound
+        guestSessions.clears shouldBe 0
+    }
+
+    @Test
+    fun `§16_2 §16_15 recrutado sem achar a mesa em 30 s termina em Mesa nao encontrada (e nao antes)`() = runTest {
+        val t = setup(116L)
+        advanceUntilIdle()
+        t.guest.leave()
+        t.dropGuest()
+        advanceUntilIdle()
+        val again = t.again(false)
+        again.joinAsync("mesa-que-nao-existe", "Bia", inviteKey = "kz")
+        advanceTimeBy(29_000)
+        again.end.value shouldBe null
+        advanceTimeBy(2_000)
+        again.end.value shouldBe MpEnd.NotFound
     }
 }

@@ -33,22 +33,22 @@ class ReliableLinkTest {
                 listOf(d)
             }
         }
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val ana = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
+        val t = plannedTable(mapOf(1 to "Ana"), network = network, start = false)
+        val ana = t.guests.getValue(1)
+        val host = t.host
         advanceUntilIdle()
         // Perde a 1ª atualização da sala (lacuna, a 2ª chega adiantada) e, depois, a última (sem sucessora).
         dropNextRoster = 1
         ana.rename("Ana Maria")
         advanceUntilIdle()
-        ana.chooseSeat(com.gtranca.engine.model.Seat(2))
+        ana.rename("Ana Maria 2")
         advanceUntilIdle()
         dropNextRoster = 1
-        ana.chooseSeat(com.gtranca.engine.model.Seat(3))
+        ana.rename("Ana Maria 3")
         advanceUntilIdle()
         dropped.size shouldBe 2
         ana.roster.value shouldBe host.roster.value
-        ana.roster.value.last().let { it.name to it.seat } shouldBe ("Ana Maria" to com.gtranca.engine.model.Seat(3))
+        ana.roster.value.last().name shouldBe "Ana Maria 3"
     }
 
     @Test
@@ -56,9 +56,9 @@ class ReliableLinkTest {
         val network = MemoryNetwork()
         var sentToGuest = 0
         network.tap = { d -> if (d.to.value == "e2") sentToGuest++; listOf(d, d) }
-        val host = HostSession(network.transport(), "m", rules, "Anfitrião")
-        host.open(sessionScope)
-        val ana = GuestSession(network.transport(), "Ana").also { it.join(sessionScope, "m") }
+        val t = plannedTable(mapOf(1 to "Ana"), network = network, start = false)
+        val ana = t.guests.getValue(1)
+        val host = t.host
         advanceUntilIdle()
         ana.rename("Bia")
         advanceUntilIdle()
