@@ -269,6 +269,27 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) { SoundButton(GColors.OnTable) }
     }
 
+    // §17.5 Presente do dia: ícone, nome e quantidade do booster sorteado.
+    state.gift?.let { gift ->
+        GDialog(
+            onDismissRequest = viewModel::onGiftDismissed,
+            modifier = Modifier.testTag("gift-modal"),
+            title = { Text(stringResource(R.string.gift_title)) },
+            text = {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    com.gtranca.ui.inventory.boosterIconRes(gift.boosterId)?.let {
+                        Image(painterResource(it), null, Modifier.size(112.dp).testTag("gift-icon"), contentScale = ContentScale.Fit)
+                    }
+                    Text(gift.name, style = MaterialTheme.typography.titleLarge, color = GColors.Gold, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("gift-name"))
+                    Text(stringResource(R.string.gift_quantity, gift.quantity), style = MaterialTheme.typography.titleMedium, color = GColors.Ivory, modifier = Modifier.testTag("gift-quantity"))
+                }
+            },
+            confirmButton = {
+                GButton(viewModel::onGiftDismissed, Modifier.heightIn(min = 48.dp).testTag("gift-ok")) { Text(stringResource(R.string.gift_ok)) }
+            },
+        )
+    }
+
     if (state.confirmNewGame) {
         GMessage(
             modifier = Modifier.testTag("new-game-dialog"),

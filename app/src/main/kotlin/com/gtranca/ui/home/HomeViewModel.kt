@@ -37,10 +37,15 @@ data class HomeUiState(
     val canClaimDaily: Boolean = false,
     /** §16.12 sessão multijogador guardada para "Continuar mesa", ou `null`. */
     val session: SessionSummary? = null,
+    /** §17.5 o presente do dia a mostrar no modal *Presente do dia*, ou `null`. */
+    val gift: GiftUi? = null,
 ) {
     /** Pode agir nos botões de jogo (tudo carregado, nada em andamento). */
     val ready: Boolean get() = loadedSaved && !starting && !pendingNewGame
 }
+
+/** §17.5 o presente do dia como o modal o mostra: o booster (ícone e nome) e a quantidade. */
+data class GiftUi(val boosterId: String, val name: String, val quantity: Int)
 
 /** §16.12 o que o botão "Continuar mesa" mostra da sessão guardada: o anfitrião e o assento (nunca o token). */
 data class SessionSummary(val hostName: String, val seat: Int, val wasHost: Boolean) {
@@ -86,6 +91,10 @@ class HomeViewModel(
     private val sessions: com.gtranca.data.MultiplayerSessionStore? = null,
     /** Dia de hoje (dias desde 1970, data do aparelho); injetável nos testes. */
     private val today: () -> Long = { java.time.LocalDate.now().toEpochDay() },
+    /** §17.5 inventário de boosters: na primeira abertura do dia pode vir um presente. `null` = sem presente (testes). */
+    private val boosters: com.gtranca.data.InventoryRepository? = null,
+    /** Sorteio do presente; injetável nos testes. */
+    private val giftRandom: () -> kotlin.random.Random = { kotlin.random.Random.Default },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(loadedSaved = savedGames == null))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -94,6 +103,14 @@ class HomeViewModel(
 
     init {
         refresh()
+        // §17.5 primeira abertura do dia, só no Início: um sorteio por dia; o prêmio já entra no inventário.
+        boosters?.let { repo ->
+            viewModelScope.launch {
+                val gift = safely { repo.claimGift(today(), giftRandom()) } ?: return@launch
+                val name = repo.catalog.firstOrNull { it.id == gift.boosterId }?.name ?: return@launch
+                _uiState.update { it.copy(gift = GiftUi(gift.boosterId, name, gift.quantity)) }
+            }
+        }
         wallet?.let { repo ->
             viewModelScope.launch {
                 repo.wallet.catch { emit(Wallet()) }.collect { w ->
@@ -105,6 +122,9 @@ class HomeViewModel(
     }
 
     private fun publishWallet() = _uiState.update { it.copy(balance = lastWallet.balance, canClaimDaily = lastWallet.canClaimDaily(today())) }
+
+    /** §17.5 fechou o modal *Presente do dia*. */
+    fun onGiftDismissed() = _uiState.update { it.copy(gift = null) }
 
     /** §14.6 resgata o ganho diário (um por dia); o saldo e o botão se atualizam pela carteira. */
     fun onClaimDaily() {

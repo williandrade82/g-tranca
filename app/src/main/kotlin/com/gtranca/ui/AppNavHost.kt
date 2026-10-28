@@ -273,7 +273,7 @@ fun AppNavHost() {
                 null -> Unit
                 true -> com.gtranca.ui.home.WelcomeScreen { navController.navigateFromHome(ProfileRoute) }
                 false -> HomeScreen(
-                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet, sessions = data.multiplayerSession) },
+                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet, sessions = data.multiplayerSession, boosters = data.inventory) },
                 onNewGame = { navController.navigateFromHome(TablesRoute) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onContinueSession = { navController.navigateFromHome(RejoinRoute) },
