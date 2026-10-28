@@ -507,9 +507,16 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
         GameLoad.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         is GameLoad.Ready -> {
             val saved = ready.saved
+            // §17.3 jogo novo: a 1ª partida começa pelo seletor de boosters (antes de o jogo ser criado e a mesa aparecer).
+            var chosenCsv by rememberSaveable { mutableStateOf<String?>(null) }
             if (ready.resumed && saved == null) {
                 LaunchedEffect(Unit) { goHome() }
+            } else if (saved == null && chosenCsv == null) {
+                com.gtranca.ui.boosters.BoosterSelectorScreen(
+                    viewModel(key = "boosters-selector-1") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory) },
+                ) { chosen -> chosenCsv = chosen.joinToString(",") }
             } else {
+                val firstBoosters = chosenCsv.orEmpty().split(',').filter { it.isNotEmpty() }
                 val viewModel = viewModel {
                     val persistence = DataGamePersistence(data)
                     if (saved != null) {
@@ -524,9 +531,10 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             playerPhoto = photoPath,
                             slowAnimations = ready.slow,
                             robots = saved.robots,
+                            boosterInventory = data.inventory,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap())
+                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory)
                     }
                 }
                 session.started = true

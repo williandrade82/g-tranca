@@ -749,4 +749,10 @@
     <string name="inventory_coins">Moedas</string>
     <string name="inventory_slot_desc">%1$s, quantidade %2$d</string>
     <string name="inventory_slot_desc_selected">%1$s, quantidade %2$d, marcado</string>
+    <!-- Boosters: Seletor antes de cada partida (docs/telas.md 3.19) -->
+    <string name="boosters_go">Iniciar o jogo</string>
+    <string name="boosters_timer">%1$d s</string>
+    <string name="boosters_slot_empty">Nicho %1$d vazio, toque para escolher um booster</string>
+    <string name="boosters_slot_filled">%1$s, quantidade %2$d, toque para tirar</string>
+    <string name="boosters_pick_title">Escolha um booster</string>
 </resources>

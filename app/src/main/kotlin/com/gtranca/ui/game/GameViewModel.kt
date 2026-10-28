@@ -142,6 +142,10 @@ data class GameUiState(
     val remoteTurns: Boolean = false,
     /** Mesa multijogador: o botão "Esconder cartas" aparece. */
     val canHideHand: Boolean = false,
+    /** §17.3 boosters do jogador na partida em andamento (ids do catálogo; vazio = nenhum). */
+    val boosters: List<String> = emptyList(),
+    /** §17.3 o seletor de boosters da próxima partida está na tela (a partida só começa depois do Seguir). */
+    val boosterSelectorPending: Boolean = false,
     /** As cartas da mão estão viradas (só neste aparelho). */
     val handHidden: Boolean = false,
 ) {
@@ -217,6 +221,13 @@ class GameViewModel(
     private val robots: Map<Int, String> = emptyMap(),
     /** §16.7 o jogo continua de onde estava na tela (virou online no meio): a primeira vista não refaz animação. */
     private val continuing: Boolean = false,
+    /** §17.3 boosters da partida em andamento (já debitados); no jogo retomado vale o do jogo salvo. */
+    initialBoosters: List<String> = emptyList(),
+    /**
+     * §17.3 inventário de boosters: com ele, cada partida depois da primeira começa pelo seletor (a 1ª passa por ele antes de
+     * o jogo ser criado). `null` = sem boosters (testes e mesa multijogador).
+     */
+    val boosterInventory: com.gtranca.data.InventoryRepository? = null,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -242,8 +253,16 @@ class GameViewModel(
     private fun enqueueSave(snapshot: SaveSnapshot) {
         val store = persistence ?: return
         if (finishSent.get()) return
-        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName, robots)) }
+        val boostersNow = boosters
+        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName, robots, boostersNow)) }
     }
+
+    /** O jogo é conduzido por este aparelho (contra robôs), não por uma mesa multijogador. */
+    private val playsLocally: Boolean = externalDriver == null
+
+    /** §17.3 boosters da partida em andamento; lido pela gravação do jogo (fora da thread principal). */
+    @Volatile
+    private var boosters: List<String> = restored?.boosters ?: initialBoosters
 
     private data class Local(
         val snapshot: GameSnapshot,
@@ -284,6 +303,8 @@ class GameViewModel(
         val handHidden: Boolean = false,
         val message: UiMessage? = null,
         val endStep: Int = 0,
+        /** §17.3 o seletor de boosters da próxima partida está na tela. */
+        val selectorPending: Boolean = false,
     )
 
     private val human = HumanPlayer()
@@ -648,6 +669,8 @@ class GameViewModel(
             remoteTurns = multiplayer,
             canHideHand = multiplayer,
             handHidden = multiplayer && state.handHidden,
+            boosters = boosters,
+            boosterSelectorPending = state.selectorPending,
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
         )
@@ -789,6 +812,16 @@ class GameViewModel(
     }
 
     fun onNextRound() {
+        // §17.3 contra robôs, cada partida começa pelo seletor de boosters (antes de ver a distribuição).
+        if (boosterInventory != null && playsLocally && !multiplayer) local.update { it.copy(selectorPending = true) }
+        else controller.continueToNextRound()
+    }
+
+    /** §17.3 Seguir no seletor: os boosters da partida ([chosen], já debitados) valem e a próxima partida começa. */
+    fun onBoostersConfirmed(chosen: List<String>) {
+        if (!local.value.selectorPending) return
+        boosters = chosen
+        local.update { it.copy(selectorPending = false) }
         controller.continueToNextRound()
     }
 
