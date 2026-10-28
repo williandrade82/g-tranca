@@ -48,15 +48,10 @@ data class SavedGame(
      */
     val robots: Map<Int, String> = emptyMap(),
     /**
-     * §17.3 boosters do jogador na partida em andamento (ids do catálogo), já debitados. Vazio em jogos salvos antes dos
-     * boosters (e quando o jogador não escolheu nenhum).
+     * §17.4 os boosters de cada assento da mesa na partida em andamento (já debitados) e as reações já usadas: ficam na
+     * posição da mesa, e "Continuar" os retoma como estavam. Vazio em jogos salvos antes dos boosters.
      */
-    val boosters: List<String> = emptyList(),
-    /**
-     * §17.3 o seletor da partida em andamento já foi confirmado. Falso: salvo antes do Seguir, o seletor volta ao
-     * retomar. Jogos salvos antes dos boosters valem como confirmados.
-     */
-    val boostersConfirmed: Boolean = true,
+    val tableBoosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters(),
 ) {
     companion object {
         /** Versão atual do formato; arquivos de outra versão são tratados como "sem jogo salvo". */

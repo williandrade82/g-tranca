@@ -23,9 +23,9 @@ fun GameConfig.toSaved(): SavedConfig = SavedConfig(mode, difficulty.id, targetS
 
 fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(difficultyId), targetScore, stake = stake)
 
-fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls, playerName, boosters)
+fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls, playerName, tableBoosters)
 
-fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null, robots: Map<Int, String> = emptyMap(), boosters: List<String> = emptyList()): SavedGame = SavedGame(
+fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null, robots: Map<Int, String> = emptyMap(), tableBoosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters()): SavedGame = SavedGame(
     gameId = gameId,
     config = config.toSaved(),
     gameSeed = gameSeed,
@@ -34,7 +34,7 @@ fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: Sa
     botRandomCalls = snapshot.botRandomCalls,
     playerName = playerName,
     robots = robots,
-    boosters = boosters,
+    tableBoosters = tableBoosters,
 )
 
 /** O que o jogo em andamento grava. Interface para os testes. */

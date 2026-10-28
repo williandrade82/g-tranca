@@ -698,11 +698,11 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 - **Prazo de 30 s** a partir de quando o seletor aparece. Sem confirmar, vale **o que estiver selecionado na tela** (como se tivesse tocado em Seguir); sem nenhum selecionado, a partida começa **sem boosters**.
 - O jogo **não espera** quem ainda não escolheu: os demais começam. Ao chegar a **vez** de quem ainda não escolheu, o jogo **espera**, como parte da jogada dele, no máximo até o fim dos 30 s. Depois de confirmar, o jogador vê as **animações de distribuição e os descartes já feitos** (§16.6).
 - Os boosters valem **só para a partida**: a partida seguinte tem novo seletor e nova cobrança. **Desistir** (§13.1) ou cair da mesa não devolve o que foi debitado.
-- Jogo salvo ("Continuar", §14): guarda os boosters da partida em andamento, já debitados; retomar **não debita de novo**. Salvo antes de confirmar o seletor, o seletor volta a aparecer ao retomar.
+- Jogo salvo ("Continuar", §14): guarda **por assento** os boosters da partida em andamento (já debitados) e as **reações já usadas** (§17.4, §17.8); retomar **não debita de novo** e devolve os boosters e os usos de reação como estavam. Salvo antes de confirmar o seletor, o seletor volta a aparecer ao retomar.
 
 ### **17.4. Boosters e assentos (multijogador)**
-- O booster fica **no assento**, não no jogador. O **anfitrião** conhece os boosters escolhidos de **todos** os assentos humanos.
-- Quem **sai** do assento (§16.8, §16.9) leva o que sobrou do inventário, mas **não** os boosters já debitados da partida; quem **entra** depois (§16.7) **herda os boosters do assento** nessa partida **sem descontar do seu inventário**. Se o assento ainda não tinha confirmado o seletor, o novo ocupante o faz.
+- O booster fica **no assento**, não no jogador: o jogador põe o booster na **posição da mesa**, e o que vale é o estado do assento (boosters escolhidos, **usos de reação que sobraram** e se o seletor foi confirmado). Esse estado vive **onde a mesa é guardada**: no jogo salvo, para o "Continuar" (§14), e no **anfitrião**, que conhece o de **todos** os assentos humanos (§16.12), para que outro jogador possa assumir o assento.
+- Quem **sai** do assento (§16.8, §16.9) leva o que sobrou do inventário, mas **não** os boosters já debitados da partida; quem **entra** depois (§16.7) **herda o estado do assento** nessa partida (os mesmos boosters e os **usos de reação que sobraram**) **sem descontar do seu inventário**. Se o assento ainda não tinha confirmado o seletor, o novo ocupante o faz.
 - Nas partidas seguintes, cada ocupante escolhe os seus (§17.3).
 
 ### **17.5. Presente diário**

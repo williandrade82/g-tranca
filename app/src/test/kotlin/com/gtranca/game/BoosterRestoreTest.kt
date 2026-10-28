@@ -64,7 +64,7 @@ class BoosterRestoreTest {
         vm.onDraw()
         advanceUntilIdle()
         store.saves.shouldNotBeEmpty()
-        store.saves.all { it.boosters == listOf("b1", "b3") } shouldBe true
+        store.saves.all { it.tableBoosters.of(0).boosters == listOf("b1", "b3") } shouldBe true
     }
 
     @Test
@@ -98,7 +98,7 @@ class BoosterRestoreTest {
         val vm = newVm(store, emptyList())
         advanceUntilIdle()
         val saved = store.saves.first()
-        saved.boosters shouldBe emptyList()
+        saved.tableBoosters.of(0).boosters shouldBe emptyList()
         val resumed = GameViewModel(
             saved.config.toConfig(), gameSeed = saved.gameSeed, computeDispatcher = dispatcher, botDelayMillis = 0,
             swapAnimationMillis = 0, animationMillis = 0, restored = saved.toRestored(), gameId = saved.gameId,
@@ -106,5 +106,28 @@ class BoosterRestoreTest {
         )
         advanceUntilIdle()
         resumed.uiState.value.boosters shouldBe emptyList()
+    }
+
+    @Test
+    fun `§17_8 as reacoes usadas ficam no jogo salvo e o Continuar retoma so as que sobraram`() = runTest(dispatcher) {
+        val store = FakePersistence()
+        val vm = newVm(store, listOf("b3"))
+        advanceUntilIdle()
+        confirmSwaps(vm)
+        vm.onReaction(com.gtranca.engine.Reaction.LOVE)
+        vm.onReaction(com.gtranca.engine.Reaction.ANGRY)
+        advanceUntilIdle()
+        vm.uiState.value.reactionsLeft shouldBe 1
+        val saved = store.saves.last()
+        saved.tableBoosters.of(0).reactionsLeft shouldBe 1
+
+        val resumed = GameViewModel(
+            saved.config.toConfig(), gameSeed = saved.gameSeed, computeDispatcher = dispatcher, botDelayMillis = 0,
+            swapAnimationMillis = 0, animationMillis = 0, restored = saved.toRestored(), gameId = saved.gameId,
+            persistence = FakePersistence(), writes = WriteQueue(writeScope),
+        )
+        advanceUntilIdle()
+        resumed.uiState.value.reactionsLeft shouldBe 1
+        resumed.uiState.value.reactionsEnabled shouldBe true
     }
 }

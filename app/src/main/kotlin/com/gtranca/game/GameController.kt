@@ -731,8 +731,8 @@ data class RestoredGame(
     val botRandomCalls: List<Long> = emptyList(),
     /** Nome do jogador usado no sorteio dos personagens (§14.5); `null` = jogo salvo antigo (vale o do perfil). */
     val playerName: String? = null,
-    /** §17.3 boosters do jogador na partida em andamento (já debitados). */
-    val boosters: List<String> = emptyList(),
+    /** §17.4 boosters de cada assento na partida em andamento (já debitados) e reações usadas. */
+    val tableBoosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters(),
 )
 
 /** O que salvar: o jogo completo e os eventos públicos da partida atual (para reconstruir a memória dos bots). */

@@ -142,20 +142,19 @@ class InventoryRepositoryTest {
         val saved = SavedGame(
             gameId = "g", config = SavedConfig(com.gtranca.engine.model.GameMode.INDIVIDUAL, "medio", 3000),
             gameSeed = 1, match = com.gtranca.engine.startMatch(com.gtranca.engine.model.GameMode.INDIVIDUAL, 3000, Random(1)),
-            events = emptyList(), boosters = listOf("b1", "b3"), boostersConfirmed = false,
+            events = emptyList(), tableBoosters = com.gtranca.engine.TableBoosters.single(0, listOf("b1", "b3")).confirm(2, listOf("b2")),
         )
         val back = json.decodeFromString(SavedGame.serializer(), json.encodeToString(SavedGame.serializer(), saved))
-        back.boosters shouldBe listOf("b1", "b3")
-        back.boostersConfirmed shouldBe false
+        back.tableBoosters shouldBe saved.tableBoosters
+        back.tableBoosters.of(2).boosters shouldBe listOf("b2")
 
         // arquivo gravado antes dos boosters
         val old = json.parseToJsonElement(json.encodeToString(SavedGame.serializer(), saved)).let {
             kotlinx.serialization.json.JsonObject(
-                (it as kotlinx.serialization.json.JsonObject).filterKeys { k -> k != "boosters" && k != "boostersConfirmed" },
+                (it as kotlinx.serialization.json.JsonObject).filterKeys { k -> k != "tableBoosters" },
             )
         }
         val legacy = json.decodeFromJsonElement(SavedGame.serializer(), old)
-        legacy.boosters shouldBe emptyList()
-        legacy.boostersConfirmed shouldBe true
+        legacy.tableBoosters shouldBe com.gtranca.engine.TableBoosters()
     }
 }
