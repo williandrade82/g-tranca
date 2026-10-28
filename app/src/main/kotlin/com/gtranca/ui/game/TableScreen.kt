@@ -1349,6 +1349,8 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     val playableText = stringResource(R.string.card_playable)
     val completesText = stringResource(R.string.card_completes_selection)
     val notWithSelectionText = stringResource(R.string.card_not_with_selection)
+    val opponentFitsText = stringResource(R.string.card_opponent_fits)
+    val opponentClosesText = stringResource(R.string.card_opponent_closes)
     val newText = stringResource(R.string.card_new)
     val newDescription = stringResource(R.string.card_new_description)
     val hasSelection = state.selected.isNotEmpty()
@@ -1364,6 +1366,13 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
             val selected = card in state.selected
             val isNew = card in state.newCards
             val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
+            // §17.7 b2 Red-LED: círculo vermelho (e pulso) nas cartas que se encaixam no jogo do adversário.
+            val fit = state.opponentFits[card] ?: com.gtranca.engine.OpponentFit.NONE
+            val fitText = when (fit) {
+                com.gtranca.engine.OpponentFit.NONE -> ""
+                com.gtranca.engine.OpponentFit.FITS -> opponentFitsText
+                com.gtranca.engine.OpponentFit.CLOSES_CANASTA -> opponentClosesText
+            }
             val emphasisText = when (emphasis) {
                 CardEmphasis.SELECTED -> selectedText
                 CardEmphasis.SUBTLE -> playableText
@@ -1390,12 +1399,13 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
                     .alpha(if (card in landing) 0f else 1f)
                     .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
                     .semantics {
-                        stateDescription = listOf(emphasisText, if (isNew) newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
+                        stateDescription = listOf(emphasisText, fitText, if (isNew) newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
                     }
                     .testTag("hand-card-$card"),
                 size = CardSize.MEDIUM,
                 emphasis = emphasis,
                 badge = if (isNew) newText else null,
+                opponentFit = fit,
             )
         }
     }

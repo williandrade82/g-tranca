@@ -113,6 +113,8 @@
     <string name="card_new_description">recebida agora</string>
     <string name="card_completes_selection">combina com a seleção</string>
     <string name="card_not_with_selection">não combina com a seleção</string>
+    <string name="card_opponent_fits">se encaixa no jogo do adversário</string>
+    <string name="card_opponent_closes">fecha uma canastra do adversário</string>
 
     <!-- Mesa -->
     <string name="table_round">Partida %1$d</string>

@@ -146,6 +146,8 @@ data class GameUiState(
     val boosters: List<String> = emptyList(),
     /** §17.3 o seletor de boosters da próxima partida está na tela (a partida só começa depois do Seguir). */
     val boosterSelectorPending: Boolean = false,
+    /** §17.7 b2 Red-LED: as cartas da mão que se encaixam nos jogos do adversário (vazio sem o b2 ou fora da vez). */
+    val opponentFits: Map<Card, com.gtranca.engine.OpponentFit> = emptyMap(),
     /** As cartas da mão estão viradas (só neste aparelho). */
     val handHidden: Boolean = false,
 ) {
@@ -672,6 +674,7 @@ class GameViewModel(
             handHidden = multiplayer && state.handHidden,
             boosters = boosters,
             boosterSelectorPending = state.selectorPending,
+            opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
         )
