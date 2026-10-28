@@ -99,6 +99,9 @@ enum class EndScreen { FINAL_TABLE, ROUND_POINTS, FINAL }
  * @property reveal troca de 3 vermelho do próprio humano sendo encenada (bloqueia a mesa até "Baixar 3 vermelho").
  * @property banner troca de 3 vermelho de outro assento sendo mostrada (some sozinha após a duração da animação).
  */
+/** §17.8 uma reação enviada pelo [seat], com o [id] do envio: cada id novo reinicia a animação no centro da tela. */
+data class ReactionEvent(val seat: Seat, val reaction: com.gtranca.engine.Reaction, val id: Long)
+
 data class GameUiState(
     val snapshot: GameSnapshot,
     val hand: List<Card>,
@@ -159,6 +162,8 @@ data class GameUiState(
     val handHidden: Boolean = false,
     /** §17.8 reações dos outros assentos à vista agora (assento → reação), junto da pílula de cada um. */
     val seatReactions: Map<Int, com.gtranca.engine.Reaction> = emptyMap(),
+    /** §17.8 a reação mais recente à vista (de qualquer assento), animada no centro da tela. */
+    val lastReaction: ReactionEvent? = null,
     /** §17.3 mesa multijogador: a partida a que o seletor na tela se refere (0 = contra robôs: a da partida atual). */
     val boosterSelectorRound: Int = 0,
 ) {
@@ -333,6 +338,7 @@ class GameViewModel(
         val boostersTick: Int = 0,
         val ownReaction: com.gtranca.engine.Reaction? = null,
         val ownReactionId: Long = 0,
+        val lastReaction: ReactionEvent? = null,
     )
 
     private val human = HumanPlayer()
@@ -734,6 +740,7 @@ class GameViewModel(
             reactionsEnabled = com.gtranca.engine.BoosterCatalog.REACTIONS in boosters,
             reactionsLeft = seatState.reactionsLeft,
             seatReactions = state.seatReactions.mapValues { it.value.first },
+            lastReaction = state.lastReaction,
             boosterSelectorRound = state.pendingBoosterRound,
             ownReaction = state.ownReaction,
             ownReactionId = state.ownReactionId,
@@ -904,12 +911,12 @@ class GameViewModel(
         val used = table.useReaction(humanSeat.index) ?: return
         table = used
         val id = reactionIds.incrementAndGet()
-        local.update { it.copy(ownReaction = reaction, ownReactionId = id) }
+        local.update { it.copy(ownReaction = reaction, ownReactionId = id, lastReaction = ReactionEvent(humanSeat, reaction, id)) }
         // §17.8 os usos que sobraram ficam no jogo salvo (o "Continuar" os retoma como estavam).
         (controller as? LocalTableDriver)?.let { enqueueSave(it.controller.saveSnapshot()) }
         viewModelScope.launch {
             delay(REACTION_SHOW_MILLIS)
-            local.update { if (it.ownReactionId == id) it.copy(ownReaction = null) else it }
+            local.update { if (it.ownReactionId == id) it.copy(ownReaction = null, lastReaction = it.lastReaction?.takeIf { e -> e.id != id }) else it }
         }
     }
 
@@ -917,16 +924,16 @@ class GameViewModel(
     private fun showSeatReaction(shown: com.gtranca.game.SeatReaction) {
         val id = reactionIds.incrementAndGet()
         if (shown.seat == local.value.snapshot.viewerSeat.index) {
-            local.update { it.copy(ownReaction = shown.reaction, ownReactionId = id) }
+            local.update { it.copy(ownReaction = shown.reaction, ownReactionId = id, lastReaction = ReactionEvent(Seat(shown.seat), shown.reaction, id)) }
         } else {
-            local.update { it.copy(seatReactions = it.seatReactions + (shown.seat to (shown.reaction to id))) }
+            local.update { it.copy(seatReactions = it.seatReactions + (shown.seat to (shown.reaction to id)), lastReaction = ReactionEvent(Seat(shown.seat), shown.reaction, id)) }
         }
         viewModelScope.launch {
             delay(REACTION_SHOW_MILLIS)
             local.update { state ->
                 if (shown.seat == state.snapshot.viewerSeat.index) {
-                    if (state.ownReactionId == id) state.copy(ownReaction = null) else state
-                } else if (state.seatReactions[shown.seat]?.second == id) state.copy(seatReactions = state.seatReactions - shown.seat) else state
+                    if (state.ownReactionId == id) state.copy(ownReaction = null, lastReaction = state.lastReaction?.takeIf { e -> e.id != id }) else state
+                } else if (state.seatReactions[shown.seat]?.second == id) state.copy(seatReactions = state.seatReactions - shown.seat, lastReaction = state.lastReaction?.takeIf { e -> e.id != id }) else state
             }
         }
     }

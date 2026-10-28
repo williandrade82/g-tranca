@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -45,6 +46,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.gtranca.R
+import kotlinx.coroutines.launch
 import com.gtranca.engine.Reaction
 import com.gtranca.ui.theme.FitText
 import com.gtranca.ui.theme.GColors
@@ -107,9 +109,6 @@ internal fun ReactionsButton(state: GameUiState, onReaction: (Reaction) -> Unit)
                 onReaction(reaction)
             }
         }
-        if (!open) state.ownReaction?.let { reaction ->
-            androidx.compose.runtime.key(state.ownReactionId) { SentReaction(reaction) }
-        }
     }
 }
 
@@ -158,15 +157,55 @@ private fun ReactionsBalloon(left: Int, onDismiss: () -> Unit, onPick: (Reaction
     }
 }
 
-/** A reação enviada, à vista acima do botão por alguns segundos (a tela a tira quando o tempo acaba). */
+/**
+ * §17.8 a reação enviada por qualquer assento, em tamanho médio no **meio da tela**: sai da direção de quem a enviou (a própria,
+ * de baixo; as dos outros, de cima, de lado conforme o assento) com um zoom até o centro, fica um instante e some
+ * rapidamente ficando transparente. Sem animações (sistema ou Perfil), só aparece e some. Não captura toques.
+ */
 @Composable
-private fun SentReaction(reaction: Reaction) {
-    Popup(popupPositionProvider = AboveAnchor, properties = PopupProperties(focusable = false)) {
-        Image(
-            painterResource(reactionIconRes(reaction)),
-            stringResource(reactionLabelRes(reaction)),
-            Modifier.size(88.dp).testTag("reaction-sent"),
-            contentScale = ContentScale.Fit,
-        )
+fun ReactionCenterOverlay(event: ReactionEvent?, viewerSeat: com.gtranca.engine.model.Seat, seatCount: Int) {
+    if (event == null) return
+    androidx.compose.runtime.key(event.id) {
+        val motion = com.gtranca.ui.theme.rememberMotionEnabled()
+        val scale = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (motion) 0.25f else 1f) }
+        val travel = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (motion) 1f else 0f) }
+        val alpha = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(1f) }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            if (motion) {
+                kotlinx.coroutines.coroutineScope {
+                    launch { scale.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 220f)) }
+                    launch { travel.animateTo(0f, androidx.compose.animation.core.tween(REACTION_ZOOM_MILLIS, easing = androidx.compose.animation.core.FastOutSlowInEasing)) }
+                }
+            }
+            kotlinx.coroutines.delay(REACTION_HOLD_MILLIS)
+            alpha.animateTo(0f, androidx.compose.animation.core.tween(REACTION_FADE_MILLIS))
+        }
+        // De onde ela sai: a própria, de baixo (a mão); as dos outros, de cima, de lado conforme o assento.
+        val relative = ((event.seat.index - viewerSeat.index) % seatCount + seatCount) % seatCount
+        val originX = if (relative == 0 || seatCount == 2) 0 else if (relative == 1) -120 else if (relative == 3) 120 else 0
+        val originY = if (relative == 0) 260 else -260
+        Popup(alignment = Alignment.Center, properties = PopupProperties(focusable = false, clippingEnabled = false)) {
+            Image(
+                painterResource(reactionIconRes(event.reaction)),
+                stringResource(reactionLabelRes(event.reaction)),
+                Modifier
+                    .size(REACTION_CENTER_SIZE_DP.dp)
+                    .graphicsLayer {
+                        scaleX = scale.value
+                        scaleY = scale.value
+                        this.alpha = alpha.value
+                        translationX = originX.dp.toPx() * travel.value
+                        translationY = originY.dp.toPx() * travel.value
+                    }
+                    .testTag("reaction-center"),
+                contentScale = ContentScale.Fit,
+            )
+        }
     }
 }
+
+/** Tamanho "médio" da reação no centro (*provisório, revisar com produto*). */
+private const val REACTION_CENTER_SIZE_DP = 160
+private const val REACTION_ZOOM_MILLIS = 450
+private const val REACTION_HOLD_MILLIS = 1_100L
+private const val REACTION_FADE_MILLIS = 350

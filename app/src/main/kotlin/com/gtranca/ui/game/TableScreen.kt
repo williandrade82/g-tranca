@@ -770,14 +770,6 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             if (persona != null) {
                 GMedallion(Modifier.size(36.dp), active = thinking) { PersonaAvatar(persona, 30.dp, animate = state.animationMillis > 0, holdingCards = !thinking) }
             }
-            // §17.8 b3: a reação que este assento acabou de enviar (por enquanto junto da pílula; depois vira zoom no centro).
-            state.seatReactions[seat.index]?.let { reaction ->
-                androidx.compose.foundation.Image(
-                    androidx.compose.ui.res.painterResource(reactionIconRes(reaction)),
-                    stringResource(reactionLabelRes(reaction)),
-                    Modifier.size(40.dp).testTag("seat-reaction-${seat.index}"),
-                )
-            }
             Column(Modifier.weight(1f)) {
                 if (persona != null) {
                     Text(

@@ -64,12 +64,15 @@ class ReactionsViewModelTest {
             game.onReaction(reaction)
             runCurrent()
             game.uiState.value.ownReaction shouldBe reaction
+            game.uiState.value.lastReaction?.reaction shouldBe reaction // §17.8 a animação do centro
+            game.uiState.value.lastReaction?.seat shouldBe com.gtranca.engine.model.Seat(0)
             game.uiState.value.reactionsLeft shouldBe 2 - i
         }
         game.onReaction(Reaction.LOVE)
         runCurrent()
         game.uiState.value.reactionsLeft shouldBe 0
         game.uiState.value.ownReaction shouldBe Reaction.CHICKEN // a quarta não substituiu
+        game.uiState.value.lastReaction?.reaction shouldBe Reaction.CHICKEN
     }
 
     @Test
@@ -88,5 +91,6 @@ class ReactionsViewModelTest {
         game.uiState.value.ownReaction shouldBe Reaction.THINKING
         advanceTimeBy(GameViewModel.REACTION_SHOW_MILLIS)
         game.uiState.value.ownReaction shouldBe null
+        game.uiState.value.lastReaction shouldBe null
     }
 }
