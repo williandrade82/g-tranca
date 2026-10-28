@@ -37,7 +37,7 @@ Custo de cada um: 1. Moedas: item do inventário, fora do sorteio e da seleção
 - **Bots não usam boosters.** O b2 só usa informação pública (jogos na mesa), não vaza mão oculta.
 
 ## Reações (b3)
-- Recortar as 5 de `reacts-v2.png` (PNG com fundo transparente). Ícone do botão: `reacts-icon-v1.png`.
+- Recortar as 5 de `reacts-v2.png` (PNG com fundo transparente). Ícone do botão: `reacts-icon-v2.png`.
 - Botão **entre "Sua mão" e o botão da última jogada**. Toque abre um **balão discreto acima do botão** (imagem, nome e usos restantes); fecha ao escolher ou ao tocar fora.
 - A reação aparece para a mesa (na pílula de quem enviou); no multijogador viaja pela rede.
 
