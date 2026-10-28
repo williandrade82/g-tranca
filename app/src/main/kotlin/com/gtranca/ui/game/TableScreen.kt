@@ -1297,28 +1297,21 @@ internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection:
 private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // §14.1 seu avatar, bem discreto, junto do título da mão.
-            state.personas.getOrNull(state.snapshot.viewerSeat.index)?.let {
-                GMedallion(Modifier.padding(end = Spacing.sm).size(30.dp), active = state.isHumanTurn) { PersonaAvatar(it, 24.dp) }
-            }
-            Text(
-                stringResource(R.string.your_hand, state.hand.size),
-                color = OnTable,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.weight(1f),
-            )
-            // §17.8 b3 Reações: entre o título e o botão da última jogada.
-            if (state.reactionsEnabled) ReactionsButton(state, events::onReaction)
-            // A própria última jogada, no mesmo formato do detalhe dos outros jogadores.
+            // §14.1 seu avatar; tocar nele abre a própria última jogada (no mesmo formato do detalhe dos outros).
             val ownLastText = stringResource(R.string.own_last_play)
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clickable(onClickLabel = ownLastText, role = Role.Button, onClick = onOwnLastPlay)
-                    .semantics { contentDescription = ownLastText }
-                    .testTag("own-last-play"),
-                contentAlignment = Alignment.Center,
-            ) { ActionIcon(ActionKind.MELD, OnTable, Modifier.size(20.dp)) }
+            state.personas.getOrNull(state.snapshot.viewerSeat.index)?.let {
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clickable(onClickLabel = ownLastText, role = Role.Button, onClick = onOwnLastPlay)
+                        .semantics { contentDescription = ownLastText }
+                        .testTag("own-last-play"),
+                    contentAlignment = Alignment.Center,
+                ) { GMedallion(Modifier.size(34.dp), active = state.isHumanTurn) { PersonaAvatar(it, 28.dp) } }
+            }
+            Spacer(Modifier.weight(1f))
+            // §17.8 b3 Reações: ao lado do avatar.
+            if (state.reactionsEnabled) ReactionsButton(state, events::onReaction)
             if (state.canHideHand) HideHandButton(state.handHidden, events::onToggleHideHand)
             SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
