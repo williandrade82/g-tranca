@@ -1272,10 +1272,12 @@ private fun androidx.compose.foundation.layout.RowScope.ActionButton(text: Strin
  * Realce de uma carta da mão. Sem seleção, só um realce discreto para as que participam de alguma jogada
  * (no começo da vez quase toda a mão participa). Com seleção, destaque forte para as que completam jogada
  * junto com a seleção e esmaecimento das demais. [highlighted] vem de `legalActions` (sem o descarte).
+ * §17.6 todo esse realce é do booster b1 (Green-LED): sem ele ([greenLed] falso), só a carta selecionada se destaca.
  */
-internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection: Boolean, humanTurn: Boolean): CardEmphasis =
+internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection: Boolean, humanTurn: Boolean, greenLed: Boolean = true): CardEmphasis =
     when {
         selected -> CardEmphasis.SELECTED
+        !greenLed -> CardEmphasis.NONE
         !humanTurn -> CardEmphasis.NONE
         !hasSelection -> if (highlighted) CardEmphasis.SUBTLE else CardEmphasis.NONE
         highlighted -> CardEmphasis.STRONG
@@ -1350,6 +1352,7 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     val newText = stringResource(R.string.card_new)
     val newDescription = stringResource(R.string.card_new_description)
     val hasSelection = state.selected.isNotEmpty()
+    val greenLed = com.gtranca.engine.BoosterCatalog.GREEN_LED in state.boosters
     val landing = LocalLanding.current
     FlowRow(
         modifier,
@@ -1360,7 +1363,7 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
         cards.forEach { card ->
             val selected = card in state.selected
             val isNew = card in state.newCards
-            val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn)
+            val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
             val emphasisText = when (emphasis) {
                 CardEmphasis.SELECTED -> selectedText
                 CardEmphasis.SUBTLE -> playableText

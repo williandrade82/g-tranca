@@ -646,7 +646,8 @@ class GameViewModel(
             hand = hand,
             customHand = split,
             selected = state.selected.filter { it in visibleHand },
-            highlighted = HumanTurnResolver.highlightedCards(hand, legal, state.selected),
+            // §17.6 o realce das cartas jogáveis é do b1 (Green-LED): sem ele nada é calculado nem mostrado.
+            highlighted = if (com.gtranca.engine.BoosterCatalog.GREEN_LED in boosters) HumanTurnResolver.highlightedCards(hand, legal, state.selected) else emptySet(),
             newCards = state.newCards - hidden,
             sort = state.sort,
             redThrees = snapshot.view.redThrees.map { side -> side.filter { it !in staged } },

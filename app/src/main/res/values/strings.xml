@@ -30,7 +30,7 @@
     <string name="tour_done">Concluir</string>
     <string name="tour_again">Toque aqui para rever este tour quando quiser.</string>
     <string name="tour_tables_wifi">Wi-Fi do jogo: ligado, outros jogadores por perto podem te chamar para jogar junto.</string>
-    <string name="tour_table_hand">Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora.</string>
+    <string name="tour_table_hand">Sua mão. Toque nas cartas para selecionar. Com o booster Green-LED, as marcadas com ponto verde podem ser jogadas agora.</string>
     <string name="tour_table_stock">O monte: no começo da vez, compre uma carta daqui.</string>
     <string name="tour_table_discard">O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer.</string>
     <string name="tour_table_mortos">Os mortos: quem acabar primeiro com as cartas da mão pega um.</string>

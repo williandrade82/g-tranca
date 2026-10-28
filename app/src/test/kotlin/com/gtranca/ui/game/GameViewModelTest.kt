@@ -62,6 +62,7 @@ class GameViewModelTest {
         settleReveals: Boolean = true,
         swapMillis: Long = 0,
         animationMillis: Long = 0,
+        boosters: List<String> = emptyList(),
     ): GameViewModel {
         val vm = GameViewModel(
             GameConfig(mode, Difficulty.FACIL, target),
@@ -70,6 +71,7 @@ class GameViewModelTest {
             botDelayMillis = botDelayMillis,
             swapAnimationMillis = swapMillis,
             animationMillis = animationMillis,
+            initialBoosters = boosters,
         )
         advanceUntilIdle()
         if (settleReveals) settle(vm)
@@ -302,7 +304,7 @@ class GameViewModelTest {
 
     @Test
     fun `destaque por copias vem de legalActions e recusa da compra so quando legal`() = runTest(dispatcher) {
-        val vm = newGame(seed = 7)
+        val vm = newGame(seed = 7, boosters = listOf("b1")) // §17.6 o realce é do b1
         vm.onDraw()
         advanceUntilIdle()
         settle(vm)
