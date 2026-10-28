@@ -757,4 +757,15 @@
     <string name="boosters_slot_empty">Nicho %1$d vazio, toque para escolher um booster</string>
     <string name="boosters_slot_filled">%1$s, quantidade %2$d, toque para tirar</string>
     <string name="boosters_pick_title">Escolha um booster</string>
+    <!-- Boosters: Reações (b3, docs/telas.md 3.8) -->
+    <string name="reaction_applause">Aplausos</string>
+    <string name="reaction_love">Amei</string>
+    <string name="reaction_thinking">Pensativo</string>
+    <string name="reaction_angry">Nervoso</string>
+    <string name="reaction_chicken">Frango</string>
+    <string name="reactions_button">Reações, %1$d restantes</string>
+    <plurals name="reactions_left">
+        <item quantity="one">%1$d restante</item>
+        <item quantity="other">%1$d restantes</item>
+    </plurals>
 </resources>

@@ -193,6 +193,9 @@ interface TableEvents {
 
     /** Mesa multijogador: esconder ou mostrar as cartas da mão. */
     fun onToggleHideHand() = Unit
+
+    /** §17.8 b3: o jogador enviou uma reação. */
+    fun onReaction(reaction: com.gtranca.engine.Reaction) = Unit
     fun onClearSelection()
     fun onSortChange(sort: HandSort)
     fun onSpecialColumnToggle()
@@ -1298,6 +1301,8 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f),
             )
+            // §17.8 b3 Reações: entre o título e o botão da última jogada.
+            if (state.reactionsEnabled) ReactionsButton(state, events::onReaction)
             // A própria última jogada, no mesmo formato do detalhe dos outros jogadores.
             val ownLastText = stringResource(R.string.own_last_play)
             Box(

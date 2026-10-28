@@ -148,6 +148,13 @@ data class GameUiState(
     val boosterSelectorPending: Boolean = false,
     /** §17.7 b2 Red-LED: as cartas da mão que se encaixam nos jogos do adversário (vazio sem o b2 ou fora da vez). */
     val opponentFits: Map<Card, com.gtranca.engine.OpponentFit> = emptyMap(),
+    /** §17.8 b3 Reações: o botão aparece (o booster está na partida). */
+    val reactionsEnabled: Boolean = false,
+    /** §17.8 quantas reações ainda podem ser enviadas nesta partida (0 a 3). */
+    val reactionsLeft: Int = 0,
+    /** §17.8 a reação que o jogador acabou de enviar, por alguns segundos ([ownReactionId] muda a cada envio). */
+    val ownReaction: com.gtranca.engine.Reaction? = null,
+    val ownReactionId: Long = 0,
     /** As cartas da mão estão viradas (só neste aparelho). */
     val handHidden: Boolean = false,
 ) {
@@ -307,6 +314,10 @@ class GameViewModel(
         val endStep: Int = 0,
         /** §17.3 o seletor de boosters da próxima partida está na tela. */
         val selectorPending: Boolean = false,
+        /** §17.8 reações já enviadas nesta partida (zera a cada partida). */
+        val reactionsUsed: Int = 0,
+        val ownReaction: com.gtranca.engine.Reaction? = null,
+        val ownReactionId: Long = 0,
     )
 
     private val human = HumanPlayer()
@@ -674,6 +685,10 @@ class GameViewModel(
             handHidden = multiplayer && state.handHidden,
             boosters = boosters,
             boosterSelectorPending = state.selectorPending,
+            reactionsEnabled = com.gtranca.engine.BoosterCatalog.REACTIONS in boosters,
+            reactionsLeft = if (com.gtranca.engine.BoosterCatalog.REACTIONS in boosters) com.gtranca.engine.Reactions.remaining(state.reactionsUsed) else 0,
+            ownReaction = state.ownReaction,
+            ownReactionId = state.ownReactionId,
             opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
@@ -818,14 +833,38 @@ class GameViewModel(
     fun onNextRound() {
         // §17.3 contra robôs, cada partida começa pelo seletor de boosters (antes de ver a distribuição).
         if (boosterInventory != null && playsLocally && !multiplayer) local.update { it.copy(selectorPending = true) }
-        else controller.continueToNextRound()
+        else {
+            local.update { it.copy(reactionsUsed = 0, ownReaction = null) }
+            controller.continueToNextRound()
+        }
+    }
+
+    private val reactionIds = AtomicLong(0)
+
+    /**
+     * §17.8 b3: envia uma reação (gasta 1 dos 3 usos da partida). Sem o booster ou sem usos, nada acontece. A reação fica à
+     * vista por [REACTION_SHOW_MILLIS] (*tempo provisório, revisar com produto*).
+     */
+    override fun onReaction(reaction: com.gtranca.engine.Reaction) {
+        val id = reactionIds.incrementAndGet()
+        var accepted = false
+        local.update { state ->
+            if (com.gtranca.engine.Reactions.canUse(boosters, state.reactionsUsed)) {
+                accepted = true
+                state.copy(reactionsUsed = state.reactionsUsed + 1, ownReaction = reaction, ownReactionId = id)
+            } else state
+        }
+        if (accepted) viewModelScope.launch {
+            delay(REACTION_SHOW_MILLIS)
+            local.update { if (it.ownReactionId == id) it.copy(ownReaction = null) else it }
+        }
     }
 
     /** §17.3 Seguir no seletor: os boosters da partida ([chosen], já debitados) valem e a próxima partida começa. */
     fun onBoostersConfirmed(chosen: List<String>) {
         if (!local.value.selectorPending) return
         boosters = chosen
-        local.update { it.copy(selectorPending = false) }
+        local.update { it.copy(selectorPending = false, reactionsUsed = 0, ownReaction = null) }
         controller.continueToNextRound()
     }
 
@@ -943,6 +982,9 @@ class GameViewModel(
 
         /** Duração padrão da animação de troca de 3 vermelho de outro assento. */
         const val DEFAULT_SWAP_ANIMATION_MILLIS: Long = 1_800
+
+        /** §17.8 quanto tempo a reação enviada fica à vista (*provisório, revisar com produto*). */
+        const val REACTION_SHOW_MILLIS: Long = 3_000
 
         /** Fator de duração da velocidade "lenta" (30% mais lenta). */
         const val SLOW_FACTOR: Float = 1.3f

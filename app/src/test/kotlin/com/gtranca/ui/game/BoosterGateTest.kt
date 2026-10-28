@@ -124,4 +124,19 @@ class BoosterGateTest {
         game.uiState.value.boosterSelectorPending shouldBe false
         game.uiState.value.snapshot.roundNumber shouldBe 2
     }
+
+    @Test
+    fun `§17_8 a partida seguinte renova os 3 usos das reacoes`() = runTest(dispatcher) {
+        val game = vm(FakeInventory(), boosters = listOf("b3"))
+        repeat(3) { game.onReaction(com.gtranca.engine.Reaction.APPLAUSE) }
+        advanceUntilIdle()
+        game.uiState.value.reactionsLeft shouldBe 0
+        playRound(game)
+        game.onNextRound()
+        advanceUntilIdle()
+        game.onBoostersConfirmed(listOf("b3"))
+        advanceUntilIdle()
+        game.uiState.value.snapshot.roundNumber shouldBe 2
+        game.uiState.value.reactionsLeft shouldBe 3
+    }
 }
