@@ -471,6 +471,11 @@ private fun TableScreenContent(
                     state.flights.firstOrNull { it.id == id }?.let(SoundMap::forFlight)?.let(sound::play)
                 }
                 }
+                // §17.8 a reação de qualquer assento, no meio da tela, saindo da pílula de quem a enviou (a própria, da mão).
+                state.lastReaction?.let { reaction ->
+                    val own = reaction.seat == snapshot.viewerSeat
+                    ReactionCenterOverlay(reaction, (if (own) anchors[AnimAnchor.OwnHand] else anchors[AnimAnchor.SeatPill(reaction.seat.index)]), state.personas.getOrNull(reaction.seat.index))
+                }
                 // §3.5/§6.5 troca de 3 vermelho de outro assento: anúncio no meio da tela, que some sozinho.
                 state.banner?.let { SwapAnnouncement(it, view.mode, snapshot.viewerSeat, state.personas.getOrNull(it.seat.index)) }
                 // A troca do próprio jogador também é só um aviso (sem botões): fecha sozinho depois do tempo de leitura.
@@ -760,6 +765,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
             .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
             .padding(horizontal = 8.dp, vertical = 4.dp)
+            .anchor(AnimAnchor.SeatPill(seat.index))
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

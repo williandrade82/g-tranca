@@ -153,8 +153,6 @@ fun GameScreen(
     }
     else androidx.compose.runtime.CompositionLocalProvider(LocalTableWifi provides (wifi ?: multiplayer?.wifi)) {
         TableScreen(state, viewModel, headerExtra = multiplayer?.headerExtra, hostSeat = multiplayer?.hostSeat?.invoke(), hostLinkQuality = multiplayer?.hostLinkQuality?.invoke())
-        // §17.8 a reação enviada por qualquer assento aparece no meio da tela, animada.
-        ReactionCenterOverlay(state.lastReaction, snapshot.viewerSeat, snapshot.view.mode.seatCount)
     }
     }
 

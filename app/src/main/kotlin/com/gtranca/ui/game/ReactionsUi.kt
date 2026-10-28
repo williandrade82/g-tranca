@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -158,12 +163,13 @@ private fun ReactionsBalloon(left: Int, onDismiss: () -> Unit, onPick: (Reaction
 }
 
 /**
- * §17.8 a reação enviada por qualquer assento, em tamanho médio no **meio da tela**: sai da direção de quem a enviou (a própria,
- * de baixo; as dos outros, de cima, de lado conforme o assento) com um zoom até o centro, fica um instante e some
- * rapidamente ficando transparente. Sem animações (sistema ou Perfil), só aparece e some. Não captura toques.
+ * §17.8 a reação enviada por qualquer assento, em tamanho médio no **meio da tela** e **com dono**: sai da pílula de quem a enviou
+ * ([origin]; a própria, da mão) com um zoom até o centro, com o avatar e o nome dele embaixo, fica um instante e some
+ * ficando transparente. Enquanto aparece, um véu leve escurece a mesa para focar o olhar (em todos os aparelhos). Sem animações
+ * (sistema ou Perfil), só aparece e some. Não captura toques. Fica dentro da mesa, por cima das cartas.
  */
 @Composable
-fun ReactionCenterOverlay(event: ReactionEvent?, viewerSeat: com.gtranca.engine.model.Seat, seatCount: Int) {
+fun ReactionCenterOverlay(event: ReactionEvent?, origin: androidx.compose.ui.geometry.Rect?, persona: com.gtranca.game.Persona?) {
     if (event == null) return
     androidx.compose.runtime.key(event.id) {
         val motion = com.gtranca.ui.theme.rememberMotionEnabled()
@@ -180,26 +186,51 @@ fun ReactionCenterOverlay(event: ReactionEvent?, viewerSeat: com.gtranca.engine.
             kotlinx.coroutines.delay(REACTION_HOLD_MILLIS)
             alpha.animateTo(0f, androidx.compose.animation.core.tween(REACTION_FADE_MILLIS))
         }
-        // De onde ela sai: a própria, de baixo (a mão); as dos outros, de cima, de lado conforme o assento.
-        val relative = ((event.seat.index - viewerSeat.index) % seatCount + seatCount) % seatCount
-        val originX = if (relative == 0 || seatCount == 2) 0 else if (relative == 1) -120 else if (relative == 3) 120 else 0
-        val originY = if (relative == 0) 260 else -260
-        Popup(alignment = Alignment.Center, properties = PopupProperties(focusable = false, clippingEnabled = false)) {
-            Image(
-                painterResource(reactionIconRes(event.reaction)),
-                stringResource(reactionLabelRes(event.reaction)),
+        // O centro do overlay na raiz da janela: a distância até a pílula de quem enviou é o ponto de partida do voo.
+        var center by androidx.compose.runtime.remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Unspecified) }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { center = it.positionInRoot() + androidx.compose.ui.geometry.Offset(it.size.width / 2f, it.size.height / 2f) }
+                .graphicsLayer { this.alpha = alpha.value }
+                .background(Color.Black.copy(alpha = REACTION_VEIL_ALPHA)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
                 Modifier
-                    .size(REACTION_CENTER_SIZE_DP.dp)
                     .graphicsLayer {
+                        val from = if (origin != null && center.isSpecified) origin.center - center else androidx.compose.ui.geometry.Offset.Zero
                         scaleX = scale.value
                         scaleY = scale.value
-                        this.alpha = alpha.value
-                        translationX = originX.dp.toPx() * travel.value
-                        translationY = originY.dp.toPx() * travel.value
+                        translationX = from.x * travel.value
+                        translationY = from.y * travel.value
                     }
                     .testTag("reaction-center"),
-                contentScale = ContentScale.Fit,
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Image(
+                    painterResource(reactionIconRes(event.reaction)),
+                    stringResource(reactionLabelRes(event.reaction)),
+                    Modifier.size(REACTION_CENTER_SIZE_DP.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                // O dono: avatar e nome de quem enviou.
+                persona?.let {
+                    Row(
+                        Modifier
+                            .background(GColors.Midnight.copy(alpha = 0.9f), RoundedCornerShape(50))
+                            .border(1.dp, GColors.Gold.copy(alpha = 0.7f), RoundedCornerShape(50))
+                            .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)
+                            .testTag("reaction-owner"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        com.gtranca.ui.persona.PersonaAvatar(it, 28.dp, animate = false)
+                        Text(it.shortName, style = MaterialTheme.typography.titleSmall, color = GColors.Gold, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+            }
         }
     }
 }
@@ -207,5 +238,6 @@ fun ReactionCenterOverlay(event: ReactionEvent?, viewerSeat: com.gtranca.engine.
 /** Tamanho "médio" da reação no centro (*provisório, revisar com produto*). */
 private const val REACTION_CENTER_SIZE_DP = 160
 private const val REACTION_ZOOM_MILLIS = 450
-private const val REACTION_HOLD_MILLIS = 1_100L
+private const val REACTION_HOLD_MILLIS = 1_400L
 private const val REACTION_FADE_MILLIS = 350
+private const val REACTION_VEIL_ALPHA = 0.3f
