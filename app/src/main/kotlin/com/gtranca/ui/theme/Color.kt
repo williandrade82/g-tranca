@@ -59,9 +59,10 @@ object GColors {
     val CardHighlightBorder = SkyBlue
     val CardPlayableMark = Color(0xFF1F8A5E)
 
-    /** §17.7 b2 Red-LED: círculo vermelho (se encaixa no jogo do adversário) e o vermelho que pulsa na carta que fecha a canastra dele. */
-    val CardOpponentMark = Color(0xFFC62828)
-    val CardDim = Color(0x66000000)
+    /** §17.7 b2 Yellow-LED: círculo amarelo (se encaixa no jogo do adversário) e o amarelo que pulsa na carta que fecha a canastra dele. */
+    val CardOpponentMark = Color(0xFFF2B600)
+    val CardOpponentMarkRing = Color(0xFFB07A00)
+    val CardDim =Color(0x66000000)
     val CardNewBadge = Color(0xFF1F8A5E)
     val CardBackFrame = Color(0xFF173C9A)
 

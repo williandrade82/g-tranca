@@ -147,7 +147,7 @@ fun PlayingCard(
     emphasis: CardEmphasis = CardEmphasis.NONE,
     badge: String? = null,
     describe: Boolean = true,
-    /** §17.7 b2 Red-LED: como a carta se encaixa nos jogos do adversário (círculo vermelho; pulsa se fecha uma canastra dele). */
+    /** §17.7 b2 Yellow-LED: como a carta se encaixa nos jogos do adversário (círculo amarelo; pulsa se fecha uma canastra dele). */
     opponentFit: com.gtranca.engine.OpponentFit = com.gtranca.engine.OpponentFit.NONE,
 ) {
     val description = cardDescription(card)
@@ -199,8 +199,13 @@ fun PlayingCard(
             }
         }
         if (opponentFit != com.gtranca.engine.OpponentFit.NONE) {
-            // Mesmo tamanho do ponto verde (§17.6), no canto inferior esquerdo.
-            Canvas(Modifier.align(Alignment.BottomStart).padding(bottom = 5.dp, start = 5.dp).size(size.width * 0.2f)) { drawCircle(GColors.CardOpponentMark) }
+            // Mesmo tamanho do ponto verde (§17.6), no canto superior direito; com o ponto verde na carta, fica à esquerda dele.
+            val dot = size.width * 0.2f
+            val endPad = if (mark != null) 5.dp + dot + 3.dp else 5.dp
+            Canvas(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = endPad).size(dot)) {
+                drawCircle(GColors.CardOpponentMark)
+                drawCircle(GColors.CardOpponentMarkRing, style = Stroke(width = this.size.width * 0.08f))
+            }
             if (opponentFit == com.gtranca.engine.OpponentFit.CLOSES_CANASTA) ClosesCanastaPulse()
         }
         if (size.showCenter) {

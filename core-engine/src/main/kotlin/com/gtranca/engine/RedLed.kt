@@ -8,7 +8,7 @@ import com.gtranca.engine.model.RuleResult
 enum class OpponentFit { NONE, FITS, CLOSES_CANASTA }
 
 /**
- * §17.7 b2 Red-LED. Só informação visível ([PlayerView]); não é jogada e não passa por `legalActions`: pergunta se a carta
+ * §17.7 b2 Yellow-LED. Só informação visível ([PlayerView]); não é jogada e não passa por `legalActions`: pergunta se a carta
  * poderia ser acrescentada (§6.2, §6.3, §7.3) a um conjunto do lado adversário, como se fosse a vez dele.
  */
 object RedLed {

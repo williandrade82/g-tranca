@@ -12,8 +12,8 @@
     },
     {
       "id": "b2",
-      "name": "Red-LED",
-      "summary": "Mostra um ponto vermelho nas cartas que se encaixam no jogo do adversário",
+      "name": "Yellow-LED",
+      "summary": "Mostra um ponto amarelo nas cartas que se encaixam no jogo do adversário",
       "cost": 1,
       "initialQuantity": 5,
       "giftMin": 1,

@@ -7,7 +7,7 @@ import com.gtranca.engine.model.Seat
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
-/** §17.7 b2 Red-LED: cartas da mão que se encaixam nos jogos do adversário. */
+/** §17.7 b2 Yellow-LED: cartas da mão que se encaixam nos jogos do adversário. */
 class RedLedTest {
     private fun playing(block: RoundStateBuilder.() -> Unit) = round {
         phase = Phase.PLAYING

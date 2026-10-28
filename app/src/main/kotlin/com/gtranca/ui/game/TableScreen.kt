@@ -1371,7 +1371,7 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
             val selected = card in state.selected
             val isNew = card in state.newCards
             val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
-            // §17.7 b2 Red-LED: círculo vermelho (e pulso) nas cartas que se encaixam no jogo do adversário.
+            // §17.7 b2 Yellow-LED: círculo amarelo (e pulso) nas cartas que se encaixam no jogo do adversário.
             val fit = state.opponentFits[card] ?: com.gtranca.engine.OpponentFit.NONE
             val fitText = when (fit) {
                 com.gtranca.engine.OpponentFit.NONE -> ""

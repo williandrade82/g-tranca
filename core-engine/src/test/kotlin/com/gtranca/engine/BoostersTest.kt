@@ -19,7 +19,7 @@ class BoostersTest {
     @Test
     fun `§17_1 catalogo inicial - b1 b2 b3 com custo 1, 5 iniciais e faixas de sorteio`() {
         catalog.map { it.id } shouldBe listOf("b1", "b2", "b3")
-        catalog.map { it.name } shouldBe listOf("Green-LED", "Red-LED", "Reações")
+        catalog.map { it.name } shouldBe listOf("Green-LED", "Yellow-LED", "Reações")
         catalog.all { it.cost == 1 && it.initialQuantity == 5 } shouldBe true
         catalog.map { it.giftMin to it.giftMax } shouldBe listOf(1 to 3, 1 to 3, 2 to 7)
     }

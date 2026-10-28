@@ -21,7 +21,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
-/** §17.7 b2 Red-LED na mesa: as marcas só existem com o booster, na vez do jogador, depois de comprar. */
+/** §17.7 b2 Yellow-LED na mesa: as marcas só existem com o booster, na vez do jogador, depois de comprar. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RedLedViewModelTest {
     private val dispatcher = StandardTestDispatcher()

@@ -685,7 +685,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 | Id | Nome | Resumo | Qtd. inicial | Sorteio |
 |---|---|---|---|---|
 | b1 | Green-LED | Mostra um ponto verde nas cartas que pode baixar | 5 | 1 a 3 |
-| b2 | Red-LED | Mostra um ponto vermelho nas cartas que se encaixam no jogo do adversário | 5 | 1 a 3 |
+| b2 | Yellow-LED | Mostra um ponto amarelo nas cartas que se encaixam no jogo do adversário | 5 | 1 a 3 |
 | b3 | Reações | Permite expressar até 3 reações durante a partida | 5 | 2 a 7 |
 
 ### **17.2. Escolha no inventário**
@@ -715,8 +715,8 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 ### **17.6. b1 Green-LED**
 - Na **vez** do jogador, as cartas da mão que **participam de alguma jogada** (baixar, acrescentar ou pegar o lixo, a partir de `legalActions`, sem o descarte) ganham um **ponto verde no canto superior direito**. Com cartas selecionadas, as que **completam jogada junto com a seleção** ganham o destaque forte e as demais ficam esmaecidas. **Sem o b1 na partida, nada disso aparece**: só a seleção (carta levantada) é mostrada.
 
-### **17.7. b2 Red-LED**
-- Na vez do jogador, **depois de comprar ou pegar o lixo** (§4.3, etapa 2: baixar ou descartar), cada carta da mão que **poderia ser acrescentada a um conjunto da mesa do adversário** (pelas regras de §6.2, §6.3 e §7.3, como se fosse a vez do adversário) ganha um **círculo vermelho do mesmo tamanho do ponto verde**, no **canto inferior esquerdo**. Em duplas valem os conjuntos dos **dois adversários**.
+### **17.7. b2 Yellow-LED**
+- Na vez do jogador, **depois de comprar ou pegar o lixo** (§4.3, etapa 2: baixar ou descartar), cada carta da mão que **poderia ser acrescentada a um conjunto da mesa do adversário** (pelas regras de §6.2, §6.3 e §7.3, como se fosse a vez do adversário) ganha um **círculo amarelo do mesmo tamanho do ponto verde**, no **canto superior direito**, e, se a carta também tiver o ponto verde (§17.6), o amarelo fica **à esquerda dele**, sem sobrepô-lo. Em duplas valem os conjuntos dos **dois adversários**.
 - A carta **pulsa** se acrescentá-la **fecharia uma canastra** do adversário (o conjunto passaria de 6 para **7 cartas**, §7.1).
 - Só usa informação **visível** da mesa (§16.4); nunca a mão dos outros. Não é uma jogada e **não** muda `legalActions`.
 

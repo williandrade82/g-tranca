@@ -25,7 +25,7 @@ object BoosterCatalog {
 
     val DEFAULT: List<BoosterDef> = listOf(
         BoosterDef(GREEN_LED, "Green-LED", "Mostra um ponto verde nas cartas que pode baixar", 1, 5, 1, 3),
-        BoosterDef(RED_LED, "Red-LED", "Mostra um ponto vermelho nas cartas que se encaixam no jogo do adversário", 1, 5, 1, 3),
+        BoosterDef(RED_LED, "Yellow-LED", "Mostra um ponto amarelo nas cartas que se encaixam no jogo do adversário", 1, 5, 1, 3),
         BoosterDef(REACTIONS, "Reações", "Permite expressar até 3 reações durante a partida", 1, 5, 2, 7),
     )
 }
