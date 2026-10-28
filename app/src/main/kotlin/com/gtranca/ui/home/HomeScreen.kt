@@ -85,6 +85,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -109,6 +111,7 @@ fun HomeScreen(
     onContinue: () -> Unit = {},
     onContinueSession: () -> Unit = {},
     onStats: () -> Unit = {},
+    onInventory: () -> Unit = {},
     onProfile: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -239,6 +242,15 @@ fun HomeScreen(
                     ProfileGlyph(GColors.Gold)
                     Spacer(Modifier.width(Spacing.sm))
                     Text(stringResource(R.string.home_profile))
+                }
+                // §17 só o ícone do armário (com três botões com texto a barra não cabe em telas estreitas).
+                val inventoryLabel = stringResource(R.string.home_inventory)
+                GButton(
+                    onInventory,
+                    Modifier.heightIn(min = 48.dp).semantics { contentDescription = inventoryLabel }.testTag("inventory"),
+                    kind = GButtonKind.Text,
+                ) {
+                    com.gtranca.ui.inventory.InventoryIcon(GColors.Gold)
                 }
                 GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
                     StatsIcon(GColors.Gold)

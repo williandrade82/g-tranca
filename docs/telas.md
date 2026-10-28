@@ -94,7 +94,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 3. **Saldo** ("Seu saldo: N moedas") e, quando disponível, o botão **Resgatar +200 moedas** (§14.6).
 4. **Continuar** (só com jogo salvo): botão dourado com modo, dificuldade, partida e placar.
 5. **Ver mesas - Iniciar** (abre *Iniciar novo jogo*): dourado sem jogo salvo; secundário com jogo salvo.
-6. **Barra fixa** embaixo: Perfil · **Inventário** (ícone do armário, tag `inventory`) · Estatísticas; versão discreta logo abaixo.
+6. **Barra fixa** embaixo: Perfil · **Inventário** (só o ícone do armário, com a descrição "Inventário" para o leitor de tela, tag `inventory`) · Estatísticas; versão discreta logo abaixo.
 7. Botão de **som** no canto superior direito, sempre à vista.
 
 **Variações:** "Ver mesas - Iniciar" com jogo salvo abre o modal *Começar um novo jogo?* (o jogo salvo conta como derrota por desistência). Com uma **sessão multijogador** guardada (§16.12), um segundo botão **Continuar mesa** (tag `continue-session`) aparece ao lado do jogo salvo contra robôs (cada um no seu botão), com o nome do anfitrião ("Mesa de <anfitrião>") e o assento ("Você: lugar 3"): tocar nele leva a *Voltar à mesa* (3.17) e reingressa como jogador comum, mesmo para quem era anfitrião. A sessão some quando o jogo termina e o resultado é entregue (§16.11), quando o jogador desiste e não volta, quando a mesa é encerrada ou a vaga é preenchida, quando ele sai da mesa pelo botão e **12 h** depois de gravada.

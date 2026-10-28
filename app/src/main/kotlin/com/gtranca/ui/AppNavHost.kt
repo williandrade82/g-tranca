@@ -94,6 +94,10 @@ object ProfileRoute
 @Serializable
 object StatsRoute
 
+/** §17.2 *Inventário*: o armário de boosters (docs/telas.md 3.18). */
+@Serializable
+object InventoryRoute
+
 /** §14.4 *Iniciar novo jogo*: as opções da mesa (docs/telas.md 3.2). */
 @Serializable
 object TablesRoute
@@ -274,6 +278,7 @@ fun AppNavHost() {
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onContinueSession = { navController.navigateFromHome(RejoinRoute) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
+                onInventory = { navController.navigateFromHome(InventoryRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
             )
             }
@@ -331,6 +336,11 @@ fun AppNavHost() {
                 },
                 onBack = { navController.popBackStack() },
             )
+        }
+        composable<InventoryRoute> {
+            com.gtranca.ui.inventory.InventoryScreen(
+                viewModel { com.gtranca.ui.inventory.InventoryViewModel(data.inventory, data.wallet) },
+            ) { navController.popBackStack() }
         }
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats, data.wallet) }) { navController.popBackStack() }
