@@ -115,4 +115,28 @@ class MultiplayerBoostersTest {
         val decoded = codec.decode(codec.encode(1, state)) as com.gtranca.net.Decoded.Ok
         (decoded.envelope.p as com.gtranca.net.SuccessorState).boosters shouldBe table
     }
+
+    @Test
+    fun `§17_4 o anfitriao so aceita ids do catalogo - id inventado fica de fora do assento`() = runTest {
+        val t = openTable(GameMode.DUPLAS, 47, listOf(Seat(1)))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { t.host.run() }
+        runCurrent()
+        t.guests.getValue(Seat(1)).chooseBoosters(1, listOf("zzz", "b3", "b3", "b9"))
+        advanceUntilIdle()
+        t.host.boosters.value.of(1).boosters shouldBe listOf("b3")
+    }
+
+    @Test
+    fun `§17_4 quem entra num assento ja confirmado recebe o estado dele sem novo seletor`() = runTest {
+        val t = openTable(GameMode.DUPLAS, 48, listOf(Seat(1)))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { t.host.run() }
+        runCurrent()
+        t.guests.getValue(Seat(1)).chooseBoosters(1, listOf("b1", "b3"))
+        advanceUntilIdle()
+        // o assento guarda o estado mesmo sem o ocupante: quem (re)entra o recebe pelo anfitrião
+        t.host.onSeatAttached(Seat(1))
+        advanceUntilIdle()
+        t.guests.getValue(Seat(1)).seatBoosters.value shouldBe SeatBoosters(listOf("b1", "b3"), 0, 1)
+        t.guests.getValue(Seat(1)).seatBoosters.value!!.confirmedFor(1) shouldBe true
+    }
 }

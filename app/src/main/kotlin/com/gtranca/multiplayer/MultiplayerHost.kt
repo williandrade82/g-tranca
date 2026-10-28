@@ -150,9 +150,11 @@ class MultiplayerHost(
     /** §17.3 o seletor do [seat] foi confirmado na partida [round]; só vale na partida em andamento e uma vez. */
     fun registerBoosters(seat: Seat, round: Int, boosters: List<String>) {
         if (round != currentRound()) return
+        // O anfitrião só aceita ids do catálogo (um convidado adulterado não põe id inventado no assento nem no sucessor).
+        val known = boosters.take(com.gtranca.engine.Loadout.MAX * 4).filter { id -> com.gtranca.engine.BoosterCatalog.DEFAULT.any { it.id == id } }
         var changed = false
         _boosters.update { table ->
-            if (table.of(seat.index).confirmedFor(round)) table else table.confirm(seat.index, boosters, round).also { changed = true }
+            if (table.of(seat.index).confirmedFor(round)) table else table.confirm(seat.index, known, round).also { changed = true }
         }
         if (changed) pushSeatBoosters(seat)
     }
