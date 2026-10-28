@@ -742,7 +742,7 @@
     <string name="rejoin_wifi_text">Para voltar à mesa de %1$s o Wi-Fi do jogo precisa estar ligado.</string>
     <string name="rejoin_wifi_on">Ligar</string>
     <!-- Boosters: Inventário (docs/telas.md 3.18) -->
-    <string name="home_inventory">Inventário</string>
+    <string name="home_inventory">Meu inventário</string>
     <string name="inventory_title">Inventário</string>
     <string name="inventory_hint">Escolha até %1$d boosters para a próxima partida.</string>
     <string name="inventory_selected_count">Marcados: %1$d de %2$d</string>

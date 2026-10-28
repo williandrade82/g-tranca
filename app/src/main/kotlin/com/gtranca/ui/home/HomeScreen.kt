@@ -243,14 +243,10 @@ fun HomeScreen(
                     Spacer(Modifier.width(Spacing.sm))
                     Text(stringResource(R.string.home_profile))
                 }
-                // §17 só o ícone do armário (com três botões com texto a barra não cabe em telas estreitas).
-                val inventoryLabel = stringResource(R.string.home_inventory)
-                GButton(
-                    onInventory,
-                    Modifier.heightIn(min = 48.dp).semantics { contentDescription = inventoryLabel }.testTag("inventory"),
-                    kind = GButtonKind.Text,
-                ) {
+                GButton(onInventory, Modifier.heightIn(min = 48.dp).testTag("inventory"), kind = GButtonKind.Text) {
                     com.gtranca.ui.inventory.InventoryIcon(GColors.Gold)
+                    Spacer(Modifier.width(Spacing.sm))
+                    Text(stringResource(R.string.home_inventory), maxLines = 1)
                 }
                 GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
                     StatsIcon(GColors.Gold)
