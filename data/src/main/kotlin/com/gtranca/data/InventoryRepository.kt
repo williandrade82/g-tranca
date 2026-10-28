@@ -84,7 +84,7 @@ interface InventoryRepository {
 class DataStoreInventoryRepository(
     private val store: DataStore<Preferences>,
     override val catalog: List<BoosterDef> = BoosterCatalog.DEFAULT,
-) : InventoryRepository {
+) : InventoryRepository, ShopStock {
 
     private val prefsFlow: Flow<Preferences> = store.data.catch { error ->
         if (error is IOException) emit(emptyPreferences()) else throw error
@@ -120,6 +120,15 @@ class DataStoreInventoryRepository(
         return gift
     }
 
+    override suspend fun applyPurchase(purchaseId: String, boosterId: String, quantity: Int) {
+        store.edit { prefs ->
+            val applied = prefs[SHOP_APPLIED].orEmpty().split(',').filter { it.isNotEmpty() }
+            if (purchaseId in applied) return@edit
+            prefs[INVENTORY] = Json.encodeToString(Inventory.serializer(), inventoryOf(prefs).add(boosterId, quantity))
+            prefs[SHOP_APPLIED] = (applied + purchaseId).takeLast(MAX_REMEMBERED_PURCHASES).joinToString(",")
+        }
+    }
+
     /** Valor ilegível ou negativo (arquivo adulterado) vale como estoque inicial. */
     private fun inventoryOf(prefs: Preferences): Inventory =
         prefs[INVENTORY]?.let { text ->
@@ -147,5 +156,9 @@ class DataStoreInventoryRepository(
         val INVENTORY = stringPreferencesKey("boosters:inventory")
         val SELECTION = stringPreferencesKey("boosters:selection")
         val LAST_GIFT_DAY = longPreferencesKey("boosters:last_gift_day")
+
+        /** §17.10 ids das últimas compras já somadas (só a compra pendente pode repetir, então poucas bastam). */
+        val SHOP_APPLIED = stringPreferencesKey("boosters:shop_applied")
+        const val MAX_REMEMBERED_PURCHASES = 20
     }
 }

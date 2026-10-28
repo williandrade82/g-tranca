@@ -34,10 +34,15 @@ class GameData private constructor(context: Context, isKnownDifficulty: (String)
     val wallet: WalletRepository = statsAndWallet
 
     /** §17 inventário de boosters, marcação e último presente (arquivo próprio); o catálogo vem de `assets/boosters.json`. */
-    val inventory: InventoryRepository = DataStoreInventoryRepository(
+    private val boosterInventory = DataStoreInventoryRepository(
         preferencesStore(context.preferencesDataStoreFile(INVENTORY_FILE)),
         BoosterCatalogJson.load(context),
     )
+
+    val inventory: InventoryRepository = boosterInventory
+
+    /** §17.10 loja: moedas da carteira por boosters do inventário, retomável se o app cair no meio. */
+    val shop: ShopRepository = DefaultShopRepository(statsAndWallet, boosterInventory)
 
     companion object {
         const val SAVED_GAME_FILE = "saved_game.json"
