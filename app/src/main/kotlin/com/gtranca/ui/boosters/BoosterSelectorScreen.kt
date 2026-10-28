@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -182,7 +183,16 @@ fun BoosterSelectorScreen(viewModel: BoosterSelectorViewModel, onConfirmed: (Lis
             delay(250)
         }
     }
-    Box(Modifier.fillMaxSize().background(GColors.Midnight).safeDrawingPadding().testTag("boosters-selector"), contentAlignment = Alignment.Center) {
+    // O fundo é só o feltro da mesa (sem cartas, jogos nem mãos): a tela parece a mesa de jogo e só o painel do seletor aparece,
+    // antes da distribuição.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f))
+            .safeDrawingPadding()
+            .testTag("boosters-selector"),
+        contentAlignment = Alignment.Center,
+    ) {
         BoxWithConstraints(Modifier.fillMaxWidth().widthIn(max = 560.dp).padding(Spacing.sm)) {
             val w = maxWidth
             val h = w / Panel.ASPECT
