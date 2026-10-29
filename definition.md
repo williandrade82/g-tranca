@@ -762,7 +762,7 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas por c
   - **Sem punição:** quem abandona **recebe a aposta de volta**.
   - **Perde a aposta:** quem abandona perde a aposta (retida no assento, como em §16.9), **exceto** se sair nos **primeiros 60 segundos do jogo** (contados desde o início da 1ª partida): então a aposta é **devolvida**.
 - **Abandonar** é sair voluntariamente da mesa (**desistir**, §13.1) ou deixar o tempo esgotar. Um **robô** assume o assento e o jogo segue para os demais; o robô guarda os boosters e as reações que sobraram (§17.4).
-- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode, a qualquer momento, **substituí-lo por um robô** (conta como abandono). *(Regra provisória, a confirmar com o usuário.)*
+- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode, a qualquer momento, **substituí-lo por um robô** (conta como abandono).
 - Os critérios aparecem no **convite** (link e tela de entrada), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
 
 ### **18.5. Moedas, inventário e loja online**
@@ -772,11 +772,11 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas por c
 
 ### **18.6. Migração da carteira local**
 - Cada conta pode **trazer a carteira do aparelho para o online uma única vez**: o saldo local é **copiado** para a carteira online, **sem teto**, e o servidor marca que a conta já migrou. O saldo local **não é alterado** e o jogo offline continua como sempre.
-- A migração acontece por escolha do jogador (botão na tela *Jogar online*), com um aviso de que só pode ser feita uma vez. *(Inventário de boosters: provisório: **migra junto**, na mesma operação; confirmar com o usuário.)*
+- A migração acontece por escolha do jogador (botão na tela *Jogar online*), com um aviso de que só pode ser feita uma vez. O **inventário de boosters** migra junto, na mesma operação e com a mesma regra de uma vez só.
 - O operador pode **revisar** migrações e ajustar saldos pela interface de gerenciamento (§18.7).
 
 ### **18.7. Gerenciamento (operação)**
-- Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** (login Google) e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja). *(Divisão provisória, a confirmar.)*
+- Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** (login Google) e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
 - Toda ação do operador é **registrada** (quem, quando, o quê e por quê) e o registro **não se altera**.
 
 ### **18.8. Versões**

@@ -108,7 +108,7 @@ Desenhar já o campo `visibilidade` da mesa (`PRIVADA` | `PUBLICA`) mas **implem
 5. **Carteira migrada:** abre caminho para criar moedas offline e levá-las ao online (ver dúvidas).
 6. **Chave de assinatura (keystore):** o login Google do Android exige registrar a impressão digital (SHA-1) do app; o certificado de *debug* serve nos testes, mas a chave definitiva precisa existir antes de publicar.
 
-## Pontos provisórios (marcados no `definition.md` §18)
+## Pontos confirmados em 28/10/2026 (`definition.md` §18)
 - **Queda de conexão** (§18.4): com tempo de jogada, a vez continua contando; no indeterminado a mesa espera e o anfitrião pode trocar o jogador por robô.
 - **Migração:** o inventário de boosters migra junto com a carteira?
 - **Papéis do console** (§18.7): divisão leitor/operador/administrador proposta, a confirmar.
