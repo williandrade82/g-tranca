@@ -4,11 +4,10 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.Application
+import io.ktor.server.routing.Route
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
-import io.ktor.server.routing.routing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -16,10 +15,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * ATENCAO: endpoints `/internal/...` sao SO PARA VALIDACAO LOCAL (sem autenticacao). Serao removidos ou
- * fechados (rede interna/autenticacao) antes de qualquer exposicao fora do cluster local.
- */
+/** Simulacao so com robos (etapa 1.3a): rota interna, protegida pelo segredo (ver [internalModule]). */
 object SimLimits {
     const val MAX_GAMES = 200
     const val MAX_MILLIS = 120_000L
@@ -105,10 +101,10 @@ internal fun runSimulation(req: SimRequest, base: MatchConfig, maxMillis: Long =
     return SimSummary(played, finished, wins, rounds, actions, System.currentTimeMillis() - started, failures, samples, timedOut)
 }
 
-fun Application.internalSimModule() {
+fun Route.simRoutes() {
     val busy = AtomicBoolean(false)
-    routing {
-        post("/internal/sim") {
+    run {
+        post("/sim") {
             val req = try {
                 call.receive<SimRequest>()
             } catch (e: Exception) {

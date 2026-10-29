@@ -1,8 +1,10 @@
 package com.gtranca.online.game
 
+import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import io.kotest.matchers.shouldBe
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -15,9 +17,10 @@ import org.junit.jupiter.api.Test
 class InternalSimTest {
     @Test
     fun `internal sim roda os jogos e resume sem falhas`() = testApplication {
-        application { gameModule() }
+        application { gameModule(testDeps()) }
         val client = createClient { install(ContentNegotiation) { json() } }
         val response = client.post("/internal/sim") {
+            header(INTERNAL_SECRET_HEADER, TEST_SECRET)
             contentType(ContentType.Application.Json)
             setBody(SimRequest(games = 5, seed = 42, mode = "duplas"))
         }
@@ -31,9 +34,10 @@ class InternalSimTest {
 
     @Test
     fun `internal sim recusa limite excedido, modo invalido e regras invalidas`() = testApplication {
-        application { gameModule() }
+        application { gameModule(testDeps()) }
         val client = createClient { install(ContentNegotiation) { json() } }
         suspend fun status(r: SimRequest) = client.post("/internal/sim") {
+            header(INTERNAL_SECRET_HEADER, TEST_SECRET)
             contentType(ContentType.Application.Json)
             setBody(r)
         }.status
