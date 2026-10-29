@@ -105,7 +105,7 @@ Cliente -> servidor (so isto):
 
 Servidor -> cliente:
 - `welcome {protocolVersion, tableId, you, table(TableRules), ruleSet, seats[SeatInfo], lastSeq}` (primeira mensagem; `lastSeq` = ultimo seq aceito)
-- `update {event?: PublicEvent, view: OnlineSeatView}` a CADA jogada processada e a cada mudanca de partida, para todos os humanos, cada um com a vista do SEU assento (`hand` so a propria; dos outros so `handSizes`; `legal` so quando e a vez dele; `lastPlays`, `totals`, `history` quando muda, `stage` PLAYING/ROUND_OVER/GAME_OVER, `winner`)
+- `update {event?: PublicEvent, view: OnlineSeatView}` a CADA jogada processada e a cada mudanca de partida, para todos os humanos, cada um com a vista do SEU assento (`hand` so a propria; dos outros so `handSizes`; `legal` so quando e a vez dele; `turnEvents` (as acoes da vez mais recente de cada assento), `totals`, `history` quando muda, `stage` PLAYING/ROUND_OVER/GAME_OVER, `winner`)
 - `seats {seats, seat, change: CONNECTED|DISCONNECTED|RESIGNED}`
 - `rejected {seq, reason: NOT_PLAYING|NOT_YOUR_TURN|STALE_STATE|ILLEGAL, message, refusals}` (nada muda; consome o seq)
 - `replaced`, `resigned`, `error {code, message}` (fatais; a conexao e fechada: 4001 substituida, 1008 mensagem invalida/limite de taxa, 1009 grande demais)

@@ -185,6 +185,31 @@ class MatchSessionTest {
     }
 
     @Test
+    fun `16_4 cada vista traz as acoes da vez mais recente de cada assento, e a vez nova substitui`() = runBlocking {
+        val run = twoHumans()
+        val (_, _, order) = both(run)
+        val (first, second) = order
+        first.send(Action.DrawFromStock)
+        run.session.inspect()
+        first.drain()
+        first.send(first.view!!.legal.filterIsInstance<Action.Discard>().first())
+        run.session.inspect()
+        second.drain()
+        val turn = second.view!!.turnEvents[first.seat]
+        turn.size shouldBe 2
+        turn.first().action shouldBe Action.DrawFromStock
+        (turn.last().action is Action.Discard) shouldBe true
+        second.view!!.turnEvents[second.seat].shouldBeEmpty()
+        // A vez do segundo comeca com a compra: so ela fica; a vez anterior do primeiro permanece ate a dele recomecar.
+        second.send(Action.DrawFromStock)
+        run.session.inspect()
+        first.drain()
+        first.view!!.turnEvents[second.seat].map { it.action } shouldBe listOf(Action.DrawFromStock)
+        first.view!!.turnEvents[first.seat].size shouldBe 2
+        run.stop()
+    }
+
+    @Test
     fun `18_3 versao de estado desatualizada e recusada`() = runBlocking {
         val run = twoHumans()
         val (_, _, order) = both(run)

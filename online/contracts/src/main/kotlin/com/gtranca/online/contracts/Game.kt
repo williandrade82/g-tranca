@@ -160,7 +160,9 @@ enum class TableStage { PLAYING, ROUND_OVER, GAME_OVER }
  * @property version contador que sobe a cada mudanca; volta em [PlayAction.stateVersion].
  * @property totals total acumulado por lado (por [Side.index]).
  * @property history partidas ja pontuadas (publicas); `null` = igual ao ultimo enviado (so vai no Welcome, no fim de partida e no fim de jogo).
- * @property lastPlays ultima jogada de cada assento NESTA partida (`null` = ainda nao jogou).
+ * @property turnEvents por assento, as acoes publicas da vez MAIS RECENTE dele nesta partida (§15.3: a jogada e a vez inteira:
+ *   comprar/pegar o lixo, baixar, descartar); a vez nova do assento (compra, recusa ou lixo) substitui a lista; vazio no inicio da
+ *   partida. Mesma regra do `GameController` do app. Os 3 vermelhos por vez derivam de `redThreeLog` (publico).
  * @property thinkingSeat assento de robo que esta jogando agora (para a pose de pensador).
  * @property legal jogadas legais do assento (vazio se nao e a vez dele): unica fonte para a interface.
  */
@@ -190,7 +192,7 @@ data class OnlineSeatView(
     val redThreeLog: List<RedThreeLaid> = emptyList(),
     val turnsBegun: Int,
     val unsettledMortoSeats: List<Seat> = emptyList(),
-    val lastPlays: List<PublicEvent?> = emptyList(),
+    val turnEvents: List<List<PublicEvent>> = emptyList(),
     val thinkingSeat: Seat? = null,
     val legal: List<Action> = emptyList(),
 ) {

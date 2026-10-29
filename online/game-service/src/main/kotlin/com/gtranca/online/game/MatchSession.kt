@@ -140,7 +140,7 @@ class MatchSession(
     private val links: Array<PlayerLink?> = Array(seatCount) { null }
     private val lastSeq = LongArray(seatCount)
     private val refusals = IntArray(seatCount)
-    private val lastPlays: Array<PublicEvent?> = Array(seatCount) { null }
+    private val turnEvents: Array<List<PublicEvent>> = Array(seatCount) { emptyList() }
     private val resignations = mutableListOf<ResignRecord>()
     private var version = 1L
     private var stage = TableStage.PLAYING
@@ -322,7 +322,7 @@ class MatchSession(
         val round = match.currentRound
         val event = PublicEvent.of(round.discardPile, seat, action)
         match = match.play(seat, action)
-        lastPlays[seat.index] = event
+        turnEvents[seat.index] = if (event.startsTurn()) listOf(event) else turnEvents[seat.index] + event
         bots.forEach { it?.observe(event) }
         version++
         lastActivity = now()
@@ -337,7 +337,7 @@ class MatchSession(
 
     private fun nextRound() {
         match = match.startNextRound() // §4.1 o jogador seguinte inicia
-        lastPlays.fill(null)
+        turnEvents.fill(emptyList())
         bots.forEach { it?.onNewRound() }
         stage = TableStage.PLAYING
         version++
@@ -447,7 +447,7 @@ class MatchSession(
             phase = pv.phase, result = pv.result, hand = pv.hand, handSizes = pv.handSizes, discardPile = pv.discardPile,
             stockSize = pv.stockSize, mortoStatus = pv.mortoStatus, mortoSizes = pv.mortoSizes,
             redThrees = pv.redThrees, tables = pv.tables, redThreeLog = pv.redThreeLog, turnsBegun = pv.turnsBegun,
-            unsettledMortoSeats = pv.unsettledMortoSeats, lastPlays = lastPlays.toList(),
+            unsettledMortoSeats = pv.unsettledMortoSeats, turnEvents = turnEvents.toList(),
             thinkingSeat = current.takeIf { stage == TableStage.PLAYING && slots[it.index] is Slot.Robot },
             legal = if (stage == TableStage.PLAYING && current.index == seat) {
                 RoundEngine.legalActions(round, Seat(seat), rules)
@@ -469,3 +469,7 @@ class MatchSession(
         }
     }
 }
+
+/** A acao abre a vez do jogador (compra, recusa do lixo ou lixo): igual ao `GameController` do app. */
+internal fun PublicEvent.startsTurn(): Boolean =
+    action == Action.DrawFromStock || action == Action.DeclineDraw || action is Action.TakeDiscardPile
