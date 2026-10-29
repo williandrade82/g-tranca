@@ -1,5 +1,6 @@
 package com.gtranca.ui.shop
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -68,7 +70,6 @@ import kotlin.math.roundToInt
  */
 private object Panel {
     const val WIDTH = 653f
-    const val TOP_H = 228
     const val BODY_Y = 227f
     const val LEFT_X = 40f
     const val RIGHT_X = 562f
@@ -91,7 +92,7 @@ fun ShopScreen(viewModel: ShopViewModel, onBack: () -> Unit) {
     val ui by viewModel.state.collectAsStateWithLifecycle()
     GBackground(Modifier.fillMaxSize().testTag("shop-screen")) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+            Modifier.fillMaxSize().safeDrawingPadding().padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -111,7 +112,7 @@ fun ShopScreen(viewModel: ShopViewModel, onBack: () -> Unit) {
                     modifier = Modifier.testTag("shop-bought"),
                 )
             }
-            ShopPanel(Modifier.fillMaxWidth().widthIn(max = 520.dp)) {
+            ShopPanel(Modifier.fillMaxWidth().widthIn(max = 520.dp).weight(1f)) {
                 ui.items.forEachIndexed { index, item ->
                     if (index > 0 && ui.items[index - 1].def.id != item.def.id) androidx.compose.foundation.layout.Spacer(Modifier.size(Spacing.sm))
                     OfferRow(item, index + 1) { viewModel.onOffer(item) }
@@ -127,9 +128,9 @@ fun ShopScreen(viewModel: ShopViewModel, onBack: () -> Unit) {
 private fun unitsText(quantity: Int): String = LocalContext.current.resources.getQuantityString(R.plurals.shop_units, quantity, quantity)
 
 /**
- * O painel: topo com o robô e o toldo, laterais e centro de madeira repetidos até a altura do conteúdo e o rodapé. Tudo é
- * desenhado em pixels inteiros (cada trecho repetido termina onde o seguinte começa, com 1 px a mais de sobreposição) para
- * não aparecerem linhas de costura.
+ * O painel: o topo (robô e toldo) e o rodapé ficam fixos; só o miolo (centro e laterais de madeira, repetidos até a altura do
+ * conteúdo) rola. Tudo é desenhado em pixels inteiros (cada trecho repetido termina onde o seguinte começa, com 1 px a mais de
+ * sobreposição) para não aparecerem linhas de costura.
  */
 @Composable
 private fun ShopPanel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
@@ -138,43 +139,63 @@ private fun ShopPanel(modifier: Modifier = Modifier, content: @Composable () -> 
     val center = ImageBitmap.imageResource(R.drawable.shop_center)
     val left = ImageBitmap.imageResource(R.drawable.shop_left)
     val right = ImageBitmap.imageResource(R.drawable.shop_right)
-    // A escala vem da largura do painel, já conhecida na hora de pôr as margens do conteúdo.
     androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
         val scale = constraints.maxWidth / Panel.WIDTH
         val density = LocalDensity.current
-        fun dp(px: Float) = with(density) { (px * scale).toDp() }
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .drawBehind { drawPanel(scale, top, bottom, center, left, right) }
-                .padding(
-                    start = dp(Panel.CONTENT_START),
-                    end = dp(Panel.WIDTH - Panel.CONTENT_END),
-                    top = dp(Panel.CONTENT_TOP),
-                    bottom = dp(Panel.FOOT_VISIBLE.toFloat()) + Spacing.sm,
-                ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-        ) { content() }
+        fun px(v: Float) = (v * scale).roundToInt()
+        fun dp(v: Float) = with(density) { px(v).toDp() }
+        val topH = px(Panel.BODY_Y)
+        val footH = px(Panel.FOOT_VISIBLE.toFloat())
+        Column(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxWidth().height(with(density) { topH.toDp() }).testTag("shop-top")) {
+                drawImage(top, IntOffset.Zero, IntSize(top.width, Panel.BODY_Y.toInt()), IntOffset.Zero, IntSize(size.width.roundToInt(), topH), filterQuality = FilterQuality.Medium)
+            }
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val viewport = maxHeight
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .heightIn(min = viewport)
+                        .drawBehind { drawBody(scale, center, left, right) }
+                        .padding(
+                            start = dp(Panel.CONTENT_START),
+                            end = dp(Panel.WIDTH - Panel.CONTENT_END),
+                            top = dp(Panel.CONTENT_TOP - Panel.BODY_Y),
+                            bottom = Spacing.sm,
+                        )
+                        .testTag("shop-scroll"),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) { content() }
+            }
+            Canvas(Modifier.fillMaxWidth().height(with(density) { footH.toDp() }).testTag("shop-bottom")) {
+                drawImage(
+                    bottom, IntOffset.Zero, IntSize(bottom.width, Panel.FOOT_VISIBLE),
+                    IntOffset(px(Panel.FOOT_X), 0), IntSize(px(bottom.width.toFloat()), size.height.roundToInt()),
+                    filterQuality = FilterQuality.Medium,
+                )
+            }
+        }
     }
 }
 
-private fun DrawScope.drawPanel(scale: Float, top: ImageBitmap, bottom: ImageBitmap, center: ImageBitmap, left: ImageBitmap, right: ImageBitmap) {
+/** O miolo: centro e laterais repetidos na vertical, do começo ao fim da área desenhada (que acompanha o conteúdo). */
+private fun DrawScope.drawBody(scale: Float, center: ImageBitmap, left: ImageBitmap, right: ImageBitmap) {
     fun px(v: Float) = (v * scale).roundToInt()
-    val bodyTop = px(Panel.BODY_Y)
-    val footTop = size.height.roundToInt() - px(Panel.FOOT_VISIBLE.toFloat())
+    val end = size.height.roundToInt()
 
-    /** Repete [image] na vertical, em [x]..[x]+[width], de [step] em [step] pixels da imagem, até o rodapé. */
+    /** Repete [image] em [x]..[x]+[width], de [step] em [step] pixels da imagem. */
     fun tile(image: ImageBitmap, x: Float, width: Float, step: Int) {
         var i = 0
         while (true) {
-            val y0 = bodyTop + px(i * step.toFloat())
-            if (y0 >= footTop) break
-            val y1 = minOf(bodyTop + px((i + 1) * step.toFloat()), footTop)
+            val y0 = px(i * step.toFloat())
+            if (y0 >= end) break
+            val y1 = minOf(px((i + 1) * step.toFloat()), end)
             val srcH = if (y1 - y0 >= px(step.toFloat())) step else maxOf(1, ((y1 - y0) / scale).roundToInt()).coerceAtMost(step)
             drawImage(
                 image,
                 IntOffset.Zero, IntSize(image.width, srcH),
-                IntOffset(px(x), y0), IntSize(px(width), (y1 - y0) + if (y1 < footTop) 1 else 0),
+                IntOffset(px(x), y0), IntSize(px(width), (y1 - y0) + if (y1 < end) 1 else 0),
                 filterQuality = FilterQuality.Medium,
             )
             i++
@@ -183,13 +204,6 @@ private fun DrawScope.drawPanel(scale: Float, top: ImageBitmap, bottom: ImageBit
     tile(center, Panel.CENTER_X, Panel.CENTER_END - Panel.CENTER_X, Panel.CENTER_STEP)
     tile(left, Panel.LEFT_X, left.width.toFloat(), Panel.SIDE_STEP)
     tile(right, Panel.RIGHT_X, right.width.toFloat(), Panel.SIDE_STEP)
-    drawImage(top, IntOffset.Zero, IntSize(top.width, top.height), IntOffset.Zero, IntSize(size.width.roundToInt(), px(Panel.TOP_H.toFloat())), filterQuality = FilterQuality.Medium)
-    drawImage(
-        bottom,
-        IntOffset.Zero, IntSize(bottom.width, Panel.FOOT_VISIBLE),
-        IntOffset(px(Panel.FOOT_X), footTop), IntSize(px(bottom.width.toFloat()), size.height.roundToInt() - footTop),
-        filterQuality = FilterQuality.Medium,
-    )
 }
 
 /** Uma oferta: a imagem do booster, o nome com a quantidade do pacote e o valor em moedas. */

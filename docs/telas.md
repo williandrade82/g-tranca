@@ -318,7 +318,7 @@ Botão **Acessar loja** (tag `inventory-shop`) abre a Loja (3.20); ao voltar, o 
 
 ### 3.20 Loja (`ShopScreen`)
 **Objetivo:** trocar moedas por boosters (§17.10). Acesso só pelo botão **Acessar loja** do Inventário (3.18).
-**Conteúdo:** o **painel da loja** montado com as peças de `docs/boosters/Loja` (título com o robô e o toldo no topo, laterais e centro de madeira repetidos conforme a altura, rodapé embaixo). Dentro dele, **9 ofertas** em grade de 3 colunas, uma linha por booster (B1, B2, B3) e as quantidades 10, 5 e 1 em cada linha. Cada oferta mostra a **imagem** do booster, o **nome** (com a quantidade, ex. "Green-LED ×10") e o **valor** em moedas (ícone do saco de dinheiro); tocar na oferta abre o modal **Comprar booster**. O saldo aparece no topo, como em todas as telas (0). Botão **Voltar** (tag `shop-back`) leva ao Inventário.
+**Conteúdo:** o **painel da loja** (o topo e o rodapé ficam fixos e só o miolo rola) montado com as peças de `docs/boosters/Loja` (título com o robô e o toldo no topo, laterais e centro de madeira repetidos conforme a altura, rodapé embaixo). Dentro dele, **9 ofertas** em grade de 3 colunas, uma linha por booster (B1, B2, B3) e as quantidades 10, 5 e 1 em cada linha. Cada oferta mostra a **imagem** do booster, o **nome** (com a quantidade, ex. "Green-LED ×10") e o **valor** em moedas (ícone do saco de dinheiro); tocar na oferta abre o modal **Comprar booster**. O saldo aparece no topo, como em todas as telas (0). Botão **Voltar** (tag `shop-back`) leva ao Inventário.
 **Regras:** §17.10.
 **Tags:** `shop-screen`, `shop-offer-<n>` (n = 1..9, na ordem da lista), `shop-back`.
 
