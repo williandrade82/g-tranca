@@ -85,6 +85,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -109,6 +111,7 @@ fun HomeScreen(
     onContinue: () -> Unit = {},
     onContinueSession: () -> Unit = {},
     onStats: () -> Unit = {},
+    onInventory: () -> Unit = {},
     onProfile: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -240,6 +243,11 @@ fun HomeScreen(
                     Spacer(Modifier.width(Spacing.sm))
                     Text(stringResource(R.string.home_profile))
                 }
+                GButton(onInventory, Modifier.heightIn(min = 48.dp).testTag("inventory"), kind = GButtonKind.Text) {
+                    com.gtranca.ui.inventory.InventoryIcon(GColors.Gold)
+                    Spacer(Modifier.width(Spacing.sm))
+                    Text(stringResource(R.string.home_inventory), maxLines = 1)
+                }
                 GButton(onStats, Modifier.heightIn(min = 48.dp).testTag("stats"), kind = GButtonKind.Text) {
                     StatsIcon(GColors.Gold)
                     Spacer(Modifier.width(Spacing.sm))
@@ -255,6 +263,27 @@ fun HomeScreen(
         }
         // Por cima da rolagem (senão a coluna rolável engole o toque): sempre à vista, mesmo com jogo salvo.
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopEnd) { SoundButton(GColors.OnTable) }
+    }
+
+    // §17.5 Presente do dia: ícone, nome e quantidade do booster sorteado.
+    state.gift?.let { gift ->
+        GDialog(
+            onDismissRequest = viewModel::onGiftDismissed,
+            modifier = Modifier.testTag("gift-modal"),
+            title = { Text(stringResource(R.string.gift_title)) },
+            text = {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    com.gtranca.ui.inventory.boosterIconRes(gift.boosterId)?.let {
+                        Image(painterResource(it), null, Modifier.size(112.dp).testTag("gift-icon"), contentScale = ContentScale.Fit)
+                    }
+                    Text(gift.name, style = MaterialTheme.typography.titleLarge, color = GColors.Gold, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("gift-name"))
+                    Text(stringResource(R.string.gift_quantity, gift.quantity), style = MaterialTheme.typography.titleMedium, color = GColors.Ivory, modifier = Modifier.testTag("gift-quantity"))
+                }
+            },
+            confirmButton = {
+                GButton(viewModel::onGiftDismissed, Modifier.heightIn(min = 48.dp).testTag("gift-ok")) { Text(stringResource(R.string.gift_ok)) }
+            },
+        )
     }
 
     if (state.confirmNewGame) {

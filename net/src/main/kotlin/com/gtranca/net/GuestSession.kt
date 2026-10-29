@@ -30,6 +30,15 @@ sealed interface GuestStatus {
     /** §16.7 pediu para entrar no meio do jogo; aguardando a aprovação do anfitrião. */
     data object WaitingApproval : GuestStatus
 
+    /**
+     * §16.7 o anfitrião chamou este jogador livre para uma partida em andamento: [offer] traz regras, assento e débito. A
+     * interface mostra o modal *Convite* e responde com [GuestSession.answerCall]; sem resposta o convite vale como recusa.
+     */
+    data class Called(val offer: CallOffer) : GuestStatus
+
+    /** §16.7 o chamado recusou (ou não pôde aceitar): a sessão acabou, sem mensagem de "mesa encerrada". */
+    data object Declined : GuestStatus
+
     /** Jogo em andamento. */
     data object Playing : GuestStatus
 
@@ -192,6 +201,14 @@ class GuestSession(
 
     /** §16.13 resultado em moedas deste jogador, ao fim do jogo. */
     val payout: StateFlow<Payout?> = _payout.asStateFlow()
+
+    /** §17.4 o estado dos boosters do **meu assento**, como o anfitrião o guarda (`null` = ainda não recebeu). */
+    private val _seatBoosters = MutableStateFlow<com.gtranca.engine.SeatBoosters?>(null)
+    val seatBoosters: StateFlow<com.gtranca.engine.SeatBoosters?> = _seatBoosters.asStateFlow()
+
+    /** §17.8 reações enviadas por qualquer assento (inclusive o meu), para mostrar na mesa. */
+    private val _reactions = MutableSharedFlow<ReactionShown>(extraBufferCapacity = 16)
+    val reactions: SharedFlow<ReactionShown> = _reactions
 
     private val _stakeDebit = MutableStateFlow<Int?>(null)
 
@@ -382,8 +399,33 @@ class GuestSession(
         }
     }
 
+    /**
+     * §16.7 responde à chamada para a partida em andamento ([GuestStatus.Called]). Aceitar fica à espera do [Welcome];
+     * recusar (ou o saldo menor que o débito, [reason] [RefusalReason.INSUFFICIENT_BALANCE]) encerra a sessão.
+     */
+    suspend fun answerCall(accept: Boolean, reason: RefusalReason? = null) {
+        mutex.withLock {
+            if (_status.value !is GuestStatus.Called) return
+            link?.sendLocked(CallReply(accept, reason))
+            if (accept) {
+                _status.value = GuestStatus.WaitingApproval
+            } else {
+                // O anfitrião fecha a conexão ao receber a recusa: aqui só se solta o enlace, sem tentar voltar.
+                link?.close()
+                link = null
+                _status.value = GuestStatus.Declined
+            }
+        }
+    }
+
     /** Propõe [action] para o pedido em aberto da vista atual (ou para [requestId], se informado). */
     suspend fun propose(action: Action, requestId: Long = _view.value?.requestId ?: 0) = send(ProposeAction(requestId, action))
+
+    /** §17.3 confirmou o seletor da partida [round]: registra os [boosters] (já debitados) no assento, no anfitrião. */
+    suspend fun chooseBoosters(round: Int, boosters: List<String>) = send(ChooseBoosters(round, boosters))
+
+    /** §17.8 envia uma reação; o anfitrião valida e a repassa a todos. */
+    suspend fun sendReaction(round: Int, reaction: String) = send(SendReaction(round, reaction))
 
     /** Solta o transporte (para o mesmo aparelho virar anfitrião, §16.10, ou sair). */
     suspend fun release() {
@@ -555,6 +597,11 @@ class GuestSession(
                 }
             }
             JoinWaiting -> _status.value = GuestStatus.WaitingApproval
+            is CallOffer -> {
+                replyWatch?.cancel()
+                _rules.value = payload.rules
+                _status.value = GuestStatus.Called(payload)
+            }
             is Rejected -> {
                 // §16.5 recusado ou substituído por outra conexão (sessão duplicada): não volta nem assume, e o estado
                 // completo (se era sucessor) é descartado.
@@ -600,6 +647,8 @@ class GuestSession(
             is Payout -> _payout.value = payload
             is PlayerPhoto -> if (payload.photo.length <= MAX_PHOTO_BASE64) _photos.value = _photos.value + (payload.playerId to payload.photo)
             is StakeDebit -> _stakeDebit.value = payload.amount
+            is SeatBoostersUpdate -> _seatBoosters.value = payload.state
+            is ReactionShown -> _reactions.tryEmit(payload)
             is GameFinished -> {
                 successorState = null
                 _paused.value = null

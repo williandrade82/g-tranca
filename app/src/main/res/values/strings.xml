@@ -30,7 +30,7 @@
     <string name="tour_done">Concluir</string>
     <string name="tour_again">Toque aqui para rever este tour quando quiser.</string>
     <string name="tour_tables_wifi">Wi-Fi do jogo: ligado, outros jogadores por perto podem te chamar para jogar junto.</string>
-    <string name="tour_table_hand">Sua mão. Toque nas cartas para selecionar; as destacadas podem ser jogadas agora.</string>
+    <string name="tour_table_hand">Sua mão. Toque nas cartas para selecionar. Com o booster Green-LED, as marcadas com ponto verde podem ser jogadas agora.</string>
     <string name="tour_table_stock">O monte: no começo da vez, compre uma carta daqui.</string>
     <string name="tour_table_discard">O lixo fica todo à vista; o número mostra quantas cartas há. Toque nele para pegá-lo quando valer.</string>
     <string name="tour_table_mortos">Os mortos: quem acabar primeiro com as cartas da mão pega um.</string>
@@ -113,6 +113,8 @@
     <string name="card_new_description">recebida agora</string>
     <string name="card_completes_selection">combina com a seleção</string>
     <string name="card_not_with_selection">não combina com a seleção</string>
+    <string name="card_opponent_fits">se encaixa no jogo do adversário</string>
+    <string name="card_opponent_closes">fecha uma canastra do adversário</string>
 
     <!-- Mesa -->
     <string name="table_round">Partida %1$d</string>
@@ -306,6 +308,110 @@
     <string name="error_contiguous_sequence">Essa sequência continua outra do mesmo naipe na mesa: acrescente as cartas a ela.</string>
     <string name="error_meld_not_found">Esse conjunto não está na mesa do seu lado.</string>
 
+    <!-- Modal de jogada não permitida (docs/telas.md 4). %1$s = nome da regra da mesa. -->
+    <string name="refusal_section_happened">O que aconteceu</string>
+    <string name="refusal_section_rule">Regra desta mesa</string>
+    <string name="refusal_section_tip">O que fazer</string>
+    <string name="refusal_keep">Continuar avisando</string>
+    <string name="refusal_subtle">Avisar discretamente</string>
+    <string name="refusal_none">Não avisar mais</string>
+    <string name="profile_refusal">Ações impedidas</string>
+    <string name="profile_refusal_hint">O que a mesa faz quando uma jogada não é permitida.</string>
+    <string name="profile_refusal_none_choice">Não avisar</string>
+    <string name="profile_refusal_subtle_choice">Aviso discreto</string>
+    <string name="profile_refusal_explain_choice">Explicar sempre</string>
+
+    <string name="refusal_title_generic">Jogada não permitida</string>
+    <string name="refusal_title_round_finished">A partida terminou</string>
+    <string name="refusal_title_not_your_turn">Ainda não é a sua vez</string>
+    <string name="refusal_title_must_draw">Compre antes de jogar</string>
+    <string name="refusal_title_already_drew">Você já comprou nesta vez</string>
+    <string name="refusal_title_stock_exhausted">O monte acabou</string>
+    <string name="refusal_title_decline_not_allowed">Ainda não dá para recusar a compra</string>
+    <string name="refusal_title_pile_empty">O lixo está vazio</string>
+    <string name="refusal_title_pile_locked">O lixo está travado</string>
+    <string name="refusal_title_pile_needs_cards">Não dá para pegar o lixo assim</string>
+    <string name="refusal_title_card_not_in_hand">Essa carta não está na sua mão</string>
+    <string name="refusal_title_red_three">3 vermelho não se descarta</string>
+    <string name="refusal_title_go_out">Você ainda não pode bater</string>
+    <string name="refusal_title_keep_card">Sobraria só uma carta na mão</string>
+    <string name="refusal_title_select_one">Escolha uma carta para descartar</string>
+    <string name="refusal_title_too_few">Poucas cartas para um conjunto</string>
+    <string name="refusal_title_no_cards">Selecione as cartas</string>
+    <string name="refusal_title_duplicate">Carta repetida na seleção</string>
+    <string name="refusal_title_three">3 não entra em conjunto</string>
+    <string name="refusal_title_too_many_wilds">Coringa demais no conjunto</string>
+    <string name="refusal_title_no_wilds">Nesta mesa não se usa coringa</string>
+    <string name="refusal_title_not_meld">As cartas não formam um conjunto</string>
+    <string name="refusal_title_repeated">Número repetido na sequência</string>
+    <string name="refusal_title_not_consecutive">Cartas fora de sequência</string>
+    <string name="refusal_title_wrong_suit">Naipe diferente</string>
+    <string name="refusal_title_wrong_rank">Número diferente</string>
+    <string name="refusal_title_group_rank">Esse número não forma grupo</string>
+    <string name="refusal_title_contiguous">Acrescente ao jogo da mesa</string>
+    <string name="refusal_title_meld_not_found">Conjunto não encontrado</string>
+
+    <string name="refusal_happened_empty_none">Essa jogada deixaria você sem cartas na mão, o que só é permitido para bater, e o seu lado ainda não tem nenhuma canastra.</string>
+    <string name="refusal_happened_empty_dirty">Essa jogada deixaria você sem cartas na mão, o que só é permitido para bater, e o seu lado só tem canastra suja (com coringa).</string>
+    <string name="refusal_happened_keep_none">Essa jogada deixaria só 1 carta na mão. Depois de descartá-la você ficaria sem cartas, o que só é permitido para bater, e o seu lado ainda não tem nenhuma canastra.</string>
+    <string name="refusal_happened_keep_dirty">Essa jogada deixaria só 1 carta na mão. Depois de descartá-la você ficaria sem cartas, o que só é permitido para bater, e o seu lado só tem canastra suja (com coringa).</string>
+
+    <string name="refusal_rule_keep_two">Quando ficar sem cartas não é permitido, baixar, acrescentar ou pegar o lixo precisa deixar pelo menos 2 cartas na mão: uma para descartar e outra que fica.</string>
+    <string name="refusal_rule_go_out_any">Nesta mesa (%1$s) para bater é preciso ter pelo menos uma canastra: um jogo com %2$d ou mais cartas.</string>
+    <string name="refusal_rule_go_out_clean">Nesta mesa (%1$s) para bater é preciso ter pelo menos uma canastra limpa: um jogo com %2$d ou mais cartas e sem coringa. Canastra suja não vale para bater.</string>
+    <string name="refusal_rule_no_morto">Como não há mais morto disponível, o seu lado pode bater sem ter pego o morto, mas só com essa canastra.</string>
+    <string name="refusal_rule_morto_taken">O seu lado já pegou o morto; para ficar sem cartas falta a canastra.</string>
+    <string name="refusal_tip_go_out_none">Forme uma canastra antes (sequência ou grupo com %1$d ou mais cartas), ou faça uma jogada que deixe pelo menos 2 cartas na mão e descarte outra carta.</string>
+    <string name="refusal_tip_largest">O seu maior jogo na mesa tem %1$d cartas; faltam %2$d para virar canastra.</string>
+    <string name="refusal_tip_go_out_dirty">Forme uma canastra limpa (sem coringa) antes, ou faça uma jogada que deixe pelo menos 2 cartas na mão e descarte outra carta.</string>
+
+    <string name="refusal_rule_draw_once">Em cada vez, a primeira ação é comprar do monte ou pegar o lixo, uma única vez. Só depois vêm baixar, acrescentar e descartar. Quem comprou não pode pegar o lixo, e vice-versa.</string>
+    <string name="refusal_tip_wait_turn">Espere os outros jogadores: os botões são liberados na sua vez.</string>
+    <string name="refusal_tip_draw">Toque no monte para comprar ou no lixo para pegá-lo.</string>
+    <string name="refusal_tip_after_draw">Baixe conjuntos, acrescente cartas ou descarte para terminar a vez.</string>
+    <string name="refusal_rule_stock_morto_gone">Nesta mesa (%1$s), quando o monte acaba, o morto que ainda estiver disponível vira o novo monte; agora não há nenhum.</string>
+    <string name="refusal_rule_stock_morto_never">Nesta mesa (%1$s) o morto nunca vira monte: quando o monte acaba, não há mais compra.</string>
+    <string name="refusal_tip_stock_exhausted">Pegue o lixo, se conseguir levar a carta do topo à mesa. Se não conseguir, recuse a compra: a partida termina sem vencedor.</string>
+    <string name="refusal_rule_decline">Só se pode recusar a compra quando o monte acabou e não há morto que possa virar monte.</string>
+    <string name="refusal_rule_pile_empty">Não é possível pegar o lixo quando ele está vazio.</string>
+    <string name="refusal_rule_pile_locked">Um 3 preto no topo trava o lixo: ele não pode ser levado à mesa, então o jogador seguinte deve comprar do monte. Depois do próximo descarte, o lixo volta a poder ser pego.</string>
+    <string name="refusal_tip_buy_stock">Compre do monte.</string>
+    <string name="refusal_rule_pile_top">Para pegar o lixo, a carta do topo precisa ir para a mesa na hora: ou forma um conjunto novo com pelo menos 2 cartas da sua mão, ou é acrescentada a um jogo do seu lado. Ela não pode ir para a mão.</string>
+    <string name="refusal_tip_pile_top">Selecione na mão cartas que formem um conjunto com a carta do topo (sequência do mesmo naipe ou grupo do mesmo número) ou que a acrescentem a um jogo seu na mesa, e toque no lixo de novo.</string>
+    <string name="refusal_tip_select_hand">Selecione cartas que estejam na sua mão.</string>
+    <string name="refusal_rule_red_three">O 3 vermelho é baixado sozinho para a mesa e nunca pode ser descartado.</string>
+    <string name="refusal_tip_discard_other">Descarte outra carta.</string>
+    <string name="refusal_rule_one_discard">Toda jogada termina com exatamente um descarte.</string>
+    <string name="refusal_tip_select_one">Toque em uma única carta da mão e depois em Descartar.</string>
+
+    <string name="refusal_rule_min_meld">Nesta mesa (%1$s) um conjunto precisa de pelo menos %2$d cartas.</string>
+    <string name="refusal_tip_more_cards">Selecione mais cartas da mão que formem o conjunto.</string>
+    <string name="refusal_tip_select_to_add">Toque nas cartas da mão que quer acrescentar e depois no conjunto.</string>
+    <string name="refusal_tip_each_once">Selecione cada carta uma só vez.</string>
+    <string name="refusal_rule_three">Nenhum 3 pode fazer parte de um conjunto: os 3 vermelhos são baixados sozinhos e os 3 pretos só podem ser descartados.</string>
+    <string name="refusal_tip_three">Tire os 3 da seleção.</string>
+    <string name="refusal_rule_one_wild">Nesta mesa (%1$s) cada conjunto aceita no máximo 1 coringa (o 2).</string>
+    <string name="refusal_rule_no_wilds">Nesta mesa (%1$s) coringa não entra em jogos.</string>
+    <string name="refusal_tip_one_wild">Deixe só um coringa na seleção, ou use o outro em um jogo diferente.</string>
+    <string name="refusal_tip_remove_wild">Tire o coringa (o 2) da seleção.</string>
+    <string name="refusal_rule_meld_kinds">Um conjunto é uma sequência (cartas seguidas do mesmo naipe, como 5, 6 e 7 de copas) ou um grupo (cartas do mesmo número, de naipes quaisquer).</string>
+    <string name="refusal_tip_check_cards">Confira se as cartas selecionadas são do mesmo naipe e seguidas, ou do mesmo número.</string>
+    <string name="refusal_rule_repeated">Numa sequência, cada número aparece uma só vez.</string>
+    <string name="refusal_tip_remove_repeated">Tire a carta repetida da seleção ou use-a em outro conjunto.</string>
+    <string name="refusal_rule_consecutive">Numa sequência as cartas são seguidas (4, 5, 6...). O Ás só vale como carta mais alta, depois do K: não existe A, 2, 3.</string>
+    <string name="refusal_tip_consecutive">Escolha cartas seguidas do mesmo naipe.</string>
+    <string name="refusal_rule_wrong_suit">Uma sequência só aceita cartas do seu naipe.</string>
+    <string name="refusal_tip_same_suit">Acrescente só cartas do mesmo naipe do conjunto, ou escolha outro conjunto.</string>
+    <string name="refusal_rule_wrong_rank">Um grupo só aceita cartas do seu número.</string>
+    <string name="refusal_tip_same_rank">Acrescente só cartas do mesmo número do grupo, ou escolha outro conjunto.</string>
+    <string name="refusal_rule_group_face">Nesta mesa (%1$s) só o A, o K, o Q e o J formam grupo; os outros números só entram em sequências.</string>
+    <string name="refusal_rule_group_none">Nesta mesa (%1$s) não existe grupo: só há sequências do mesmo naipe.</string>
+    <string name="refusal_rule_group_rank_generic">Nesta mesa (%1$s) esse número não forma grupo.</string>
+    <string name="refusal_tip_sequence_instead">Se as cartas forem do mesmo naipe, forme uma sequência com elas.</string>
+    <string name="refusal_rule_contiguous">Uma sequência nova não pode ser continuação de outra do mesmo naipe do seu lado: se todas as cartas cabem de uma vez numa sequência que já está na mesa, elas devem ser acrescentadas a ela.</string>
+    <string name="refusal_tip_add_existing">Acrescente as cartas à sequência que já está na mesa.</string>
+    <string name="refusal_tip_pick_meld">Escolha um conjunto do seu lado da mesa.</string>
+
     <!-- Fim de partida (§12) -->
     <string name="round_over_title">Fim da partida %1$d</string>
     <string name="round_result_you_went_out">Você bateu!</string>
@@ -486,6 +592,14 @@
     <string name="mp_pause_recruit">Abrir vaga</string>
     <string name="mp_pause_waiting">Aguardando %1$s</string>
     <string name="mp_pause_recruiting">Aguardando recrutamento</string>
+    <string name="mp_pause_call">Chamar jogador</string>
+    <string name="mp_call_title">Chamar jogador</string>
+    <string name="mp_call_text">Escolha quem está livre por perto para ocupar a vaga de %1$s.</string>
+    <string name="mp_call_empty">Ninguém livre por perto. Quem estiver em Iniciar novo jogo com o Wi-Fi do jogo ligado aparece aqui.</string>
+    <string name="mp_call_waiting">Aguardando %1$s responder…</string>
+    <string name="mp_call_cancel">Cancelar chamada</string>
+    <string name="mp_call_close">Fechar</string>
+    <string name="mp_call_out_of_range">%1$s saiu do alcance.</string>
     <string name="mp_join_request">%1$s quer entrar no lugar de %2$s</string>
     <string name="mp_join_accept">Aceitar</string>
     <string name="mp_join_refuse">Recusar</string>
@@ -526,7 +640,7 @@
     <string name="mp_disconnect_confirm">Desconectar</string>
     <string name="mp_menu_section">Multijogador</string>
     <string name="mp_swap_seat">Trocar jogador ou robô</string>
-    <string name="mp_swap_text">Escolha um assento: o jogador dá lugar a um robô; o robô libera a vaga para alguém entrar, com a sua aprovação.</string>
+    <string name="mp_swap_text">Escolha um assento: o jogador dá lugar a um robô; o robô libera a vaga e você chama alguém que esteja livre por perto.</string>
     <string name="mp_swap_none">Não há assento para trocar.</string>
     <string name="mp_notice_left_robot">%1$s saiu; %2$s assume o lugar</string>
     <string name="mp_notice_left_robot_reason">%1$s saiu; %2$s assume o lugar (%3$s)</string>
@@ -598,6 +712,9 @@
     <string name="a11y_player_available">%1$s, jogador, disponível</string>
     <string name="a11y_recruited_elsewhere">%1$s, recrutado por outro</string>
     <string name="invite_recruiting">%1$s está te recrutando</string>
+    <string name="invite_calling">%1$s está te chamando para uma partida em andamento</string>
+    <string name="invite_debit">Débito</string>
+    <string name="invite_debit_none">Nenhum: você herda a aposta de quem saiu</string>
     <string name="invite_stake">Aposta</string>
     <string name="invite_type">Tipo</string>
     <string name="invite_position">Posição</string>
@@ -624,4 +741,45 @@
     <string name="rejoin_wifi_title">Ligar o Wi-Fi do jogo?</string>
     <string name="rejoin_wifi_text">Para voltar à mesa de %1$s o Wi-Fi do jogo precisa estar ligado.</string>
     <string name="rejoin_wifi_on">Ligar</string>
+    <!-- Boosters: Inventário (docs/telas.md 3.18) -->
+    <string name="home_inventory">Meu inventário</string>
+    <string name="inventory_title">Inventário</string>
+    <string name="inventory_hint">Escolha até %1$d boosters para a próxima partida.</string>
+    <string name="inventory_selected_count">Marcados: %1$d de %2$d</string>
+    <string name="inventory_notice_max">Você já marcou %1$d boosters. Desmarque um para trocar.</string>
+    <string name="inventory_notice_stock">Este booster acabou.</string>
+    <string name="inventory_coins">Moedas</string>
+    <string name="inventory_slot_desc">%1$s, quantidade %2$d</string>
+    <string name="inventory_slot_desc_selected">%1$s, quantidade %2$d, marcado</string>
+    <!-- Boosters: Seletor antes de cada partida (docs/telas.md 3.19) -->
+    <string name="boosters_go">Iniciar o jogo</string>
+    <string name="boosters_timer">%1$d s</string>
+    <string name="boosters_slot_empty">Nicho %1$d vazio, toque para escolher um booster</string>
+    <string name="boosters_slot_filled">%1$s, quantidade %2$d, toque para tirar</string>
+    <string name="boosters_pick_title">Escolha um booster</string>
+    <!-- Boosters: Reações (b3, docs/telas.md 3.8) -->
+    <string name="reaction_applause">Aplausos</string>
+    <string name="reaction_love">Amei</string>
+    <string name="reaction_thinking">Pensativo</string>
+    <string name="reaction_angry">Nervoso</string>
+    <string name="reaction_chicken">Frango</string>
+    <string name="reactions_button">Reações, %1$d restantes</string>
+    <plurals name="reactions_left">
+        <item quantity="one">%1$d restante</item>
+        <item quantity="other">%1$d restantes</item>
+    </plurals>
+    <!-- Boosters: Presente do dia (docs/telas.md 4) -->
+    <string name="gift_title">Você recebeu um presente</string>
+    <string name="gift_quantity">+%1$d</string>
+    <string name="gift_ok">Guardar</string>
+    <string name="inventory_info_placeholder">Toque num item do armário para ver o que ele faz.</string>
+    <string name="inventory_info_quantity">· você tem %1$d</string>
+    <string name="inventory_coins_description">Moedas do jogo: ganha-se ao vencer e perde-se ao perder. Servem para as apostas e não se marcam para a partida.</string>
+    <string name="create_skill_boosters">Boosters de skill</string>
+    <string name="skill_boosters_on">Permitidos</string>
+    <string name="skill_boosters_off">Não permitidos</string>
+    <string name="recruited_skill">Boosters de skill: %1$s</string>
+    <string name="selector_skill_blocked">Esta mesa não permite boosters de skill</string>
+    <string name="booster_kind_skill">Booster de Skill</string>
+    <string name="booster_kind_interaction">Booster de Interação</string>
 </resources>

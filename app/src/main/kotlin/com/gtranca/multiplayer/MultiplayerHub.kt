@@ -92,6 +92,9 @@ object MultiplayerHub {
         scope.launch { runCatching { rec.rename(name) } }
     }
 
+    /** Para onde o aparelho vai ao sair da presença: a mesa [tableId], com a chave [inviteKey] (chamada de §16.7 = [viaCall]). */
+    private class Entry(val tableId: String, val inviteKey: String, val viaCall: Boolean)
+
     private val _joining = MutableStateFlow(false)
 
     /**
@@ -120,6 +123,7 @@ object MultiplayerHub {
         val key = presenceKey ?: com.gtranca.net.newPresenceKey().also { presenceKey = it }
         presenceName = name
         try {
+            // §16.2 o início da partida montada (Start) ou §16.7 a chamada para uma partida em andamento (Called).
             val start = kotlinx.coroutines.coroutineScope {
                 var recRef: com.gtranca.net.Recruitment? = null
                 // §16.2 as fotos dos jogadores próximos vão pela conexão de espera do recrutamento (nunca por uma avulsa).
@@ -137,10 +141,17 @@ object MultiplayerHub {
                 _recruitment.value = rec
                 try {
                     val events = launch {
-                        rec.events.collect { if (it !is com.gtranca.net.RecruitEvent.Start) _recruitEvents.emit(it) }
+                        rec.events.collect {
+                            if (it !is com.gtranca.net.RecruitEvent.Start && it !is com.gtranca.net.RecruitEvent.Called) _recruitEvents.emit(it)
+                        }
                     }
-                    val start = rec.events.first { it is com.gtranca.net.RecruitEvent.Start } as com.gtranca.net.RecruitEvent.Start
-                    _joining.value = true
+                    val entry = rec.events.first { it is com.gtranca.net.RecruitEvent.Start || it is com.gtranca.net.RecruitEvent.Called }
+                    // Só o início da partida montada mostra "Prepare-se!"; a chamada mostra o convite antes de entrar.
+                    val start = when (entry) {
+                        is com.gtranca.net.RecruitEvent.Start -> Entry(entry.tableId, entry.inviteKey, viaCall = false).also { _joining.value = true }
+                        is com.gtranca.net.RecruitEvent.Called -> Entry(entry.tableId, entry.inviteKey, viaCall = true)
+                        else -> error("evento inesperado")
+                    }
                     events.cancel()
                     start
                 } finally {
@@ -158,7 +169,7 @@ object MultiplayerHub {
             // §16.2 o anfitrião tocou em Escolher posições: entra direto, com a própria chave (sem novo convite).
             // §16.15 o anúncio de presença pára (sem "saindo") ANTES de procurar a mesa: trocar o anúncio no meio do pedido de conexão fazia falhar.
             withContext(NonCancellable) { runCatching { t.stopPresence(announceLeaving = false) } }
-            newTable(context, data, photo).joinAsync(start.tableId, name, inviteKey = start.inviteKey)
+            newTable(context, data, photo).joinAsync(start.tableId, name, inviteKey = start.inviteKey, viaCall = start.viaCall)
             _joining.value = false
         } finally {
             _joining.value = false

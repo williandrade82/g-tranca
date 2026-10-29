@@ -250,6 +250,45 @@ class MultiplayerTable(
         }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
+    /**
+     * §17.4 o estado dos boosters do **assento** deste aparelho: o anfitrião o guarda (na tabela dele, para o seu assento) e
+     * manda a quem ocupa o assento; segue o papel atual (§16.10).
+     */
+    val seatBoosters: StateFlow<com.gtranca.engine.SeatBoosters> = _role.flatMapLatest { role ->
+        when (role) {
+            is MpRole.Hosting -> role.host?.let { host -> host.boosters.map { it.of(host.hostSeat.index) } } ?: flowOf(com.gtranca.engine.SeatBoosters())
+            is MpRole.Guesting -> role.session.seatBoosters.map { it ?: com.gtranca.engine.SeatBoosters() }
+            null -> flowOf(com.gtranca.engine.SeatBoosters())
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, com.gtranca.engine.SeatBoosters())
+
+    /** §17.8 reações de qualquer assento (código, assento). */
+    val reactions: kotlinx.coroutines.flow.Flow<com.gtranca.net.ReactionShown> = _role.flatMapLatest { role ->
+        when (role) {
+            is MpRole.Hosting -> role.host?.reactions ?: kotlinx.coroutines.flow.emptyFlow()
+            is MpRole.Guesting -> role.session.reactions
+            null -> kotlinx.coroutines.flow.emptyFlow()
+        }
+    }
+
+    /** §17.3 confirma no anfitrião os boosters deste assento na partida [round] (o anfitrião registra direto; o convidado envia). */
+    suspend fun chooseBoosters(round: Int, boosters: List<String>) {
+        when (val role = _role.value) {
+            is MpRole.Hosting -> role.host?.let { it.registerBoosters(it.hostSeat, round, boosters) }
+            is MpRole.Guesting -> role.session.chooseBoosters(round, boosters)
+            null -> Unit
+        }
+    }
+
+    /** §17.8 pede para enviar uma reação (o anfitrião valida e repassa a todos). */
+    suspend fun sendReaction(round: Int, reaction: com.gtranca.engine.Reaction) {
+        when (val role = _role.value) {
+            is MpRole.Hosting -> role.host?.let { it.sendReaction(it.hostSeat, round, reaction) }
+            is MpRole.Guesting -> role.session.sendReaction(round, reaction.code)
+            null -> Unit
+        }
+    }
+
     /** Id público deste jogador (0 enquanto não entrou; o anfitrião original é 0). */
     val myId: Int
         get() = when (val role = _role.value) {
@@ -292,6 +331,28 @@ class MultiplayerTable(
     /** Diagnóstico (só no build debug): passos da entrada e do início, sem nomes, cartas nem tokens. */
     var log: (String) -> Unit = {}
 
+    /** §16.7 esta mesa foi aberta por uma chamada do anfitrião: aceita, a tela vai direto ao jogo (sem "Prepare-se!"). */
+    @Volatile
+    var viaCall: Boolean = false
+        private set
+
+    private val _lowBalance = MutableStateFlow(false)
+
+    /** §16.7 a chamada foi recusada sozinha: o saldo é menor que o débito (a tela avisa "Saldo insuficiente para esta mesa"). */
+    val lowBalance: StateFlow<Boolean> = _lowBalance.asStateFlow()
+
+    /** §16.7 responde à chamada para a partida em andamento (aceitar ou recusar); sem papel de convidado, nada. */
+    suspend fun answerCall(accept: Boolean, reason: com.gtranca.net.RefusalReason? = null) {
+        (_role.value as? MpRole.Guesting)?.session?.answerCall(accept, reason ?: if (accept) null else com.gtranca.net.RefusalReason.INVITE_REFUSED)
+    }
+
+    /**
+     * §16.7 jogadores **livres** por perto, para o anfitrião escolher quem chamar: na tela *Iniciar novo jogo*, sem estar
+     * recrutando nem já chamados ou recrutados. Só colete com o modal *Chamar jogador* aberto (a busca fica em modo ativo).
+     */
+    fun freePlayers(): kotlinx.coroutines.flow.Flow<List<com.gtranca.net.PresenceAdvert>> =
+        transport.discoverPresence().map { list -> list.filter { it.free && !it.hosting && !it.leaving && it.recruitedBy == null } }
+
     private fun failureEnd(kind: com.gtranca.net.JoinFailureKind): MpEnd = when (kind) {
         com.gtranca.net.JoinFailureKind.NOT_FOUND -> MpEnd.NotFound
         com.gtranca.net.JoinFailureKind.CONNECT_FAILED -> MpEnd.ConnectFailed
@@ -299,7 +360,8 @@ class MultiplayerTable(
     }
 
     /** [join] sem esperar: a falha vira o fim com a sua causa (mesa não achada, conexão que falhou, sem resposta). */
-    fun joinAsync(tableId: String, playerName: String, inviteKey: String? = null) {
+    fun joinAsync(tableId: String, playerName: String, inviteKey: String? = null, viaCall: Boolean = false) {
+        this.viaCall = viaCall
         scope.launch {
             after?.join()
             try {
@@ -331,6 +393,7 @@ class MultiplayerTable(
         robots: Map<Int, String>,
         hostSeat: Seat = Seat(0),
         ledger: com.gtranca.engine.GroupBetLedger? = null,
+        boosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters(),
     ) {
         name = playerName
         // §16.7 o jogo continua de onde estava: a tela não refaz nenhuma animação (como no reingresso).
@@ -347,6 +410,7 @@ class MultiplayerTable(
             nextPlayerId = session.nextPlayerId(),
             robotPersonas = robots,
             ledger = ledger,
+            boosters = boosters, // §17.3 o jogo que já está em andamento não volta ao seletor
         )
         val host = MultiplayerHost(
             session, config, gameSeed, emptySet(),
@@ -360,11 +424,11 @@ class MultiplayerTable(
     }
 
     /** [hostRobotGame] sem esperar. */
-    fun hostRobotGameAsync(rules: TableRules, playerName: String, tableId: String, gameSeed: Long, snapshot: com.gtranca.game.SaveSnapshot, robots: Map<Int, String>) {
+    fun hostRobotGameAsync(rules: TableRules, playerName: String, tableId: String, gameSeed: Long, snapshot: com.gtranca.game.SaveSnapshot, robots: Map<Int, String>, boosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters()) {
         scope.launch {
             after?.join()
             try {
-                hostRobotGame(rules, playerName, tableId, gameSeed, snapshot, robots)
+                hostRobotGame(rules, playerName, tableId, gameSeed, snapshot, robots, boosters = boosters)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -507,7 +571,7 @@ class MultiplayerTable(
         val snapshot = old.controller.saveSnapshot()
         hostRobotGame(
             _rules.value ?: return, name, com.gtranca.net.nearby.newTableId(), old.gameSeed, snapshot,
-            old.robotPersonas.value, old.hostSeat, old.ledger.value,
+            old.robotPersonas.value, old.hostSeat, old.ledger.value, old.boosters.value,
         )
         _offline.value = false
     }
@@ -557,7 +621,7 @@ class MultiplayerTable(
             is MpRole.Guesting -> {
                 val status = role.session.status.value
                 if (status == GuestStatus.Lobby || status == GuestStatus.Connecting ||
-                    status == GuestStatus.WaitingApproval
+                    status == GuestStatus.WaitingApproval || status is GuestStatus.Called
                 ) {
                     role.session.leave()
                 }
@@ -713,6 +777,14 @@ class MultiplayerTable(
                             if (was == GuestStatus.Reconnecting || was == GuestStatus.Resigned) _resigned.value = false
                         }
                         GuestStatus.Resigned -> _resigned.value = true
+                        is GuestStatus.Called -> {
+                            // §16.7 saldo menor que o débito: recusa sozinha (como no convite de §16.2).
+                            val debit = status.offer.debit
+                            if (debit > 0 && !coins.canAfford(debit)) {
+                                _lowBalance.value = true
+                                guest.answerCall(false, com.gtranca.net.RefusalReason.INSUFFICIENT_BALANCE)
+                            }
+                        }
                         is GuestStatus.Refused -> {
                             _end.value = MpEnd.Refused(status.message, status.reason)
                             // §16.12 token recusado ("A vaga foi preenchida."): a sessão não serve mais (a conexão substituída por
@@ -929,6 +1001,6 @@ class MultiplayerTable(
         const val REJOIN_TIMEOUT_MILLIS: Long = 30_000
 
         fun configOf(rules: TableRules): GameConfig =
-            GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake)
+            GameConfig(rules.mode, Difficulty.fromId(rules.difficulty), rules.targetScore, rules.rules, rules.stake, rules.skillBoosters)
     }
 }

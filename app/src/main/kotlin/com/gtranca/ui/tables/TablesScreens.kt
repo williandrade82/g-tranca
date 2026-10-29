@@ -340,6 +340,11 @@ private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, o
         androidx.compose.material3.TextButton(onShowDetails, Modifier.heightIn(min = 48.dp).testTag("rules-details")) {
             Text(stringResource(R.string.rules_view_details), style = MaterialTheme.typography.labelLarge, color = GColors.Gold)
         }
+        // §17.9 a mesa permite ou não os boosters de skill (vale também contra robôs).
+        Section(stringResource(R.string.create_skill_boosters)) {
+            Chip(stringResource(R.string.skill_boosters_on), state.skillBoosters, "skill-boosters-on") { viewModel.onSkillBoostersChange(true) }
+            Chip(stringResource(R.string.skill_boosters_off), !state.skillBoosters, "skill-boosters-off") { viewModel.onSkillBoostersChange(false) }
+        }
         OutlinedTextField(
             value = state.targetText,
             onValueChange = viewModel::onTargetChange,

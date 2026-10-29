@@ -16,7 +16,7 @@ data class SavedEvent(val seat: Int, val action: Action, val takenFromDiscard: L
 
 /** Configuração escolhida no início (§14), sem depender do `:ai`: a dificuldade vai pelo identificador. */
 @Serializable
-data class SavedConfig(val mode: GameMode, val difficultyId: String, val targetScore: Int, val stake: Int = 0)
+data class SavedConfig(val mode: GameMode, val difficultyId: String, val targetScore: Int, val stake: Int = 0, val skillBoosters: Boolean = true)
 
 /**
  * Jogo salvo (um só por vez). Formato JSON versionado ([formatVersion]).
@@ -47,6 +47,11 @@ data class SavedGame(
      * semente do jogo).
      */
     val robots: Map<Int, String> = emptyMap(),
+    /**
+     * §17.4 os boosters de cada assento da mesa na partida em andamento (já debitados) e as reações já usadas: ficam na
+     * posição da mesa, e "Continuar" os retoma como estavam. Vazio em jogos salvos antes dos boosters.
+     */
+    val tableBoosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters(),
 ) {
     companion object {
         /** Versão atual do formato; arquivos de outra versão são tratados como "sem jogo salvo". */

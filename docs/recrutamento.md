@@ -104,6 +104,26 @@ planejado (`Welcome` com `started = false`) e responde `Ready` (**protocolo vers
 `lobbyNotices`); envia `GameStarted` (com os robôs de cada lugar) e preenche `gameStart`. Os robôs são exatamente os da tela 2 (nada é sorteado de novo,
 exceto os de quem não entrou). Nada de semente ou token alheio nas mensagens (testado varrendo os bytes).
 
+## Chamada no meio do jogo (§16.7)
+
+Quem hospeda uma mesa **em andamento** anuncia a mesa (não a presença), então o convite não pode ir por uma conexão de
+espera: ele segue o caminho do "início perdido", pelo **anúncio da mesa**.
+
+1. **Anfitrião** (`HostSession.callPlayer(seat, key, name)`): o assento precisa estar aberto (`openSeat`); a chave de presença
+   do chamado entra em `TableAdvert.invited` (com `inProgress`). Uma chamada por assento, no máximo 3 no total. Quem chama
+   enxerga os livres por `LocalTransport.discoverPresence()` (só com o modal *Chamar jogador* aberto, em modo ativo), filtrando
+   `free`, sem `hosting`, sem `recruitedBy` e sem chamada pendente.
+2. **Livre** (`Recruitment.tablesLocked`): se está livre (tela 1) e a própria chave aparece em `invited` de um anúncio
+   `inProgress`, emite `RecruitEvent.Called(tableId, myKey)` (uma vez por instância). O hub encerra a presença (sem
+   "Prepare-se!") e abre a mesa com `joinAsync(tableId, name, inviteKey)`.
+3. **Conexão:** `Hello(inviteKey)` numa mesa em andamento cuja chave está nas chamadas recebe `CallOffer(hostName, rules, seat,
+   debit)`; sem chamada, continua a recusa "o lugar passou para um robô". `GuestStatus.Called` abre o modal *Convite*; o saldo
+   menor que o `debit` recusa sozinho. `CallReply(accepted, reason)` volta ao anfitrião.
+4. **Aceite:** vira um `JoinRequest` já marcado `called` e o anfitrião o aprova na hora pelo mesmo caminho de `approveJoin`
+   (troca o jogador, ajusta o razão de apostas, manda `StakeDebit` e `Welcome(started = true)`).
+5. **Fim da chamada** sem aceite: recusa, 27 s sem resposta, conexão perdida, cancelamento do anfitrião, ou o assento deixou de
+   ser ocupável (dono voltou, robô posto): a chamada sai de `invited`, o convidado vê o motivo e o anfitrião recebe o aviso.
+
 ## Lista de presença (NearbyTransport)
 
 | Situação | Regra |
@@ -161,10 +181,8 @@ recrutadores na lista da tela 1 sai como inicial (no `P2P_STAR` o livre mantém 
 
 ## Em aberto (perguntar ao produto)
 
-1. **§16.7 perdeu a porta de entrada:** a tela 1 não tem mais cards de mesa ("só se entra sendo chamado"). A entrada no meio
-   do jogo e "Wi-Fi ligado num jogo só com robôs vira anfitrião" dependiam do card com o pedido de entrada. Saídas: o
-   anfitrião em pausa **chama** um jogador livre (o mesmo mecanismo), ou o card de "jogo em andamento" volta. O `:net`
-   mantém o pedido de entrada do §16.7 como está.
+1. ~~§16.7 perdeu a porta de entrada~~ **Decidido (2026-10-27, opção A):** o anfitrião **chama** um jogador livre para o
+   assento aberto; ver "Chamada no meio do jogo" abaixo. O pedido de entrada sem chamada continua só na rede.
 2. Trocar de duplas para individual com gente já nos lugares: hoje só é possível na tela 1 (sem lugares ocupados).
 
 ## Diagnóstico (build debug, tag `GTrancaNearby`)

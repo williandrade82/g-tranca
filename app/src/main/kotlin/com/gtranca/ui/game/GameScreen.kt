@@ -99,7 +99,17 @@ fun GameScreen(
     val finishedRounds = snapshot.history.size
     // §14.4 regras da mesa para os textos (sem coringa, §1: só "Canastra", sem limpa/suja).
     androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules, LocalTableHeaderBottom provides androidx.compose.runtime.remember { mutableStateOf(0f) }) {
-    if (state.endScreen == EndScreen.FINAL_TABLE) {
+    if (state.boosterSelectorPending) {
+        // §17.3 antes de cada partida: o seletor de boosters, sem a distribuição à vista (docs/telas.md 3.19).
+        viewModel.boosterInventory?.let { inventory ->
+            val round = state.boosterSelectorRound.takeIf { it != 0 } ?: snapshot.roundNumber
+            com.gtranca.ui.boosters.BoosterSelectorScreen(
+                androidx.lifecycle.viewmodel.compose.viewModel(key = "boosters-selector-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(inventory, snapshot.config.skillBoosters) },
+                viewModel::onBoostersConfirmed,
+            )
+        }
+    }
+    else if (state.endScreen == EndScreen.FINAL_TABLE) {
         // docs/telas.md 3.9, 3.12 a mesa final, só para olhar: o banner de fim de partida grande por 2 s e, depois,
         // minimizado junto do "Seguir", que vai direto aos pontos da partida. Numa caixa só, com a animação por cima.
         val end = roundEnd(snapshot)

@@ -9,6 +9,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.text.style.TextAlign
@@ -145,6 +147,8 @@ fun PlayingCard(
     emphasis: CardEmphasis = CardEmphasis.NONE,
     badge: String? = null,
     describe: Boolean = true,
+    /** §17.7 b2 Yellow-LED: como a carta se encaixa nos jogos do adversário (círculo amarelo; pulsa se fecha uma canastra dele). */
+    opponentFit: com.gtranca.engine.OpponentFit = com.gtranca.engine.OpponentFit.NONE,
 ) {
     val description = cardDescription(card)
     val color = if (card.suit.isRed) GColors.CardRed else GColors.CardBlack
@@ -193,6 +197,16 @@ fun PlayingCard(
                     drawPath(check, Color.White, style = Stroke(width = w * 0.14f))
                 }
             }
+        }
+        if (opponentFit != com.gtranca.engine.OpponentFit.NONE) {
+            // Mesmo tamanho do ponto verde (§17.6), no canto superior direito; com o ponto verde na carta, fica à esquerda dele.
+            val dot = size.width * 0.2f
+            val endPad = if (mark != null) 5.dp + dot + 3.dp else 5.dp
+            Canvas(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = endPad).size(dot)) {
+                drawCircle(GColors.CardOpponentMark)
+                drawCircle(GColors.CardOpponentMarkRing, style = Stroke(width = this.size.width * 0.08f))
+            }
+            if (opponentFit == com.gtranca.engine.OpponentFit.CLOSES_CANASTA) ClosesCanastaPulse()
         }
         if (size.showCenter) {
             Text(
@@ -296,4 +310,26 @@ fun CardBack(
             CrownMark(size.width * 0.34f, Modifier.align(Alignment.Center))
         }
     }
+}
+
+/**
+ * §17.7 a cor da carta pulsa quando acrescentá-la fecharia uma canastra do adversário. Sem animações (sistema ou
+ * preferência do jogador), fica um tom fixo.
+ */
+@Composable
+private fun BoxScope.ClosesCanastaPulse() {
+    val motion = com.gtranca.ui.theme.rememberMotionEnabled()
+    val alpha = if (motion) {
+        val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "closes-canasta")
+        val pulse by transition.animateFloat(
+            0.08f, 0.4f,
+            androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(650, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                androidx.compose.animation.core.RepeatMode.Reverse,
+            ),
+            label = "closes-canasta-alpha",
+        )
+        pulse
+    } else 0.25f
+    Box(Modifier.matchParentSize().background(GColors.CardOpponentMark.copy(alpha = alpha)))
 }

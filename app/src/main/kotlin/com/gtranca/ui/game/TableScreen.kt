@@ -141,6 +141,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.toSize
@@ -190,6 +193,9 @@ interface TableEvents {
 
     /** Mesa multijogador: esconder ou mostrar as cartas da mão. */
     fun onToggleHideHand() = Unit
+
+    /** §17.8 b3: o jogador enviou uma reação. */
+    fun onReaction(reaction: com.gtranca.engine.Reaction) = Unit
     fun onClearSelection()
     fun onSortChange(sort: HandSort)
     fun onSpecialColumnToggle()
@@ -280,10 +286,24 @@ private fun TableScreenContent(
     val snapshot = state.snapshot
     val view = snapshot.view
     val snackbar = remember { SnackbarHostState() }
-    val messageText = state.message?.let { stringResource(it.messageRes()) }
+    // Jogada recusada: o Perfil escolhe entre nada, aviso discreto e modal que explica (docs/telas.md 3.6 e 4).
+    val handling = state.message?.let { LocalRefusalSettings.current.alert.handling(it) }
+    val refusal = state.message?.takeIf { handling == MessageHandling.MODAL }?.let { MoveRefusal.explain(it, view) }
+    val messageText = state.message?.takeIf { handling == MessageHandling.SNACK }?.let { stringResource(it.messageRes()) }
+    // Tocar no aviso discreto abre o modal que explica a mesma recusa.
+    var snackRefusal by remember { mutableStateOf<RefusalContent?>(null) }
+    var explainedRefusal by remember { mutableStateOf<RefusalContent?>(null) }
+    // Altura (px, a partir do alto da tela) do último toque do jogador; negativa = ainda sem toque.
+    var lastTouchY by remember { mutableStateOf(-1f) }
+    // Altura em que o aviso aparece: fixada quando ele surge, para não fugir do dedo ao ser tocado.
+    var snackY by remember { mutableStateOf(-1f) }
     LaunchedEffect(state.message) {
         if (messageText != null) {
+            snackY = lastTouchY
+            snackRefusal = state.message?.let { MoveRefusal.explain(it, view) }
             snackbar.showSnackbar(messageText)
+            events.onMessageShown()
+        } else if (handling == MessageHandling.HIDDEN) {
             events.onMessageShown()
         }
     }
@@ -372,11 +392,19 @@ private fun TableScreenContent(
     Scaffold(
         modifier = modifier
             .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
-            .testTag("table-screen"),
+            .testTag("table-screen")
+            // Registra a altura do último toque (sem consumir o evento) para o aviso discreto aparecer ali.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.firstOrNull { it.pressed }?.let { lastTouchY = it.position.y }
+                    }
+                }
+            },
         containerColor = Color.Transparent,
         // Sem a margem de baixo: a barra de ações cobre a área da navegação e põe o espaço dentro dela.
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        snackbarHost = { SnackbarHost(snackbar) { data -> GSnack(data.visuals.message) } },
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             var headerHeightPx by remember { mutableStateOf(0) }
@@ -443,6 +471,11 @@ private fun TableScreenContent(
                     state.flights.firstOrNull { it.id == id }?.let(SoundMap::forFlight)?.let(sound::play)
                 }
                 }
+                // §17.8 a reação de qualquer assento, no meio da tela, saindo da pílula de quem a enviou (a própria, da mão).
+                state.lastReaction?.let { reaction ->
+                    val own = reaction.seat == snapshot.viewerSeat
+                    ReactionCenterOverlay(reaction, (if (own) anchors[AnimAnchor.OwnHand] else anchors[AnimAnchor.SeatPill(reaction.seat.index)]), state.personas.getOrNull(reaction.seat.index))
+                }
                 // §3.5/§6.5 troca de 3 vermelho de outro assento: anúncio no meio da tela, que some sozinho.
                 state.banner?.let { SwapAnnouncement(it, view.mode, snapshot.viewerSeat, state.personas.getOrNull(it.seat.index)) }
                 // A troca do próprio jogador também é só um aviso (sem botões): fecha sozinho depois do tempo de leitura.
@@ -451,6 +484,26 @@ private fun TableScreenContent(
                     LaunchedEffect(reveal.notice.id) {
                         delay(state.swapNoticeMillis)
                         events.onRevealConfirmed()
+                    }
+                }
+                // Aviso discreto: logo acima do último toque (o dedo não o cobre e fica longe da barra do Android);
+                // sem toque ainda, no fim da área. Por cima de tudo, para poder ser tocado.
+                val topInsetPx = with(LocalDensity.current) { padding.calculateTopPadding().toPx() }
+                val gapPx = with(LocalDensity.current) { 24.dp.toPx() }
+                Box(
+                    Modifier.fillMaxSize().layout { measurable, constraints ->
+                        // Ocupa a área toda (sem pegar toques) e posiciona só a faixa, que mede o próprio tamanho.
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        val room = (constraints.maxHeight - placeable.height).coerceAtLeast(0)
+                        val y = if (snackY < 0f) room else (snackY - topInsetPx - placeable.height - gapPx).toInt().coerceIn(0, room)
+                        layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, y) }
+                    },
+                ) {
+                    SnackbarHost(snackbar, Modifier.fillMaxWidth()) { data ->
+                        GSnack(
+                            data.visuals.message,
+                            onClick = snackRefusal?.let { content -> { explainedRefusal = content; data.dismiss() } },
+                        )
                     }
                 }
             }
@@ -482,6 +535,8 @@ private fun TableScreenContent(
         }
     }
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
+    refusal?.let { RefusalDialog(it, LocalRefusalSettings.current.set, events::onMessageShown) }
+    explainedRefusal?.let { RefusalDialog(it, LocalRefusalSettings.current.set) { explainedRefusal = null } }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.meldChoice?.let { options -> MeldChoiceDialog(options, view, events) }
     if (state.confirmDecline) {
@@ -710,6 +765,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
             .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
             .padding(horizontal = 8.dp, vertical = 4.dp)
+            .anchor(AnimAnchor.SeatPill(seat.index))
             .testTag("seat-${seat.index}"),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -1225,10 +1281,12 @@ private fun androidx.compose.foundation.layout.RowScope.ActionButton(text: Strin
  * Realce de uma carta da mão. Sem seleção, só um realce discreto para as que participam de alguma jogada
  * (no começo da vez quase toda a mão participa). Com seleção, destaque forte para as que completam jogada
  * junto com a seleção e esmaecimento das demais. [highlighted] vem de `legalActions` (sem o descarte).
+ * §17.6 todo esse realce é do booster b1 (Green-LED): sem ele ([greenLed] falso), só a carta selecionada se destaca.
  */
-internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection: Boolean, humanTurn: Boolean): CardEmphasis =
+internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection: Boolean, humanTurn: Boolean, greenLed: Boolean = true): CardEmphasis =
     when {
         selected -> CardEmphasis.SELECTED
+        !greenLed -> CardEmphasis.NONE
         !humanTurn -> CardEmphasis.NONE
         !hasSelection -> if (highlighted) CardEmphasis.SUBTLE else CardEmphasis.NONE
         highlighted -> CardEmphasis.STRONG
@@ -1239,26 +1297,21 @@ internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection:
 private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // §14.1 seu avatar, bem discreto, junto do título da mão.
-            state.personas.getOrNull(state.snapshot.viewerSeat.index)?.let {
-                GMedallion(Modifier.padding(end = Spacing.sm).size(30.dp), active = state.isHumanTurn) { PersonaAvatar(it, 24.dp) }
-            }
-            Text(
-                stringResource(R.string.your_hand, state.hand.size),
-                color = OnTable,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.weight(1f),
-            )
-            // A própria última jogada, no mesmo formato do detalhe dos outros jogadores.
+            // §14.1 seu avatar; tocar nele abre a própria última jogada (no mesmo formato do detalhe dos outros).
             val ownLastText = stringResource(R.string.own_last_play)
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clickable(onClickLabel = ownLastText, role = Role.Button, onClick = onOwnLastPlay)
-                    .semantics { contentDescription = ownLastText }
-                    .testTag("own-last-play"),
-                contentAlignment = Alignment.Center,
-            ) { ActionIcon(ActionKind.MELD, OnTable, Modifier.size(20.dp)) }
+            state.personas.getOrNull(state.snapshot.viewerSeat.index)?.let {
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clickable(onClickLabel = ownLastText, role = Role.Button, onClick = onOwnLastPlay)
+                        .semantics { contentDescription = ownLastText }
+                        .testTag("own-last-play"),
+                    contentAlignment = Alignment.Center,
+                ) { GMedallion(Modifier.size(34.dp), active = state.isHumanTurn) { PersonaAvatar(it, 28.dp) } }
+            }
+            Spacer(Modifier.weight(1f))
+            // §17.8 b3 Reações: ao lado do avatar.
+            if (state.reactionsEnabled) ReactionsButton(state, events::onReaction)
             if (state.canHideHand) HideHandButton(state.handHidden, events::onToggleHideHand)
             SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
@@ -1300,9 +1353,12 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     val playableText = stringResource(R.string.card_playable)
     val completesText = stringResource(R.string.card_completes_selection)
     val notWithSelectionText = stringResource(R.string.card_not_with_selection)
+    val opponentFitsText = stringResource(R.string.card_opponent_fits)
+    val opponentClosesText = stringResource(R.string.card_opponent_closes)
     val newText = stringResource(R.string.card_new)
     val newDescription = stringResource(R.string.card_new_description)
     val hasSelection = state.selected.isNotEmpty()
+    val greenLed = com.gtranca.engine.BoosterCatalog.GREEN_LED in state.boosters
     val landing = LocalLanding.current
     FlowRow(
         modifier,
@@ -1313,7 +1369,14 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
         cards.forEach { card ->
             val selected = card in state.selected
             val isNew = card in state.newCards
-            val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn)
+            val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
+            // §17.7 b2 Yellow-LED: círculo amarelo (e pulso) nas cartas que se encaixam no jogo do adversário.
+            val fit = state.opponentFits[card] ?: com.gtranca.engine.OpponentFit.NONE
+            val fitText = when (fit) {
+                com.gtranca.engine.OpponentFit.NONE -> ""
+                com.gtranca.engine.OpponentFit.FITS -> opponentFitsText
+                com.gtranca.engine.OpponentFit.CLOSES_CANASTA -> opponentClosesText
+            }
             val emphasisText = when (emphasis) {
                 CardEmphasis.SELECTED -> selectedText
                 CardEmphasis.SUBTLE -> playableText
@@ -1340,12 +1403,13 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
                     .alpha(if (card in landing) 0f else 1f)
                     .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
                     .semantics {
-                        stateDescription = listOf(emphasisText, if (isNew) newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
+                        stateDescription = listOf(emphasisText, fitText, if (isNew) newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
                     }
                     .testTag("hand-card-$card"),
                 size = CardSize.MEDIUM,
                 emphasis = emphasis,
                 badge = if (isNew) newText else null,
+                opponentFit = fit,
             )
         }
     }

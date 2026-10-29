@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.gtranca.data.RefusalAlert
 import com.gtranca.game.DeckColor
 import com.gtranca.ui.cards.CardBack
 import com.gtranca.ui.cards.CardSize
@@ -186,6 +187,26 @@ fun ProfileScreen(
                         Text(stringResource(R.string.profile_tour_hint), style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = state.tourAuto, onCheckedChange = null)
+                }
+            }
+            // Ações impedidas: o que a mesa faz quando o motor recusa uma jogada (grava na hora).
+            GPanel(Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.profile_refusal), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.profile_refusal_hint), style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            Triple(RefusalAlert.NONE, R.string.profile_refusal_none_choice, "profile-refusal-none"),
+                            Triple(RefusalAlert.SUBTLE, R.string.profile_refusal_subtle_choice, "profile-refusal-subtle"),
+                            Triple(RefusalAlert.EXPLAIN, R.string.profile_refusal_explain_choice, "profile-refusal-explain"),
+                        ).forEach { (alert, label, tag) ->
+                            GButton(
+                                onClick = { viewModel.onRefusalAlert(alert) },
+                                modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag(tag),
+                                kind = if (state.refusalAlert == alert) GButtonKind.Primary else GButtonKind.Secondary,
+                            ) { Text(stringResource(label), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center) }
+                        }
+                    }
                 }
             }
             // Velocidade das animações: normal ou 30% mais lenta (grava na hora; vale também para o botão da mesa).

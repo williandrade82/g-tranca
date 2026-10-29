@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +64,7 @@ import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.TableIcon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -92,6 +94,8 @@ fun rememberMultiplayerHooks(
     val host by table.hostControls.collectAsState()
     var passing by remember { mutableStateOf(false) }
     var swapping by remember { mutableStateOf(false) }
+    // §16.7 assento para o qual o modal "Chamar jogador" está aberto (`null` = fechado).
+    var callSeat by remember { mutableStateOf<Seat?>(null) }
     var confirmDisconnect by remember { mutableStateOf(false) }
     // §16.7 o convidado desligou o Wi-Fi: vale como desistência, e o Wi-Fi só desliga se ele confirmar.
     var wifiOffOnResign by remember { mutableStateOf(false) }
@@ -130,8 +134,11 @@ fun rememberMultiplayerHooks(
             }
         },
         overlay = {
-            MultiplayerOverlay(table, personas, onExit)
-            if (current != null) HostMenuDialogs(table, current, personas, passing, swapping, { passing = false }, { swapping = false })
+            MultiplayerOverlay(table, personas, onExit, onCall = { callSeat = it })
+            if (current != null) {
+                HostMenuDialogs(table, current, personas, passing, swapping, { passing = false }, { swapping = false }, onCall = { callSeat = it })
+                callSeat?.let { seat -> CallPlayerDialog(table, current, seat, personas) { callSeat = null } }
+            }
             if (confirmDisconnect) {
                 GMessage(
                     modifier = Modifier.testTag("mp-disconnect"),
@@ -187,7 +194,7 @@ private fun ReturnToTableButton(table: MultiplayerTable) {
 }
 
 @Composable
-private fun MultiplayerOverlay(table: MultiplayerTable, personas: List<Persona>, onExit: () -> Unit) {
+private fun MultiplayerOverlay(table: MultiplayerTable, personas: List<Persona>, onExit: () -> Unit, onCall: (Seat) -> Unit) {
     val role by table.role.collectAsState()
     val resigned by table.resigned.collectAsState()
     val received by table.received.collectAsState()
@@ -219,7 +226,7 @@ private fun MultiplayerOverlay(table: MultiplayerTable, personas: List<Persona>,
         }
     }
 
-    if (host != null && !resigned) HostPanels(table, host, personas)
+    if (host != null && !resigned) HostPanels(table, host, personas, onCall)
     // §16.10 no provisório, "Você agora é o anfitrião" só depois de confirmado (antes vale "Aguardando os outros jogadores").
     val committed by remember(host) { host?.committed ?: flowOf(true) }.collectAsState(true)
     if (tookOver && committed) {
@@ -289,10 +296,11 @@ private fun pausedText(paused: Paused, personas: List<Persona>): String = when (
 
 /** Painéis do anfitrião: pausa com as três ações, pedidos de entrada, provisório, aviso de início e sem sucessor. */
 @Composable
-private fun HostPanels(table: MultiplayerTable, host: MultiplayerHost, personas: List<Persona>) {
+private fun HostPanels(table: MultiplayerTable, host: MultiplayerHost, personas: List<Persona>, onCall: (Seat) -> Unit) {
     val scope = rememberCoroutineScope()
     val decision by host.decision.collectAsState()
-    val requests by host.sessionJoinRequests().collectAsState()
+    // §16.7 a chamada aceita já foi aprovada pelo anfitrião: só os pedidos sem chamada pedem a decisão dele.
+    val requests by remember(host) { host.sessionJoinRequests().map { list -> list.filter { !it.called } } }.collectAsState(emptyList())
     val committed by host.committed.collectAsState()
     val canForce by host.canForceCommit.collectAsState()
     val noSuccessor by host.noSuccessor.collectAsState()
@@ -341,7 +349,15 @@ private fun HostPanels(table: MultiplayerTable, host: MultiplayerHost, personas:
                     }
                     DecisionButton(R.string.mp_pause_robot, "mp-pause-robot") { scope.launch { host.replaceWithRobot() } }
                     if (d.choice != NoticeKind.SEAT_OPENED) {
-                        DecisionButton(R.string.mp_pause_recruit, "mp-pause-recruit") { scope.launch { host.openSeatForRecruit() } }
+                        // §16.7 abrir a vaga já leva ao modal "Chamar jogador".
+                        DecisionButton(R.string.mp_pause_recruit, "mp-pause-recruit") {
+                            scope.launch {
+                                host.openSeatForRecruit()
+                                onCall(d.seat)
+                            }
+                        }
+                    } else {
+                        DecisionButton(R.string.mp_pause_call, "mp-pause-call") { onCall(d.seat) }
                     }
                     forSeat.forEach { request -> JoinRequestRow(request, seatName(request.seat), host) }
                 }
@@ -381,6 +397,81 @@ private fun HostPanels(table: MultiplayerTable, host: MultiplayerHost, personas:
 @Composable
 private fun DecisionButton(text: Int, tag: String, onClick: () -> Unit) {
     GButton(onClick, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(tag), kind = GButtonKind.Secondary) { Text(stringResource(text)) }
+}
+
+/**
+ * §16.7 modal **Chamar jogador** (docs/telas.md 3.15): os jogadores livres por perto para o [seat] aberto. Tocar chama (a
+ * chamada é a aprovação do anfitrião); com a chamada em andamento mostra "Aguardando <nome> responder…" e **Cancelar
+ * chamada**. Fecha sozinho quando o assento deixa de estar aberto (o chamado entrou, o dono voltou ou entrou um robô).
+ */
+@Composable
+private fun CallPlayerDialog(table: MultiplayerTable, host: MultiplayerHost, seat: Seat, personas: List<Persona>, onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val session = host.hostSession
+    val calls by session.seatCalls.collectAsState()
+    val openSeats by session.openSeats.collectAsState()
+    val free by remember(table) { table.freePlayers() }.collectAsState(emptyList())
+    val call = calls.firstOrNull { it.seat == seat }
+    var lastNotice by remember { mutableStateOf<com.gtranca.net.CallNotice?>(null) }
+    LaunchedEffect(session) { session.callNotices.collect { if (it.reason != null) lastNotice = it } }
+    // A busca por jogadores livres corre no modo ativo só enquanto o modal está aberto (orçamento de buscas, §16.15).
+    DisposableEffect(table) {
+        table.transport.setActiveMode(true)
+        onDispose { table.transport.setActiveMode(false) }
+    }
+    LaunchedEffect(seat in openSeats) { if (seat !in openSeats) onClose() }
+    val seatName = personas.getOrNull(seat.index)?.firstName.orEmpty()
+    GDialog(
+        onDismissRequest = {},
+        modifier = Modifier.testTag("mp-call"),
+        title = { Text(stringResource(R.string.mp_call_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(stringResource(R.string.mp_call_text, seatName))
+                lastNotice?.let { Text(callNoticeText(it), color = GColors.Ruby, fontWeight = FontWeight.Bold) }
+                if (call != null) {
+                    Text(stringResource(R.string.mp_call_waiting, call.name), Modifier.testTag("mp-call-waiting"), fontWeight = FontWeight.Bold)
+                    DecisionButton(R.string.mp_call_cancel, "mp-call-cancel") {
+                        lastNotice = null
+                        scope.launch { session.cancelCall(call.key) }
+                    }
+                } else if (free.isEmpty()) {
+                    Text(stringResource(R.string.mp_call_empty), Modifier.testTag("mp-call-empty"))
+                } else {
+                    free.forEachIndexed { index, player ->
+                        GButton(
+                            {
+                                lastNotice = null
+                                scope.launch { session.callPlayer(seat, player.key, player.name) }
+                            },
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("mp-call-$index"),
+                            kind = GButtonKind.Secondary,
+                        ) { Text(player.name.ifBlank { stringResource(R.string.mp_someone) }) }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (call == null) {
+                TextButton(
+                    {
+                        // Um assento de robô liberado sem ninguém chamado volta ao robô; o da pausa continua aberto.
+                        scope.launch { if (host.decision.value?.seat != seat) session.closeSeat(seat) }
+                        onClose()
+                    },
+                    Modifier.heightIn(min = 48.dp).testTag("mp-call-close"),
+                ) { Text(stringResource(R.string.mp_call_close)) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun callNoticeText(notice: com.gtranca.net.CallNotice): String = when (notice.reason) {
+    com.gtranca.net.RefusalReason.INSUFFICIENT_BALANCE -> stringResource(R.string.recruit_balance, notice.name)
+    com.gtranca.net.RefusalReason.NO_RESPONSE -> stringResource(R.string.recruit_no_response_host, notice.name)
+    com.gtranca.net.RefusalReason.OUT_OF_RANGE -> stringResource(R.string.mp_call_out_of_range, notice.name)
+    else -> stringResource(R.string.recruit_refused, notice.name)
 }
 
 /** §16.7 "<nome> quer entrar no lugar de <assento>": Aceitar (abre a vaga e aprova) ou Recusar. */
@@ -451,6 +542,7 @@ private fun HostMenuDialogs(
     swapping: Boolean,
     closePassing: () -> Unit,
     closeSwapping: () -> Unit,
+    onCall: (Seat) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val roster by table.roster.collectAsState()
@@ -498,7 +590,15 @@ private fun HostMenuDialogs(
                         GButton(
                             {
                                 closeSwapping()
-                                scope.launch { if (human != null) host.replaceWithRobot(seat) else table.openRobotSeat(seat) }
+                                scope.launch {
+                                    if (human != null) {
+                                        host.replaceWithRobot(seat)
+                                    } else {
+                                        // §16.7 libera o assento do robô e abre o modal "Chamar jogador".
+                                        table.openRobotSeat(seat)
+                                        onCall(seat)
+                                    }
+                                }
                             },
                             Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("mp-swap-${seat.index}"),
                             kind = GButtonKind.Secondary,

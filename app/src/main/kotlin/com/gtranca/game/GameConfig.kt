@@ -11,6 +11,7 @@ import com.gtranca.engine.model.GameMode
  * @property targetScore pontuação-alvo, inteiro positivo.
  * @property stake aposta da mesa em moedas (§14.6); 0 = sem aposta (testes, simulações).
  * @property rules perfil de regras da mesa (§14.3, §14.4); ao retomar um jogo salvo valem as regras guardadas nele.
+ * @property skillBoosters a mesa permite os boosters de skill (§17.9); `false` = só os de interação.
  */
 data class GameConfig(
     val mode: GameMode = GameMode.INDIVIDUAL,
@@ -18,6 +19,7 @@ data class GameConfig(
     val targetScore: Int = RuleSet.DEFAULT.targetScore,
     val rules: RuleSet = RuleSet.DEFAULT,
     val stake: Int = 0,
+    val skillBoosters: Boolean = true,
 ) {
     init {
         require(stake >= 0) { "Aposta não pode ser negativa: $stake" }

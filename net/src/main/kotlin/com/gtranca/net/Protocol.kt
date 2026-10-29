@@ -4,6 +4,8 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.RuleSet
+import com.gtranca.engine.SeatBoosters
+import com.gtranca.engine.TableBoosters
 import com.gtranca.engine.GroupBetLedger
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.Match
@@ -24,7 +26,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 16
+const val PROTOCOL_VERSION: Int = 19
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -87,6 +89,8 @@ data class TableRules(
     val robots: List<String> = emptyList(),
     /** §16.2 título das regras ("Clássica", "Tranca Paulista" ou "Personalizada"), mostrado no convite. */
     val rulesTitle: String = "",
+    /** §17.9 a mesa permite os boosters de skill (o convite informa; o anfitrião recusa os de skill se não). */
+    val skillBoosters: Boolean = true,
 )
 
 /** Etapa do jogo vista por um assento (mesma ideia de `Stage` do `:app`). */
@@ -523,6 +527,20 @@ data class ResendRequest(val from: Long) : Payload
 @SerialName("joinWaiting")
 data object JoinWaiting : Payload
 
+/**
+ * §16.7 convite de uma **partida em andamento** (anfitrião → jogador livre chamado, primeira resposta ao [Hello] com a
+ * chave de presença): as [rules] da mesa, o [seat] oferecido e o [debit] (a aposta cheia no lugar de um robô; 0 no lugar
+ * de quem saiu, que herda a aposta retida). Quem recebe responde com [CallReply]; o aceite nunca é automático.
+ */
+@Serializable
+@SerialName("callOffer")
+data class CallOffer(val hostName: String, val rules: TableRules, val seat: Seat, val debit: Int) : Payload
+
+/** §16.7 resposta ao [CallOffer] (chamado → anfitrião). Aceitar entra no assento; recusar só limpa a chamada. */
+@Serializable
+@SerialName("callReply")
+data class CallReply(val accepted: Boolean, val reason: RefusalReason? = null) : Payload
+
 /** Tipo de aviso público da mesa (§16.8: todos são avisados de cada ação do anfitrião). */
 @Serializable
 enum class NoticeKind {
@@ -621,6 +639,8 @@ data class SuccessorState(
     /** §16.8, §16.10 assento da pausa e a escolha já feita pelo anfitrião ([NoticeKind.WAITING]/[NoticeKind.SEAT_OPENED]). */
     val decisionSeat: Seat? = null,
     val decisionChoice: NoticeKind? = null,
+    /** §17.4 os boosters de cada assento e as reações usadas: o novo anfitrião os herda. */
+    val boosters: TableBoosters = TableBoosters(),
 ) : Payload {
     override fun toString(): String = "SuccessorState(stateSeq=$stateSeq)" // nunca registrar cartas nem tokens
 }
@@ -653,3 +673,29 @@ data object BecomeHost : Payload
 @Serializable
 @SerialName("stakeDebit")
 data class StakeDebit(val amount: Int) : Payload
+
+/**
+ * §17.3 convidado → anfitrião: o seletor da partida [round] foi confirmado com [boosters] (já debitados do inventário do
+ * convidado). O anfitrião registra no **assento** (§17.4) e devolve o estado do assento em [SeatBoostersUpdate].
+ */
+@Serializable
+@SerialName("chooseBoosters")
+data class ChooseBoosters(val round: Int, val boosters: List<String>) : Payload
+
+/**
+ * §17.4 anfitrião → o jogador do assento: o estado dos boosters do **assento** (escolhidos, reações usadas e a partida a que
+ * valem). Vai quando alguém confirma, usa uma reação ou entra no assento (quem herda o assento segue com o que ele tem).
+ */
+@Serializable
+@SerialName("seatBoosters")
+data class SeatBoostersUpdate(val state: SeatBoosters) : Payload
+
+/** §17.8 convidado → anfitrião: enviar a reação [reaction] (código de `Reaction`) na partida [round]. */
+@Serializable
+@SerialName("sendReaction")
+data class SendReaction(val round: Int, val reaction: String) : Payload
+
+/** §17.8 anfitrião → todos: o assento [seat] enviou a reação [reaction]; cada aparelho a mostra junto desse assento. */
+@Serializable
+@SerialName("reactionShown")
+data class ReactionShown(val seat: Seat, val reaction: String) : Payload

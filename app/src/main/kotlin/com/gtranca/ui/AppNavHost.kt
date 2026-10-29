@@ -94,6 +94,10 @@ object ProfileRoute
 @Serializable
 object StatsRoute
 
+/** §17.2 *Inventário*: o armário de boosters (docs/telas.md 3.18). */
+@Serializable
+object InventoryRoute
+
 /** §14.4 *Iniciar novo jogo*: as opções da mesa (docs/telas.md 3.2). */
 @Serializable
 object TablesRoute
@@ -109,11 +113,12 @@ data class SelectionRoute(
     val targetScore: Int,
     val rulesJson: String,
     val stake: Int,
+    val skillBoosters: Boolean = true,
 ) {
-    fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson, stake = stake).toConfig()
+    fun toConfig() = GameRoute(mode, difficulty, targetScore, rulesJson = rulesJson, stake = stake, skillBoosters = skillBoosters).toConfig()
 
     companion object {
-        fun of(config: GameConfig) = GameRoute.of(config).let { SelectionRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, it.stake) }
+        fun of(config: GameConfig) = GameRoute.of(config).let { SelectionRoute(it.mode, it.difficulty, it.targetScore, it.rulesJson, it.stake, it.skillBoosters) }
     }
 }
 
@@ -154,6 +159,8 @@ data class GameRoute(
     val stake: Int = 0,
     /** §14.4, §14.5 personagem de cada assento de robô ("1=zen;2=jovem"); vazio = sorteio pela semente. */
     val robots: String = "",
+    /** §17.9 a mesa permite os boosters de skill. */
+    val skillBoosters: Boolean = true,
 ) {
     fun robotMap(): Map<Int, String> = robots.split(';').mapNotNull { part ->
         val (seat, code) = part.split('=').takeIf { it.size == 2 } ?: return@mapNotNull null
@@ -166,6 +173,7 @@ data class GameRoute(
         targetScore,
         if (rulesJson.isEmpty()) RuleSet.DEFAULT else Json.decodeFromString(RuleSet.serializer(), rulesJson),
         stake,
+        skillBoosters,
     )
 
     companion object {
@@ -176,6 +184,7 @@ data class GameRoute(
             rulesJson = Json.encodeToString(RuleSet.serializer(), config.rules),
             seed = seed,
             stake = config.stake,
+            skillBoosters = config.skillBoosters,
             robots = robots.entries.sortedBy { it.key }.joinToString(";") { "${it.key}=${it.value}" },
         )
 
@@ -200,6 +209,12 @@ fun AppNavHost() {
     val slowAnimations by remember(data) { data.settings.settings.map { it.slowAnimations }.catch { emit(true) } }.collectAsStateWithLifecycle(true)
     val speedSettings = remember(slowAnimations, data) {
         SpeedSettings(slowAnimations) { WriteQueue.app.enqueue { data.settings.setSlowAnimations(!slowAnimations) } }
+    }
+    // Ações impedidas (Perfil e modal da mesa): vale para o app todo.
+    val refusalAlert by remember(data) { data.settings.settings.map { it.refusalAlert }.catch { emit(com.gtranca.data.RefusalAlert.EXPLAIN) } }
+        .collectAsStateWithLifecycle(com.gtranca.data.RefusalAlert.EXPLAIN)
+    val refusalSettings = remember(refusalAlert, data) {
+        com.gtranca.ui.game.RefusalSettings(refusalAlert) { alert -> WriteQueue.app.enqueue { data.settings.setRefusalAlert(alert) } }
     }
     // Cor do baralho (Perfil): vale para o app todo.
     val deck by remember(data) {
@@ -230,6 +245,7 @@ fun AppNavHost() {
         com.gtranca.ui.tour.LocalTours provides tourSettings,
         LocalSoundSettings provides soundSettings,
         LocalSpeedSettings provides speedSettings,
+        com.gtranca.ui.game.LocalRefusalSettings provides refusalSettings,
         com.gtranca.ui.cards.LocalDeckColor provides deck,
     ) {
     androidx.compose.foundation.layout.Box(
@@ -262,11 +278,12 @@ fun AppNavHost() {
                 null -> Unit
                 true -> com.gtranca.ui.home.WelcomeScreen { navController.navigateFromHome(ProfileRoute) }
                 false -> HomeScreen(
-                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet, sessions = data.multiplayerSession) },
+                viewModel { HomeViewModel(data.savedGames, WriteQueue.app, data.stats, data.wallet, sessions = data.multiplayerSession, boosters = data.inventory) },
                 onNewGame = { navController.navigateFromHome(TablesRoute) },
                 onContinue = { navController.navigateFromHome(GameRoute.RESUME) },
                 onContinueSession = { navController.navigateFromHome(RejoinRoute) },
                 onStats = { navController.navigateFromHome(StatsRoute) },
+                onInventory = { navController.navigateFromHome(InventoryRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
             )
             }
@@ -325,6 +342,11 @@ fun AppNavHost() {
                 onBack = { navController.popBackStack() },
             )
         }
+        composable<InventoryRoute> {
+            com.gtranca.ui.inventory.InventoryScreen(
+                viewModel { com.gtranca.ui.inventory.InventoryViewModel(data.inventory, data.wallet) },
+            ) { navController.popBackStack() }
+        }
         composable<StatsRoute> {
             StatsScreen(viewModel { StatsViewModel(data.stats, data.wallet) }) { navController.popBackStack() }
         }
@@ -363,7 +385,7 @@ class MultiplayerGameHolder(
     init {
         val scope = viewModelScope
         scope.launch {
-            driver.value = com.gtranca.multiplayer.MultiplayerDriver.create(table, scope) { com.gtranca.game.GameController.DEFAULT_BOT_DELAY_MILLIS }
+            driver.value = com.gtranca.multiplayer.MultiplayerDriver.create(table, scope, withBoosters = true) { com.gtranca.game.GameController.DEFAULT_BOT_DELAY_MILLIS }
         }
     }
 }
@@ -402,9 +424,22 @@ private fun MultiplayerGameDestination(data: GameData, navController: NavHostCon
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
+    // §17.3 antes de ver a distribuição, cada humano escolhe os boosters da partida (a mesa já espera por ele): a tela do jogo
+    // só é criada depois do Seguir, para a distribuição e os descartes já feitos serem animados depois dele.
+    val pendingFirst by readyDriver.boosterRound.collectAsStateWithLifecycle()
+    var gameCreated by rememberSaveable { mutableStateOf(false) }
+    if (!gameCreated && pendingFirst != null) {
+        val round = pendingFirst!!
+        com.gtranca.ui.boosters.BoosterSelectorScreen(
+            viewModel(key = "boosters-selector-mp-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory, rules.skillBoosters) },
+        ) { chosen -> readyDriver.confirmBoosters(round, chosen) }
+        return
+    }
+    gameCreated = true
     val viewModel = viewModel {
         GameViewModel(
             com.gtranca.multiplayer.MultiplayerTable.configOf(rules),
+            boosterInventory = data.inventory,
             initialHand = HandPrefs.parse(loaded.handSortId),
             playerProfile = profile,
             playerPhoto = photoPath,
@@ -490,9 +525,16 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
         GameLoad.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         is GameLoad.Ready -> {
             val saved = ready.saved
+            // §17.3 jogo novo: a 1ª partida começa pelo seletor de boosters (antes de o jogo ser criado e a mesa aparecer).
+            var chosenCsv by rememberSaveable { mutableStateOf<String?>(null) }
             if (ready.resumed && saved == null) {
                 LaunchedEffect(Unit) { goHome() }
+            } else if (saved == null && chosenCsv == null) {
+                com.gtranca.ui.boosters.BoosterSelectorScreen(
+                    viewModel(key = "boosters-selector-1") { com.gtranca.ui.boosters.BoosterSelectorViewModel(data.inventory, route.skillBoosters) },
+                ) { chosen -> chosenCsv = chosen.joinToString(",") }
             } else {
+                val firstBoosters = chosenCsv.orEmpty().split(',').filter { it.isNotEmpty() }
                 val viewModel = viewModel {
                     val persistence = DataGamePersistence(data)
                     if (saved != null) {
@@ -507,9 +549,10 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             playerPhoto = photoPath,
                             slowAnimations = ready.slow,
                             robots = saved.robots,
+                            boosterInventory = data.inventory,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap())
+                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory)
                     }
                 }
                 session.started = true
@@ -573,7 +616,7 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
                 is com.gtranca.net.RecruitEvent.Refused -> context.getString(
                     if (event.reason == com.gtranca.net.RefusalReason.NO_RESPONSE) com.gtranca.R.string.recruit_no_response else com.gtranca.R.string.recruit_balance_table,
                 )
-                is com.gtranca.net.RecruitEvent.Start -> null
+                is com.gtranca.net.RecruitEvent.Start, is com.gtranca.net.RecruitEvent.Called -> null
             }
             text?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
         }
@@ -596,6 +639,7 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
         )
     }
     val current = table ?: return
+    CalledToGame(current, navController, onGame)
     val end by current.end.collectAsStateWithLifecycle()
     // A mesa encerrada aparece na própria tela de seleção ou do recrutado (que a mostram); aqui, nas outras.
     val onOwnScreen = entry?.destination?.let { it.hasRoute<SelectionRoute>() || it.hasRoute<RecruitedRoute>() || it.hasRoute<RejoinRoute>() } == true
@@ -606,13 +650,78 @@ private fun NearbyPresence(data: GameData, navController: NavHostController, onG
 }
 
 /**
+ * §16.7 o anfitrião de uma partida em andamento chamou este jogador livre: mostra o *Convite* da partida (com o débito),
+ * responde pela mesa e, aceito, abre o jogo direto (sem "Prepare-se!"). Recusa, falta de resposta em 25 s ou saldo menor que
+ * o débito devolvem o jogador à tela em que estava (a mesa de convidado é solta).
+ */
+@Composable
+private fun CalledToGame(table: com.gtranca.multiplayer.MultiplayerTable, navController: NavHostController, onGame: Boolean) {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val status by table.guestStatus.collectAsStateWithLifecycle()
+    val lowBalance by table.lowBalance.collectAsStateWithLifecycle()
+    val clock = { System.nanoTime() / 1_000_000 }
+    val called = status as? com.gtranca.net.GuestStatus.Called
+    if (called != null && !onGame && !lowBalance) {
+        val offer = called.offer
+        val deadline = remember(offer) { clock() + com.gtranca.net.INVITE_TIMEOUT_MILLIS }
+        // Sem resposta em 25 s o convite vale como recusa (o aceite nunca é automático).
+        LaunchedEffect(offer) {
+            kotlinx.coroutines.delay(com.gtranca.net.INVITE_TIMEOUT_MILLIS)
+            table.answerCall(false, com.gtranca.net.RefusalReason.NO_RESPONSE)
+            android.widget.Toast.makeText(context, context.getString(com.gtranca.R.string.recruit_no_response), android.widget.Toast.LENGTH_LONG).show()
+        }
+        val slots = List(offer.rules.mode.seatCount) { if (it == 0) com.gtranca.net.Slot.Host else com.gtranca.net.Slot.Vacant }
+        val invited = com.gtranca.net.RecruitStatus.Invited(
+            hostKey = "",
+            hostName = offer.hostName,
+            table = com.gtranca.net.RecruitTable(offer.hostName, offer.rules, com.gtranca.net.TableLayout(offer.rules.mode, slots)),
+            you = offer.seat.index,
+            deadlineMillis = deadline,
+        )
+        InviteDialog(
+            invited,
+            now = clock,
+            onAccept = { scope.launch { table.answerCall(true) } },
+            onRefuse = { scope.launch { table.answerCall(false) } },
+            debit = offer.debit,
+        )
+    }
+    // Recusou, não respondeu ou o saldo não cobre: a mesa de convidado é solta e o jogador volta à tela em que estava.
+    LaunchedEffect(status) {
+        if (status == com.gtranca.net.GuestStatus.Declined) {
+            if (lowBalance) {
+                android.widget.Toast.makeText(context, context.getString(com.gtranca.R.string.recruit_balance_table), android.widget.Toast.LENGTH_LONG).show()
+            }
+            com.gtranca.multiplayer.MultiplayerHub.leave()
+        }
+    }
+    // Aceitou e o anfitrião aprovou: entra no jogo (sem "Prepare-se!").
+    LaunchedEffect(status) {
+        if (table.viaCall && status == com.gtranca.net.GuestStatus.Playing && !onGame) {
+            navController.navigate(MultiplayerGameRoute) {
+                popUpTo(HomeRoute) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
+}
+
+/**
  * §16.2 modal **Convite** (docs/telas.md 4): "<recrutador> está te recrutando", a aposta, o tipo (individual/duplas), a
  * posição (Parceiro/Adversário) e o título da regra; **Detalhes da regra**, **Recusar** e **Aceitar**. Tem **25 s** para
  * responder (§16.15), com uma barra que esvazia e os segundos restantes (vermelha nos últimos 5 s); ao zerar a rede
  * devolve o jogador a "livre" e o modal some. O aceite nunca é automático. [now] é o relógio de `Recruitment.nowMillis`.
+ * [debit] não nulo = chamada para uma partida em andamento (§16.7): troca o título e mostra o débito.
  */
 @Composable
-private fun InviteDialog(invited: com.gtranca.net.RecruitStatus.Invited, now: () -> Long, onAccept: () -> Unit, onRefuse: () -> Unit) {
+private fun InviteDialog(
+    invited: com.gtranca.net.RecruitStatus.Invited,
+    now: () -> Long,
+    onAccept: () -> Unit,
+    onRefuse: () -> Unit,
+    debit: Int? = null,
+) {
     var details by rememberSaveable { mutableStateOf(false) }
     val rules = invited.table.rules
     val partner = invited.table.layout.relationOf(invited.you) == com.gtranca.net.SeatRelation.PARTNER
@@ -627,15 +736,37 @@ private fun InviteDialog(invited: com.gtranca.net.RecruitStatus.Invited, now: ()
     com.gtranca.ui.theme.GDialog(
         onDismissRequest = {},
         modifier = Modifier.testTag("invite"),
-        title = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_recruiting, invited.hostName)) },
+        title = {
+            androidx.compose.material3.Text(
+                androidx.compose.ui.res.stringResource(
+                    if (debit != null) com.gtranca.R.string.invite_calling else com.gtranca.R.string.invite_recruiting,
+                    invited.hostName,
+                ),
+            )
+        },
         text = {
             androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
                 InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_stake)) {
                     androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.gtranca.R.drawable.coin_bag_small), null, Modifier.size(20.dp))
                     androidx.compose.material3.Text(rules.stake.toString())
                 }
+                // §16.7 no lugar de um robô debita a aposta cheia; no de quem saiu, herda a retida.
+                if (debit != null) {
+                    InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_debit)) {
+                        androidx.compose.material3.Text(
+                            if (debit > 0) debit.toString() else androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_debit_none),
+                            Modifier.testTag("invite-debit"),
+                        )
+                    }
+                }
                 InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_type)) {
                     androidx.compose.material3.Text(com.gtranca.ui.tables.modeLabel(rules.mode))
+                }
+                InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.create_skill_boosters)) {
+                    androidx.compose.material3.Text(
+                        androidx.compose.ui.res.stringResource(if (rules.skillBoosters) com.gtranca.R.string.skill_boosters_on else com.gtranca.R.string.skill_boosters_off),
+                        Modifier.testTag("invite-skill"),
+                    )
                 }
                 InviteLine(androidx.compose.ui.res.stringResource(com.gtranca.R.string.invite_position)) {
                     androidx.compose.material3.Text(
@@ -746,9 +877,10 @@ private fun rememberLocalWifi(viewModel: GameViewModel, data: GameData, navContr
                     targetScore = config.targetScore,
                     stake = config.stake,
                     difficulty = config.difficulty.id,
+                    skillBoosters = config.skillBoosters,
                 )
                 com.gtranca.multiplayer.MultiplayerHub.newTable(context, data, photo).hostRobotGameAsync(
-                    rules, name, com.gtranca.net.nearby.newTableId(), handOff.gameSeed, handOff.snapshot, handOff.robots,
+                    rules, name, com.gtranca.net.nearby.newTableId(), handOff.gameSeed, handOff.snapshot, handOff.robots, handOff.boosters,
                 )
                 navController.navigate(MultiplayerGameRoute) {
                     popUpTo(HomeRoute) { inclusive = false }
@@ -837,7 +969,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
     val rules = remember(config, tableName, rulesTitle) {
         com.gtranca.net.TableRules(
             tableName = tableName, mode = config.mode, rules = config.rules, targetScore = config.targetScore,
-            stake = config.stake, difficulty = config.difficulty.id, rulesTitle = rulesTitle,
+            stake = config.stake, difficulty = config.difficulty.id, rulesTitle = rulesTitle, skillBoosters = config.skillBoosters,
         )
     }
     // §16.2 com o Wi-Fi ligado a mesa de lugares passa a viver no recrutamento (e os chamados aparecem); sem ele, é local.

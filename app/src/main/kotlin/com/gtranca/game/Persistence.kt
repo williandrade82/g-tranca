@@ -19,13 +19,13 @@ fun PublicEvent.toSaved(): SavedEvent = SavedEvent(seat.index, action, takenFrom
 
 fun SavedEvent.toPublic(): PublicEvent = PublicEvent(Seat(seat), action, takenFromDiscard, takenTop)
 
-fun GameConfig.toSaved(): SavedConfig = SavedConfig(mode, difficulty.id, targetScore, stake)
+fun GameConfig.toSaved(): SavedConfig = SavedConfig(mode, difficulty.id, targetScore, stake, skillBoosters)
 
-fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(difficultyId), targetScore, stake = stake)
+fun SavedConfig.toConfig(): GameConfig = GameConfig(mode, Difficulty.fromId(difficultyId), targetScore, stake = stake, skillBoosters = skillBoosters)
 
-fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls, playerName)
+fun SavedGame.toRestored(): RestoredGame = RestoredGame(match, events.map { it.toPublic() }, botRandomCalls, playerName, tableBoosters)
 
-fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null, robots: Map<Int, String> = emptyMap()): SavedGame = SavedGame(
+fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: SaveSnapshot, playerName: String? = null, robots: Map<Int, String> = emptyMap(), tableBoosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters()): SavedGame = SavedGame(
     gameId = gameId,
     config = config.toSaved(),
     gameSeed = gameSeed,
@@ -34,6 +34,7 @@ fun savedGameOf(gameId: String, config: GameConfig, gameSeed: Long, snapshot: Sa
     botRandomCalls = snapshot.botRandomCalls,
     playerName = playerName,
     robots = robots,
+    tableBoosters = tableBoosters,
 )
 
 /** O que o jogo em andamento grava. Interface para os testes. */

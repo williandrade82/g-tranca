@@ -25,6 +25,12 @@ class SnapshotPacer(
     private val paceMillis: () -> Long,
     private val dealWaitMillis: () -> Long,
     private val presentationWaitMillis: () -> Long,
+    /**
+     * §17.3 chamado antes de mostrar a distribuição de uma partida em que este aparelho ainda não escolheu os boosters; só
+     * volta depois do Seguir (ou do limite). As vistas seguintes esperam na fila: depois o jogador vê as animações e os descartes
+     * que já aconteceram.
+     */
+    private val boostersGate: (suspend (roundNumber: Int) -> Unit)? = null,
     private val publish: (GameSnapshot) -> Unit,
 ) {
     private val queue = Channel<GameSnapshot>(Channel.UNLIMITED)
@@ -53,14 +59,21 @@ class SnapshotPacer(
     /** Mostra as vistas da fila, uma por vez, até ser cancelado. [initial] é a vista já na tela. */
     suspend fun run(initial: GameSnapshot) {
         var last: GameSnapshot? = null
+        gate(initial)
         awaitStaging(last, initial)
         last = initial
         for (next in queue) {
             if (last != null && othersPlayed(last, next)) paceMillis().takeIf { it > 0 }?.let { delay(it) }
+            gate(next)
             publish(next)
             awaitStaging(last, next)
             last = next
         }
+    }
+
+    /** §17.3 uma partida em andamento a mostrar: o seletor de boosters vem antes (a tela do jogo só vê a distribuição depois). */
+    private suspend fun gate(next: GameSnapshot) {
+        if (next.stage == Stage.PLAYING && !next.resigned) boostersGate?.invoke(next.roundNumber)
     }
 
     /** Depois de mostrar [next]: espera a distribuição (partida nova) e a encenação das trocas novas de 3 vermelho. */

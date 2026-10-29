@@ -2,6 +2,7 @@ package com.gtranca.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gtranca.data.RefusalAlert
 import com.gtranca.data.SettingsRepository
 import com.gtranca.game.PlayerProfile
 import com.gtranca.game.WriteQueue
@@ -31,6 +32,8 @@ data class ProfileUiState(
     val showSharedPhotos: Boolean = true,
     /** Tour guiado automático (grava na hora). */
     val tourAuto: Boolean = true,
+    /** Ações impedidas: como avisar de uma jogada recusada (grava na hora). */
+    val refusalAlert: RefusalAlert = RefusalAlert.EXPLAIN,
     val photo: PhotoState = PhotoState.NONE,
     /** Lendo a foto escolhida. */
     val importingPhoto: Boolean = false,
@@ -58,10 +61,10 @@ class ProfileViewModel(
                 val saved = PlayerProfile.decode(stored.profileId)
                 _uiState.update {
                     if (touched) {
-                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto)
+                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, refusalAlert = stored.refusalAlert)
                     } else {
                         val photo = if (saved.hasPhoto && photos != null) PhotoState.SAVED else PhotoState.NONE
-                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, photo = photo)
+                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, refusalAlert = stored.refusalAlert, photo = photo)
                     }
                 }
             }
@@ -101,6 +104,12 @@ class ProfileViewModel(
                 repo.setTourAuto(on)
             }
         }
+    }
+
+    /** Ações impedidas (nada, aviso discreto ou modal); grava na hora pela fila durável. */
+    fun onRefusalAlert(alert: RefusalAlert) {
+        _uiState.update { it.copy(refusalAlert = alert) }
+        settings?.let { repo -> writes?.enqueue { repo.setRefusalAlert(alert) } }
     }
 
     /** Velocidade das animações; grava na hora pela fila durável. */

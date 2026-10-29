@@ -147,6 +147,12 @@ class PersistenceTest {
         settings.settings.first().tourAuto shouldBe true
         settings.setTourAuto(false)
         settings.settings.first().tourAuto shouldBe false
+        // Ações impedidas (Perfil): explicar sempre por padrão; guarda a escolha.
+        settings.settings.first().refusalAlert shouldBe RefusalAlert.EXPLAIN
+        settings.setRefusalAlert(RefusalAlert.SUBTLE)
+        settings.settings.first().refusalAlert shouldBe RefusalAlert.SUBTLE
+        settings.setRefusalAlert(RefusalAlert.NONE)
+        settings.settings.first().refusalAlert shouldBe RefusalAlert.NONE
         settings.settings.first().tableSetup shouldBe null
         val setup = TableSetup(GameMode.DUPLAS, "dificil", "PAULISTA", 300, "2000")
         settings.setTableSetup(setup)

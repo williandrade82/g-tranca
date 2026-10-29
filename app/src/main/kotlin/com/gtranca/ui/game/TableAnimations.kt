@@ -20,6 +20,9 @@ sealed interface AnimAnchor {
     /** Outro assento (mão representada por cartas viradas). */
     data class SeatHand(val seat: Int) : AnimAnchor
 
+    /** A pílula de outro assento (de onde sai a reação, §17.8). */
+    data class SeatPill(val seat: Int) : AnimAnchor
+
     /** A mão do humano. */
     data object OwnHand : AnimAnchor
 

@@ -99,6 +99,9 @@ enum class EndScreen { FINAL_TABLE, ROUND_POINTS, FINAL }
  * @property reveal troca de 3 vermelho do próprio humano sendo encenada (bloqueia a mesa até "Baixar 3 vermelho").
  * @property banner troca de 3 vermelho de outro assento sendo mostrada (some sozinha após a duração da animação).
  */
+/** §17.8 uma reação enviada pelo [seat], com o [id] do envio: cada id novo reinicia a animação no centro da tela. */
+data class ReactionEvent(val seat: Seat, val reaction: com.gtranca.engine.Reaction, val id: Long)
+
 data class GameUiState(
     val snapshot: GameSnapshot,
     val hand: List<Card>,
@@ -142,8 +145,27 @@ data class GameUiState(
     val remoteTurns: Boolean = false,
     /** Mesa multijogador: o botão "Esconder cartas" aparece. */
     val canHideHand: Boolean = false,
+    /** §17.3 boosters do jogador na partida em andamento (ids do catálogo; vazio = nenhum). */
+    val boosters: List<String> = emptyList(),
+    /** §17.3 o seletor de boosters da próxima partida está na tela (a partida só começa depois do Seguir). */
+    val boosterSelectorPending: Boolean = false,
+    /** §17.7 b2 Yellow-LED: as cartas da mão que se encaixam nos jogos do adversário (vazio sem o b2 ou fora da vez). */
+    val opponentFits: Map<Card, com.gtranca.engine.OpponentFit> = emptyMap(),
+    /** §17.8 b3 Reações: o botão aparece (o booster está na partida). */
+    val reactionsEnabled: Boolean = false,
+    /** §17.8 quantas reações ainda podem ser enviadas nesta partida (0 a 3). */
+    val reactionsLeft: Int = 0,
+    /** §17.8 a reação que o jogador acabou de enviar, por alguns segundos ([ownReactionId] muda a cada envio). */
+    val ownReaction: com.gtranca.engine.Reaction? = null,
+    val ownReactionId: Long = 0,
     /** As cartas da mão estão viradas (só neste aparelho). */
     val handHidden: Boolean = false,
+    /** §17.8 reações dos outros assentos à vista agora (assento → reação), junto da pílula de cada um. */
+    val seatReactions: Map<Int, com.gtranca.engine.Reaction> = emptyMap(),
+    /** §17.8 a reação mais recente à vista (de qualquer assento), animada no centro da tela. */
+    val lastReaction: ReactionEvent? = null,
+    /** §17.3 mesa multijogador: a partida a que o seletor na tela se refere (0 = contra robôs: a da partida atual). */
+    val boosterSelectorRound: Int = 0,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
     private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
@@ -217,6 +239,13 @@ class GameViewModel(
     private val robots: Map<Int, String> = emptyMap(),
     /** §16.7 o jogo continua de onde estava na tela (virou online no meio): a primeira vista não refaz animação. */
     private val continuing: Boolean = false,
+    /** §17.3 boosters da partida em andamento (já debitados); no jogo retomado vale o do jogo salvo. */
+    initialBoosters: List<String> = emptyList(),
+    /**
+     * §17.3 inventário de boosters: com ele, cada partida depois da primeira começa pelo seletor (a 1ª passa por ele antes de
+     * o jogo ser criado). `null` = sem boosters (testes e mesa multijogador).
+     */
+    val boosterInventory: com.gtranca.data.InventoryRepository? = null,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -242,8 +271,23 @@ class GameViewModel(
     private fun enqueueSave(snapshot: SaveSnapshot) {
         val store = persistence ?: return
         if (finishSent.get()) return
-        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName, robots)) }
+        val tableNow = table
+        writes.enqueue { store.save(savedGameOf(gameId, playedConfig, gameSeed, snapshot, drawnForName, robots, tableNow)) }
     }
+
+    /** O jogo é conduzido por este aparelho (contra robôs), não por uma mesa multijogador. */
+    private val playsLocally: Boolean = externalDriver == null
+
+    /** §17.3 os boosters do jogador deste aparelho: os do assento dele em [table]. */
+    private val boosters: List<String> get() = seatState.boosters.filter { config.skillBoosters || !com.gtranca.engine.BoosterCatalog.isSkill(it) } // §17.9
+
+    /**
+     * §17.4 o estado dos boosters do assento deste aparelho: na mesa multijogador o que o anfitrião guarda (e só vale na partida em
+     * que o seletor foi confirmado); contra robôs, o de [table].
+     */
+    private val seatState: com.gtranca.engine.SeatBoosters
+        get() = externalSeat?.let { flow -> flow.value.takeIf { it.confirmedFor(local.value.snapshot.roundNumber) } ?: com.gtranca.engine.SeatBoosters() }
+            ?: table.of(humanSeat.index)
 
     private data class Local(
         val snapshot: GameSnapshot,
@@ -284,10 +328,29 @@ class GameViewModel(
         val handHidden: Boolean = false,
         val message: UiMessage? = null,
         val endStep: Int = 0,
+        /** §17.3 o seletor de boosters da próxima partida está na tela. */
+        val selectorPending: Boolean = false,
+        /** Mesa multijogador: a partida que espera o seletor deste aparelho. */
+        val pendingBoosterRound: Int = 0,
+        /** §17.8 reações dos outros assentos à vista: assento → (reação, id do envio). */
+        val seatReactions: Map<Int, Pair<com.gtranca.engine.Reaction, Long>> = emptyMap(),
+        /** Muda quando o anfitrião atualiza os boosters do assento (a tela refaz a conta). */
+        val boostersTick: Int = 0,
+        val ownReaction: com.gtranca.engine.Reaction? = null,
+        val ownReactionId: Long = 0,
+        val lastReaction: ReactionEvent? = null,
     )
 
     private val human = HumanPlayer()
     private val humanSeat = Seat(0)
+
+    /**
+     * §17.4 os boosters de cada assento da mesa na partida em andamento e as reações já usadas. Ficam **no assento** (é o que o
+     * jogo salvo guarda); lido pela gravação do jogo, fora da thread principal.
+     */
+    @Volatile
+    private var table: com.gtranca.engine.TableBoosters = restored?.tableBoosters?.takeIf { it.bySeat.isNotEmpty() }
+        ?: com.gtranca.engine.TableBoosters.single(humanSeat.index, initialBoosters)
 
     /** §14.1, §14.5 perfis por assento: o do jogador no seu e, nos demais, os personagens sorteados com a semente deste jogo. */
     private val drawnForName: String = restored?.playerName ?: playerProfile.name
@@ -325,6 +388,13 @@ class GameViewModel(
         human,
     )
     private val animationIds = AtomicLong(0)
+
+    /** §17.4 mesa multijogador: o estado dos boosters do assento deste aparelho, vindo do anfitrião. */
+    private val externalSeat: StateFlow<com.gtranca.engine.SeatBoosters>? = controller.seatBoosters
+
+    /** Mesa multijogador: a partida cujo seletor já foi confirmado aqui (o anfitrião ainda pode demorar a ecoar). */
+    @Volatile
+    private var confirmedBoosterRound = 0
 
     init {
         controller.dealDelayScale = speedFor(slowAnimations).toDouble()
@@ -390,6 +460,22 @@ class GameViewModel(
                         onDealAnimationFinished()
                     }
                 }
+        }
+        // §17.3 mesa multijogador: o seletor aparece quando o condutor da mesa espera os boosters deste aparelho.
+        if (!playsLocally) {
+            viewModelScope.launch {
+                controller.boosterRound.collect { round ->
+                    local.update { state ->
+                        when {
+                            round == null -> state.copy(selectorPending = false)
+                            round != confirmedBoosterRound -> state.copy(selectorPending = true, pendingBoosterRound = round)
+                            else -> state
+                        }
+                    }
+                }
+            }
+            externalSeat?.let { flow -> viewModelScope.launch { flow.collect { local.update { it.copy(boostersTick = it.boostersTick + 1) } } } }
+            viewModelScope.launch { controller.seatReactions.collect(::showSeatReaction) }
         }
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
@@ -473,7 +559,7 @@ class GameViewModel(
         val snapshot = driver.controller.saveSnapshot()
         persistence?.let { store -> writes.enqueue { store.discard() } }
         val robots = personas.withIndex().mapNotNull { (i, p) -> p.character?.let { i to it.profile.code } }.toMap()
-        return HandOff(playedConfig.copy(rules = snapshot.match.rules), gameSeed, snapshot, robots)
+        return HandOff(playedConfig.copy(rules = snapshot.match.rules), gameSeed, snapshot, robots, table)
     }
 
     /** A troca é do próprio humano: encenação com o botão "Baixar 3 vermelho". */
@@ -625,7 +711,8 @@ class GameViewModel(
             hand = hand,
             customHand = split,
             selected = state.selected.filter { it in visibleHand },
-            highlighted = HumanTurnResolver.highlightedCards(hand, legal, state.selected),
+            // §17.6 o realce das cartas jogáveis é do b1 (Green-LED): sem ele nada é calculado nem mostrado.
+            highlighted = if (com.gtranca.engine.BoosterCatalog.GREEN_LED in boosters) HumanTurnResolver.highlightedCards(hand, legal, state.selected) else emptySet(),
             newCards = state.newCards - hidden,
             sort = state.sort,
             redThrees = snapshot.view.redThrees.map { side -> side.filter { it !in staged } },
@@ -648,6 +735,16 @@ class GameViewModel(
             remoteTurns = multiplayer,
             canHideHand = multiplayer,
             handHidden = multiplayer && state.handHidden,
+            boosters = boosters,
+            boosterSelectorPending = state.selectorPending,
+            reactionsEnabled = com.gtranca.engine.BoosterCatalog.REACTIONS in boosters,
+            reactionsLeft = seatState.reactionsLeft,
+            seatReactions = state.seatReactions.mapValues { it.value.first },
+            lastReaction = state.lastReaction,
+            boosterSelectorRound = state.pendingBoosterRound,
+            ownReaction = state.ownReaction,
+            ownReactionId = state.ownReactionId,
+            opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
         )
@@ -789,6 +886,71 @@ class GameViewModel(
     }
 
     fun onNextRound() {
+        // §17.3 contra robôs, cada partida começa pelo seletor de boosters (antes de ver a distribuição).
+        // §17.3 a partida nova zera os boosters de todos os assentos (todos escolhem de novo).
+        table = table.newRound()
+        if (boosterInventory != null && playsLocally && !multiplayer) local.update { it.copy(selectorPending = true, ownReaction = null) }
+        else {
+            local.update { it.copy(ownReaction = null) }
+            controller.continueToNextRound()
+        }
+    }
+
+    private val reactionIds = AtomicLong(0)
+
+    /**
+     * §17.8 b3: envia uma reação (gasta 1 dos 3 usos da partida). Sem o booster ou sem usos, nada acontece. A reação fica à
+     * vista por [REACTION_SHOW_MILLIS] (*tempo provisório, revisar com produto*).
+     */
+    override fun onReaction(reaction: com.gtranca.engine.Reaction) {
+        if (!playsLocally) {
+            // §17.8 mesa multijogador: o anfitrião valida e repassa a todos (a reação volta por [showSeatReaction]).
+            if (seatState.reactionsLeft > 0) controller.sendReaction(local.value.snapshot.roundNumber, reaction)
+            return
+        }
+        val used = table.useReaction(humanSeat.index) ?: return
+        table = used
+        val id = reactionIds.incrementAndGet()
+        local.update { it.copy(ownReaction = reaction, ownReactionId = id, lastReaction = ReactionEvent(humanSeat, reaction, id)) }
+        // §17.8 os usos que sobraram ficam no jogo salvo (o "Continuar" os retoma como estavam).
+        (controller as? LocalTableDriver)?.let { enqueueSave(it.controller.saveSnapshot()) }
+        viewModelScope.launch {
+            delay(REACTION_SHOW_MILLIS)
+            local.update { if (it.ownReactionId == id) it.copy(ownReaction = null, lastReaction = it.lastReaction?.takeIf { e -> e.id != id }) else it }
+        }
+    }
+
+    /** §17.8 uma reação chegou da mesa: a do próprio assento aparece junto da mão, a dos outros junto da pílula. */
+    private fun showSeatReaction(shown: com.gtranca.game.SeatReaction) {
+        val id = reactionIds.incrementAndGet()
+        if (shown.seat == local.value.snapshot.viewerSeat.index) {
+            local.update { it.copy(ownReaction = shown.reaction, ownReactionId = id, lastReaction = ReactionEvent(Seat(shown.seat), shown.reaction, id)) }
+        } else {
+            local.update { it.copy(seatReactions = it.seatReactions + (shown.seat to (shown.reaction to id)), lastReaction = ReactionEvent(Seat(shown.seat), shown.reaction, id)) }
+        }
+        viewModelScope.launch {
+            delay(REACTION_SHOW_MILLIS)
+            local.update { state ->
+                if (shown.seat == state.snapshot.viewerSeat.index) {
+                    if (state.ownReactionId == id) state.copy(ownReaction = null, lastReaction = state.lastReaction?.takeIf { e -> e.id != id }) else state
+                } else if (state.seatReactions[shown.seat]?.second == id) state.copy(seatReactions = state.seatReactions - shown.seat, lastReaction = state.lastReaction?.takeIf { e -> e.id != id }) else state
+            }
+        }
+    }
+
+    /** §17.3 Seguir no seletor: os boosters da partida ([chosen], já debitados) valem e a próxima partida começa. */
+    fun onBoostersConfirmed(chosen: List<String>) {
+        if (!local.value.selectorPending) return
+        if (!playsLocally) {
+            // §17.3 mesa multijogador: registra no assento, no anfitrião; a distribuição aparece depois (o condutor libera).
+            val round = local.value.pendingBoosterRound
+            confirmedBoosterRound = round
+            controller.confirmBoosters(round, chosen)
+            local.update { it.copy(selectorPending = false) }
+            return
+        }
+        table = table.confirm(humanSeat.index, chosen, local.value.snapshot.roundNumber + 1)
+        local.update { it.copy(selectorPending = false, ownReaction = null) }
         controller.continueToNextRound()
     }
 
@@ -907,6 +1069,9 @@ class GameViewModel(
         /** Duração padrão da animação de troca de 3 vermelho de outro assento. */
         const val DEFAULT_SWAP_ANIMATION_MILLIS: Long = 1_800
 
+        /** §17.8 quanto tempo a reação enviada fica à vista (*provisório, revisar com produto*). */
+        const val REACTION_SHOW_MILLIS: Long = 3_000
+
         /** Fator de duração da velocidade "lenta" (30% mais lenta). */
         const val SLOW_FACTOR: Float = 1.3f
 
@@ -926,4 +1091,6 @@ data class HandOff(
     val gameSeed: Long,
     val snapshot: SaveSnapshot,
     val robots: Map<Int, String>,
+    /** §17.3 os boosters de cada assento (a partida em andamento já tem os escolhidos). */
+    val boosters: com.gtranca.engine.TableBoosters = com.gtranca.engine.TableBoosters(),
 )
