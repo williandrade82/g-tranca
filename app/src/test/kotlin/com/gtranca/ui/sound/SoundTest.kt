@@ -89,6 +89,15 @@ class SoundTest {
     }
 
     @Test
+    fun `§17_8 aplausos tem palmas, amei beijos e frango galinha - pensativo e nervoso sao mudos`() {
+        SoundMap.forReaction(com.gtranca.engine.Reaction.APPLAUSE) shouldBe ReactionSound.CLAPS
+        SoundMap.forReaction(com.gtranca.engine.Reaction.LOVE) shouldBe ReactionSound.KISS
+        SoundMap.forReaction(com.gtranca.engine.Reaction.CHICKEN) shouldBe ReactionSound.CHICKEN
+        SoundMap.forReaction(com.gtranca.engine.Reaction.THINKING) shouldBe null
+        SoundMap.forReaction(com.gtranca.engine.Reaction.ANGRY) shouldBe null
+    }
+
+    @Test
     fun `sem som nao toca nada`() {
         NoSound.play(SoundEffect.WIN)
         NoSound.enabled shouldBe false

@@ -209,4 +209,40 @@ class MortoTest {
         }
         s.check(0, create("5H 6H 7H")) shouldFailWith ActionError.NO_MORTO_AVAILABLE
     }
+
+    @Test
+    fun `duplas - morto direto do parceiro entra na mao dele no mesmo instante em que a mao esvazia`() {
+        // §9.1 §9.2 no modo duplas o parceiro (assento 2) pega o morto do lado ao baixar tudo; a mão nunca fica vazia
+        val s = round(GameMode.DUPLAS) {
+            hand(0, "4S 8S")
+            hand(1, "9C 9D")
+            hand(2, "5H 6H 7H")
+            hand(3, "JC JD")
+            current = 2
+            phase = Phase.PLAYING
+        }.act(2, create("5H 6H 7H"))
+        s.hand(2) shouldContainExactlyInAnyOrder morto0
+        s.hand(0) shouldContainExactlyInAnyOrder cards("4S 8S")
+        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0), Seat(2))
+        s.currentSeat shouldBe Seat(2)
+        s.phase shouldBe Phase.PLAYING
+        // a jogada continua com o morto: pode baixar e só então descartar
+        s.act(2, create("4C' 5C' 6C'")).act(2, discardCard("AC'")).currentSeat shouldBe Seat(3)
+    }
+
+    @Test
+    fun `duplas - morto indireto do parceiro entra na mao dele ao descartar a ultima carta`() {
+        // §9.3 o parceiro descarta a última carta: o morto vai à mão dele nessa mesma ação; a vez passa
+        val s = round(GameMode.DUPLAS) {
+            hand(0, "4S 8S")
+            hand(1, "9C 9D")
+            hand(2, "KS")
+            hand(3, "JC JD")
+            current = 2
+            phase = Phase.PLAYING
+        }.act(2, discardCard("KS"))
+        s.hand(2) shouldContainExactlyInAnyOrder morto0
+        s.mortoStatus[0] shouldBe MortoStatus.Taken(Side(0), Seat(2))
+        s.currentSeat shouldBe Seat(3)
+    }
 }

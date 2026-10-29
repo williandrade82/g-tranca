@@ -124,6 +124,10 @@ data class GameUiState(
     val endScreen: EndScreen?,
     /** Cartas voando agora (animações da mesa); vazio com animações desligadas. */
     val flights: List<CardFlight> = emptyList(),
+    /** Voos de jogadas que esperam na fila o pouso dos anteriores (telas.md 3.8.1 R1, R6): ainda não começaram. */
+    val queuedFlights: List<CardFlight> = emptyList(),
+    /** R6: cartas de cada assento (índice) ainda a caminho do morto: a pílula não as conta antes de pousarem. Preenchido pela tela. */
+    val heldBack: Map<Int, Int> = emptyMap(),
     /** §7 conjuntos que acabaram de virar canastra (destaque curto). */
     val canastaFlashes: List<CanastaFlash> = emptyList(),
     /**
@@ -289,6 +293,8 @@ class GameViewModel(
         get() = externalSeat?.let { flow -> flow.value.takeIf { it.confirmedFor(local.value.snapshot.roundNumber) } ?: com.gtranca.engine.SeatBoosters() }
             ?: table.of(humanSeat.index)
 
+    private data class FlightBatch(val flights: List<CardFlight>, val flashes: List<CanastaFlash>)
+
     private data class Local(
         val snapshot: GameSnapshot,
         val selected: List<Card> = emptyList(),
@@ -302,6 +308,16 @@ class GameViewModel(
         /** Cartas da mão escondidas até a troca do humano ([RedThreeNotice.id]) ser confirmada. */
         val hidden: Map<Long, Set<Card>> = emptyMap(),
         val flights: List<CardFlight> = emptyList(),
+        /**
+         * telas.md 3.8.1 R1/R2: voos de jogadas que chegaram enquanto os da anterior ainda não pousaram; entram em [flights]
+         * um trecho por vez, quando o anterior pousa. Enquanto houver fila, [flights] não está vazio.
+         */
+        val queued: List<FlightBatch> = emptyList(),
+        /** Um trecho de voos está no ar (a fila espera o pouso dele). */
+        val batchBusy: Boolean = false,
+        /** Contador dos trechos liberados e o tempo até o último voo do atual pousar (para o cronômetro da fila). */
+        val batchSeq: Long = 0,
+        val batchLanding: Long = 0,
         /** Voos da distribuição ainda no ar: as trocas do início da vez só são encenadas depois deles. */
         val dealIds: Set<Long> = emptySet(),
         /** §3.5 a tela avisou que a distribuição terminou (ou nada foi animado): aviso e voos das trocas já podem começar. */
@@ -510,6 +526,15 @@ class GameViewModel(
                     }
                 }
         }
+        // telas.md 3.8.1 R1/R2: o trecho de voos seguinte só entra no ar quando o anterior pousou (por tempo, como settleAfter).
+        viewModelScope.launch {
+            local.map { it.batchSeq }.distinctUntilChanged().collectLatest { seq ->
+                if (seq > 0) {
+                    delay(local.value.batchLanding.coerceAtLeast(0))
+                    local.update(::releaseNext)
+                }
+            }
+        }
         // Cada voo/destaque some sozinho depois da sua duração (o desenho também para; isto só limpa o estado).
         viewModelScope.launch {
             val scheduled = mutableSetOf<Long>()
@@ -641,7 +666,7 @@ class GameViewModel(
         // câmera lenta) e o anúncio espera o voo pousar. A desistência não anima nada.
         val keepFlights = sameRound && (snapshot.stage == Stage.PLAYING || !snapshot.resigned)
         val (newFlights, newFlashes) = if (effectiveMillis(state) > 0 && previous != null && keepFlights) {
-            TableAnimations.derive(old, snapshot, hidden.values.flatten().toSet(), goOut = snapshot.view.phase == Phase.FINISHED, nextId = animationIds::incrementAndGet)
+            TableAnimations.derive(old, snapshot, hidden.values.flatten().toSet(), goOut = snapshot.view.phase == Phase.FINISHED, durationMillis = animationMillis, nextId = animationIds::incrementAndGet)
                 .let { (flights, flashes) -> flights.map { it.scaled(state.animationScale) } to flashes }
         } else {
             emptyList<CardFlight>() to emptyList()
@@ -658,6 +683,9 @@ class GameViewModel(
         } else {
             emptyList()
         }
+        // R1/R2: com um trecho no ar, as jogadas novas esperam na fila; sem voos novos não há o que ordenar.
+        val queueIt = keepFlights && newFlights.isNotEmpty() && state.batchBusy
+        val startNow = keepFlights && newFlights.isNotEmpty() && !state.batchBusy
         val endStep = if (snapshot.stage == Stage.PLAYING || old.history.size != snapshot.history.size) 0 else state.endStep
         val playing = snapshot.stage == Stage.PLAYING
         if (!playing) newCards = emptySet()
@@ -667,11 +695,15 @@ class GameViewModel(
             newCards = newCards,
             swaps = if (playing) swaps else emptyList(),
             mortoSwaps = if (playing) mortoSwaps.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
-            flights = if (keepFlights) state.flights + newFlights + dealFlights else dealFlights,
+            flights = if (keepFlights) state.flights + (if (queueIt) emptyList() else newFlights) + dealFlights else dealFlights,
+            queued = if (keepFlights && queueIt) state.queued + FlightBatch(newFlights, newFlashes) else if (keepFlights) state.queued else emptyList(),
+            batchBusy = keepFlights && (state.batchBusy || startNow),
+            batchSeq = if (startNow) state.batchSeq + 1 else state.batchSeq,
+            batchLanding = if (startNow) landingMillis(newFlights, state) else state.batchLanding,
             dealIds = (if (playing && sameRound) state.dealIds else emptySet()) + dealFlights.map { it.id },
             dealDone = if (previous == null || !sameRound) !dealing else state.dealDone,
             afterDeal = if (dealing) fresh.isNotEmpty() else state.afterDeal,
-            flashes = if (keepFlights) state.flashes + newFlashes else emptyList(),
+            flashes = if (keepFlights) state.flashes + (if (queueIt) emptyList() else newFlashes) else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             delivers = if (playing) delivers.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
@@ -679,6 +711,18 @@ class GameViewModel(
             confirmDecline = state.confirmDecline && snapshot.isHumanTurn,
             confirmResign = state.confirmResign && snapshot.stage == old.stage && sameRound,
             endStep = endStep,
+        )
+    }
+
+    /** Tira o próximo trecho da fila para o ar (ou marca que nada está no ar). */
+    private fun releaseNext(state: Local): Local {
+        val next = state.queued.firstOrNull() ?: return state.copy(batchBusy = false)
+        return state.copy(
+            queued = state.queued.drop(1),
+            flights = state.flights + next.flights,
+            flashes = state.flashes + next.flashes,
+            batchSeq = state.batchSeq + 1,
+            batchLanding = landingMillis(next.flights, state),
         )
     }
 
@@ -726,8 +770,9 @@ class GameViewModel(
             confirmResign = state.confirmResign,
             message = state.message,
             // A última jogada da partida (descarte ou baixa de quem bateu) pousa na mesa antes do anúncio aparecer.
-            endScreen = endScreen(snapshot, state.endStep).takeUnless { state.endStep == 0 && !snapshot.resigned && state.flights.isNotEmpty() },
+            endScreen = endScreen(snapshot, state.endStep).takeUnless { state.endStep == 0 && !snapshot.resigned && (state.flights.isNotEmpty() || state.queued.isNotEmpty()) },
             flights = state.flights,
+            queuedFlights = state.queued.flatMap { it.flights },
             canastaFlashes = state.flashes,
             animationMillis = effectiveMillis(state),
             personas = externalPersonas?.value ?: personas,
@@ -860,7 +905,7 @@ class GameViewModel(
 
     /** Tempo até o último voo de [flights] pousar (atraso do voo + duração); 0 sem voos (animações desligadas). */
     private fun landingMillis(flights: List<CardFlight>, state: Local): Long =
-        if (flights.isEmpty()) 0 else flights.maxOf { it.delayMillis } + effectiveMillis(state)
+        if (flights.isEmpty()) 0 else flights.maxOf { it.delayMillis + (effectiveMillis(state) * it.durationFactor).toLong() }
 
     /**
      * §3.5/§6.5 uma troca foi encenada: o controlador só segue [landing] ms depois, quando os voos dela já pousaram.
@@ -1010,6 +1055,8 @@ class GameViewModel(
             animationScale = scale,
             flights = if (scale <= 0f) emptyList() else flights,
             flashes = if (scale <= 0f) emptyList() else flashes,
+            queued = if (scale <= 0f) emptyList() else queued,
+            batchBusy = batchBusy && scale > 0f,
         )
     }
 

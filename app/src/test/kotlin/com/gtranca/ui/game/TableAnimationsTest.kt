@@ -515,4 +515,63 @@ class TableAnimationsTest {
         // Depois do descarte que o liberou.
         morto.minOf { it.delayMillis } shouldBe TableAnimations.MORTO_DELAY_MILLIS
     }
+
+    // ---- telas.md 3.8.1 Regras de sequência das animações ----
+
+    private val dur = TableAnimations.DEFAULT_FLIGHT_MILLIS
+
+    private fun partnerView(partnerHand: Int, taken: Boolean) = view(listOf(c("4S"), c("7H"))).copy(
+        handSizes = listOf(2, 9, partnerHand, 9),
+        mortoStatus = listOf(if (taken) MortoStatus.Taken(Side(0), Seat(2)) else MortoStatus.Available, MortoStatus.Available),
+    )
+
+    @Test
+    fun `telas R3 morto direto do parceiro sobe antes do descarte seguinte, mesmo no mesmo trecho`() {
+        // §9.2 o parceiro (assento 2) baixa as 3 últimas cartas, pega o morto e descarta: tudo chega junto num trecho só.
+        val old = snapshot(partnerView(3, taken = false), List(4) { emptyList() })
+        val events = List(4) { emptyList<PublicEvent>() }.toMutableList()
+        events[2] = listOf(
+            PublicEvent(Seat(2), Action.CreateMeld(listOf(c("5H"), c("5D"), c("5C")))),
+            PublicEvent(Seat(2), Action.Discard(c("9C"))),
+        )
+        val new = snapshot(partnerView(11, taken = true), events)
+        var id = 0L
+        val (flights, _) = TableAnimations.derive(old, new, emptySet()) { ++id }
+        val morto = flights.filter { it.from is AnimAnchor.Morto }
+        val meld = flights.filter { it.from == AnimAnchor.SeatHand(2) && it.to != AnimAnchor.DiscardPile }
+        val discard = flights.single { it.to == AnimAnchor.DiscardPile }
+        morto.all { it.to == AnimAnchor.SeatHand(2) } shouldBe true
+        // R3: o morto começa depois das cartas da baixa e o descarte só depois de o morto pousar.
+        morto.minOf { it.delayMillis } shouldBe meld.maxOf { it.delayMillis } + TableAnimations.MORTO_DELAY_MILLIS
+        (discard.delayMillis >= morto.maxOf { it.delayMillis } + dur) shouldBe true
+    }
+
+    @Test
+    fun `telas R4 morto indireto do parceiro sobe depois do descarte que esvaziou a mao`() {
+        // §9.3 o parceiro descarta a última carta e pega o morto.
+        val old = snapshot(partnerView(1, taken = false), List(4) { emptyList() })
+        val events = List(4) { emptyList<PublicEvent>() }.toMutableList()
+        events[2] = listOf(PublicEvent(Seat(2), Action.Discard(c("9C"))))
+        val new = snapshot(partnerView(11, taken = true), events)
+        var id = 0L
+        val (flights, _) = TableAnimations.derive(old, new, emptySet()) { ++id }
+        val discard = flights.single { it.to == AnimAnchor.DiscardPile }
+        val morto = flights.filter { it.from is AnimAnchor.Morto }
+        morto.shouldNotBeEmpty()
+        (morto.minOf { it.delayMillis } > discard.delayMillis) shouldBe true
+    }
+
+    @Test
+    fun `telas R1 eventos de um mesmo trecho comecam so quando o anterior pousou, na ordem do historico`() {
+        val old = snapshot(view(listOf(c("4S"), c("7H"))), List(4) { emptyList() })
+        val events = List(4) { emptyList<PublicEvent>() }.toMutableList()
+        events[1] = listOf(PublicEvent(Seat(1), Action.DrawFromStock), PublicEvent(Seat(1), Action.Discard(c("9C"))))
+        events[2] = listOf(PublicEvent(Seat(2), Action.DrawFromStock))
+        val new = snapshot(view(listOf(c("4S"), c("7H"))), events)
+        var id = 0L
+        val (flights, _) = TableAnimations.derive(old, new, emptySet()) { ++id }
+        flights.size shouldBe 3
+        // a ordem da lista é a do histórico e cada voo começa depois de o anterior pousar
+        flights.zipWithNext().forEach { (a, b) -> (b.delayMillis >= a.delayMillis + dur) shouldBe true }
+    }
 }

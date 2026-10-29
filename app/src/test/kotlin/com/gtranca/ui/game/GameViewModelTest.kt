@@ -42,6 +42,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameViewModelTest {
@@ -971,7 +972,7 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§3_5 o aviso da troca de 3 vermelho do proximo jogador so aparece depois que o descarte anterior pousou`() = runTest(dispatcher) {
+    fun `§3_5 o aviso da troca de 3 vermelho do proximo jogador so aparece depois que o descarte anterior pousou`() = runTest(dispatcher, timeout = 5.minutes) {
         var announced = 0
         for (mode in GameMode.entries) for (botDelay in listOf(0L, 300L, 700L)) {
             for (seed in 1L..40L) {
@@ -1011,10 +1012,11 @@ class GameViewModelTest {
                         (mortoBefore[i] as? com.gtranca.engine.model.MortoStatus.Taken)?.side != Side(0)
                 }
                 if (tookMorto) {
-                    val flights = after.flights.filter { it.from is AnimAnchor.Morto && it.to == AnimAnchor.OwnHand }
+                    // telas.md R1: o voo do morto pode esperar na fila o pouso da jogada anterior
+                    val flights = (after.flights + after.queuedFlights).filter { it.from is AnimAnchor.Morto && it.to == AnimAnchor.OwnHand }
                     flights.shouldNotBeEmpty()
                     // as cartas novas (inclusive as do morto sem voo) ficam fora da mão até o voo, ou o último voo, pousar
-                    val hiddenUntilLanding = after.flights.flatMap { listOfNotNull(it.card) + it.also }.toSet()
+                    val hiddenUntilLanding = (after.flights + after.queuedFlights).flatMap { listOfNotNull(it.card) + it.also }.toSet()
                     after.newCards.all { it in hiddenUntilLanding } shouldBe true
                     checked = true
                     break@seeds

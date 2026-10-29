@@ -2,6 +2,7 @@ package com.gtranca.ui.sound
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.gtranca.ui.game.AnimAnchor
+import com.gtranca.engine.Reaction
 import com.gtranca.ui.game.CardFlight
 
 /** Efeitos sonoros do jogo, um por tipo de animação. [gain] é o volume relativo (0 a 1) de cada um. */
@@ -54,7 +55,13 @@ interface SoundPlayer {
 
     /** Toca [effect] se o som estiver ligado; com [force], toca mesmo desligado (pré-escuta ao ligar a chave). */
     fun play(effect: SoundEffect, force: Boolean = false)
+
+    /** §17.8 toca o som de uma reação (arquivo gravado), se o som estiver ligado. */
+    fun playReaction(sound: ReactionSound) = Unit
 }
+
+/** §17.8 os sons gravados das reações. */
+enum class ReactionSound { CLAPS, KISS, CHICKEN }
 
 /** Sem som (testes, pré-visualizações e telas fora do app). */
 object NoSound : SoundPlayer {
@@ -67,6 +74,14 @@ val LocalSound = staticCompositionLocalOf<SoundPlayer> { NoSound }
 
 /** Qual som acompanha cada voo de carta (pelo destino; sem destino marcante, pela origem). */
 object SoundMap {
+    /** §17.8 Aplausos: palmas; Amei: beijos; Frango: galinha. Pensativo e Nervoso são mudos. */
+    fun forReaction(reaction: Reaction): ReactionSound? = when (reaction) {
+        Reaction.APPLAUSE -> ReactionSound.CLAPS
+        Reaction.LOVE -> ReactionSound.KISS
+        Reaction.CHICKEN -> ReactionSound.CHICKEN
+        Reaction.THINKING, Reaction.ANGRY -> null
+    }
+
     fun forFlight(flight: CardFlight): SoundEffect? = when (flight.to) {
         AnimAnchor.DiscardPile, is AnimAnchor.DiscardCard -> SoundEffect.TAP
         is AnimAnchor.Meld, is AnimAnchor.MeldCard, is AnimAnchor.SideArea -> SoundEffect.SLIDE

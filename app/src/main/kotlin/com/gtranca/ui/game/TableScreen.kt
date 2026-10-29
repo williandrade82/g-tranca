@@ -264,7 +264,7 @@ private val LocalHostSignal = androidx.compose.runtime.compositionLocalOf<Pair<S
 
 @Composable
 private fun TableScreenContent(
-    state: GameUiState,
+    rawState: GameUiState,
     events: TableEvents,
     modifier: Modifier,
     onReviewContinue: (() -> Unit)?,
@@ -272,6 +272,15 @@ private fun TableScreenContent(
     hostSeat: Seat?,
     reviewBanner: (@Composable () -> Unit)? = null,
 ) {
+    // Voos que já chegaram: a carta aparece no destino só então (sai da origem, voa, aparece no destino).
+    val arrived = remember { mutableStateMapOf<Long, Boolean>() }
+    // telas.md 3.8.1 R6: a pílula de quem pegou o morto só passa a contar as cartas dele quando elas pousam.
+    val state = rawState.copy(
+        heldBack = (rawState.flights.filter { arrived[it.id] != true } + rawState.queuedFlights)
+            .filter { it.holds > 0 && it.to is AnimAnchor.SeatHand }
+            .groupBy { (it.to as AnimAnchor.SeatHand).seat }
+            .mapValues { (_, list) -> list.sumOf { it.holds } },
+    )
     var showMatchInfo by rememberSaveable { mutableStateOf(false) }
     // Som da vez: uma vez quando a vez passa a ser deste jogador (nunca na revisão da mesa final).
     val turnSound = LocalSound.current
@@ -331,9 +340,21 @@ private fun TableScreenContent(
     LaunchedEffect(state.flights.map { it.id }) {
         val fresh = state.flights.filter { readyFlights[it.id] != true }
         if (fresh.isEmpty()) return@LaunchedEffect
+        // Batida de outro jogador (docs/telas.md 3.9): antes da última jogada a mesa sobe ao topo, mostrando todos os jogadores.
+        val lookUp = fresh.any { it.finale && it.from != AnimAnchor.OwnHand }
+        if (lookUp && tableScroll.value > 0) {
+            try {
+                tableScroll.animateScrollTo(0, androidx.compose.animation.core.tween(GO_OUT_LOOK_UP_MILLIS))
+                kotlinx.coroutines.delay(80) // as posições dos destinos se atualizam depois da rolagem
+            } catch (e: CancellationException) {
+                if (!currentCoroutineContext().isActive) throw e
+            }
+        }
         val viewport = tableViewport
         val targets = fresh.mapNotNull { flight -> anchors.tableTarget(flight.to) }
-        if (viewport != null && targets.isNotEmpty()) {
+        // Na batida a câmera fica em cima; só desce se o destino estiver inteiro fora da área visível.
+        val keepUp = lookUp && viewport != null && targets.any { it.bottom > viewport.top && it.top < viewport.bottom }
+        if (viewport != null && targets.isNotEmpty() && !keepUp) {
             val margin = with(density) { 12.dp.toPx() }
             val top = targets.minOf { it.top }
             val bottom = targets.maxOf { it.bottom }
@@ -357,10 +378,8 @@ private fun TableScreenContent(
         val live = state.flights.map { it.id }.toSet()
         readyFlights.keys.retainAll(live)
     }
-    // Voos que já chegaram: a carta aparece no destino só então (sai da origem, voa, aparece no destino).
-    val arrived = remember { mutableStateMapOf<Long, Boolean>() }
     val landing = if (state.animationMillis <= 0) emptySet() else
-        state.flights.filter { arrived[it.id] != true }.flatMap { listOfNotNull(it.card) + it.also }.toSet()
+        (state.flights.filter { arrived[it.id] != true } + state.queuedFlights).flatMap { listOfNotNull(it.card) + it.also }.toSet()
     // §3.5 a distribuição só termina quando todos os seus voos pousaram na tela (não por cronômetro): então avisa.
     if (state.dealPending && state.dealFlightIds.isNotEmpty()) {
         val dealLanded = state.dealFlightIds.all { id -> arrived[id] == true || state.flights.none { it.id == id } }
@@ -750,7 +769,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     // §16.6 no multijogador a vez de um humano remoto também é destacada.
     val thinking = snapshot.thinkingSeat == seat ||
         (state.remoteTurns && snapshot.thinkingSeat == null && view.phase != Phase.FINISHED && view.currentSeat == seat)
-    val handSize = view.handSizes[seat.index]
+    val handSize = view.handSizes[seat.index] - state.heldBack.getOrDefault(seat.index, 0)
     val handText = countText(R.plurals.opponent_hand, R.string.opponent_hand_zero, handSize)
     val countText = countText(R.plurals.card_count, R.string.card_count_zero, handSize)
     val thinkingText = stringResource(R.string.seat_thinking)
@@ -1977,3 +1996,6 @@ private fun CanastaSeal(clean: Boolean, color: Color, flash: Float, modifier: Mo
 internal fun com.gtranca.game.GameSnapshot.shownTurnEvents(index: Int): List<com.gtranca.engine.PublicEvent> =
     if (stage == com.gtranca.game.Stage.PLAYING && view.currentSeat.index == index && view.phase == com.gtranca.engine.model.Phase.AWAITING_DRAW) emptyList()
     else turnEvents.getOrNull(index).orEmpty()
+
+/** Duração da subida da mesa ao topo antes da última jogada de outro jogador (docs/telas.md 3.9). */
+private const val GO_OUT_LOOK_UP_MILLIS = 700
