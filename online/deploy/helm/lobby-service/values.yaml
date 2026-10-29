@@ -1,0 +1,34 @@
+image:
+  repository: gtranca/lobby-service
+  tag: dev
+  pullPolicy: IfNotPresent   # imagem local, sem registro externo
+
+replicaCount: 1
+containerPort: 8080
+
+# Configuracao por variaveis de ambiente (nada fixo em codigo)
+env:
+  PORT: "8080"
+  TRUST_FORWARDED_FOR: "true"      # atras do Traefik: usa o IP real do cliente no limite de taxa
+  TABLE_OPEN_TTL_MINUTES: "30"     # mesa aberta sem atividade expira
+  RATE_LIMIT_PER_MINUTE: "120"
+  GAME_SERVICE_URL: "http://game-service"   # nome do Service do game-service (rede interna)
+
+# Segredo servico a servico (INTERNAL_SECRET): Secret criado no cluster, nunca em values (ver online/deploy/README.md).
+internalSecret:
+  name: gtranca-internal
+  key: INTERNAL_SECRET
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: traefik
+  host: ""        # vazio = qualquer host (acesso por http://192.168.1.5)
+  paths: [/m, /api/lobby]   # o resto (/health, /info) continua no game-service
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { memory: 512Mi }

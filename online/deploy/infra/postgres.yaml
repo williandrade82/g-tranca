@@ -1,0 +1,68 @@
+# PostgreSQL oficial (imagem postgres:17), auto-hospedado. Apenas definido; ainda nao instalado.
+# A senha vem do Secret abaixo: TROQUE antes de usar fora do ambiente local.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gtranca
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: gtranca
+type: Opaque
+stringData:
+  POSTGRES_USER: gtranca
+  POSTGRES_PASSWORD: trocar-esta-senha
+  POSTGRES_DB: gtranca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: gtranca
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: gtranca
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef: { name: postgres-credentials }
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "gtranca"] }
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "gtranca"] }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 2Gi }

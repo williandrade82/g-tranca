@@ -1,0 +1,41 @@
+image:
+  repository: gtranca/game-service
+  tag: dev
+  pullPolicy: IfNotPresent   # imagem local, sem registro externo
+
+replicaCount: 1
+containerPort: 8080
+
+# Configuracao por variaveis de ambiente (nada fixo em codigo)
+env:
+  PORT: "8080"
+  JAVA_OPTS: "-XX:MaxRAMPercentage=65"   # heap = 65% do limite do conteiner
+  LOBBY_URL: "http://lobby-service"        # nome do Service do lobby (rede interna)
+  TRUST_FORWARDED_FOR: "true"             # atras do Traefik: IP real no limite de taxa do handshake
+  BOT_DELAY_MS: "1200"                    # pausa antes de cada jogada de robo
+  ROUND_PAUSE_MS: "6000"                  # pausa entre partidas (ver 16.11: o jogo nao espera telas)
+  MAX_MATCHES: "50"
+  WS_MESSAGES_PER_SECOND: "10"
+  WS_BURST: "20"
+
+# Segredo servico a servico (INTERNAL_SECRET). NUNCA vai em values nem no repositorio: crie o Secret no cluster
+# (ver online/deploy/README.md). Sem ele o pod nao sobe (secretKeyRef obrigatorio).
+internalSecret:
+  name: gtranca-internal
+  key: INTERNAL_SECRET
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: traefik
+  host: ""        # vazio = qualquer host (acesso por http://192.168.1.5)
+  # SO estes prefixos saem pelo ingress. /internal (criar partida, simulacao) NAO e exposto: so dentro do cluster.
+  paths: [/health, /info, /ws]
+
+resources:
+  # O motor + robos usam CPU (o Dificil faz busca por decisao); 2 CPUs de teto, memoria 768Mi.
+  requests: { cpu: 500m, memory: 384Mi }
+  limits: { cpu: "2", memory: 768Mi }

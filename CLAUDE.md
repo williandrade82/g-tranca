@@ -76,3 +76,5 @@ Identificadores em inglês; textos da interface em português (pt-BR) em `string
 - `android-ui-dev`: telas Compose, ViewModels e `:data`.
 - `net-comm-dev`: comunicação entre dispositivos (multijogador local): protocolo, transporte, sessão e reconexão.
 - `rules-auditor`: revisão somente leitura do código contra `definition.md`.
+- `online-backend-dev`: backend do jogo online (microserviços em `online/` e o módulo `:online-client`); aditivo, nunca altera o multijogador local. Plano: `docs/plano-online.md`.
+- `admin-console-dev`: interface de gerenciamento do online (`online/admin-api` e `online/admin-web`).

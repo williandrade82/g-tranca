@@ -1,0 +1,6 @@
+apiVersion: v2
+name: lobby-service
+description: Mesas, convites e assentos do Tranca-Bot online (em memoria nesta fase)
+type: application
+version: 0.1.0
+appVersion: "dev"

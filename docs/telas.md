@@ -66,7 +66,9 @@ Início ──► Iniciar novo jogo (opções; ⇄ Personalizar regra) ──Sel
   ├──► Continuar ─────────────────────────────────────────────────────────────────► JOGO
   ├──► Inventário (armário; marca até 3 boosters) ──Acessar loja──► Loja (compra boosters com moedas; modal Comprar booster)
   ├──► Perfil ──► Personalizar regra
-  └──► Estatísticas
+  ├──► Estatísticas
+  └──► Jogar online (só com servidor e conta) ──► Criar mesa online ─► Mesa online (id, QR, link) ──Iniciar──► JOGO online
+                                          └──► Entrar numa mesa (digitando o id, ou pelo link/QR que abre o app) ─► Mesa online (assento) ──► JOGO online
 
 (qualquer tela fora de um jogo, Wi-Fi do jogo ligado) modal Convite ──Aceitar──► Mesa do recrutado (só leitura) ──(Começar do recrutador: Prepare-se!)──► JOGO (multijogador)
                                                         └─Recusar──► (continua onde estava)
@@ -157,6 +159,7 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 6b. Chave **Ver fotos nas mesas compartilhadas** (grava na hora; ligada por padrão): na mesa multijogador, mostra as fotos dos outros jogadores; desligada, eles aparecem com a inicial. A própria foto vai à mesa de qualquer forma (§16.2). Tag `profile-shared-photos`.
 6c. Chave **Tour guiado** (mesmo estilo das chaves de Wi-Fi e fotos; grava na hora; ligada por padrão): ligada, cada tela (3.16) mostra o seu tour sozinha na primeira vez; desligada, o tour nunca aparece sozinho (o ícone "i" das telas continua funcionando). **Ligar** a chave zera o registro dos tours vistos, para eles aparecerem de novo. Tag `profile-tour`.
 6d. Painel **Ações impedidas** (três botões de escolha única; grava na hora; padrão **Explicar sempre**): o que a mesa faz quando o motor recusa uma jogada. **Não avisar**: nada aparece. **Aviso discreto**: o *aviso discreto* (faixa pequena na altura do último toque, logo acima do dedo, com uma frase simples do problema). **Explicar sempre**: o *modal de jogada não permitida* (o que aconteceu, regra da mesa, o que fazer). O modal tem os botões **Não avisar mais**, **Avisar discretamente** e **Continuar avisando**, que mudam esta mesma preferência na hora. Tags `profile-refusal-none`, `profile-refusal-subtle`, `profile-refusal-explain`.
+6e. Campo **Servidor online** (texto; **temporário**, gravado só no aparelho; vazio = online desligado): IP ou nome do serviço (§18.1). Tag `profile-online-server`.
 6a. Painel **Wi-Fi do jogo** (chave; grava na hora): liga o multijogador por perto (§16). Ao ligar, passa pelo modal *Procurar mesas por perto* (explicação e permissões); recusar deixa a chave desligada. Tag `profile-wifi`.
 7. Painel **Velocidade das animações** (normal ou 30% mais lenta; grava na hora).
 8. Botão **Minhas regras**.
@@ -338,6 +341,23 @@ Botão **Acessar loja** (tag `inventory-shop`) abre a Loja (3.20); ao voltar, o 
 **Conteúdo:** o **painel da loja** (o topo e o rodapé ficam fixos e só o miolo rola) montado com as peças de `docs/boosters/Loja` (título com o robô e o toldo no topo, laterais e centro de madeira repetidos conforme a altura, rodapé embaixo). Dentro dele, **9 ofertas** em grade de 3 colunas, uma linha por booster (B1, B2, B3) e as quantidades 10, 5 e 1 em cada linha. Cada oferta mostra a **imagem** do booster, o **nome** (com a quantidade, ex. "Green-LED ×10") e o **valor** em moedas (ícone do saco de dinheiro); tocar na oferta abre o modal **Comprar booster**. O saldo aparece no topo, como em todas as telas (0). Botão **Voltar** (tag `shop-back`) leva ao Inventário.
 **Regras:** §17.10.
 **Tags:** `shop-screen`, `shop-offer-<n>` (n = 1..9, na ordem da lista), `shop-back`.
+
+### 3.21 Jogar online (`OnlineHomeScreen`)
+**Objetivo:** porta de entrada do jogo online (§18). Botão **Jogar online** no Início, junto dos demais.
+**Conteúdo:** sem servidor no Perfil: mensagem "Informe o servidor online no Perfil" com botão para o Perfil. Com servidor e sem conta: botão **Entrar com o Google** (3.22). Com conta: nome e foto da conta, **saldo online**, e os botões **Criar mesa**, **Entrar numa mesa** e, se ainda não migrou, **Trazer minha carteira** (explica que só pode ser feita **uma vez** e que o saldo do aparelho não muda, §18.6). Botão **Voltar**.
+**Regras:** §18.1, §18.5, §18.6.
+**Tags:** `online-home`, `online-create`, `online-join`, `online-migrate`, `online-back`.
+
+### 3.22 Conta online (`OnlineAccountScreen`)
+**Objetivo:** entrar com o Google (§18.1). **Conteúdo:** botão **Entrar com o Google**, texto curto dizendo que nada é guardado no aparelho além do acesso e que o jogo offline continua sem conta; erro claro se o servidor não responde ou está em manutenção. Depois de entrar, volta a 3.21. **Sair da conta** fica na 3.21. **Tags:** `online-login`, `online-logout`.
+
+### 3.23 Criar mesa online e Mesa online (`OnlineTableScreen`)
+**Criar:** as opções de *Iniciar novo jogo* (3.2: modo, regras, pontuação-alvo, aposta, boosters de skill) e, acima do botão, os **critérios online** (§18.4): **Tempo de jogada** (Indeterminado, 1 minuto, 5 minutos) e **Punição de abandono** (Sem punição, Perde a aposta); botão **Criar mesa**.
+**Mesa online (a sala):** o **id da mesa** em letras grandes (tag `online-table-id`), o **QR Code** (tag `online-table-qr`) e os botões **Copiar id** e **Compartilhar link** (abre o compartilhamento do sistema com o texto do convite e o link). Abaixo, a **mesa de lugares** como em 3.3 (cada lugar: vago, humano com avatar e nome, ou robô): quem entra aparece sozinho, o anfitrião pode **trocar um lugar vago por robô**, **remover** um humano e **iniciar** (habilitado com todos os lugares preenchidos). Quem **não** é o anfitrião vê a mesa em **somente leitura** (como 3.13) com o seu lugar e o botão **Sair da mesa**. Mostra aposta, critérios e boosters de skill (permitidos ou não).
+**Regras:** §18.2, §18.4. **Tags:** `online-table`, `online-table-id`, `online-table-qr`, `online-table-share`, `online-table-start`, `online-table-leave`, `online-time-limit`, `online-penalty`.
+
+### 3.24 Entrar numa mesa (`OnlineJoinScreen`)
+**Objetivo:** entrar digitando o id (§18.2). **Conteúdo:** campo de **6 caracteres** (sem diferenciar maiúsculas; teclado de letras e números; cola o id copiado), botão **Entrar**. Id inexistente, mesa cheia, mesa já iniciada, saldo menor que a aposta ou versão incompatível mostram a mensagem própria, sem fechar a tela. Entrando, mostra o **convite** (3.23, só leitura: aposta, critérios e regras, com **Detalhes da regra**) e o botão **Ocupar este lugar** (aceitar é aceitar as regras). Quem chega pelo **link ou QR** (a câmera abre uma página que abre o aplicativo) cai direto nesse convite, já com o id. **Tags:** `online-join-id`, `online-join-go`, `online-join-error`.
 
 ## 4. Modais
 

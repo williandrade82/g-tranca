@@ -1,0 +1,11 @@
+# NATS oficial (chart nats/nats). Apenas definido; ainda nao instalado.
+# helm repo add nats https://nats-io.github.io/k8s/helm/charts/ && helm repo update
+# helm install nats nats/nats -n gtranca --kube-context docker-desktop -f nats-values.yaml
+config:
+  cluster:
+    enabled: false
+  jetstream:
+    enabled: true
+    fileStore:
+      pvc:
+        size: 1Gi

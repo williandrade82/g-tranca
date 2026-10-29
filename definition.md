@@ -752,3 +752,58 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 - Antes de confirmar, o jogador vê o booster, a quantidade, o **valor total**, as moedas que **tem** e as que **terá depois**. A compra **pode zerar** o saldo, mas **nunca deixá-lo negativo**: com saldo menor que o valor, a compra **não é feita** e nada muda.
 - Confirmada, **debita** o valor da carteira e **soma** a quantidade ao inventário numa só operação (nunca um sem o outro, nem em caso de queda do app no meio); o booster já vale para o **próximo seletor** (§17.3) e o saldo na tela é atualizado.
 - A compra **não tem limite** de estoque (o teto de 10 do presente, §17.5, só vale para o presente). Não conta como aposta nem entra no resultado em moedas das estatísticas (§14.6).
+
+# **18. Jogo online**
+
+O jogo online é um **adicional**: permite jogar pela internet, em **mesas por convite**, com um **servidor dedicado**. Tudo o que existe para jogadores **próximos** (jogo contra robôs, §14, e multijogador local por Nearby, §16) **continua exatamente como está** e não depende de conta nem de internet. Plano e arquitetura (microserviços): `docs/plano-online.md`. Onde esta seção não diz o contrário, valem as regras do jogo (§1 a §13), as regras por mesa (§14.2 a §14.5), as moedas (§14.6) e os boosters (§17).
+
+### **18.1. Servidor e conta**
+- O jogador informa o **servidor online** (IP ou nome) num **campo temporário do Perfil**, gravado **só no aparelho**. Sem servidor informado, ou sem conta entrada, as telas online mostram o que falta e o resto do app segue normal.
+- **Conta:** entra-se com o **Google** (o servidor valida a identidade; nenhuma senha é guardada). Uma conta tem **nome** e **foto** opcional de perfil, e pode, no futuro, ganhar **e-mail e senha** como outro jeito de entrar **na mesma conta**.
+- Quem não tem conta, ou não quer entrar, joga offline e por perto como sempre.
+
+### **18.2. Mesa online**
+- Quem cria a mesa é o **anfitrião da mesa**. Ele escolhe as mesmas opções de §14.4 (modo, perfil de regras, pontuação-alvo, aposta, boosters de skill, §17.9) e mais os **critérios online** (§18.4). Tudo isso é **imutável** depois que o jogo começa.
+- Cada mesa tem um **id da mesa**: **6 caracteres** fáceis de digitar (letras e números **sem** os que se confundem: 0/O, 1/I/L), sem diferença entre maiúsculas e minúsculas, **único entre as mesas abertas**; vale enquanto a mesa existir.
+- **Visibilidade:** toda mesa é **privada** (só entra quem tem o id). *(Mesas públicas ficam para uma versão futura.)*
+- **Como entrar:** (a) **link** (`https://<servidor>/m/<id>`) enviado por mensagem; (b) **QR Code** na tela do anfitrião, lido pela **câmera padrão** do celular; os dois abrem uma página que **abre o aplicativo** já na mesa; (c) **digitando o id** na tela *Entrar numa mesa*, depois de configurar o servidor no Perfil. O aplicativo **não** lê QR Code por conta própria.
+- Os **assentos** são ocupados pelos amigos que entram; o que ficar vago o anfitrião preenche com **robôs** (como em §14.4, §14.5). O anfitrião **inicia** o jogo quando todos os lugares estão preenchidos.
+- **Aposta** (§14.6): cada humano precisa de **saldo maior ou igual** à aposta da mesa para ocupar um assento. A aposta é **retida** ao iniciar o jogo.
+
+### **18.3. A partida**
+- O **servidor** é a autoridade: guarda todas as cartas, valida cada jogada com as mesmas regras do motor e só envia a cada jogador a **vista do assento** dele (§16.4: mão **só** do próprio jogador; nunca a mão dos outros, o monte nem os mortos). O celular só envia a jogada que quer fazer.
+- Cada aparelho mostra a **própria animação**, na velocidade escolhida pelo jogador (como em §16.6).
+- **Boosters:** vêm do **inventário online** da conta (§18.5). Antes de cada partida cada humano vê o **seletor** (§17.3, prazo de 30 s); o custo é debitado do inventário **da conta**.
+
+### **18.4. Critérios da mesa: tempo de jogada e abandono**
+- **Tempo de jogada** (escolha do anfitrião ao criar a mesa): **indeterminado**, **1 minuto** ou **5 minutos**. A contagem é da **vez** do jogador (comprar, baixar e descartar) e aparece na mesa. No **indeterminado** não há limite.
+- **Tempo esgotado** vale como **abandono** do jogador (abaixo): nunca se joga por ele escolhendo entre jogadas legais.
+- **Punição de abandono** (escolha do anfitrião): **sem punição** ou **perde a aposta**.
+  - **Sem punição:** quem abandona **recebe a aposta de volta**.
+  - **Perde a aposta:** quem abandona perde a aposta (retida no assento, como em §16.9), **exceto** se sair nos **primeiros 60 segundos do jogo** (contados desde o início da 1ª partida): então a aposta é **devolvida**.
+- **Abandonar** é sair voluntariamente da mesa (**desistir**, §13.1) ou deixar o tempo esgotar. Um **robô** assume o assento e o jogo segue para os demais; o robô guarda os boosters e as reações que sobraram (§17.4).
+- **1×1 entre dois humanos:** quem abandona (desistir ou tempo esgotado) entrega a vitória ao outro na hora (§13.1, §16.9); não entra robô.
+- **Sem volta:** quem abandonou **não retoma** o assento (o robô fica nele até o fim do jogo); diferente do jogo local (§16.9).
+- **Próxima partida:** inicia sozinha alguns segundos depois do fim da anterior (§16.11); a mesa não espera por telas.
+- **Nível dos robôs da mesa:** escolha do anfitrião ao criar a mesa (padrão **Fácil**), imutável depois de iniciar.
+- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode, a qualquer momento, **substituí-lo por um robô** (conta como abandono).
+- **Mesa encerrada durante o jogo:** se o anfitrião da mesa a **encerra** com o jogo em andamento, conta como **abandono do anfitrião** (a punição escolhida vale para ele) e os **demais jogadores humanos recebem a aposta de volta**; nenhum robô assume uma mesa encerrada.
+- **Boosters de skill:** a mesa os **permite ou não** (a mesma escolha de §17.9); não há escolha por tipo.
+- Os critérios aparecem no **convite** (link e tela de entrada), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
+
+### **18.5. Moedas, inventário e loja online**
+- A conta tem **carteira** e **inventário de boosters** **guardados no servidor**, separados dos do aparelho. Nada do que se ganha ou gasta no online altera a carteira e o inventário **locais**, e vice-versa (depois da migração, §18.6).
+- Valem as mesmas regras de §14.6 (saldo inicial, ganho diário, aposta, rateio e prêmio), §17.5 (presente diário) e §17.10 (loja e suas ofertas); o servidor as aplica e **registra cada lançamento** (ninguém altera o saldo sem registro).
+- Operações são **idempotentes**: repetir uma compra ou uma liquidação por falha de rede não debita nem credita duas vezes. O saldo **nunca fica negativo**.
+
+### **18.6. Migração da carteira local**
+- Cada conta pode **trazer a carteira do aparelho para o online uma única vez**: o saldo local é **copiado** para a carteira online, **sem teto**, e o servidor marca que a conta já migrou. O saldo local **não é alterado** e o jogo offline continua como sempre.
+- A migração acontece por escolha do jogador (botão na tela *Jogar online*), com um aviso de que só pode ser feita uma vez. O **inventário de boosters** migra junto, na mesma operação e com a mesma regra de uma vez só.
+- O operador pode **revisar** migrações e ajustar saldos pela interface de gerenciamento (§18.7).
+
+### **18.7. Gerenciamento (operação)**
+- Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** (login Google) e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
+- Toda ação do operador é **registrada** (quem, quando, o quê e por quê) e o registro **não se altera**.
+
+### **18.8. Versões**
+- O protocolo online tem **versão**. App e servidor de versões incompatíveis recusam a conexão com a mensagem "Atualize o aplicativo" (ou "servidor em manutenção"), sem afetar o jogo offline.
