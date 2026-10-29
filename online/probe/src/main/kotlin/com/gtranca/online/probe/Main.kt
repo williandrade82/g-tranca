@@ -49,13 +49,29 @@ import kotlin.random.Random
 
 /**
  * Prova da etapa 1.3b no cluster: 2 convidados, mesa dupla (2 robos), jogo por WebSocket ate o fim, com uma queda e
- * reconexao do Beto. Uso: `probe <servidor> [pontuacao-alvo] [queda-apos-N-acoes]` (ex.: `probe 192.168.1.5 200 8`).
+ * reconexao do Beto. Uso: `probe <servidor> [pontuacao-alvo] [queda-apos-N-acoes] [jogo|tempo|desistir|encerrar]` (ex.: `probe 192.168.1.5 200 8`).
  */
 fun main(args: Array<String>) = runBlocking {
     val server = args.getOrNull(0) ?: error("uso: probe <servidor> [pontuacao-alvo] [queda-apos-N-acoes]")
     val target = args.getOrNull(1)?.toInt() ?: 200
     val dropAfter = args.getOrNull(2)?.toInt() ?: 8
     val http = HttpClient(CIO) { install(WebSockets) }
+
+    // Etapa 1.3c: cenarios de relogio, desistencia no 1x1 e mesa encerrada (4o argumento).
+    when (val scenario = args.getOrNull(3)) {
+        null, "jogo" -> Unit
+        else -> {
+            val sc = Scenarios(server, http, this)
+            when (scenario) {
+                "tempo" -> sc.tempo()
+                "desistir" -> sc.desistir()
+                "encerrar" -> sc.encerrar()
+                else -> error("cenario desconhecido: $scenario (jogo|tempo|desistir|encerrar)")
+            }
+            http.close()
+            return@runBlocking
+        }
+    }
 
     suspend fun lobby(path: String, token: String?, body: String): String {
         val r = http.post("http://$server/api/lobby/$path") {
@@ -204,5 +220,11 @@ fun main(args: Array<String>) = runBlocking {
     )
     val results = jobs.awaitAll()
     println("RESULTADO: terminou=$results acoesAna=${a.actions} acoesBeto=${b.actions} recusas=${a.rejections}/${b.rejections} partidas=${a.rounds}")
+    delay(2_000)
+    val after = http.get("http://$server/api/lobby/tables/${table.id}") {
+        header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
+        header(HttpHeaders.Authorization, "Bearer ${ana.token}")
+    }
+    println("lobby depois do fim do jogo: estado=${OnlineJson.decodeFromString(TableView.serializer(), after.bodyAsText()).state}")
     http.close()
 }

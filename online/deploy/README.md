@@ -47,10 +47,10 @@ Ingress por prefixo no Traefik: `/m` e `/api/lobby` vao para o lobby-service; `/
 
 Variaveis: `PORT`, `TABLE_OPEN_TTL_MINUTES` (30), `RATE_LIMIT_PER_MINUTE` (120 por IP), `TRUST_FORWARDED_FOR` (`true` atras do Traefik: usa o ultimo IP de `X-Forwarded-For` no limite de taxa).
 
-Exemplo (toda chamada de `/api/lobby` leva `X-Protocol-Version: 1`; depois do convidado, `Authorization: Bearer <token>`):
+Exemplo (toda chamada de `/api/lobby` leva `X-Protocol-Version: 2`; depois do convidado, `Authorization: Bearer <token>`):
 
 ```bash
-H='X-Protocol-Version: 1'
+H='X-Protocol-Version: 2'
 curl -H "$H" -d '{"name":"Ana"}' http://192.168.1.5/api/lobby/guests
 curl -H "$H" -H "Authorization: Bearer $TOKEN" -d '{"rules":{"mode":"INDIVIDUAL","rulesJson":"{}"}}' http://192.168.1.5/api/lobby/tables
 curl http://192.168.1.5/m/<ID>      # pagina do convite
@@ -96,7 +96,7 @@ Ingress: o game-service expoe **so** `/health`, `/info` e `/ws`; o lobby expoe `
 
 ### Fluxo
 1. Anfitriao chama `POST /api/lobby/tables/{id}/start`. O lobby valida, marca a mesa "iniciando" (join/sair/encerrar recusados, a mesa segue ABERTA), chama `POST http://game-service/internal/matches` (segredo) com `{tableId, rules, seats:[human(guestId,name)|robot(profile,level)]}` e so entao passa a EM_JOGO. Falhou: a mesa volta a ficar livre e o erro e `PARTIDA_INDISPONIVEL` (503) ou `REQUISICAO_INVALIDA` (regras recusadas pelo motor).
-2. Cada humano abre `ws://<servidor>/ws/match/<id>` com `X-Protocol-Version: 1` e `Authorization: Bearer <token de convidado>` **no handshake HTTP** (o token nunca vai na URL). O game-service valida a versao (426 "Atualize o aplicativo" / 503 "Servidor em manutenção"), o token no lobby (`POST /internal/guests/resolve`, 401 se invalido) e o assento (404 sem partida, 403 se nao e da mesa) **antes** do upgrade.
+2. Cada humano abre `ws://<servidor>/ws/match/<id>` com `X-Protocol-Version: 2` e `Authorization: Bearer <token de convidado>` **no handshake HTTP** (o token nunca vai na URL). O game-service valida a versao (426 "Atualize o aplicativo" / 503 "Servidor em manutenção"), o token no lobby (`POST /internal/guests/resolve`, 401 se invalido) e o assento (404 sem partida, 403 se nao e da mesa) **antes** do upgrade.
 
 ### Protocolo (resumo; JSON, `type` discrimina; tipos em `online/contracts/.../Game.kt`)
 Cliente -> servidor (so isto):
@@ -112,7 +112,7 @@ Servidor -> cliente:
 `seq` duplicado ou menor que o ultimo e descartado em silencio. Nunca vao ao cliente: `GameState`/`Match`, mao dos outros, monte, mortos, semente.
 
 ### Limites
-Mensagem do cliente ate 16 KiB (frame maior fecha a conexao), 10 mensagens/s por conexao (rajada 20), ping a cada 15 s e timeout de 45 s, **1 conexao por assento** (a nova assume e a antiga recebe `replaced` e e fechada), 60 handshakes/min por IP, `MAX_MATCHES` partidas por pod. Sessao sem atividade por 2 h e descartada. Queda de conexao **nao e abandono** (a vez espera; relogio e punicao sao a 1.3c e a fase 2); `resign` coloca um robo no assento e registra o evento.
+Mensagem do cliente ate 16 KiB (frame maior fecha a conexao), 10 mensagens/s por conexao (rajada 20), ping a cada 15 s e timeout de 45 s, **1 conexao por assento** (a nova assume e a antiga recebe `replaced` e e fechada), 60 handshakes/min por IP, `MAX_MATCHES` partidas por pod. Sessao sem atividade por 2 h e descartada. Queda de conexao **nao e abandono** no tempo indeterminado (a mesa espera); relogio, abandono e encerramento: ver "Etapa 1.3c". Sessao so e descartada por inatividade quando **todos** os humanos ficam desconectados por `IDLE_TTL_MS` (2 h).
 
 ### Prova no cluster (cliente de linha de comando)
 ```bash
@@ -121,3 +121,40 @@ cd online && ./gradlew.bat :probe:run --args="192.168.1.5 200 8"     # servidor,
 Cria 2 convidados, mesa dupla com 2 robos, inicia, conecta os dois por WebSocket, joga ate o fim pelas `legal` das vistas, envia uma jogada ilegal de proposito (recusada), derruba a conexao do Beto e reconecta pelo mesmo assento.
 
 Saida real da prova (imagem `c0068c4`, ritmo padrao `BOT_DELAY_MS=1200`, alvo 200; HEAD da etapa): handshake com versao 0 -> `426 {"code":"VERSAO_INCOMPATIVEL","message":"Atualize o aplicativo"}`; sem token -> `401`; `GET /internal/sim` pelo ingress -> `404`; Ana e Beto conectados nos assentos 0 e 1; jogada ilegal de Ana -> `RECUSADA ... ILLEGAL (MUST_DRAW_FIRST) recusas=1`; Beto derrubado (ultimo seq 8) e, 3 s depois, `Welcome: assento 1, lastSeq=8` com a vista atual; `FIM DO JOGO` com o mesmo placar nas duas vistas.
+
+## Etapa 1.3c: relogio de jogada, abandono e mesa encerrada (protocolo 2)
+
+**O protocolo subiu para 2** (mensagem nova `closed`, `turn` e `endReason` na vista, `reason` em `seats`): app e servidor de versoes diferentes recebem 426 "Atualize o aplicativo" / 503 "Servidor em manutenção". Implante lobby e game-service **juntos**.
+
+### Relogio de jogada (§18.4)
+- Com `UM_MINUTO` ou `CINCO_MINUTOS` a **vez** do humano conta (comprar, baixar e descartar sao uma contagem so; reinicia quando o assento da vez muda ou comeca partida nova). Esgotar = **abandono** (nunca se joga por ele). `INDETERMINADO`: a mesa espera.
+- **Queda de conexao nao para o relogio** (com tempo definido). Sem tempo, a mesa espera o jogador voltar.
+- Toda vista (`update`) traz `turn: {seat, limitMs, leftMs}` para **todos** os assentos durante a vez de um humano (`null` sem tempo, na vez de robo, entre partidas e no fim). O cliente conta `leftMs` a partir do recebimento (sem comparar relogios).
+- Os prazos disparam antes de qualquer comando: uma jogada que chega depois do fim da vez ja encontra o abandono feito. Nos testes o relogio e injetado (nenhum sleep).
+
+### Abandono (desistir ou tempo)
+- Um **robo assume** o assento (nivel `TableRules.robotLevel`; `seats` traz `change: RESIGNED` e `reason: DESISTIU|TEMPO`); o jogador recebe `resigned` e a conexao fecha. **Sem volta** (`ASSENTO_ABANDONADO`).
+- **Excecao 1x1 entre dois humanos** (`INDIVIDUAL` com os dois assentos humanos): sem robo; o outro vence na hora (`view.winner`, `view.endReason = ABANDONO`, `stage = GAME_OVER`); a partida em andamento nao e pontuada (§13.1).
+- Cada abandono vira um `AbandonEvent` em memoria (motivo, instante, segundos desde o inicio do jogo, punicao e aposta da mesa, `withinGrace` = antes de 60 s, `betRefunded`), entregue em `MatchEnd.abandonments` para a economia da fase 2. **Nao mexe em moedas.** O log traz so assento, motivo, segundos e punicao (nunca guestId, nome ou token).
+
+### Encerrar a mesa em jogo (§18.4)
+- `DELETE /api/lobby/tables/{id}` (anfitriao): se a mesa esta EM_JOGO, o lobby chama `POST /internal/matches/{id}/close` `{hostGuestId}` no game-service (segredo; fora do ingress). O game-service registra o abandono do anfitriao (`ANFITRIAO_ENCERROU`; a punicao da mesa vale para ele; os demais ficam com `othersRefunded`), **nenhum robo assume**, manda `closed` a todos e fecha as conexoes (1000). Game-service inalcancavel: `503 PARTIDA_INDISPONIVEL` e a mesa segue EM_JOGO (o lobby nunca diz "encerrada" com o jogo rodando); 404 do game-service (partida ja sumiu) conta como encerrada.
+- O game-service avisa o lobby (`POST /internal/tables/{id}/ended` `{reason}`, segredo, fora do ingress) quando o jogo **termina** (`PONTUACAO`), **abandono** no 1x1, **encerrado** ou **inatividade**: a mesa EM_JOGO vira ENCERRADA sem esperar o TTL de 6 h. O aviso sai do ator da partida, com 5 tentativas (0,5 s, 2 s, 5 s, 15 s); idempotente.
+
+### Inatividade
+Sem relogio de jogada nao se descarta jogo com humano conectado. A sessao so e descartada quando **todos** os humanos ficam desconectados por `IDLE_TTL_MS` (padrao 2 h), registrada como `INATIVIDADE` e avisada ao lobby. Voltar reinicia a contagem.
+
+### Prova no cluster
+```bash
+cd online
+./gradlew.bat :probe:run --args="192.168.1.5 200 8 jogo"       # jogo normal; no fim o lobby mostra a mesa ENCERRADA
+./gradlew.bat :probe:run --args="192.168.1.5 200 8 desistir"   # 1x1 entre humanos: Beto desiste, Ana vence na hora
+./gradlew.bat :probe:run --args="192.168.1.5 200 8 encerrar"   # anfitriao encerra: TableClosed nos dois, lobby ENCERRADA
+./gradlew.bat :probe:run --args="192.168.1.5 200 8 tempo"      # duplas com 1 MIN: 60 s depois um robo assume (leva ~1 min)
+```
+
+Saida real da prova (imagens `59d92bb`, protocolo 2, tempo real de 1 minuto; no Windows com espacos no caminho use `:probe:installDist` e `java -cp "lib/*" com.gtranca.online.probe.MainKt <args>`):
+- `desistir`: Beto envia `Resign`; Ana recebe `seats ... RESIGNED (DESISTIU)` com tipos `[HUMANO, HUMANO*]` (nenhum robo) e a vista `stage=GAME_OVER, winner=0, endReason=ABANDONO`; lobby: `ENCERRADA`.
+- `encerrar`: Beto (nao anfitriao) -> 403; Ana encerra -> 200; os dois recebem `TableClosed` e a conexao fecha com `1000 Mesa encerrada`; lobby `ENCERRADA`; reconectar -> `404 MESA_INEXISTENTE`.
+- `tempo`: vista com `turn=TurnClock(seat=0, limitMs=60000, leftMs=59997)`; 60 s depois `seats ... RESIGNED (TEMPO)`, tipos `[ROBO*, HUMANO, ROBO, ROBO]`, a Ana recebe `YouResigned` e a conexao fecha; a mesa segue EM_JOGO; o anfitriao encerra e o lobby fica `ENCERRADA`.
+- `jogo` (normal, com queda e volta do Beto): `FIM DO JOGO` com o mesmo placar nas duas vistas e, 2 s depois, lobby `estado=ENCERRADA` (aviso do game-service).
