@@ -23,6 +23,28 @@ Tudo o que existe para **jogadores próximos** (multijogador local por Nearby, �
 | 6 | Por ora roda numa **rede local, em Kubernetes**; depois migra para uma **nuvem a definir**. O Perfil ganha um **campo temporário** (gravado só no aparelho) com o **IP ou hostname** do serviço online. Preferência por **software que se possa rodar localmente** (auto-hospedável), para depois contratar o serviço profissional equivalente no data center. |
 | 7 | Quer **explicação** das opções de mesas públicas (abaixo). |
 
+### 2ª rodada de respostas (28/10/2026)
+| # | Decisão |
+|---|---|
+| 1 | Confirmado: servidor dedicado para o online; celular anfitrião (Nearby) segue só para amigos próximos, sem se misturarem. |
+| 2 | Migração da carteira **sem teto**, cópia única por conta; poucos usuários, a revisão fica para a interface de gerenciamento. |
+| 3 | Tempo esgotado = **abandono** (nunca se joga pelo jogador). |
+| 4 | Punição tem as opções **sem punição** e **perde a aposta** (devolvida se sair nos primeiros 60 s). |
+| 5 | **O app não lê QR Code.** O QR e o link abrem o app pela **câmera/mensageiro padrão** (ver "Link e QR"). Sem usar link, o jogador configura o servidor e **digita o id** da mesa (6 caracteres). |
+| 6 | TLS na rede local: explicado ao usuário; recomendação adotada provisoriamente (texto puro só em build de teste; TLS no uso real). |
+| 7 | Chave de assinatura (keystore): fica para quando for preciso. |
+| 8 | Console de gerenciamento em **React + TypeScript**. |
+| 9 | Login do console com **lista de e-mails** e papéis **leitor, operador e administrador**. |
+
+Fase 0 escrita: `definition.md` §18, `docs/telas.md` (3.21 a 3.24, campo no Perfil e mapa) e `docs/telas-gerenciamento.md`.
+
+### Link e QR (como abrir o app pela câmera padrão)
+- O QR e o link são **endereços https** do próprio serviço: `https://<servidor>/m/<id>`. A câmera do celular (ou o toque no link numa mensagem) abre o navegador nessa página, **servida pelo `lobby-service`** atrás do ingress.
+- A página tenta abrir o app (`tranca://mesa/<id>?s=<servidor>`) e mostra um botão **Abrir no Tranca-Bot**, o **id da mesa** para digitar e, se o app não estiver instalado, o aviso para instalar.
+- O app declara o esquema `tranca://` (e só ele) e trata o `id` e o `servidor` recebidos; **nenhum** filtro genérico de https, para o app não aparecer em links de outros sites.
+- **Depois, com domínio próprio e HTTPS na nuvem:** passa a valer **App Links verificados** (arquivo `assetlinks.json`), e o link abre o app direto, sem página intermediária. Isso **não** funciona em rede local sem domínio, por isso a página intermediária agora.
+- Se o jogador **não** tiver o servidor configurado, o `s=` do link preenche o campo temporário (com a confirmação dele).
+
 ## Arquitetura em microserviços
 Cada serviço tem **um dono de dados** (banco/esquema próprio), fala com os outros por **HTTP/gRPC** (consulta) e por **eventos** (fatos), e empacota-se em **imagem de contêiner** com *health checks* e configuração por variáveis de ambiente (12-factor): é isso que torna a mudança de "cluster local" para "nuvem" só uma troca de configuração.
 
@@ -86,5 +108,8 @@ Desenhar já o campo `visibilidade` da mesa (`PRIVADA` | `PUBLICA`) mas **implem
 5. **Carteira migrada:** abre caminho para criar moedas offline e levá-las ao online (ver dúvidas).
 6. **Chave de assinatura (keystore):** o login Google do Android exige registrar a impressão digital (SHA-1) do app; o certificado de *debug* serve nos testes, mas a chave definitiva precisa existir antes de publicar.
 
-## Dúvidas ainda abertas
-Estão listadas na resposta ao usuário e serão fechadas na fase 0; as recomendações estão lá.
+## Pontos provisórios (marcados no `definition.md` §18)
+- **Queda de conexão** (§18.4): com tempo de jogada, a vez continua contando; no indeterminado a mesa espera e o anfitrião pode trocar o jogador por robô.
+- **Migração:** o inventário de boosters migra junto com a carteira?
+- **Papéis do console** (§18.7): divisão leitor/operador/administrador proposta, a confirmar.
+- **Início dos 60 s:** contados desde o início da 1ª partida do jogo.
