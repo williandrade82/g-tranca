@@ -31,6 +31,11 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            - name: INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.internalSecret.name }}
+                  key: {{ .Values.internalSecret.key }}
           livenessProbe:
             httpGet: { path: /health, port: http }
             initialDelaySeconds: 15
