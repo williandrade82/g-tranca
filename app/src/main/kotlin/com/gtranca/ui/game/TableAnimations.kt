@@ -63,6 +63,8 @@ data class CardFlight(
     val also: List<Card> = emptyList(),
     /** Última jogada da partida (a batida): voo em câmera lenta com a carta que cresce (docs/telas.md 3.9). */
     val finale: Boolean = false,
+    /** Cartas que a contagem da mão do destino só deve incluir quando este voo pousar (o morto inteiro, no último voo). */
+    val holds: Int = 0,
 ) {
     /** Quantas vezes o voo dura o normal. */
     val durationFactor: Float get() = if (finale) GoOutDrama.SLOWDOWN else 1f
@@ -95,6 +97,9 @@ object TableAnimations {
 
     /** Atraso do voo do morto: depois das cartas da jogada que o liberou. */
     const val MORTO_DELAY_MILLIS = 300L
+
+    /** Duração de um voo quando quem chama não informa (a do jogo: GameViewModel.DEFAULT_ANIMATION_MILLIS). */
+    const val DEFAULT_FLIGHT_MILLIS = 450L
 
     /**
      * Distribuição do início da partida: uma carta por vez, do monte a cada assento (em ordem a partir de quem
@@ -146,6 +151,8 @@ object TableAnimations {
         hiddenFromView: Set<Card>,
         /** A partida terminou com estas ações: os voos da última jogada viram a dramatização da batida. */
         goOut: Boolean = false,
+        /** Duração de um voo (sem escala): os voos de cada evento começam quando os do anterior pousam (telas.md 3.8.1 R1). */
+        durationMillis: Long = DEFAULT_FLIGHT_MILLIS,
         nextId: () -> Long,
     ): Pair<List<CardFlight>, List<CanastaFlash>> {
         val events = newEvents(old, new)
@@ -222,24 +229,73 @@ object TableAnimations {
                 if (f.from == hand) flights[i] = f.copy(finale = true, delayMillis = (f.delayMillis * GoOutDrama.SLOWDOWN).toLong())
             }
         }
-        // §9 morto pego agora: as cartas voam viradas da pilha do morto até quem o pegou (depois das outras jogadas).
+        // §9 morto pego agora: as cartas voam viradas da pilha do morto até quem o pegou. Entram logo depois do evento
+        // que esvaziou a mão (morto direto, §9.2, ou indireto pelo descarte, §9.3), antes dos eventos seguintes (telas.md R3, R4).
+        val mortoGroups = mutableMapOf<Int, List<CardFlight>>() // índice do evento -> voos do morto (atrasos locais)
         new.view.mortoStatus.forEachIndexed { i, status ->
             val taken = status as? MortoStatus.Taken ?: return@forEachIndexed
             if (old.view.mortoStatus.getOrNull(i) != MortoStatus.Available) return@forEachIndexed
-            val seat = events.lastOrNull { mode.sideOf(it.seat) == taken.side }?.seat ?: return@forEachIndexed
+            val seat = taken.seat ?: events.lastOrNull { mode.sideOf(it.seat) == taken.side }?.seat ?: return@forEachIndexed
+            val emptiedAt = emptyingEvent(old, events, seat) ?: return@forEachIndexed
             val count = old.view.mortoSizes.getOrElse(i) { 0 }.coerceAtMost(MAX_CARDS_PER_MOVE)
             // Para o humano as cartas voam abertas e ficam fora da mão até pousar (as que passam do limite de voos
             // aparecem junto com o último); dos outros assentos, viradas.
             val flown = flights.mapNotNull { it.card }.toSet()
             val own = if (seat == viewer) new.view.hand.filter { it in gained && it !in flown } else emptyList()
-            repeat(count) { k ->
-                flights += CardFlight(
-                    nextId(), AnimAnchor.Morto(i), holder(seat, viewer), own.getOrNull(k), MORTO_DELAY_MILLIS + STAGGER_MILLIS * k,
+            mortoGroups[emptiedAt] = mortoGroups[emptiedAt].orEmpty() + List(count) { k ->
+                CardFlight(
+                    nextId(), AnimAnchor.Morto(i), holder(seat, viewer), own.getOrNull(k), STAGGER_MILLIS * k,
                     also = if (k == count - 1) own.drop(count) else emptyList(),
+                    holds = if (k == count - 1) old.view.mortoSizes.getOrElse(i) { 0 } else 0,
                 )
             }
         }
-        return flights to canastaFlashes(old, new, nextId)
+        // Encadeia os eventos: cada um começa quando o anterior (com o morto que ele pegou) terminou de pousar (R1, R2).
+        val ordered = mutableListOf<CardFlight>()
+        var cursor = 0L
+        events.indices.forEach { e ->
+            val end = if (e + 1 < eventStarts.size) eventStarts[e + 1] else flights.size
+            val own = flights.subList(eventStarts[e], end).map { it.copy(delayMillis = it.delayMillis + cursor) }
+            ordered += own
+            var groupEnd = own.maxOfOrNull { it.delayMillis + (durationMillis * it.durationFactor).toLong() } ?: cursor
+            mortoGroups[e]?.let { group ->
+                val start = (own.maxOfOrNull { it.delayMillis } ?: cursor) + MORTO_DELAY_MILLIS
+                val shifted = group.map { it.copy(delayMillis = it.delayMillis + start) }
+                ordered += shifted
+                groupEnd = maxOf(groupEnd, shifted.maxOf { it.delayMillis + (durationMillis * it.durationFactor).toLong() })
+            }
+            cursor = groupEnd
+        }
+        return ordered to canastaFlashes(old, new, nextId)
+    }
+
+    /**
+     * Índice (em [events]) do evento de [seat] que deixou a mão dele vazia, contando a partir do tamanho de [old]
+     * (pública: tamanhos de mão); `null` se ele não aparece nos eventos. Sem zerar na conta (ex.: reposições), vale o último.
+     */
+    private fun emptyingEvent(old: GameSnapshot, events: List<PublicEvent>, seat: Seat): Int? {
+        var size = old.view.handSizes.getOrElse(seat.index) { 0 }
+        var last: Int? = null
+        events.forEachIndexed { index, event ->
+            if (event.seat != seat) return@forEachIndexed
+            last = index
+            size += when (val action = event.action) {
+                Action.DrawFromStock -> 1
+                Action.DeclineDraw -> 0
+                is Action.Discard -> -1
+                is Action.CreateMeld -> -action.cards.size
+                is Action.AddToMeld -> -action.cards.size
+                is Action.TakeDiscardPile -> {
+                    val handCards = when (val plan = action.plan) {
+                        is DiscardPlan.AddToMeld -> plan.handCards
+                        is DiscardPlan.NewMeld -> plan.handCards
+                    }
+                    event.takenFromDiscard.size - handCards.size
+                }
+            }
+            if (size <= 0) return index
+        }
+        return last
     }
 
     /**

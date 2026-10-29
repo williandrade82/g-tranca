@@ -1011,10 +1011,11 @@ class GameViewModelTest {
                         (mortoBefore[i] as? com.gtranca.engine.model.MortoStatus.Taken)?.side != Side(0)
                 }
                 if (tookMorto) {
-                    val flights = after.flights.filter { it.from is AnimAnchor.Morto && it.to == AnimAnchor.OwnHand }
+                    // telas.md R1: o voo do morto pode esperar na fila o pouso da jogada anterior
+                    val flights = (after.flights + after.queuedFlights).filter { it.from is AnimAnchor.Morto && it.to == AnimAnchor.OwnHand }
                     flights.shouldNotBeEmpty()
                     // as cartas novas (inclusive as do morto sem voo) ficam fora da mão até o voo, ou o último voo, pousar
-                    val hiddenUntilLanding = after.flights.flatMap { listOfNotNull(it.card) + it.also }.toSet()
+                    val hiddenUntilLanding = (after.flights + after.queuedFlights).flatMap { listOfNotNull(it.card) + it.also }.toSet()
                     after.newCards.all { it in hiddenUntilLanding } shouldBe true
                     checked = true
                     break@seeds

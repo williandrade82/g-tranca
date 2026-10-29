@@ -264,7 +264,7 @@ private val LocalHostSignal = androidx.compose.runtime.compositionLocalOf<Pair<S
 
 @Composable
 private fun TableScreenContent(
-    state: GameUiState,
+    rawState: GameUiState,
     events: TableEvents,
     modifier: Modifier,
     onReviewContinue: (() -> Unit)?,
@@ -272,6 +272,15 @@ private fun TableScreenContent(
     hostSeat: Seat?,
     reviewBanner: (@Composable () -> Unit)? = null,
 ) {
+    // Voos que já chegaram: a carta aparece no destino só então (sai da origem, voa, aparece no destino).
+    val arrived = remember { mutableStateMapOf<Long, Boolean>() }
+    // telas.md 3.8.1 R6: a pílula de quem pegou o morto só passa a contar as cartas dele quando elas pousam.
+    val state = rawState.copy(
+        heldBack = (rawState.flights.filter { arrived[it.id] != true } + rawState.queuedFlights)
+            .filter { it.holds > 0 && it.to is AnimAnchor.SeatHand }
+            .groupBy { (it.to as AnimAnchor.SeatHand).seat }
+            .mapValues { (_, list) -> list.sumOf { it.holds } },
+    )
     var showMatchInfo by rememberSaveable { mutableStateOf(false) }
     // Som da vez: uma vez quando a vez passa a ser deste jogador (nunca na revisão da mesa final).
     val turnSound = LocalSound.current
@@ -369,10 +378,8 @@ private fun TableScreenContent(
         val live = state.flights.map { it.id }.toSet()
         readyFlights.keys.retainAll(live)
     }
-    // Voos que já chegaram: a carta aparece no destino só então (sai da origem, voa, aparece no destino).
-    val arrived = remember { mutableStateMapOf<Long, Boolean>() }
     val landing = if (state.animationMillis <= 0) emptySet() else
-        state.flights.filter { arrived[it.id] != true }.flatMap { listOfNotNull(it.card) + it.also }.toSet()
+        (state.flights.filter { arrived[it.id] != true } + state.queuedFlights).flatMap { listOfNotNull(it.card) + it.also }.toSet()
     // §3.5 a distribuição só termina quando todos os seus voos pousaram na tela (não por cronômetro): então avisa.
     if (state.dealPending && state.dealFlightIds.isNotEmpty()) {
         val dealLanded = state.dealFlightIds.all { id -> arrived[id] == true || state.flights.none { it.id == id } }
@@ -762,7 +769,7 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     // §16.6 no multijogador a vez de um humano remoto também é destacada.
     val thinking = snapshot.thinkingSeat == seat ||
         (state.remoteTurns && snapshot.thinkingSeat == null && view.phase != Phase.FINISHED && view.currentSeat == seat)
-    val handSize = view.handSizes[seat.index]
+    val handSize = view.handSizes[seat.index] - state.heldBack.getOrDefault(seat.index, 0)
     val handText = countText(R.plurals.opponent_hand, R.string.opponent_hand_zero, handSize)
     val countText = countText(R.plurals.card_count, R.string.card_count_zero, handSize)
     val thinkingText = stringResource(R.string.seat_thinking)
