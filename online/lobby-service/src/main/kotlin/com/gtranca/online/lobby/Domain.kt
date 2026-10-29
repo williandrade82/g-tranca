@@ -28,6 +28,8 @@ data class Table(
     val seats: List<Seat>,
     val state: TableState,
     val lastActivityMs: Long,
+    /** Passagem ao game-service em andamento: a mesa segue ABERTA mas nada mais muda (ver [LobbyService.beginStart]). */
+    val starting: Boolean = false,
 ) {
     fun seatOf(guestId: String): Int = seats.indexOfFirst { it is Seat.Humano && it.guestId == guestId }
     fun touched(now: Long) = copy(lastActivityMs = now)

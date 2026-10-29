@@ -15,6 +15,9 @@ dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
     runtimeOnly(libs.logback.classic)
 
     testImplementation(platform(libs.junit.bom))

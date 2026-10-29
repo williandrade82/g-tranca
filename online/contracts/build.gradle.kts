@@ -8,6 +8,7 @@ kotlin { jvmToolchain(libs.versions.jvmTarget.get().toInt()) }
 
 dependencies {
     api(libs.kotlinx.serialization.json)
+    api(project(":core-engine")) // so tipos (Card, Action, PlayerView...); o motor nao e alterado
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

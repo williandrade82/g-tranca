@@ -57,6 +57,8 @@ data class TableRules(
     val tempoDeJogada: TempoDeJogada = TempoDeJogada.INDETERMINADO,
     val punicao: Punicao = Punicao.SEM_PUNICAO,
     val visibilidade: Visibilidade = Visibilidade.PRIVADA,
+    /** Nivel dos robos da mesa (§14.4, §14.5): Facil = Iniciante, Medio = Maduro, Dificil = Senior. */
+    val robotLevel: BotLevel = BotLevel.FACIL,
 )
 
 @Serializable
@@ -100,6 +102,13 @@ enum class ErrorCode {
     REQUISICAO_INVALIDA,
     CORPO_GRANDE_DEMAIS,
     LIMITE_DE_TAXA,
+
+    /** A partida nao pode ser criada/alcancada agora (game-service fora do ar ou recusou). A mesa segue ABERTA. */
+    PARTIDA_INDISPONIVEL,
+    MENSAGEM_INVALIDA,
+
+    /** O assento foi assumido por um robo (desistencia): nao ha como voltar a ele. */
+    ASSENTO_ABANDONADO,
 }
 
 @Serializable

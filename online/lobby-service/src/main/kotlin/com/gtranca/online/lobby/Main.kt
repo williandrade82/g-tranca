@@ -4,6 +4,9 @@ import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
 import com.gtranca.online.contracts.ErrorCode
+import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
+import com.gtranca.online.contracts.ResolveGuestRequest
+import com.gtranca.online.contracts.ResolvedGuest
 import com.gtranca.online.contracts.Health
 import com.gtranca.online.contracts.JoinRequest
 import com.gtranca.online.contracts.LobbyLimits
@@ -31,6 +34,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
+import java.security.MessageDigest
+import kotlin.system.exitProcess
 import kotlinx.io.readByteArray
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -42,12 +47,19 @@ private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 /** Tudo configuravel por variavel de ambiente; nada de endereco fixo. */
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
+    val secret = System.getenv("INTERNAL_SECRET")?.takeIf { it.isNotBlank() }
+        ?: run {
+            System.err.println("ERRO: INTERNAL_SECRET nao definido (Secret do Kubernetes). Sem ele o lobby nao inicia partidas.")
+            exitProcess(1)
+        }
     val deps = LobbyDeps(
         trustForwardedFor = System.getenv("TRUST_FORWARDED_FOR") == "true",
         config = LobbyConfig(
             openTtlMs = (System.getenv("TABLE_OPEN_TTL_MINUTES")?.toLongOrNull() ?: 30L) * 60_000L,
         ),
         ipLimitPerMinute = System.getenv("RATE_LIMIT_PER_MINUTE")?.toIntOrNull() ?: 120,
+        gateway = HttpGameGateway(System.getenv("GAME_SERVICE_URL")?.takeIf { it.isNotBlank() } ?: "http://game-service", secret),
+        internalSecret = secret,
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { lobbyModule(deps) }.start(wait = true)
 }
@@ -60,6 +72,10 @@ class LobbyDeps(
     val ipLimitPerMinute: Int = 120,
     val tokenLimitPerMinute: Int = 120,
     val guestCreationPerMinute: Int = 10,
+    /** Passagem ao game-service ao iniciar (§18.3). `null` = so marca EM_JOGO (testes antigos; main exige o gateway). */
+    val gateway: GameGateway? = null,
+    /** Segredo servico a servico. Vazio/nulo = rotas `/internal/...` FECHADAS. */
+    val internalSecret: String? = null,
 ) {
     val guests = GuestRegistry(clock)
     val service = LobbyService(store, clock, config = config)
@@ -205,7 +221,54 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
             }
         }
         post("/api/lobby/tables/{id}/start") {
-            call.guarded { guest -> call.respondJson(service.start(guest, call.parameters["id"].orEmpty())) }
+            call.guarded { guest ->
+                val id = call.parameters["id"].orEmpty()
+                val gateway = deps.gateway
+                if (gateway == null) {
+                    call.respondJson(service.start(guest, id))
+                } else {
+                    // §18.3: pede a partida ao game-service (rede interna) ANTES de marcar EM_JOGO. Falhou = mesa ABERTA.
+                    val plan = service.beginStart(guest, id)
+                    var committed = false
+                    try {
+                        try {
+                            gateway.createMatch(plan)
+                        } catch (e: GameGatewayException) {
+                            if (e.status != null && e.status in 400..499) {
+                                lobbyError(ErrorCode.REQUISICAO_INVALIDA, "O servidor de jogo não aceitou as regras desta mesa.", 400)
+                            }
+                            lobbyError(ErrorCode.PARTIDA_INDISPONIVEL, "Não foi possível iniciar a partida agora. A mesa continua aberta; tente de novo.", 503)
+                        }
+                        val view = service.commitStart(id)
+                        committed = true
+                        call.respondJson(view)
+                    } finally {
+                        if (!committed) service.abortStart(id)
+                    }
+                }
+            }
+        }
+
+        // Servico a servico (game-service): de quem e este token? Protegido pelo segredo; o ingress nao expoe /internal.
+        post("/internal/guests/resolve") {
+            val expected = deps.internalSecret
+            when {
+                expected == null -> call.respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Rotas internas desativadas.", 503))
+                !MessageDigest.isEqual(expected.toByteArray(), (call.request.headers[INTERNAL_SECRET_HEADER] ?: "").toByteArray()) ->
+                    call.respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Não autorizado.", 401))
+                else -> {
+                    val guest = try {
+                        call.receiveLimited<ResolveGuestRequest>().token.let(deps.guests::authenticate)
+                    } catch (e: LobbyException) {
+                        return@post call.respondError(e)
+                    }
+                    if (guest == null) {
+                        call.respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Token inválido.", 404))
+                    } else {
+                        call.respondJson(ResolvedGuest(guest.id, guest.name))
+                    }
+                }
+            }
         }
     }
 }

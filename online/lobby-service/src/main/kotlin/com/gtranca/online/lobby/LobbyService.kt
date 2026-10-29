@@ -1,8 +1,11 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.BotProfile
+import com.gtranca.online.contracts.CreateMatchRequest
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.LobbyLimits
 import com.gtranca.online.contracts.SeatKind
+import com.gtranca.online.contracts.SeatSpec
 import com.gtranca.online.contracts.SeatView
 import com.gtranca.online.contracts.TableId
 import com.gtranca.online.contracts.TableRules
@@ -101,8 +104,45 @@ class LobbyService(
         t.copy(state = TableState.EM_JOGO)
     }
 
+    /**
+     * Passagem ao game-service (§18.3), em 3 tempos para NAO segurar a trava do armazenamento durante a chamada HTTP:
+     * [beginStart] valida e marca `starting` (a mesa segue ABERTA, mas join/leave/robo/remover/encerrar passam a ser
+     * recusados); o chamador pede a partida ao game-service; [commitStart] muda para EM_JOGO ou [abortStart] desmarca
+     * (a mesa segue ABERTA, intacta). Os robos recebem aqui perfil e nivel (§14.5): perfis diferentes entre si.
+     */
+    fun beginStart(guest: Guest, rawId: String): CreateMatchRequest {
+        var plan: CreateMatchRequest? = null
+        mutate(rawId) { t ->
+            requireHost(t, guest)
+            requireOpen(t)
+            if (t.seats.any { it is Seat.Vago }) {
+                lobbyError(ErrorCode.LUGARES_VAGOS, "Preencha todos os lugares (com jogadores ou robôs) para iniciar.", 409)
+            }
+            val profiles = BotProfile.entries.shuffled(random).iterator()
+            plan = CreateMatchRequest(
+                tableId = t.id,
+                rules = t.rules,
+                seats = t.seats.map { s ->
+                    when (s) {
+                        is Seat.Humano -> SeatSpec.Human(s.guestId, s.name)
+                        else -> SeatSpec.Robot(profiles.next(), t.rules.robotLevel)
+                    }
+                },
+            )
+            t.copy(starting = true)
+        }
+        return plan!!
+    }
+
+    fun commitStart(rawId: String): TableView = mutate(rawId) { t ->
+        if (t.starting) t.copy(state = TableState.EM_JOGO, starting = false) else t
+    }
+
+    fun abortStart(rawId: String): TableView = mutate(rawId) { t -> if (t.starting) t.copy(starting = false) else t }
+
     fun close(guest: Guest, rawId: String): TableView = mutate(rawId) { t ->
         requireHost(t, guest)
+        if (t.starting) lobbyError(ErrorCode.MESA_JA_INICIADA, "O jogo desta mesa está começando.", 409)
         if (t.state == TableState.ENCERRADA) t else t.copy(state = TableState.ENCERRADA)
     }
 
@@ -136,6 +176,7 @@ class LobbyService(
     }
 
     private fun requireOpen(t: Table) {
+        if (t.starting) lobbyError(ErrorCode.MESA_JA_INICIADA, "O jogo desta mesa está começando.", 409)
         when (t.state) {
             TableState.ABERTA -> Unit
             TableState.EM_JOGO -> lobbyError(ErrorCode.MESA_JA_INICIADA, "O jogo desta mesa já começou.", 409)
