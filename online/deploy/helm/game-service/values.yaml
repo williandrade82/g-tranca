@@ -13,7 +13,7 @@ env:
   LOBBY_URL: "http://lobby-service"        # nome do Service do lobby (rede interna)
   TRUST_FORWARDED_FOR: "true"             # atras do Traefik: IP real no limite de taxa do handshake
   BOT_DELAY_MS: "1200"                    # pausa antes de cada jogada de robo
-  ROUND_PAUSE_MS: "6000"                  # pausa entre partidas (.11: o jogo nao espera telas)
+  ROUND_PAUSE_MS: "6000"                  # pausa entre partidas (ver 16.11: o jogo nao espera telas)
   MAX_MATCHES: "50"
   WS_MESSAGES_PER_SECOND: "10"
   WS_BURST: "20"

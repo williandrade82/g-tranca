@@ -119,3 +119,5 @@ Mensagem do cliente ate 16 KiB (frame maior fecha a conexao), 10 mensagens/s por
 cd online && ./gradlew.bat :probe:run --args="192.168.1.5 200 8"     # servidor, pontuacao-alvo, queda do Beto apos N acoes
 ```
 Cria 2 convidados, mesa dupla com 2 robos, inicia, conecta os dois por WebSocket, joga ate o fim pelas `legal` das vistas, envia uma jogada ilegal de proposito (recusada), derruba a conexao do Beto e reconecta pelo mesmo assento.
+
+Saida real da prova (imagem `1.3b`, `BOT_DELAY_MS=200`, alvo 200): handshake com versao 0 -> `426 {"code":"VERSAO_INCOMPATIVEL","message":"Atualize o aplicativo"}`; sem token -> `401`; `GET /internal/sim` pelo ingress -> `404`; Ana e Beto conectados nos assentos 0 e 1; jogada ilegal de Ana -> `RECUSADA ... ILLEGAL (MUST_DRAW_FIRST) recusas=1`; Beto derrubado (ultimo seq 8) e, 3 s depois, `Welcome: assento 1, lastSeq=8` com a vista atual; `FIM DO JOGO` com o mesmo placar nas duas vistas. Para ver o jogo com o ritmo normal dos robos, suba o chart sem `--set env.BOT_DELAY_MS=200` (padrao 1200 ms).
