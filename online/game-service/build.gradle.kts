@@ -12,6 +12,7 @@ application {
 
 dependencies {
     implementation(project(":contracts"))
+    implementation(project(":ai")) // traz :core-engine (api)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.content.negotiation)
