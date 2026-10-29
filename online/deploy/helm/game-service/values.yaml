@@ -9,6 +9,7 @@ containerPort: 8080
 # Configuracao por variaveis de ambiente (nada fixo em codigo)
 env:
   PORT: "8080"
+  JAVA_OPTS: "-XX:MaxRAMPercentage=65"   # heap = 65% do limite do conteiner
 
 service:
   type: ClusterIP
@@ -21,5 +22,6 @@ ingress:
   path: /
 
 resources:
-  requests: { cpu: 100m, memory: 256Mi }
-  limits: { memory: 512Mi }
+  # O motor + robos usam CPU (o Dificil faz busca por decisao); 2 CPUs de teto, memoria 768Mi.
+  requests: { cpu: 500m, memory: 384Mi }
+  limits: { cpu: "2", memory: 768Mi }
