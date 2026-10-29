@@ -176,7 +176,10 @@ fun ReactionCenterOverlay(event: ReactionEvent?, origin: androidx.compose.ui.geo
         val scale = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (motion) 0.25f else 1f) }
         val travel = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (motion) 1f else 0f) }
         val alpha = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(1f) }
+        // §17.8 o som da reação toca em todos os celulares, junto com a animação.
+        val sound = com.gtranca.ui.sound.LocalSound.current
         androidx.compose.runtime.LaunchedEffect(Unit) {
+            com.gtranca.ui.sound.SoundMap.forReaction(event.reaction)?.let(sound::playReaction)
             if (motion) {
                 kotlinx.coroutines.coroutineScope {
                     launch { scale.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 220f)) }

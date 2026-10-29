@@ -17,7 +17,7 @@ import com.gtranca.ui.AppNavHost
 import com.gtranca.ui.theme.GTrancaTheme
 
 class MainActivity : ComponentActivity() {
-    private val sound = AndroidSoundPlayer()
+    private val sound by lazy { AndroidSoundPlayer(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
