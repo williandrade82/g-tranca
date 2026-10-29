@@ -28,3 +28,26 @@ helm install nats nats/nats -n gtranca --kube-context docker-desktop -f deploy/i
 ```
 
 Desenvolvimento local sem cluster: `.\gradlew.bat :game-service:run` e `http://localhost:8080/health`.
+
+## lobby-service (mesas e convites)
+
+**Persistencia: SOMENTE EM MEMORIA nesta fase.** Reiniciar o pod apaga convidados e mesas (a interface `TableStore` permite trocar por Postgres depois). Por isso `replicaCount: 1`; nao escale.
+Sem economy-service: a aposta da mesa NAO tem o saldo verificado ao entrar (`SALDO_INSUFICIENTE` esta declarado mas nunca e devolvido).
+
+```bash
+docker build -f lobby-service/Dockerfile -t gtranca/lobby-service:dev .
+helm upgrade --install lobby-service deploy/helm/lobby-service -n gtranca --kube-context docker-desktop --set ingress.enabled=true
+```
+
+Ingress por prefixo no Traefik: `/m` e `/api/lobby` vao para o lobby-service; `/health`, `/info` e o resto seguem no game-service. (Os Dockerfiles copiam todos os modulos porque o `settings.gradle.kts` inclui todos.)
+
+Variaveis: `PORT`, `TABLE_OPEN_TTL_MINUTES` (30), `RATE_LIMIT_PER_MINUTE` (120 por IP), `TRUST_FORWARDED_FOR` (`true` atras do Traefik: usa o ultimo IP de `X-Forwarded-For` no limite de taxa).
+
+Exemplo (toda chamada de `/api/lobby` leva `X-Protocol-Version: 1`; depois do convidado, `Authorization: Bearer <token>`):
+
+```bash
+H='X-Protocol-Version: 1'
+curl -H "$H" -d '{"name":"Ana"}' http://192.168.1.5/api/lobby/guests
+curl -H "$H" -H "Authorization: Bearer $TOKEN" -d '{"rules":{"mode":"INDIVIDUAL","rulesJson":"{}"}}' http://192.168.1.5/api/lobby/tables
+curl http://192.168.1.5/m/<ID>      # pagina do convite
+```

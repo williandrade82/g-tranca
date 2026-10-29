@@ -5,6 +5,7 @@ COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle ./gradle
 COPY contracts ./contracts
 COPY game-service ./game-service
+COPY lobby-service ./lobby-service
 RUN sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew --no-daemon :game-service:installDist -x test
 
 FROM eclipse-temurin:17-jre
