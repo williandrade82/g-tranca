@@ -1,0 +1,25 @@
+image:
+  repository: gtranca/game-service
+  tag: dev
+  pullPolicy: IfNotPresent   # imagem local, sem registro externo
+
+replicaCount: 1
+containerPort: 8080
+
+# Configuracao por variaveis de ambiente (nada fixo em codigo)
+env:
+  PORT: "8080"
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: traefik
+  host: ""        # vazio = qualquer host (acesso por http://192.168.1.5)
+  path: /
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { memory: 512Mi }
