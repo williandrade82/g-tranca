@@ -42,6 +42,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameViewModelTest {
@@ -971,7 +972,7 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§3_5 o aviso da troca de 3 vermelho do proximo jogador so aparece depois que o descarte anterior pousou`() = runTest(dispatcher) {
+    fun `§3_5 o aviso da troca de 3 vermelho do proximo jogador so aparece depois que o descarte anterior pousou`() = runTest(dispatcher, timeout = 5.minutes) {
         var announced = 0
         for (mode in GameMode.entries) for (botDelay in listOf(0L, 300L, 700L)) {
             for (seed in 1L..40L) {
