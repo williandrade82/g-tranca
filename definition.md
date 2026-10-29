@@ -678,7 +678,7 @@ flowchart TD
 Boosters são itens do **inventário** do jogador que ele escolhe usar **antes de cada partida**. Valem só para o jogo contra os jogadores virtuais e a mesa multijogador local; o inventário fica **no aparelho** (adulterável, risco aceito por ora, como a carteira de §14.6). Os robôs **não** usam boosters. Plano: `docs/plano-boosters.md`.
 
 ### **17.1. Inventário e catálogo**
-- O inventário guarda a **quantidade** de cada item. As **moedas** (§14.6) são um item do inventário, mas o saldo continua na carteira e é o **único** item que muda de dono entre jogos (ganha-se ao vencer, perde-se ao perder). Os boosters nunca são ganhos nem perdidos por resultado de jogo.
+- O inventário guarda a **quantidade** de cada item. As **moedas** (§14.6) são um item do inventário, mas o saldo continua na carteira e é o **único** item que muda de dono entre jogos (ganha-se ao vencer, perde-se ao perder) e o que se gasta na **loja** (§17.10). Os boosters nunca são ganhos nem perdidos por resultado de jogo; entram no inventário pelo valor inicial, pelo presente diário (§17.5) e pela compra (§17.10).
 - O **catálogo** é uma lista de boosters com: identificação, nome, resumo, **custo por uso** (padrão **1**), **quantidade inicial** e **faixa de quantidade do sorteio** (§17.5). Fica num arquivo JSON local, pensado para virar banco com sincronização on-line depois.
 - Quem ainda não tem inventário recebe a **quantidade inicial** de cada booster.
 
@@ -731,3 +731,23 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 - Ao **iniciar uma nova mesa** (§14.4, tela *Iniciar novo jogo*), o jogador escolhe se a mesa **permite** ou **não permite** os **boosters de skill** (§17.1). O padrão é **permitir** e a escolha é lembrada com as demais opções da mesa. Vale para o jogo **todo** e **não muda** depois que o jogo começa, como as regras (§14.4); o jogo salvo ("Continuar") e o jogo que passa a ser hospedado (§16.7) mantêm a escolha.
 - Com os boosters de skill **não permitidos**: no seletor (§17.3) eles aparecem **esmaecidos**, com um aviso de que a mesa não os permite, e **não podem ser escolhidos** nem são debitados; a marcação do inventário (§17.2) não muda, só não vale nessa mesa. O anfitrião **recusa** a escolha de um booster de skill nessa mesa (como recusa um id fora do catálogo, §17.4). Os **boosters de interação** (b3) continuam permitidos.
 - Quem é **recrutado** (§16.2) é informado no **convite** se os boosters de skill são **permitidos ou não** na mesa, antes de aceitar; aceitar o convite é aceitar essa regra, como as demais (§14.4). A informação aparece também na *Mesa do recrutado* e no convite de partida em andamento (§16.7).
+
+### **17.10. Loja**
+- A **loja** troca **moedas** (§14.6) por **boosters**. O acesso é pelo botão **Acessar loja** da tela do inventário. Vale só no aparelho, como o inventário e a carteira.
+- As ofertas são fixas por ora (a quantidade e o valor são o **total do pacote**):
+
+| Booster | Quantidade | Valor (moedas) |
+|---|---|---|
+| b1 Green-LED | 10 | 50 |
+| b1 Green-LED | 5 | 30 |
+| b1 Green-LED | 1 | 10 |
+| b2 Yellow-LED | 10 | 50 |
+| b2 Yellow-LED | 5 | 30 |
+| b2 Yellow-LED | 1 | 10 |
+| b3 Reações | 10 | 50 |
+| b3 Reações | 5 | 30 |
+| b3 Reações | 1 | 10 |
+
+- Antes de confirmar, o jogador vê o booster, a quantidade, o **valor total**, as moedas que **tem** e as que **terá depois**. A compra **pode zerar** o saldo, mas **nunca deixá-lo negativo**: com saldo menor que o valor, a compra **não é feita** e nada muda.
+- Confirmada, **debita** o valor da carteira e **soma** a quantidade ao inventário numa só operação (nunca um sem o outro, nem em caso de queda do app no meio); o booster já vale para o **próximo seletor** (§17.3) e o saldo na tela é atualizado.
+- A compra **não tem limite** de estoque (o teto de 10 do presente, §17.5, só vale para o presente). Não conta como aposta nem entra no resultado em moedas das estatísticas (§14.6).

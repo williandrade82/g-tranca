@@ -9,7 +9,9 @@ import java.io.IOException
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import com.gtranca.engine.Coins
+import com.gtranca.engine.ShopOffer
 import com.gtranca.engine.Wallet
+import kotlinx.coroutines.flow.first
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.gtranca.engine.model.GameMode
 import kotlinx.coroutines.flow.Flow
@@ -60,7 +62,7 @@ interface StatsRepository {
 }
 
 /** Estatísticas no DataStore Preferences: um contador por (modo, dificuldade, campo) e os ids recentes já contados. */
-class DataStoreStatsRepository(private val store: DataStore<Preferences>) : StatsRepository, WalletRepository {
+class DataStoreStatsRepository(private val store: DataStore<Preferences>) : StatsRepository, WalletRepository, ShopLedger {
 
     /** Arquivo ilegível: estatísticas zeradas (nunca derruba o app). */
     override val stats: Flow<GameStats> = store.data.catch { error ->
@@ -152,6 +154,29 @@ class DataStoreStatsRepository(private val store: DataStore<Preferences>) : Stat
         return done
     }
 
+    override suspend fun debitPurchase(purchaseId: String, offer: ShopOffer): Boolean {
+        var done = false
+        store.edit { prefs ->
+            val debited = walletOf(prefs).debit(offer.price) ?: return@edit
+            prefs[BALANCE] = debited.balance
+            prefs[SHOP_PENDING] = "$purchaseId|${offer.boosterId}|${offer.quantity}"
+            done = true
+        }
+        return done
+    }
+
+    override suspend fun pendingPurchase(): PendingPurchase? {
+        val parts = store.data.catch { error ->
+            if (error is IOException) emit(emptyPreferences()) else throw error
+        }.first()[SHOP_PENDING]?.split('|') ?: return null
+        val quantity = parts.getOrNull(2)?.toIntOrNull() ?: return null
+        return if (parts.size == 3 && quantity > 0) PendingPurchase(parts[0], parts[1], quantity) else null
+    }
+
+    override suspend fun clearPurchase(purchaseId: String) {
+        store.edit { prefs -> if (prefs[SHOP_PENDING]?.startsWith("$purchaseId|") == true) prefs.remove(SHOP_PENDING) }
+    }
+
     private fun walletOf(prefs: Preferences): Wallet =
         Wallet((prefs[BALANCE] ?: Coins.INITIAL_BALANCE).coerceAtLeast(0), prefs[LAST_CLAIM_DAY])
 
@@ -176,6 +201,9 @@ class DataStoreStatsRepository(private val store: DataStore<Preferences>) : Stat
         val BALANCE = intPreferencesKey("wallet:balance")
         val LAST_CLAIM_DAY = longPreferencesKey("wallet:lastClaimDay")
         val NET = intPreferencesKey("wallet:net")
+
+        /** §17.10 compra da loja já debitada e ainda não concluída ("id|booster|quantidade"). */
+        val SHOP_PENDING = stringPreferencesKey("shop:pending")
 
         fun counter(mode: GameMode, difficultyId: String, field: String): Preferences.Key<Int> =
             intPreferencesKey("$PREFIX:${mode.name}:$difficultyId:$field")

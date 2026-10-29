@@ -64,7 +64,7 @@ Use estes nomes nos pedidos.
 (abertura sem nome no perfil) Boas-vindas ──► Perfil ──(com nome)──► Início
 Início ──► Iniciar novo jogo (opções; ⇄ Personalizar regra) ──Selecionar jogadores──► Seleção de jogadores ──Começar Partida──► Prepare-se! (camada, ≥ 1,5 s) ──► Seletor de boosters (30 s; antes de cada partida) ──Seguir──► JOGO
   ├──► Continuar ─────────────────────────────────────────────────────────────────► JOGO
-  ├──► Inventário (armário; marca até 3 boosters)
+  ├──► Inventário (armário; marca até 3 boosters) ──Acessar loja──► Loja (compra boosters com moedas; modal Comprar booster)
   ├──► Perfil ──► Personalizar regra
   └──► Estatísticas
 
@@ -304,8 +304,9 @@ Se o jogo já terminou e o resultado ainda não foi recebido, o jogador recebe s
 ### 3.18 Inventário (`InventoryScreen`)
 **Objetivo:** ver os itens e marcar até 3 boosters para a próxima partida (§17.1, §17.2).
 **Conteúdo:** o **armário** (`booster-stock-v1.png`, 9 nichos) com um **nicho de booster** por item do catálogo, na ordem do catálogo; as **moedas** aparecem como item (saldo), **sem** poder ser marcadas. Tocar num nicho mostra a **descrição** do item na **caixa de texto** logo abaixo do armário (tag `inventory-info`: ícone, nome, "você tem N", o **tipo do booster** ("Booster de Skill" ou "Booster de Interação", tag `inventory-info-kind`, §17.1) e o que o booster faz; moldura dourada dupla com parafusos nos cantos; antes do 1º toque, uma dica; as moedas também têm descrição) e, se for um booster, marca/desmarca (aro dourado); no máximo 3 marcados (o 4º é recusado com um aviso discreto); quantidade 0: esmaecido e não marca. Texto de apoio: "Escolha até 3 boosters para a próxima partida". A marcação é gravada na hora. Botão **Voltar**.
-**Regras:** §17.1, §17.2.
-**Tags:** `inventory-screen`, `booster-slot-<id>`, `inventory-back`.
+Botão **Acessar loja** (tag `inventory-shop`) abre a Loja (3.20); ao voltar, o armário já mostra as novas quantidades.
+**Regras:** §17.1, §17.2, §17.10.
+**Tags:** `inventory-screen`, `booster-slot-<id>`, `inventory-back`, `inventory-shop`.
 
 ### 3.19 Seletor de boosters (`BoosterSelectorScreen`)
 **Objetivo:** escolher os boosters da partida **antes de ver a distribuição** (§17.3). Aparece **antes de cada partida**, depois do *Prepare-se!* na primeira e depois dos pontos nas seguintes, também contra robôs.
@@ -314,6 +315,12 @@ Se o jogo já terminou e o resultado ainda não foi recebido, o jogador recebe s
 **Multijogador (feito):** cada humano vê o seu seletor no início de cada partida, cada um no seu tempo (a 1ª partida antes de a mesa ser criada; as seguintes por cima da mesa, antes de a distribuição aparecer). As vistas recebidas esperam na fila e, depois do Seguir, as animações e os descartes já feitos são mostrados. Quem entra num assento de robô ou de quem saiu herda os boosters do assento (3.14). A reação de outro assento aparece no meio da tela, animada (3.8). **Multijogador:** cada humano tem a sua tela. Os que já confirmaram jogam; ao chegar a vez de quem ainda não escolheu, a mesa mostra *Aguardando <nome> escolher os boosters*.
 **Regras:** §17.3, §17.4, §16.15.
 **Tags:** `boosters-selector`, `booster-pick-<n>`, `boosters-go`, `boosters-timer`.
+
+### 3.20 Loja (`ShopScreen`)
+**Objetivo:** trocar moedas por boosters (§17.10). Acesso só pelo botão **Acessar loja** do Inventário (3.18).
+**Conteúdo:** o **painel da loja** (o topo e o rodapé ficam fixos e só o miolo rola) montado com as peças de `docs/boosters/Loja` (título com o robô e o toldo no topo, laterais e centro de madeira repetidos conforme a altura, rodapé embaixo). Dentro dele, **9 ofertas** em grade de 3 colunas, uma linha por booster (B1, B2, B3) e as quantidades 10, 5 e 1 em cada linha. Cada oferta mostra a **imagem** do booster, o **nome** (com a quantidade, ex. "Green-LED ×10") e o **valor** em moedas (ícone do saco de dinheiro); tocar na oferta abre o modal **Comprar booster**. O saldo aparece no topo, como em todas as telas (0). Botão **Voltar** (tag `shop-back`) leva ao Inventário.
+**Regras:** §17.10.
+**Tags:** `shop-screen`, `shop-offer-<n>` (n = 1..9, na ordem da lista), `shop-back`.
 
 ## 4. Modais
 
@@ -331,6 +338,7 @@ Todos levam o **cabeçalho de marca**.
 | **Ligar o Wi-Fi do jogo?** | mensagem (aviso) | **Continuar mesa** com o Wi-Fi do jogo desligado (3.17) | "Para voltar à mesa de <anfitrião> o Wi-Fi do jogo precisa estar ligado."; **Ligar** / **Cancelar**. Tags `rejoin-wifi`, `rejoin-wifi-on` |
 | **Desconectar a mesa?** | mensagem (aviso) | anfitrião desliga o botão de Wi-Fi na mesa de jogo com humanos (3.14) | "Os jogadores por perto serão substituídos por robôs e o jogo segue só neste celular."; **Desconectar** / **Cancelar** (no convidado, o botão abre *Desistir da mesa?*) |
 | **Recusa** | aviso breve (toast) | chamado recusou, saiu ou ficou fora do alcance (§16.2); chamado do meio do jogo (§16.7) que recusou, não respondeu a tempo, tem saldo menor que o débito ou saiu do alcance | quem recusou e o **motivo** (recusou o convite, não respondeu a tempo, saldo insuficiente, fora do alcance); o lugar volta a VAGO (no meio do jogo, a vaga continua aberta para nova chamada) |
+| **Comprar booster** | diálogo | tocar numa oferta da Loja (3.20) | ícone, nome, **tipo** (Skill/Interação) e resumo do booster; **quantidade** a adquirir, **valor total**, **moedas que você tem** e **moedas depois da compra**. Botões **Cancelar** e **Comprar**. Com saldo menor que o valor, **Comprar** fica desativado e aparece "Saldo insuficiente" no lugar do saldo depois (nunca um valor negativo); saldo que termina em 0 compra normalmente. Confirmada, o booster entra no inventário e o saldo é atualizado na hora; o modal fecha. Tags `shop-dialog`, `shop-buy`, `shop-cancel`, `shop-insufficient` |
 | Recusar a compra? | mensagem | monte acabou sem morto | encerra a partida sem batida |
 | Zerar estatísticas? | mensagem | Estatísticas | confirma zerar |
 | **Informações do jogo** | diálogo | tocar em "Partida N · alvo X" ou no placar, na mesa de jogo | **Jogo:** regras (nome do perfil e o resumo, o mesmo de *Detalhes da regra*), modo, nível dos robôs, pontuação-alvo, aposta de cada jogador e quanto recebe cada vencedor (§14.6, §16.13); **Lados:** quem joga em cada lado (avatar, nome, "robô" ou "humano"; no multijogador, quem é o anfitrião); **Partida atual:** número e quem começou; **Partidas:** tabela partida a partida (número, total de cada lado e quem bateu ou "sem batida") e o acumulado. Só informação pública (no multijogador, o histórico recebido). Botão **Fechar**. Tags `match-info`, `match-info-rounds`, `match-info-close` |

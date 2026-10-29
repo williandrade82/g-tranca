@@ -1,0 +1,21 @@
+Tranca-bots — peças do painel da loja
+
+Arquivos:
+01_titulo_topo.png
+  Recorte fixo do topo, incluindo robô, moedas e toldo. Posicione no alto.
+
+02_rodape_base.png
+  Recorte fixo da base/rodapé. Posicione no final da composição.
+
+03_centro_madeira_repetivel.png
+  Uma faixa horizontal de madeira retirada de uma tábua. Repita verticalmente para aumentar a altura útil do centro. Mantenha a largura e alinhe as bordas laterais sob as molduras.
+
+04_lateral_esquerda_repetivel.png
+05_lateral_direita_repetivel.png
+  Faixas laterais para repetir verticalmente. Foram extraídas de trechos sem os enfeites circulares dos pés nem as luzes ciano, para evitar que esses elementos se repitam a cada segmento.
+
+Notas:
+- Os PNGs preservam o canal alfa da imagem de origem.
+- Para montar: título no topo, laterais e centro repetidos conforme a altura desejada, rodapé por último.
+- O centro é uma faixa de uma tábua original; as laterais usam uma pequena mistura nas extremidades para suavizar a junção vertical.
+- Recomenda-se testar a montagem em escala 1:1 e ajustar sobreposições de 1–2 px se o renderizador apresentar linhas de costura.
