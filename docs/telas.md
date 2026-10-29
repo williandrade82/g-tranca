@@ -190,6 +190,22 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 **Regras:** §3 a §10 (jogada), §3.5 e §6.5 (3 vermelhos), §5 (lixo), §7 (canastras).
 **Tags:** `table-screen`, `table-scroll`, `score`, `seat-<n>`, `seat-hand-<n>`, `stock`, `mortos`, `discard-pile`, `discard-empty` (lixo vazio: lugar de uma carta com ícone de lixeira), `show-discard-pile` (contador sempre visível, mostra 0 com o lixo vazio), `action-bar`, `turn-status`, `hand`, `hand-card-<carta>`, `action-legend`, `action-resign`.
 
+#### 3.8.1 Regras de sequência das animações
+
+O motor entrega o estado já pronto a cada ação (o morto, por exemplo, entra na mão no instante em que a mão esvazia, §9.2/§9.3); a **mesa** é que encena. As regras abaixo valem para a mesa local, para o anfitrião e para os convidados (§16.6), para todos os assentos. "Voo" é uma carta animada de uma origem a um destino.
+
+- **R1. Um evento por vez, na ordem do histórico.** Os voos de uma jogada (evento público) só começam quando os da jogada anterior pousaram, na ordem em que as jogadas foram feitas. Vale dentro de um mesmo trecho de eventos recebido de uma vez (robôs encadeando ações, vistas que chegam juntas) e entre trechos sucessivos.
+- **R2. A jogada seguinte não começa antes de a anterior pousar.** O ritmo continua sendo o dos robôs (pausa entre jogadas, §14): os voos do trecho seguinte ficam numa fila e começam quando os do anterior pousam. Com a animação desligada, nada espera.
+- **R3. Morto direto (§9.2).** Quando uma baixa ou acréscimo esvazia a mão e pega o morto, as cartas do morto sobem à mão logo **depois das cartas dessa jogada** e **antes de qualquer jogada seguinte** do mesmo jogador (baixas com as cartas do morto, descarte).
+- **R4. Morto indireto (§9.3).** Quando o descarte da última carta pega o morto, o descarte voa primeiro e as cartas do morto sobem à mão **depois dele**; elas só podem ser usadas na vez seguinte do jogador.
+- **R5. Quem pegou o morto é quem o público diz** (`Taken.seat`): o morto sobe para a mão dele, também no modo duplas (o parceiro, não o humano).
+- **R6. A contagem da pílula não antecipa o morto.** Enquanto os voos do morto não pousaram (ou esperam na fila), a pílula do jogador que o pegou mostra a contagem de antes. Na mão do humano, as cartas do morto só aparecem quando pousam.
+- **R7. Pegar o lixo (§5.1)** segue a ordem da jogada: o topo e as cartas da mão vão ao conjunto; depois o resto do lixo vai à mão; e, se isso esvaziou a mão (morto direto), vale R3.
+- **R8. Compra e 3 vermelho (§3.5, §6.5, §9.4).** A compra pousa antes da troca do 3 vermelho que ela trouxe; a troca é encenada inteira antes de o jogo seguir, nas trocas do próprio jogador e nas dos demais. Os 3 vermelhos do início da vez vêm antes da compra.
+- **R9. O descarte é sempre o último movimento da vez** de quem joga.
+- **R10. Batida e fim da partida (§11, §12).** A última jogada (baixa de quem bate ou descarte) pousa na mesa antes de o anúncio de fim da partida aparecer; o anúncio não corta voos em andamento nem voos na fila.
+- **R11. Multijogador e reconexão (§16.6).** Cada aparelho segue R1 a R10 no seu ritmo; as vistas recebidas são mostradas uma por vez, em ordem. Quem entra ou volta no meio da partida (§16.7, §16.9) recebe a mesa no estado atual **sem** encenar o que já aconteceu, e a partir daí vale R1.
+
 ### 3.9 Fim da partida sobre a mesa (animação e banner)
 **Objetivo:** marcar o fim da partida (§11) sem sair da mesa. Substitui o antigo anúncio da partida/do jogo (`AnnouncementScreen`, removido).
 **Conteúdo:** camada transparente sobre a mesa, que fica ao fundo um pouco escurecida por **2 s** (um toque encerra antes); nada cobre a tela de forma opaca. Sempre aparece, grande e centralizado, o **banner de fim de partida**, uma **arte pronta** (`banner_bateu`, `banner_perdeu`, `banner_ninguem_bateu`, em `res/drawable-nodpi/`):
