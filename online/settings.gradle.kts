@@ -21,3 +21,4 @@ rootProject.name = "g-tranca-online"
 
 include(":contracts")
 include(":game-service")
+include(":lobby-service")
