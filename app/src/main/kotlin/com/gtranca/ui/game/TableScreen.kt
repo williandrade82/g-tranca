@@ -331,9 +331,21 @@ private fun TableScreenContent(
     LaunchedEffect(state.flights.map { it.id }) {
         val fresh = state.flights.filter { readyFlights[it.id] != true }
         if (fresh.isEmpty()) return@LaunchedEffect
+        // Batida de outro jogador (docs/telas.md 3.9): antes da última jogada a mesa sobe ao topo, mostrando todos os jogadores.
+        val lookUp = fresh.any { it.finale && it.from != AnimAnchor.OwnHand }
+        if (lookUp && tableScroll.value > 0) {
+            try {
+                tableScroll.animateScrollTo(0, androidx.compose.animation.core.tween(GO_OUT_LOOK_UP_MILLIS))
+                kotlinx.coroutines.delay(80) // as posições dos destinos se atualizam depois da rolagem
+            } catch (e: CancellationException) {
+                if (!currentCoroutineContext().isActive) throw e
+            }
+        }
         val viewport = tableViewport
         val targets = fresh.mapNotNull { flight -> anchors.tableTarget(flight.to) }
-        if (viewport != null && targets.isNotEmpty()) {
+        // Na batida a câmera fica em cima; só desce se o destino estiver inteiro fora da área visível.
+        val keepUp = lookUp && viewport != null && targets.any { it.bottom > viewport.top && it.top < viewport.bottom }
+        if (viewport != null && targets.isNotEmpty() && !keepUp) {
             val margin = with(density) { 12.dp.toPx() }
             val top = targets.minOf { it.top }
             val bottom = targets.maxOf { it.bottom }
@@ -1977,3 +1989,6 @@ private fun CanastaSeal(clean: Boolean, color: Color, flash: Float, modifier: Mo
 internal fun com.gtranca.game.GameSnapshot.shownTurnEvents(index: Int): List<com.gtranca.engine.PublicEvent> =
     if (stage == com.gtranca.game.Stage.PLAYING && view.currentSeat.index == index && view.phase == com.gtranca.engine.model.Phase.AWAITING_DRAW) emptyList()
     else turnEvents.getOrNull(index).orEmpty()
+
+/** Duração da subida da mesa ao topo antes da última jogada de outro jogador (docs/telas.md 3.9). */
+private const val GO_OUT_LOOK_UP_MILLIS = 700

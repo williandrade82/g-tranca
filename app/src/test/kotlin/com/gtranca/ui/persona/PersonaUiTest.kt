@@ -19,16 +19,16 @@ class PersonaUiTest {
     private val table = listOf(you, bots[0], bots[1], bots[2])
 
     @Test
-    fun `§14_5 em duplas os adversarios levam a posicao e o parceiro so o nome`() {
+    fun `§14_5 em qualquer modo o jogador e chamado so pelo nome, sem a posicao`() {
         callNamesOfSide(GameMode.DUPLAS, Side(0), Seat(0), table) shouldBe listOf("Você", bots[1].fullName)
-        callNamesOfSide(GameMode.DUPLAS, Side(1), Seat(0), table) shouldBe listOf("${bots[0].fullName} (dir)", "${bots[2].fullName} (esq)")
+        callNamesOfSide(GameMode.DUPLAS, Side(1), Seat(0), table) shouldBe listOf(bots[0].fullName, bots[2].fullName)
     }
 
     @Test
-    fun `§14_5 a posicao e sempre em relacao ao jogador`() {
+    fun `§14_5 visto de outro assento tambem so o nome`() {
         // Vista do assento 1: o assento 0 passa a ser o adversário à esquerda; o 2, o da direita.
         callNamesOfSide(GameMode.DUPLAS, Side(0), Seat(1), table) shouldBe
-            listOf("${you.fullName} (esq)", "${bots[1].fullName} (dir)")
+            listOf(you.fullName, bots[1].fullName)
     }
 
     @Test

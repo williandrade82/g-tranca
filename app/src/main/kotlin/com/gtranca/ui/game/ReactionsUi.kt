@@ -209,26 +209,27 @@ fun ReactionCenterOverlay(event: ReactionEvent?, origin: androidx.compose.ui.geo
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Image(
-                    painterResource(reactionIconRes(event.reaction)),
-                    stringResource(reactionLabelRes(event.reaction)),
-                    Modifier.size(REACTION_CENTER_SIZE_DP.dp),
-                    contentScale = ContentScale.Fit,
-                )
-                // O dono: avatar e nome de quem enviou.
+                Box(Modifier.size(REACTION_CENTER_SIZE_DP.dp)) {
+                    Image(
+                        painterResource(reactionIconRes(event.reaction)),
+                        stringResource(reactionLabelRes(event.reaction)),
+                        Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                    // O avatar do dono, no canto esquerdo, logo acima do nome.
+                    persona?.let { com.gtranca.ui.persona.PersonaAvatar(it, 28.dp, Modifier.align(Alignment.BottomStart).testTag("reaction-owner-avatar"), animate = false) }
+                }
+                // O nome de quem enviou.
                 persona?.let {
-                    Row(
+                    Text(
+                        it.shortName,
                         Modifier
                             .background(GColors.Midnight.copy(alpha = 0.9f), RoundedCornerShape(50))
                             .border(1.dp, GColors.Gold.copy(alpha = 0.7f), RoundedCornerShape(50))
-                            .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
                             .testTag("reaction-owner"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        com.gtranca.ui.persona.PersonaAvatar(it, 28.dp, animate = false)
-                        Text(it.shortName, style = MaterialTheme.typography.titleSmall, color = GColors.Gold, fontWeight = FontWeight.Bold, maxLines = 1)
-                    }
+                        style = MaterialTheme.typography.titleSmall, color = GColors.Gold, fontWeight = FontWeight.Bold, maxLines = 1,
+                    )
                 }
             }
         }
@@ -236,7 +237,7 @@ fun ReactionCenterOverlay(event: ReactionEvent?, origin: androidx.compose.ui.geo
 }
 
 /** Tamanho "médio" da reação no centro (*provisório, revisar com produto*). */
-private const val REACTION_CENTER_SIZE_DP = 160
+private const val REACTION_CENTER_SIZE_DP = 240
 private const val REACTION_ZOOM_MILLIS = 450
 private const val REACTION_HOLD_MILLIS = 1_400L
 private const val REACTION_FADE_MILLIS = 350

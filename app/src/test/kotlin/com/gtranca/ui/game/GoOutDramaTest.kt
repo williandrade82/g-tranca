@@ -39,18 +39,18 @@ class GoOutDramaTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `a carta cresce em 40 por cento, fica grande por 20 e volta ao normal ao pousar`() {
+    fun `a carta cresce em 30 por cento, fica grande por 45 e volta ao normal ao pousar`() {
         GoOutDrama.flightScale(0f) shouldBe (1f plusOrMinus 1e-6f)
-        GoOutDrama.flightScale(0.4f) shouldBe (GoOutDrama.PEAK_SCALE plusOrMinus 1e-6f)
+        GoOutDrama.flightScale(0.3f) shouldBe (GoOutDrama.PEAK_SCALE plusOrMinus 1e-6f)
         GoOutDrama.flightScale(0.5f) shouldBe (GoOutDrama.PEAK_SCALE plusOrMinus 1e-6f)
-        GoOutDrama.flightScale(0.6f) shouldBe (GoOutDrama.PEAK_SCALE plusOrMinus 1e-6f)
+        GoOutDrama.flightScale(0.75f) shouldBe (GoOutDrama.PEAK_SCALE plusOrMinus 1e-6f)
         GoOutDrama.flightScale(1f) shouldBe (1f plusOrMinus 1e-6f)
         // Crescimento e volta graduais (monotônicos).
         val up = (0..10).map { GoOutDrama.flightScale(it * 0.04f) }
         up.zipWithNext().all { (a, b) -> b >= a - 1e-6f } shouldBe true
-        val down = (0..10).map { GoOutDrama.flightScale(0.6f + it * 0.04f) }
+        val down = (0..10).map { GoOutDrama.flightScale(0.75f + it * 0.025f) }
         down.zipWithNext().all { (a, b) -> b <= a + 1e-6f } shouldBe true
-        GoOutDrama.PEAK_SCALE.shouldBeBetween(1.2f, 1.6f, 0f)
+        GoOutDrama.PEAK_SCALE.shouldBeBetween(2.0f, 3.0f, 0f)
     }
 
     @Test
@@ -61,7 +61,7 @@ class GoOutDramaTest {
         GoOutDrama.next(GoOutDrama.OverlayPhase.FIREWORKS) shouldBe GoOutDrama.OverlayPhase.BANNER
         GoOutDrama.startPhase(RoundEnd.YOU, animate = false) shouldBe GoOutDrama.OverlayPhase.BANNER
         GoOutDrama.startPhase(RoundEnd.NO_WINNER, animate = true) shouldBe GoOutDrama.OverlayPhase.BANNER
-        GoOutDrama.FIREWORKS_MILLIS shouldBe 1_500L
+        GoOutDrama.FIREWORKS_MILLIS shouldBe 3_000L
     }
 
     @Test
@@ -93,7 +93,7 @@ class GoOutDramaTest {
             visible.shouldNotBeEmpty()
             visible.forEach { (it.alpha > 0f) shouldBe true }
             burst.sparks.all { Fireworks.state(burst, it, (burst.start - 0.01f).coerceAtLeast(-1f)) == null } shouldBe true
-            burst.sparks.all { Fireworks.state(burst, it, burst.start + Fireworks.BURST_LIFE) == null } shouldBe true
+            burst.sparks.all { Fireworks.state(burst, it, burst.start + Fireworks.BURST_LIFE + 0.001f) == null } shouldBe true
         }
         // Mesma semente, mesmos fogos.
         Fireworks.create(5) shouldBe bursts

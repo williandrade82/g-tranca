@@ -120,8 +120,8 @@ class PersonaGeneratorTest {
     fun `§14_5 em duplas os adversarios levam a posicao e o parceiro so o nome`() {
         val bot = PersonaGenerator.opponents(5, 1, Difficulty.MEDIO).single()
         val name = bot.fullName
-        bot.callName(GameMode.DUPLAS, SeatRole.LEFT_OPPONENT) shouldBe "$name (esq)"
-        bot.callName(GameMode.DUPLAS, SeatRole.RIGHT_OPPONENT) shouldBe "$name (dir)"
+        bot.callName(GameMode.DUPLAS, SeatRole.LEFT_OPPONENT) shouldBe name
+        bot.callName(GameMode.DUPLAS, SeatRole.RIGHT_OPPONENT) shouldBe name
         bot.callName(GameMode.DUPLAS, SeatRole.PARTNER) shouldBe name
         bot.callName(GameMode.INDIVIDUAL, SeatRole.OPPONENT) shouldBe name
     }

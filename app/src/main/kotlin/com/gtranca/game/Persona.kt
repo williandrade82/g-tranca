@@ -64,15 +64,10 @@ data class Persona(
     fun withLevel(level: BotLevel): Persona = copy(character = character?.copy(level = level))
 
     /**
-     * §14.5 nome na comunicação do jogo: em duplas, os adversários levam a posição em relação ao jogador
-     * ("Nome Sobrenome (dir)" / "(esq)"); o parceiro e o individual, só o nome.
+     * §14.5 nome na comunicação do jogo: sempre só o nome completo, sem a posição em relação ao jogador (em qualquer modo).
      */
-    fun callName(mode: GameMode, role: SeatRole): String = when {
-        mode != GameMode.DUPLAS -> fullName
-        role == SeatRole.LEFT_OPPONENT -> "$fullName (esq)"
-        role == SeatRole.RIGHT_OPPONENT -> "$fullName (dir)"
-        else -> fullName
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun callName(mode: GameMode, role: SeatRole): String = fullName
 
     companion object {
         /** Cores disponíveis para o medalhão do jogador. */

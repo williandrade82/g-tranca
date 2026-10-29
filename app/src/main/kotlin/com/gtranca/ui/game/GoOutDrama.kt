@@ -11,17 +11,17 @@ import kotlin.random.Random
  */
 object GoOutDrama {
     /** O voo da última jogada dura tantas vezes o normal (fácil de ajustar) (e a pausa entre as cartas do movimento também). */
-    const val SLOWDOWN: Float = 3f
+    const val SLOWDOWN: Float = 5f
 
     /** Tamanho máximo da carta no meio do voo, em relação ao normal. */
-    const val PEAK_SCALE: Float = 1.4f
+    const val PEAK_SCALE: Float = 2.5f
 
-    /** Fração do voo em que a carta cresce (0 a 40%) e em que termina de ficar grande (40% a 60%); o resto é a volta. */
-    const val GROW_END: Float = 0.4f
-    const val HOLD_END: Float = 0.6f
+    /** Fração do voo em que a carta cresce (0 a 30%) e em que termina de ficar grande (30% a 75%); o resto é a volta. */
+    const val GROW_END: Float = 0.3f
+    const val HOLD_END: Float = 0.75f
 
     /** Duração dos fogos de artifício. */
-    const val FIREWORKS_MILLIS: Long = 1_500
+    const val FIREWORKS_MILLIS: Long = 3_000
 
     private fun smooth(x: Float): Float {
         val c = x.coerceIn(0f, 1f)
@@ -71,10 +71,10 @@ data class SparkState(val x: Float, val y: Float, val alpha: Float, val size: Fl
 
 /** Matemática dos fogos de artifício (pura): estouros sorteados com semente e a posição de cada faísca no tempo. */
 object Fireworks {
-    /** Duração total dos fogos (1,5 s). */
+    /** Duração total dos fogos (3 s). */
     const val TOTAL_MILLIS: Long = GoOutDrama.FIREWORKS_MILLIS
 
-    const val BURSTS: Int = 5
+    const val BURSTS: Int = 10
     const val SPARKS_PER_BURST: Int = 26
 
     /** Duração de cada estouro, em fração da duração total dos fogos. */
