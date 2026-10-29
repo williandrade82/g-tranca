@@ -5,6 +5,7 @@ import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
+import com.gtranca.online.contracts.MatchEndedNotice
 import com.gtranca.online.contracts.ResolveGuestRequest
 import com.gtranca.online.contracts.ResolvedGuest
 import com.gtranca.online.contracts.Health
@@ -13,6 +14,7 @@ import com.gtranca.online.contracts.LobbyLimits
 import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.PROTOCOL_HEADER
 import com.gtranca.online.contracts.ServerInfo
+import com.gtranca.online.contracts.TableId
 import com.gtranca.online.contracts.VersionCheck
 import com.gtranca.online.contracts.checkProtocolVersion
 import io.ktor.http.ContentType
@@ -199,7 +201,20 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
             call.guarded { guest -> call.respondJson(service.get(guest, call.parameters["id"].orEmpty())) }
         }
         delete("/api/lobby/tables/{id}") {
-            call.guarded { guest -> call.respondJson(service.close(guest, call.parameters["id"].orEmpty())) }
+            call.guarded { guest ->
+                val id = call.parameters["id"].orEmpty()
+                // §18.4: encerrar uma mesa EM_JOGO manda o game-service encerrar a partida ANTES de marcar ENCERRADA; se ele
+                // nao responde, a mesa segue EM_JOGO (o lobby nunca diz "encerrada" com o jogo rodando).
+                val gateway = deps.gateway
+                if (gateway != null && service.closeNeedsGame(guest, id)) {
+                    try {
+                        gateway.closeMatch(TableId.normalize(id) ?: id, guest.id)
+                    } catch (e: GameGatewayException) {
+                        lobbyError(ErrorCode.PARTIDA_INDISPONIVEL, "Não foi possível encerrar a partida agora. Tente de novo.", 503)
+                    }
+                }
+                call.respondJson(service.close(guest, id))
+            }
         }
         post("/api/lobby/tables/{id}/join") {
             call.guarded { guest ->
@@ -245,6 +260,23 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                     } finally {
                         if (!committed) service.abortStart(id)
                     }
+                }
+            }
+        }
+
+        // Servico a servico (game-service): o jogo terminou/foi encerrado; a mesa EM_JOGO vira ENCERRADA (§18.4).
+        post("/internal/tables/{id}/ended") {
+            val expected = deps.internalSecret
+            when {
+                expected == null -> call.respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Rotas internas desativadas.", 503))
+                !MessageDigest.isEqual(expected.toByteArray(), (call.request.headers[INTERNAL_SECRET_HEADER] ?: "").toByteArray()) ->
+                    call.respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Não autorizado.", 401))
+                else -> try {
+                    call.receiveLimited<MatchEndedNotice>()
+                    service.matchEnded(call.parameters["id"].orEmpty())
+                    call.respondJson(Health())
+                } catch (e: LobbyException) {
+                    call.respondError(e)
                 }
             }
         }

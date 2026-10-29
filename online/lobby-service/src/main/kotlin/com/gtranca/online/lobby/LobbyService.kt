@@ -140,6 +140,25 @@ class LobbyService(
 
     fun abortStart(rawId: String): TableView = mutate(rawId) { t -> if (t.starting) t.copy(starting = false) else t }
 
+    /**
+     * Antes de encerrar: so o anfitriao; devolve `true` se a mesa esta EM_JOGO (o chamador deve antes mandar o
+     * game-service encerrar a partida, §18.4). Nao muda nada.
+     */
+    fun closeNeedsGame(guest: Guest, rawId: String): Boolean {
+        sweep()
+        val t = store.find(idOf(rawId)) ?: missing()
+        requireHost(t, guest)
+        return t.state == TableState.EM_JOGO && !t.starting
+    }
+
+    /**
+     * O game-service avisa que o jogo terminou ou foi encerrado (§18.4): a mesa EM_JOGO vira ENCERRADA em vez de esperar o
+     * TTL. Idempotente; mesa ABERTA nao e tocada (um aviso atrasado de outro jogo nao a fecha).
+     */
+    fun matchEnded(rawId: String): TableView = mutate(rawId) { t ->
+        if (t.state == TableState.EM_JOGO) t.copy(state = TableState.ENCERRADA) else t
+    }
+
     fun close(guest: Guest, rawId: String): TableView = mutate(rawId) { t ->
         requireHost(t, guest)
         if (t.starting) lobbyError(ErrorCode.MESA_JA_INICIADA, "O jogo desta mesa está começando.", 409)
