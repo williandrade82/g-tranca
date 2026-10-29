@@ -28,7 +28,7 @@ fun main() {
 /** Dependencias do servico (trocaveis nos testes). */
 class GameDeps(
     val config: GameConfig = GameConfig(),
-    val registry: MatchRegistry = MatchRegistry(config),
+    val registry: MatchRegistry = MatchRegistry(config, notifier = HttpLobbyNotifier(config.lobbyUrl, config.internalSecret)),
     val resolver: GuestResolver = HttpGuestResolver(config.lobbyUrl, config.internalSecret),
 )
 

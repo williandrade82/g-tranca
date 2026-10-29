@@ -301,8 +301,9 @@ class MatchSessionTest {
     }
 
     @Test
-    fun `18_4 desistir faz um robo assumir o assento e o jogo termina`() = runBlocking {
-        val run = startSession(TableMode.INDIVIDUAL, humans2(), target = 200, seed = 5)
+    fun `18_4 desistir em duplas faz um robo assumir o assento e o jogo termina`() = runBlocking {
+        // 1.3c: com dois humanos em duplas (assentos 0 e 2) ha robos nos outros lugares; o 1x1 humano e outro caso.
+        val run = startSession(TableMode.DUPLAS, duplasSeats(), target = 200, seed = 5)
         val a = TestPlayer(run.session, "ga")
         val b = TestPlayer(run.session, "gb")
         a.attach()
@@ -320,13 +321,11 @@ class MatchSessionTest {
             it.seat shouldBe a.seat
             it.guestId shouldBe "ga"
         }
-        val sawResign = b.drain().filterIsInstance<SeatsChanged>().last()
-        sawResign.change shouldBe SeatChange.RESIGNED
+        // O jogo segue so com B (mais robos) e termina (as vistas depois da desistencia ainda nao foram lidas por B).
+        b.playToEnd()
+        val sawResign = b.received.filterIsInstance<SeatsChanged>().last { it.change == SeatChange.RESIGNED }
         sawResign.seats[a.seat].kind shouldBe SeatKind.ROBO
         sawResign.seats[a.seat].resigned shouldBe true
-
-        // O jogo segue so com B contra o robo e termina.
-        b.playToEnd()
         run.session.inspect().stage shouldBe TableStage.GAME_OVER
         // Quem desistiu nao volta ao assento (o robo e dele agora).
         TestPlayer(run.session, "ga").attach() shouldBe AttachResult.Abandoned
@@ -335,7 +334,7 @@ class MatchSessionTest {
 
     @Test
     fun `18_4 quando o ultimo humano desiste os robos terminam o jogo sozinhos`() = runBlocking {
-        val run = startSession(TableMode.INDIVIDUAL, humans2(), target = 150, seed = 9)
+        val run = startSession(TableMode.DUPLAS, duplasSeats(), target = 150, seed = 9)
         val a = TestPlayer(run.session, "ga")
         val b = TestPlayer(run.session, "gb")
         a.attach()

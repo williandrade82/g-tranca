@@ -15,8 +15,13 @@ data class GameConfig(
     val maxMatches: Int = 100,
     /** Depois do fim do jogo a sessao continua aceitando reconexao (para receber o resultado) por este tempo. */
     val retainAfterEndMs: Long = 10 * 60_000L,
-    /** Sessao sem nenhuma atividade por este tempo e descartada (o abandono por tempo e a etapa 1.3c). */
+    /**
+     * Sessao com TODOS os humanos desconectados por este tempo e descartada (encerramento por inatividade, §18.4). Jogo com
+     * humano conectado nao e descartado (sem relogio de jogada a mesa espera); com tempo definido o relogio decide.
+     */
     val idleTtlMs: Long = 2 * 3_600_000L,
+    /** Abandono dentro deste tempo desde o inicio do jogo devolve a aposta mesmo com `PERDE_APOSTA` (§18.4: 60 s). */
+    val abandonGraceMs: Long = 60_000,
     val hardConfig: HardBotConfig = HardBotConfig.DEFAULT,
     /** Limite de mensagens do cliente por conexao: reposicao por segundo e rajada maxima. */
     val wsMessagesPerSecond: Int = 10,

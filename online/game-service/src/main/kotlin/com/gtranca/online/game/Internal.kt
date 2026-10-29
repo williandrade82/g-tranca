@@ -1,6 +1,8 @@
 package com.gtranca.online.game
 
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.CloseMatchRequest
+import com.gtranca.online.contracts.CloseMatchResponse
 import com.gtranca.online.contracts.CreateMatchRequest
 import com.gtranca.online.contracts.CreateMatchResponse
 import com.gtranca.online.contracts.ErrorCode
@@ -30,6 +32,7 @@ fun Application.internalModule(deps: GameDeps) {
         route("/internal") {
             install(internalGuard(deps))
             matchRoutes(deps)
+            closeRoute(deps)
             simRoutes()
         }
     }
@@ -52,6 +55,24 @@ private fun Route.matchRoutes(deps: GameDeps) {
         } catch (e: MatchCreateException) {
             val code = if (e.status == 503) ErrorCode.PARTIDA_INDISPONIVEL else ErrorCode.REQUISICAO_INVALIDA
             call.respond(HttpStatusCode.fromValue(e.status), ApiError(code, e.message))
+        }
+    }
+}
+
+/** `/internal/matches/{id}/close`: o lobby pede o encerramento da mesa em jogo (§18.4). Idempotente. */
+private fun Route.closeRoute(deps: GameDeps) {
+    post("/matches/{id}/close") {
+        val req = try {
+            call.receive<CloseMatchRequest>()
+        } catch (e: Exception) {
+            return@post call.respond(HttpStatusCode.BadRequest, ApiError(ErrorCode.REQUISICAO_INVALIDA, "Pedido inválido."))
+        }
+        when (deps.registry.closeMatch(call.parameters["id"].orEmpty(), req.hostGuestId)) {
+            null -> call.respond(HttpStatusCode.NotFound, ApiError(ErrorCode.MESA_INEXISTENTE, "Partida não encontrada."))
+            CloseResult.NotInMatch ->
+                call.respond(HttpStatusCode.BadRequest, ApiError(ErrorCode.REQUISICAO_INVALIDA, "Jogador não está nesta partida."))
+            CloseResult.AlreadyOver -> call.respond(HttpStatusCode.OK, CloseMatchResponse(alreadyOver = true))
+            CloseResult.Closed -> call.respond(HttpStatusCode.OK, CloseMatchResponse(alreadyOver = false))
         }
     }
 }

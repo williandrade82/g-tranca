@@ -44,6 +44,14 @@ object GameLimits {
     const val MAX_CLIENT_MESSAGE_BYTES = 16 * 1024
 }
 
+/** Por que um jogador abandonou (§18.4): desistiu, o tempo da vez esgotou, ou o anfitriao encerrou a mesa em jogo. */
+@Serializable
+enum class AbandonReason { DESISTIU, TEMPO, ANFITRIAO_ENCERROU }
+
+/** Como o jogo terminou (§13, §18.4). */
+@Serializable
+enum class GameEndReason { PONTUACAO, ABANDONO, ANFITRIAO_ENCERROU, INATIVIDADE, ERRO }
+
 /** Perfis de robo (§14.5). */
 @Serializable
 enum class BotProfile { JOVEM, SOBRIO, ALTERNATIVO, ATLETA }
@@ -82,6 +90,18 @@ data class CreateMatchRequest(
 
 @Serializable
 data class CreateMatchResponse(val tableId: String)
+
+/** lobby -> game: o anfitriao [hostGuestId] encerra a mesa em jogo (§18.4). O lobby e quem sabe quem e o anfitriao. */
+@Serializable
+data class CloseMatchRequest(val hostGuestId: String)
+
+/** [alreadyOver]: o jogo ja tinha terminado (nada mais a fazer). */
+@Serializable
+data class CloseMatchResponse(val alreadyOver: Boolean = false)
+
+/** game -> lobby: o jogo terminou ou foi encerrado; o lobby marca a mesa como ENCERRADA (idempotente). */
+@Serializable
+data class MatchEndedNotice(val reason: GameEndReason)
 
 /** game -> lobby: de quem e este token? (o corpo, nao a URL, leva o token). */
 @Serializable
@@ -134,6 +154,10 @@ data class SeatInfo(
     val resigned: Boolean = false,
 )
 
+/** Relogio da vez (§18.4): so existe com tempo de jogada definido, durante a vez de um humano. [leftMs] e o que resta no envio. */
+@Serializable
+data class TurnClock(val seat: Seat, val limitMs: Long, val leftMs: Long)
+
 /**
  * Primeira mensagem da conexao: o seu assento, as regras da mesa (uma vez) e os assentos. [lastSeq] e o ultimo [seq]
  * aceito para voce: o proximo [PlayAction] deve ter mais que ele. Logo depois vem o [SeatUpdate] atual.
@@ -164,6 +188,9 @@ enum class TableStage { PLAYING, ROUND_OVER, GAME_OVER }
  *   comprar/pegar o lixo, baixar, descartar); a vez nova do assento (compra, recusa ou lixo) substitui a lista; vazio no inicio da
  *   partida. Mesma regra do `GameController` do app. Os 3 vermelhos por vez derivam de `redThreeLog` (publico).
  * @property thinkingSeat assento de robo que esta jogando agora (para a pose de pensador).
+ * @property turn relogio da vez (§18.4); `null` no tempo indeterminado, entre partidas, na vez de robo ou com o jogo encerrado.
+ *   Conte `leftMs` a partir do recebimento (relogios de aparelho e servidor nao sao comparaveis); chega junto de cada vista.
+ * @property endReason com `stage` = GAME_OVER: `PONTUACAO` (alvo atingido) ou `ABANDONO` (1x1, o outro desistiu ou estourou o tempo).
  * @property legal jogadas legais do assento (vazio se nao e a vez dele): unica fonte para a interface.
  */
 @Serializable
@@ -195,6 +222,8 @@ data class OnlineSeatView(
     val turnEvents: List<List<PublicEvent>> = emptyList(),
     val thinkingSeat: Seat? = null,
     val legal: List<Action> = emptyList(),
+    val turn: TurnClock? = null,
+    val endReason: GameEndReason? = null,
 ) {
     /** A [PlayerView] do assento, com as regras recebidas no [Welcome]. */
     fun toPlayerView(rules: RuleSet): PlayerView = PlayerView(
@@ -216,10 +245,15 @@ data class SeatUpdate(val event: PublicEvent? = null, val view: OnlineSeatView) 
 @Serializable
 enum class SeatChange { CONNECTED, DISCONNECTED, RESIGNED }
 
-/** Presenca/assentos mudaram. [seat] e o assento a que [change] se refere. */
+/** Presenca/assentos mudaram. [seat] e o assento a que [change] se refere; [reason] so em RESIGNED (desistiu ou tempo). */
 @Serializable
 @SerialName("seats")
-data class SeatsChanged(val seats: List<SeatInfo>, val seat: Int, val change: SeatChange) : ServerMessage
+data class SeatsChanged(
+    val seats: List<SeatInfo>,
+    val seat: Int,
+    val change: SeatChange,
+    val reason: AbandonReason? = null,
+) : ServerMessage
 
 @Serializable
 enum class RejectReason {
@@ -248,6 +282,11 @@ data class Replaced(val message: String) : ServerMessage
 @Serializable
 @SerialName("resigned")
 data class YouResigned(val message: String) : ServerMessage
+
+/** O anfitriao encerrou a mesa em jogo (§18.4): nenhum robo assume; a conexao sera fechada. */
+@Serializable
+@SerialName("closed")
+data class TableClosed(val message: String) : ServerMessage
 
 /** Erro tipado e fatal para a conexao (mensagem invalida, limite de taxa...). */
 @Serializable

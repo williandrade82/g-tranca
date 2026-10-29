@@ -2,8 +2,11 @@ package com.gtranca.online.contracts
 
 import kotlinx.serialization.Serializable
 
-/** Versao do protocolo online (§18.8). Sobe quando app e servidor deixam de se entender. */
-const val ONLINE_PROTOCOL_VERSION: Int = 1
+/**
+ * Versao do protocolo online (§18.8). Sobe quando app e servidor deixam de se entender.
+ * 2 (etapa 1.3c): relogio de jogada na vista (`turn`), `endReason`, `reason` em `SeatsChanged` e a mensagem `closed`.
+ */
+const val ONLINE_PROTOCOL_VERSION: Int = 2
 
 /** Resposta de GET /health. */
 @Serializable

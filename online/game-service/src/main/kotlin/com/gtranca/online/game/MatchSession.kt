@@ -12,18 +12,22 @@ import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.Side
 import com.gtranca.engine.play
 import com.gtranca.engine.startMatch
 import com.gtranca.engine.startNextRound
 import com.gtranca.engine.viewFor
+import com.gtranca.online.contracts.AbandonReason
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.ClientMessage
 import com.gtranca.online.contracts.ErrorCode
+import com.gtranca.online.contracts.GameEndReason
 import com.gtranca.online.contracts.GameError
 import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.OnlineSeatView
 import com.gtranca.online.contracts.PlayAction
+import com.gtranca.online.contracts.Punicao
 import com.gtranca.online.contracts.RejectReason
 import com.gtranca.online.contracts.Rejected
 import com.gtranca.online.contracts.Replaced
@@ -35,8 +39,12 @@ import com.gtranca.online.contracts.SeatSpec
 import com.gtranca.online.contracts.SeatUpdate
 import com.gtranca.online.contracts.SeatsChanged
 import com.gtranca.online.contracts.ServerMessage
+import com.gtranca.online.contracts.TableClosed
+import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
 import com.gtranca.online.contracts.TableStage
+import com.gtranca.online.contracts.TempoDeJogada
+import com.gtranca.online.contracts.TurnClock
 import com.gtranca.online.contracts.Welcome
 import com.gtranca.online.contracts.YouResigned
 import kotlinx.coroutines.CompletableDeferred
@@ -74,8 +82,55 @@ sealed interface AttachResult {
     data object Closed : AttachResult
 }
 
-/** Registro do que aconteceu com um assento humano (para a punicao/aposta da fase 2). */
+/** Resultado de [MatchSession.closeByHost]. */
+sealed interface CloseResult {
+    /** A mesa foi encerrada agora (§18.4). */
+    data object Closed : CloseResult
+
+    /** O jogo ja tinha terminado: nada a fazer. */
+    data object AlreadyOver : CloseResult
+
+    /** O jogador informado nao e humano desta partida. */
+    data object NotInMatch : CloseResult
+}
+
+/** Compatibilidade com a etapa 1.3b: quem foi trocado por robo (derivado de [AbandonEvent]). */
 data class ResignRecord(val seat: Int, val guestId: String, val round: Int)
+
+/**
+ * Abandono de um assento humano (§18.4), registrado para a economia da fase 2 (ainda SEM mexer em moedas).
+ * [elapsedMs] conta desde o inicio da 1a partida (criacao da sessao); [withinGrace] = dentro dos primeiros 60 s, quando a
+ * aposta e devolvida mesmo com `PERDE_APOSTA`. [betRefunded] ja aplica a punicao da mesa a este abandono.
+ * Contem o guestId: fica so na memoria do servidor, NUNCA vai ao log nem ao cliente (o toString o omite).
+ */
+data class AbandonEvent(
+    val seat: Int,
+    val guestId: String,
+    val reason: AbandonReason,
+    val round: Int,
+    val atEpochMs: Long,
+    val elapsedMs: Long,
+    val punicao: Punicao,
+    val bet: Int,
+    val withinGrace: Boolean,
+    val betRefunded: Boolean,
+) {
+    val secondsSinceStart: Long get() = elapsedMs / 1000
+
+    override fun toString(): String =
+        "AbandonEvent(seat=$seat, reason=$reason, round=$round, elapsedMs=$elapsedMs, punicao=$punicao, " +
+            "withinGrace=$withinGrace, betRefunded=$betRefunded)"
+}
+
+/** Como e quando o jogo acabou; [othersRefunded]: os demais humanos recebem a aposta de volta (mesa encerrada, §18.4). */
+data class MatchEnd(
+    val reason: GameEndReason,
+    val atEpochMs: Long,
+    val elapsedMs: Long,
+    val othersRefunded: Boolean,
+    /** Todos os abandonos do jogo, para a liquidacao da economia (fase 2). */
+    val abandonments: List<AbandonEvent> = emptyList(),
+)
 
 /** Fotografia do estado para os testes (nunca sai do servidor). */
 internal data class Inspection(
@@ -84,16 +139,27 @@ internal data class Inspection(
     val version: Long,
     val refusals: List<Int>,
     val lastSeq: List<Long>,
-    val resignations: List<ResignRecord>,
-)
+    val abandonments: List<AbandonEvent>,
+    val end: MatchEnd?,
+    /** Tempo que resta da vez de um humano (`null` = sem relogio agora). */
+    val turnLeftMs: Long?,
+    val winner: Side?,
+) {
+    val resignations: List<ResignRecord>
+        get() = abandonments.filter { it.reason != AbandonReason.ANFITRIAO_ENCERROU }
+            .map { ResignRecord(it.seat, it.guestId, it.round) }
+}
 
 /**
  * Uma partida autoritativa (§18.3): guarda o `Match` completo, valida cada `Action` com `legalActions`, aplica com
  * `apply` e envia a cada humano so a VISTA DO ASSENTO. Tudo roda num unico laco (ator): um comando por vez, sem
  * travas. Robos jogam o seu assento depois de [GameConfig.botDelayMs], sempre com o `PlayerView`.
  *
- * Nao ha economia nem relogio de jogada aqui (etapa 1.3b): queda de conexao NAO e abandono; no tempo indeterminado a
- * vez de quem caiu espera. So [Resign] troca o humano por um robo.
+ * Relogio de jogada (§18.4, etapa 1.3c): com tempo definido a VEZ do humano conta (comprar, baixar e descartar) e a queda de
+ * conexao NAO a para; esgotar = abandono (nunca se joga por ele). Sem tempo (indeterminado) a mesa espera. Abandono
+ * (desistir/tempo): um robo assume o assento, exceto no 1x1 entre dois humanos (o outro vence na hora). Sem economia
+ * ainda: cada abandono vira um [AbandonEvent]. O relogio e INJETADO ([now], monotonico em ms) e os prazos disparam antes
+ * de qualquer comando, entao os testes avancam o relogio sem dormir.
  */
 class MatchSession(
     val tableId: String,
@@ -102,6 +168,9 @@ class MatchSession(
     seed: Long,
     private val config: GameConfig,
     private val now: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val wallClock: () -> Long = System::currentTimeMillis,
+    /** Chamado UMA vez quando o jogo termina ou e encerrado (dentro do ator: nao pode bloquear nem fazer rede). */
+    private val onEnded: (MatchEnd) -> Unit = {},
 ) {
     private val log = LoggerFactory.getLogger(MatchSession::class.java)
 
@@ -115,6 +184,7 @@ class MatchSession(
         class Detach(val seat: Int, val link: PlayerLink) : Cmd
         class Incoming(val seat: Int, val link: PlayerLink, val message: ClientMessage) : Cmd
         class Inspect(val reply: CompletableDeferred<Inspection>) : Cmd
+        class Close(val hostGuestId: String, val reply: CompletableDeferred<CloseResult>) : Cmd
         data object Shutdown : Cmd
     }
 
@@ -141,12 +211,24 @@ class MatchSession(
     private val lastSeq = LongArray(seatCount)
     private val refusals = IntArray(seatCount)
     private val turnEvents: Array<List<PublicEvent>> = Array(seatCount) { emptyList() }
-    private val resignations = mutableListOf<ResignRecord>()
+    private val abandonments = mutableListOf<AbandonEvent>()
     private var version = 1L
     private var stage = TableStage.PLAYING
     private var autoAt: Long? = null
-    private var lastActivity = now()
     private var endedAt: Long? = null
+    private val startedAt = now()
+
+    /** 1x1 entre humanos: quem abandonou (continua `Slot.Human`, mas nao volta) e o vencedor declarado (§13.1). */
+    private val forfeited = mutableSetOf<Int>()
+    private var forcedWinner: Side? = null
+    private var end: MatchEnd? = null
+
+    /** Vez em contagem (§18.4): o assento da vez e quando ela comecou. */
+    private var turnSeat: Int? = null
+    private var turnStartedAt = 0L
+
+    /** Desde quando nenhum humano esta conectado (`null` = ha algum, ou nao se aplica). */
+    private var emptySince: Long? = null
 
     @Volatile
     private var finished = false
@@ -158,6 +240,8 @@ class MatchSession(
     init {
         require(slots.size == seatCount) { "Assentos (${slots.size}) diferentes do modo ($seatCount)" }
         for (i in 0 until seatCount) (slots[i] as? Slot.Robot)?.let { bots[i] = newBot(i, it.profile, it.level) }
+        syncTurn()
+        refreshPresence()
         scheduleAuto()
     }
 
@@ -187,6 +271,17 @@ class MatchSession(
         return reply.await()
     }
 
+    /**
+     * O anfitriao da mesa encerra o jogo em andamento (§18.4): conta como abandono DELE, nenhum robo assume, todos os
+     * clientes recebem [TableClosed] e as conexoes fecham. O lobby e quem decide quem e o anfitriao.
+     */
+    suspend fun closeByHost(hostGuestId: String): CloseResult {
+        if (finished) return CloseResult.AlreadyOver
+        val reply = CompletableDeferred<CloseResult>()
+        if (commands.trySend(Cmd.Close(hostGuestId, reply)).isFailure) return CloseResult.AlreadyOver
+        return reply.await()
+    }
+
     fun shutdown() {
         commands.trySend(Cmd.Shutdown)
     }
@@ -200,14 +295,19 @@ class MatchSession(
                     commands.onReceive { it }
                     onTimeout(waitMillis()) { null }
                 }
-                if (cmd != null) handle(cmd) else autoStep()
+                // Prazos primeiro: uma jogada que chega depois do fim da vez ja encontra o abandono feito (§18.4).
+                fireDueTimers()
+                if (cmd != null) handle(cmd) else if (!finished) autoStep()
             }
         } finally {
             finished = true
             links.forEach { it?.close(1001, "Partida encerrada") }
             // Quem ainda tenta falar com a sessao recebe Closed em vez de ficar esperando.
             commands.close()
-            for (c in commands) if (c is Cmd.Attach) c.reply.complete(AttachResult.Closed)
+            for (c in commands) {
+                if (c is Cmd.Attach) c.reply.complete(AttachResult.Closed)
+                if (c is Cmd.Close) c.reply.complete(CloseResult.AlreadyOver)
+            }
         }
     }
 
@@ -219,16 +319,20 @@ class MatchSession(
             is Cmd.Detach -> onDetach(cmd.seat, cmd.link)
             is Cmd.Incoming -> onIncoming(cmd.seat, cmd.link, cmd.message)
             is Cmd.Inspect -> cmd.reply.complete(
-                Inspection(match, stage, version, refusals.toList(), lastSeq.toList(), resignations.toList()),
+                Inspection(
+                    match, stage, version, refusals.toList(), lastSeq.toList(), abandonments.toList(), end,
+                    turnDeadline()?.let { maxOf(0L, it - now()) }, forcedWinner ?: match.winner,
+                ),
             )
+            is Cmd.Close -> cmd.reply.complete(onClose(cmd.hostGuestId))
             Cmd.Shutdown -> finished = true
         }
     }
 
     private fun onAttach(guestId: String, link: PlayerLink): AttachResult {
+        if (finished) return AttachResult.Closed
         val seat = humanSeats[guestId] ?: return AttachResult.Closed
-        if (slots[seat] !is Slot.Human) return AttachResult.Abandoned
-        lastActivity = now()
+        if (slots[seat] !is Slot.Human || seat in forfeited) return AttachResult.Abandoned
         links[seat]?.let { old ->
             if (old !== link) {
                 // §18.4: a nova conexao assume e a antiga e fechada.
@@ -237,6 +341,7 @@ class MatchSession(
             }
         }
         links[seat] = link
+        refreshPresence()
         send(
             seat, link,
             Welcome(
@@ -253,19 +358,19 @@ class MatchSession(
         if (links[seat] !== link) return // conexao antiga ja substituida
         links[seat] = null
         link.close(1000, "Conexao encerrada")
+        refreshPresence() // queda NAO para o relogio da vez (§18.4); so conta para a inatividade
         if (slots[seat] is Slot.Human) broadcastSeats(seat, SeatChange.DISCONNECTED)
     }
 
     private fun onIncoming(seat: Int, link: PlayerLink, message: ClientMessage) {
         if (links[seat] !== link) return // mensagem de conexao que ja foi substituida
         if (slots[seat] !is Slot.Human) return
-        lastActivity = now()
         when (message) {
             is PlayAction -> onPlay(seat, link, message)
             is Resign -> {
                 if (message.seq <= lastSeq[seat]) return
                 lastSeq[seat] = message.seq
-                onResign(seat, link)
+                abandon(seat, AbandonReason.DESISTIU)
             }
         }
     }
@@ -297,23 +402,104 @@ class MatchSession(
         applyAction(Seat(seat), msg.action)
     }
 
-    /** Desistir (§13.1, §18.4): um robo assume o assento e o jogo segue. Aposta/punicao: fase 2 (so registra). */
-    private fun onResign(seat: Int, link: PlayerLink) {
+    /** Quanto tempo se passou desde o inicio da 1a partida (a sessao e criada ao iniciar o jogo). */
+    private fun elapsedMs(): Long = now() - startedAt
+
+    private fun recordAbandon(seat: Int, guestId: String, reason: AbandonReason): AbandonEvent {
+        val elapsed = elapsedMs()
+        val within = elapsed < config.abandonGraceMs // §18.4: primeiros 60 s do jogo (0 a 59,999 s)
+        val event = AbandonEvent(
+            seat = seat, guestId = guestId, reason = reason, round = match.roundNumber, atEpochMs = wallClock(),
+            elapsedMs = elapsed, punicao = table.punicao, bet = table.bet, withinGrace = within,
+            betRefunded = table.punicao == Punicao.SEM_PUNICAO || within,
+        )
+        abandonments += event
+        log.info("Abandono table={} {}", tableId, event) // o toString nao traz o guestId
+        return event
+    }
+
+    /**
+     * Abandono voluntario ou por tempo (§13.1, §18.4): um robo assume o assento e o jogo segue; no 1x1 entre dois humanos
+     * nao ha robo e o outro vence na hora. Sem volta. Aposta/punicao: so registrado (fase 2).
+     */
+    private fun abandon(seat: Int, reason: AbandonReason) {
         val human = slots[seat] as? Slot.Human ?: return
         if (stage == TableStage.GAME_OVER) return
+        recordAbandon(seat, human.guestId, reason)
+        val link = links[seat]
+        val text = if (reason == AbandonReason.TEMPO) {
+            "O tempo da sua vez esgotou; você abandonou a mesa."
+        } else {
+            "Você desistiu."
+        }
+        val duel = table.mode == TableMode.INDIVIDUAL && slots.all { it is Slot.Human }
+        links[seat] = null
+        if (duel) {
+            // §13.1/§18.4: 1x1 entre humanos, o outro vence; a partida em andamento nao e pontuada.
+            forfeited += seat
+            forcedWinner = match.mode.sideOf(Seat(1 - seat))
+            stage = TableStage.GAME_OVER
+            endedAt = now()
+            syncTurn()
+            version++
+            link?.let {
+                send(seat, it, YouResigned("$text O outro jogador venceu."))
+                it.close(1000, "Abandono")
+            }
+            refreshPresence()
+            broadcastSeats(seat, SeatChange.RESIGNED, reason)
+            broadcastUpdate(null, includeHistory = true)
+            endGame(GameEndReason.ABANDONO)
+            scheduleAuto()
+            return
+        }
         val used = slots.filterIsInstance<Slot.Robot>().map { it.profile }.toSet()
         val profile = BotProfile.entries.firstOrNull { it !in used } ?: BotProfile.entries[seat % BotProfile.entries.size]
         slots[seat] = Slot.Robot(profile, table.robotLevel, human.guestId)
         bots[seat] = newBot(seat, profile, table.robotLevel)
-        resignations += ResignRecord(seat, human.guestId, match.roundNumber)
-        log.info("Desistencia table={} seat={} round={}", tableId, seat, match.roundNumber)
-        send(seat, link, YouResigned("Você desistiu; um robô assumiu o seu lugar."))
-        link.close(1000, "Desistencia")
-        links[seat] = null
+        link?.let {
+            send(seat, it, YouResigned("$text Um robô assumiu o seu lugar."))
+            it.close(1000, "Abandono")
+        }
         version++
-        broadcastSeats(seat, SeatChange.RESIGNED)
+        refreshPresence()
+        broadcastSeats(seat, SeatChange.RESIGNED, reason)
         broadcastUpdate(null)
         scheduleAuto()
+    }
+
+    /** O anfitriao encerra a mesa em jogo (§18.4): abandono dele, sem robo; os demais recebem a aposta de volta. */
+    private fun onClose(hostGuestId: String): CloseResult {
+        val seat = humanSeats[hostGuestId] ?: return CloseResult.NotInMatch
+        if (stage == TableStage.GAME_OVER) return CloseResult.AlreadyOver
+        // Se o anfitriao ja tinha abandonado (um robo esta no lugar dele), nao ha um segundo abandono.
+        if (slots[seat] is Slot.Human) recordAbandon(seat, hostGuestId, AbandonReason.ANFITRIAO_ENCERROU)
+        links.forEachIndexed { i, l ->
+            if (l != null) {
+                send(i, l, TableClosed("O anfitrião encerrou a mesa."))
+                l.close(1000, "Mesa encerrada")
+                links[i] = null
+            }
+        }
+        endGame(GameEndReason.ANFITRIAO_ENCERROU)
+        finished = true
+        return CloseResult.Closed
+    }
+
+    /** Registra o fim UMA vez e avisa quem cuida disso (lobby), sem bloquear o ator. */
+    private fun endGame(reason: GameEndReason) {
+        if (end != null) return
+        val e = MatchEnd(
+            reason, wallClock(), elapsedMs(), othersRefunded = reason == GameEndReason.ANFITRIAO_ENCERROU,
+            abandonments = abandonments.toList(),
+        )
+        end = e
+        log.info("Jogo encerrado table={} reason={} elapsedMs={}", tableId, reason, e.elapsedMs)
+        try {
+            onEnded(e)
+        } catch (ex: Exception) {
+            log.warn("Aviso de fim de jogo falhou table={}: {}", tableId, ex.toString())
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ jogo
@@ -325,13 +511,17 @@ class MatchSession(
         turnEvents[seat.index] = if (event.startsTurn()) listOf(event) else turnEvents[seat.index] + event
         bots.forEach { it?.observe(event) }
         version++
-        lastActivity = now()
         if (match.currentRound.phase == Phase.FINISHED) {
             match = match.finishRound() // §12 pontua; §13 verifica o vencedor
             stage = if (match.isOver) TableStage.GAME_OVER else TableStage.ROUND_OVER
             if (stage == TableStage.GAME_OVER) endedAt = now()
         }
+        syncTurn()
         broadcastUpdate(event, includeHistory = stage != TableStage.PLAYING)
+        if (stage == TableStage.GAME_OVER) {
+            refreshPresence()
+            endGame(GameEndReason.PONTUACAO)
+        }
         scheduleAuto()
     }
 
@@ -341,7 +531,7 @@ class MatchSession(
         bots.forEach { it?.onNewRound() }
         stage = TableStage.PLAYING
         version++
-        lastActivity = now()
+        syncTurn()
         broadcastUpdate(null)
         scheduleAuto()
     }
@@ -368,6 +558,7 @@ class MatchSession(
 
     private fun fail(message: String) {
         links.forEachIndexed { i, l -> if (l != null) send(i, l, GameError(ErrorCode.PARTIDA_INDISPONIVEL, message)) }
+        endGame(GameEndReason.ERRO)
         finished = true
     }
 
@@ -388,9 +579,12 @@ class MatchSession(
     }
 
     private fun waitMillis(): Long {
-        val idleLeft = lastActivity + config.idleTtlMs - now()
-        val auto = autoAt?.let { it - now() } ?: idleLeft
-        return maxOf(0L, minOf(idleLeft, auto))
+        val waits = listOfNotNull(
+            autoAt?.let { it - now() },
+            turnDeadline()?.let { it - now() },
+            emptySince?.let { it + config.idleTtlMs - now() },
+        )
+        return maxOf(0L, waits.minOrNull() ?: IDLE_POLL_MS)
     }
 
     private suspend fun autoStep() {
@@ -399,11 +593,56 @@ class MatchSession(
             due && stage == TableStage.GAME_OVER -> finished = true
             due && stage == TableStage.ROUND_OVER -> nextRound()
             due && stage == TableStage.PLAYING -> botMove()
-            now() - lastActivity >= config.idleTtlMs -> {
-                log.info("Sessao inativa descartada table={}", tableId)
-                finished = true
-            }
         }
+    }
+
+    /** Prazos que correm sozinhos: fim da vez de um humano (§18.4) e inatividade (todos os humanos fora por muito tempo). */
+    private fun fireDueTimers() {
+        if (finished) return
+        val deadline = turnDeadline()
+        val seat = turnSeat
+        if (deadline != null && seat != null && now() >= deadline) abandon(seat, AbandonReason.TEMPO)
+        val gone = emptySince
+        if (!finished && stage != TableStage.GAME_OVER && gone != null && now() - gone >= config.idleTtlMs) {
+            log.info("Sessao sem humanos conectados descartada por inatividade table={}", tableId)
+            endGame(GameEndReason.INATIVIDADE)
+            finished = true
+        }
+    }
+
+    // --- relogio da vez (§18.4)
+
+    private fun turnLimitMs(): Long? = when (table.tempoDeJogada) {
+        TempoDeJogada.INDETERMINADO -> null
+        TempoDeJogada.UM_MINUTO -> 60_000L
+        TempoDeJogada.CINCO_MINUTOS -> 300_000L
+    }
+
+    /** A vez recomeca so quando muda o assento da vez ou comeca partida nova (comprar, baixar e descartar sao UMA vez). */
+    private fun syncTurn() {
+        if (stage != TableStage.PLAYING) {
+            turnSeat = null
+            return
+        }
+        val current = match.currentRound.currentSeat.index
+        if (turnSeat != current) {
+            turnSeat = current
+            turnStartedAt = now()
+        }
+    }
+
+    /** Fim da vez do humano da vez; `null` sem tempo definido, entre partidas, na vez de robo ou com o jogo acabado. */
+    private fun turnDeadline(): Long? {
+        val limit = turnLimitMs() ?: return null
+        val seat = turnSeat ?: return null
+        if (stage != TableStage.PLAYING || slots[seat] !is Slot.Human) return null
+        return turnStartedAt + limit
+    }
+
+    private fun refreshPresence() {
+        val humans = slots.indices.filter { slots[it] is Slot.Human && it !in forfeited }
+        val anyConnected = humans.any { links[it] != null }
+        emptySince = if (humans.isEmpty() || anyConnected || stage == TableStage.GAME_OVER) null else (emptySince ?: now())
     }
 
     // ------------------------------------------------------------------------------------------------ vistas
@@ -418,7 +657,7 @@ class MatchSession(
 
     private fun seatInfos(): List<SeatInfo> = slots.mapIndexed { i, s ->
         when (s) {
-            is Slot.Human -> SeatInfo(i, SeatKind.HUMANO, s.name, connected = links[i] != null)
+            is Slot.Human -> SeatInfo(i, SeatKind.HUMANO, s.name, connected = links[i] != null, resigned = i in forfeited)
             is Slot.Robot -> SeatInfo(
                 i, SeatKind.ROBO, robotName(s.profile), s.profile, s.level, connected = true,
                 resigned = s.replacedGuestId != null,
@@ -426,8 +665,8 @@ class MatchSession(
         }
     }
 
-    private fun broadcastSeats(seat: Int, change: SeatChange) {
-        val msg = SeatsChanged(seatInfos(), seat, change)
+    private fun broadcastSeats(seat: Int, change: SeatChange, reason: AbandonReason? = null) {
+        val msg = SeatsChanged(seatInfos(), seat, change, reason)
         links.forEachIndexed { i, l -> if (l != null && (i != seat || change != SeatChange.RESIGNED)) send(i, l, msg) }
     }
 
@@ -442,7 +681,7 @@ class MatchSession(
         val current = round.currentSeat
         return OnlineSeatView(
             version = version, roundNumber = match.roundNumber, stage = stage, totals = match.totals,
-            winner = match.winner, history = if (includeHistory) match.history else null,
+            winner = forcedWinner ?: match.winner, history = if (includeHistory) match.history else null,
             mode = pv.mode, seat = pv.seat, side = pv.side, currentSeat = pv.currentSeat, firstSeat = pv.firstSeat,
             phase = pv.phase, result = pv.result, hand = pv.hand, handSizes = pv.handSizes, discardPile = pv.discardPile,
             stockSize = pv.stockSize, mortoStatus = pv.mortoStatus, mortoSizes = pv.mortoSizes,
@@ -454,12 +693,21 @@ class MatchSession(
             } else {
                 emptyList()
             },
+            turn = turnDeadline()?.let { TurnClock(Seat(turnSeat!!), turnLimitMs()!!, maxOf(0L, it - now())) },
+            endReason = if (stage == TableStage.GAME_OVER) {
+                if (forcedWinner != null) GameEndReason.ABANDONO else GameEndReason.PONTUACAO
+            } else {
+                null
+            },
         )
     }
 
     companion object {
         /** Codigo de fechamento proprio: a conexao foi substituida por outra do mesmo jogador. */
         const val CLOSE_REPLACED = 4001
+
+        /** Espera maxima do laco quando nada esta agendado (so reavalia; nao ha prazo correndo). */
+        private const val IDLE_POLL_MS = 60_000L
 
         fun robotName(profile: BotProfile): String = when (profile) {
             BotProfile.JOVEM -> "Bolt"
