@@ -26,4 +26,5 @@ fun Application.gameModule() {
         get("/health") { call.respond(Health()) }
         get("/info") { call.respond(ServerInfo(SERVICE_NAME)) }
     }
+    internalSimModule() // /internal/*: so validacao local, sera removido/fechado
 }
