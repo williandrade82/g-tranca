@@ -420,7 +420,8 @@ class MatchSession(
         val event = AbandonEvent(
             seat = seat, guestId = guestId, reason = reason, round = match.roundNumber, atEpochMs = wallClock(),
             elapsedMs = elapsed, punicao = table.punicao, bet = table.bet, withinGrace = within,
-            betRefunded = table.punicao == Punicao.SEM_PUNICAO || within,
+            // §18.4 todos desconectados: a mesa é destruída e todos recebem a aposta de volta, a qualquer momento.
+            betRefunded = table.punicao == Punicao.SEM_PUNICAO || within || reason == AbandonReason.TODOS_DESCONECTADOS,
         )
         abandonments += event
         log.info("Abandono table={} {}", tableId, event) // o toString nao traz o guestId

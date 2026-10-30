@@ -243,11 +243,11 @@ class GameViewModel(
     private val robots: Map<Int, String> = emptyMap(),
     /** §16.7 o jogo continua de onde estava na tela (virou online no meio): a primeira vista não refaz animação. */
     private val continuing: Boolean = false,
-    /** §17.3 boosters da partida em andamento (já debitados); no jogo retomado vale o do jogo salvo. */
+    /** §17.3 boosters do jogo (escolhidos e debitados no início, valem até o fim); no jogo retomado vale o do jogo salvo. */
     initialBoosters: List<String> = emptyList(),
     /**
-     * §17.3 inventário de boosters: com ele, cada partida depois da primeira começa pelo seletor (a 1ª passa por ele antes de
-     * o jogo ser criado). `null` = sem boosters (testes e mesa multijogador).
+     * §17.3 inventário de boosters: o seletor é só no início do jogo (antes de o jogo ser criado); as partidas seguintes
+     * seguem com os mesmos. `null` = sem boosters (testes e mesa multijogador).
      */
     val boosterInventory: com.gtranca.data.InventoryRepository? = null,
 ) : ViewModel(), TableEvents {

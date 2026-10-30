@@ -635,4 +635,18 @@ class MatchClockTest {
         r.session.inspect().abandonments.single().reason shouldBe AbandonReason.TEMPO
         r.stop()
     }
+
+    @Test
+    fun `18_4 todos desconectados devolve a aposta a todos mesmo com perde a aposta e depois dos 60 s`() = runBlocking {
+        val r = rig(TableMode.INDIVIDUAL, humans2(), punicao = Punicao.PERDE_APOSTA, bet = 50)
+        val (a, b) = r.humans()
+        r.clock.advance(120_000) // bem depois da janela de 60 s
+        a.detach()
+        b.detach()
+        r.awaitFinished()
+        val events = r.ended.single().abandonments
+        events.map { it.reason }.toSet() shouldBe setOf(AbandonReason.TODOS_DESCONECTADOS)
+        events.all { it.betRefunded } shouldBe true
+        r.stop()
+    }
 }
