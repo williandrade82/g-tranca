@@ -23,10 +23,13 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createApplicationPlugin
+import io.ktor.server.application.hooks.ResponseSent
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.request.contentLength
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.request.uri
 import io.ktor.server.response.header
@@ -41,6 +44,7 @@ import kotlin.system.exitProcess
 import kotlinx.io.readByteArray
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 
 const val SERVICE_NAME = "lobby-service"
 
@@ -85,6 +89,8 @@ class LobbyDeps(
     val tokenLimiter = RateLimiter(tokenLimitPerMinute, clock = clock)
     val guestLimiter = RateLimiter(guestCreationPerMinute, clock = clock)
 }
+
+private val StartedAt = io.ktor.util.AttributeKey<Long>("lobby.startedAt")
 
 private fun ApplicationCall.clientIp(trustForwarded: Boolean): String {
     if (trustForwarded) {
@@ -135,6 +141,22 @@ private fun ApplicationCall.seatParam(): Int =
     parameters["n"]?.toIntOrNull() ?: lobbyError(ErrorCode.LUGAR_INVALIDO, "Lugar inválido.", 400)
 
 fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
+    // Log de acesso: metodo, caminho (sem query), status, IP usado no limite de taxa e o X-Forwarded-For bruto. Nunca o token.
+    val accessLog = LoggerFactory.getLogger("lobby.access")
+    install(
+        createApplicationPlugin("LobbyAccessLog") {
+            onCall { it.attributes.put(StartedAt, System.nanoTime()) }
+            on(ResponseSent) { call ->
+                if (call.request.path() == "/health") return@on
+                val ms = call.attributes.getOrNull(StartedAt)?.let { (System.nanoTime() - it) / 1_000_000 }
+                accessLog.info(
+                    "{} {} {} ip={} xff={} {}ms",
+                    call.request.httpMethod.value, call.request.path(), call.response.status()?.value,
+                    call.clientIp(deps.trustForwardedFor), call.request.headers["X-Forwarded-For"] ?: "-", ms,
+                )
+            }
+        },
+    )
     val limiter = createApplicationPlugin("LobbyRateLimit") {
         onCall { call ->
             val path = call.request.uri
