@@ -93,6 +93,8 @@ data class TableView(
     val rules: TableRules,
     val seats: List<SeatView>,
     val protocolVersion: Int = ONLINE_PROTOCOL_VERSION,
+    /** Nome amigável sorteado pelo servidor (§18.2), o que o jogador vê; vazio em mesas antigas. */
+    val name: String = "",
 )
 
 /** Mantido para a futura mesa criada pelo jogador; o servidor recusa nesta fase (§18.2). */

@@ -296,4 +296,15 @@ class LobbyServiceTest {
         versions["a"] = 2
         s.get(ana, id).seats[0].photoUrl shouldBe "/api/lobby/guests/a/photo?v=2"
     }
+
+    @Test
+    fun `18_2 cada mesa tem um nome amigavel diferente dos das outras`() {
+        val id = firstOpen().id
+        service.join(ana, id, null)
+        minutes(5)
+        val names = tables().map { it.name }
+        names.size shouldBe 2
+        names.all { it.startsWith("Mesa ") } shouldBe true
+        names.toSet().size shouldBe 2
+    }
 }

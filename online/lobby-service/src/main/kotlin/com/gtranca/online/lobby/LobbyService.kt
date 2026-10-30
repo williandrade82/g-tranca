@@ -260,11 +260,25 @@ class LobbyService(
 
     private fun openServerTable(now: Long) {
         val seats = List(config.serverRules.mode.seats) { Seat.Vago }
+        val name = friendlyName()
         repeat(MAX_ID_ATTEMPTS) {
-            val table = Table(TableId.generate(random), null, config.serverRules, seats, TableState.ABERTA, now, createdMs = now)
+            val table = Table(TableId.generate(random), null, config.serverRules, seats, TableState.ABERTA, now, createdMs = now, name = name)
             if (store.insert(table)) return
         }
         error("nao foi possivel gerar o id da mesa")
+    }
+
+    /** §18.2: nome sorteado entre os que nenhuma mesa existente usa; esgotados, o nome ganha um número. */
+    private fun friendlyName(): String {
+        val used = store.all().map { it.name }.toSet()
+        val free = TABLE_NAMES.map { "Mesa $it" }.filter { it !in used }
+        if (free.isNotEmpty()) return free.random(random)
+        var n = 2
+        while (true) {
+            val candidate = "Mesa ${TABLE_NAMES.random(random)} $n"
+            if (candidate !in used) return candidate
+            n++
+        }
     }
 
     private fun sweep() {
@@ -352,11 +366,19 @@ class LobbyService(
 
     companion object {
         private const val MAX_ID_ATTEMPTS = 50
+
+        /** Praias e lugares do Brasil (§18.2; lista provisória). */
+        val TABLE_NAMES = listOf(
+            "Ipanema", "Copacabana", "Jericoacoara", "Fernando de Noronha", "Porto de Galinhas", "Trancoso", "Arraial",
+            "Bonito", "Chapada", "Lençóis", "Maragogi", "Búzios", "Paraty", "Ilhabela", "Floripa", "Pipa", "Morro de São Paulo",
+            "Canoa Quebrada", "Jalapão", "Alter do Chão", "Itacaré", "Ubatuba", "Garopaba", "Caraíva",
+        )
     }
 }
 
 fun Table.toView(photoVersion: (String) -> Int? = { null }) = TableView(
     id = id,
+    name = name,
     hostId = host?.id.orEmpty(),
     hostName = host?.name.orEmpty(),
     state = state,

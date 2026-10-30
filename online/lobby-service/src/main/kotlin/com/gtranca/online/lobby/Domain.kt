@@ -35,6 +35,8 @@ data class Table(
     /** Passagem ao game-service em andamento: a mesa segue ABERTA mas nada mais muda (ver [LobbyService.beginStart]). */
     val starting: Boolean = false,
     val createdMs: Long = lastActivityMs,
+    /** Nome amigável (§18.2). */
+    val name: String = "",
     /** Humanos sentados, na ordem em que entraram: base do anfitriao e da sucessao (§18.2). */
     val entryOrder: List<String> = emptyList(),
     /** Lugares que [LobbyService.beginStart] preencheu com robos (desfeitos se a partida nao for criada). */
