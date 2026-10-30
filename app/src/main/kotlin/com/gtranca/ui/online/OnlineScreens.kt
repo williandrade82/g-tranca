@@ -206,13 +206,10 @@ private fun TableCard(table: TableView, myId: String, self: Persona, photos: Map
     val mine = table.seats.any { it.guestId == myId }
     GPanel(Modifier.fillMaxWidth().testTag("online-table-row-${table.id}")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text(
-                table.id,
-                Modifier.weight(1f).semantics { contentDescription = table.id.toList().joinToString(" ") },
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, letterSpacing = 3.sp),
-                color = GColors.Gold,
-                fontWeight = FontWeight.ExtraBold,
-            )
+            Column(Modifier.weight(1f)) {
+                Text(table.displayName(), style = MaterialTheme.typography.titleLarge, color = GColors.Gold, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(table.id, Modifier.semantics { contentDescription = table.id.toList().joinToString(" ") }, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = GColors.Steel)
+            }
             val label = when {
                 table.state == TableState.EM_JOGO -> R.string.online_table_playing
                 mine -> R.string.online_table_mine
@@ -343,6 +340,9 @@ private fun robotCharacter(profile: BotProfile, level: BotLevel?): BotCharacter 
     },
 )
 
+/** Nome amigável da mesa (§18.2); mesas antigas sem nome mostram o id. */
+private fun TableView.displayName(): String = name.ifBlank { id }
+
 @StringRes
 private fun OnlineRoomEnd.textRes(): Int = when (this) {
     OnlineRoomEnd.CLOSED -> R.string.online_ended_closed
@@ -377,18 +377,26 @@ private fun Punicao.textRes(): Int = when (this) {
 private fun TableSummary(table: TableView, modifier: Modifier = Modifier) {
     val rules = table.rules
     GSubPanel(modifier.testTag("online-table-summary")) {
+        SummaryLines(table)
+    }
+}
+
+@Composable
+private fun SummaryLines(table: TableView) {
+    val rules = table.rules
+    run {
         val mode = stringResource(if (rules.mode == TableMode.DUPLAS) R.string.mode_duplas_short else R.string.mode_individual)
-        Text(stringResource(R.string.online_summary_mode, mode, rules.targetScore), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.online_summary_mode, mode, rules.targetScore), style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne)
         Text(
             if (rules.bet > 0) stringResource(R.string.online_bet_value, rules.bet) else stringResource(R.string.online_bet_none),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne,
         )
-        Text(stringResource(R.string.online_summary_time, stringResource(rules.tempoDeJogada.textRes())), style = MaterialTheme.typography.bodyMedium)
-        Text(stringResource(R.string.online_summary_penalty, stringResource(rules.punicao.textRes())), style = MaterialTheme.typography.bodyMedium)
-        Text(stringResource(R.string.online_summary_robots, stringResource(rules.robotLevel.textRes())), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.online_summary_time, stringResource(rules.tempoDeJogada.textRes())), style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne)
+        Text(stringResource(R.string.online_summary_penalty, stringResource(rules.punicao.textRes())), style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne)
+        Text(stringResource(R.string.online_summary_robots, stringResource(rules.robotLevel.textRes())), style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne)
         Text(
             stringResource(if (rules.skillBoostersAllowed) R.string.online_summary_skill_on else R.string.online_summary_skill_off),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne,
         )
     }
 }
@@ -417,7 +425,15 @@ fun OnlineRoomScreen(
                     BottomButton(stringResource(R.string.online_leave), "online-table-leave", GButtonKind.Secondary, enabled = !state.busy, weight = 0.8f, onClick = viewModel::onLeave)
                     BottomButton(stringResource(R.string.online_start), "online-table-start", GButtonKind.Primary, enabled = state.canStart, weight = 1.2f, onClick = viewModel::onStart)
                 }
-                else -> BottomButton(stringResource(R.string.online_leave), "online-table-leave", GButtonKind.Secondary, enabled = !state.busy && table != null, onClick = viewModel::onLeave)
+                else -> {
+                    BottomButton(stringResource(R.string.online_leave), "online-table-leave", GButtonKind.Secondary, enabled = !state.busy && table != null, weight = 0.8f, onClick = viewModel::onLeave)
+                    // Quem não é o anfitrião espera o início (o botão não faz nada).
+                    GButton({}, Modifier.weight(1.2f).heightIn(min = 56.dp).testTag("online-table-waiting"), enabled = false) {
+                        CircularProgressIndicator(Modifier.size(18.dp), color = GColors.OnGold, strokeWidth = 2.dp)
+                        androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                        FitText(stringResource(R.string.online_waiting_host), MaterialTheme.typography.titleSmall, minFontSp = 10)
+                    }
+                }
             }
         },
     ) {
@@ -429,14 +445,19 @@ fun OnlineRoomScreen(
             return@TableFrame
         }
         GPanel(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.online_table_id_label), style = MaterialTheme.typography.labelLarge, color = GColors.Steel, modifier = Modifier.align(Alignment.CenterHorizontally))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 FitText(
-                    table.id,
-                    MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.ExtraBold, letterSpacing = 6.sp, color = GColors.Gold),
-                    Modifier.semantics { contentDescription = table.id.toList().joinToString(" ") }.testTag("online-table-id"),
+                    table.displayName(),
+                    MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, color = GColors.Gold),
+                    Modifier.testTag("online-table-name"),
                 )
             }
+            Text(
+                stringResource(R.string.online_table_id_small, table.id),
+                Modifier.align(Alignment.CenterHorizontally).semantics { contentDescription = table.id.toList().joinToString(" ") }.testTag("online-table-id"),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                color = GColors.Steel,
+            )
         }
         if (state.started) {
             GPanel(Modifier.fillMaxWidth()) {

@@ -71,7 +71,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /** Variantes de [GButton]. */
-enum class GButtonKind { Primary, Secondary, Danger, DangerOutline, Text, Quiet }
+enum class GButtonKind { Primary, Secondary, Danger, DangerOutline, Text, Quiet, Wood }
 
 /**
  * `false` quando o usuário ativou "remover animações" no Android (escala 0): efeitos decorativos
@@ -109,7 +109,7 @@ fun GButton(
     val quiet = kind == GButtonKind.Text || kind == GButtonKind.Quiet
     val contentColor = when (kind) {
         GButtonKind.Primary -> GColors.OnGold
-        GButtonKind.Secondary, GButtonKind.Danger -> GColors.Ivory
+        GButtonKind.Secondary, GButtonKind.Danger, GButtonKind.Wood -> GColors.Ivory
         GButtonKind.DangerOutline -> GColors.Ruby
         GButtonKind.Quiet -> GColors.Champagne
         GButtonKind.Text -> GColors.OnTable
@@ -130,6 +130,11 @@ fun GButton(
         GButtonKind.DangerOutline -> Modifier
             .background(GColors.Indigo, shape)
             .border(1.5.dp, GColors.Ruby, shape)
+        // Madeira (Jogar online): marrom com aro dourado.
+        GButtonKind.Wood -> Modifier
+            .shadow(Elevation.button, shape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF8A5530), Color(0xFF5E3519))), shape)
+            .border(1.5.dp, GColors.Gold.copy(alpha = 0.85f), shape)
         else -> Modifier
     }
     CompositionLocalProvider(LocalContentColor provides contentColor) {

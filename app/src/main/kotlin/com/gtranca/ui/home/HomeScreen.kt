@@ -230,9 +230,11 @@ fun HomeScreen(
             GButton(
                 onClick = onPlayOnline,
                 enabled = state.ready,
-                kind = GButtonKind.Secondary,
+                kind = GButtonKind.Wood,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("online-play"),
             ) {
+                com.gtranca.ui.theme.AnimatedGlobe(26.dp)
+                androidx.compose.foundation.layout.Spacer(Modifier.size(10.dp))
                 Text(stringResource(R.string.home_online), style = MaterialTheme.typography.titleMedium)
             }
         }
