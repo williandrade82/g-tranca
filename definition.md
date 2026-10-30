@@ -783,6 +783,8 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas por c
   - **Perde a aposta:** quem abandona perde a aposta (retida no assento, como em §16.9), **exceto** se sair nos **primeiros 60 segundos do jogo** (contados desde o início da 1ª partida): então a aposta é **devolvida**.
 - **Abandonar** é sair voluntariamente da mesa (**desistir**, §13.1) ou deixar o tempo esgotar. Um **robô** assume o assento e o jogo segue para os demais; o robô guarda os boosters e as reações que sobraram (§17.4).
 - **1×1 entre dois humanos:** quem abandona (desistir ou tempo esgotado) entrega a vitória ao outro na hora (§13.1, §16.9); não entra robô.
+- **Nunca se joga sem humano:** se, depois de um abandono, **não resta nenhum humano** na partida (um 1×1 entre humano e robô, ou o último humano de uma mesa maior), o jogo **termina na hora**: o **lado de quem abandonou perde** e o outro vence (§13.1); nenhum robô assume nem o jogo segue só entre robôs.
+- **Todos desconectados:** se **nenhum humano** da partida está conectado, a mesa é **destruída imediatamente**, assim que o servidor percebe (conexão fechada ou sem resposta ao ping). Não entra robô e ninguém volta. A **queda de conexão** (abaixo) só dá direito de voltar enquanto **houver ao menos um humano conectado**. O tratamento das apostas nesse caso será definido na §18.5, antes da economia online (fase 2).
 - **Sem volta:** quem abandonou **não retoma** o assento (o robô fica nele até o fim do jogo); diferente do jogo local (§16.9).
 - **Próxima partida:** inicia sozinha alguns segundos depois do fim da anterior (§16.11); a mesa não espera por telas.
 - **Nível dos robôs da mesa:** escolha do anfitrião ao criar a mesa (padrão **Fácil**), imutável depois de iniciar.
