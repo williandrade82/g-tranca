@@ -289,10 +289,13 @@ enum class RejectReason {
     ILLEGAL,
 }
 
-/** Jogada recusada com o motivo; nada muda no jogo. [refusals] = recusas acumuladas deste jogador. */
+/**
+ * Jogada recusada com o motivo; nada muda no jogo. [refusals] = recusas acumuladas deste jogador. [ruleError] = nome do
+ * erro do motor (`ActionError`/`MeldError`) quando a jogada é ilegal, para o app mostrar o texto em pt-BR de sempre.
+ */
 @Serializable
 @SerialName("rejected")
-data class Rejected(val seq: Long, val reason: RejectReason, val message: String, val refusals: Int) : ServerMessage
+data class Rejected(val seq: Long, val reason: RejectReason, val message: String, val refusals: Int, val ruleError: String? = null) : ServerMessage
 
 /** A conexao foi substituida por outra do mesmo jogador (§18.4); esta sera fechada. */
 @Serializable

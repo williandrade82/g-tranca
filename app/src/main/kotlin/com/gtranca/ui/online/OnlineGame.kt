@@ -151,7 +151,9 @@ internal fun OnlineGameDestination(data: GameData, client: OnlineClient, account
             multiplayer = true,
         )
     }
-    GameScreen(viewModel, onExit = { onExit(null) })
+    androidx.compose.runtime.CompositionLocalProvider(com.gtranca.ui.game.LocalTurnClock provides readyDriver.turnClock) {
+        GameScreen(viewModel, onExit = { onExit(null) })
+    }
 }
 
 @Composable

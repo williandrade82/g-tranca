@@ -155,6 +155,9 @@ class MatchSessionTest {
         first.rejections.map { it.reason } shouldBe listOf(RejectReason.ILLEGAL, RejectReason.ILLEGAL)
         first.rejections.last().refusals shouldBe 2
         first.rejections.first().message shouldNotBe ""
+        // §18.3 a recusa ilegal traz o erro do motor (o app mostra o texto em pt-BR); fora da vez, nao
+        first.rejections.first().ruleError shouldBe com.gtranca.engine.model.ActionError.MUST_DRAW_FIRST.name
+        second.rejections.single().ruleError shouldBe null
         // A jogada legal ainda funciona depois das recusas.
         first.send(Action.DrawFromStock, stateVersion = v)
         run.session.inspect().version shouldBe v + 1

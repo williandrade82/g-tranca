@@ -389,10 +389,10 @@ class MatchSession(
         if (msg.seq <= lastSeq[seat]) return
         lastSeq[seat] = msg.seq
 
-        fun reject(reason: RejectReason, text: String) {
+        fun reject(reason: RejectReason, text: String, ruleError: String? = null) {
             refusals[seat]++
             log.info("Jogada recusada table={} seat={} reason={} total={}", tableId, seat, reason, refusals[seat])
-            send(seat, link, Rejected(msg.seq, reason, text, refusals[seat]))
+            send(seat, link, Rejected(msg.seq, reason, text, refusals[seat], ruleError))
         }
 
         if (stage != TableStage.PLAYING || match.currentRound.phase == Phase.FINISHED) {
@@ -406,7 +406,7 @@ class MatchSession(
         val legal = RoundEngine.legalActions(round, Seat(seat), rules)
         if (msg.action !in legal) {
             val why = (RoundEngine.validate(round, Seat(seat), msg.action, rules) as? RuleResult.Failure)?.error
-            return reject(RejectReason.ILLEGAL, "Jogada não permitida agora" + (why?.let { " ($it)" } ?: "") + ".")
+            return reject(RejectReason.ILLEGAL, "Jogada não permitida agora" + (why?.let { " ($it)" } ?: "") + ".", (why as? Enum<*>)?.name)
         }
         applyAction(Seat(seat), msg.action)
     }

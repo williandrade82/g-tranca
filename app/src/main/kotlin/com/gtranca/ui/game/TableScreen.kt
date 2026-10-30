@@ -128,6 +128,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.gestures.animateScrollBy
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import android.annotation.SuppressLint
@@ -1232,6 +1233,21 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
         }
         else -> stringResource(R.string.turn_waiting)
     }
+    // §18.4 mesa online: o tempo que resta da vez, ao lado do texto (vermelho no último minuto).
+    val clockFlow = LocalTurnClock.current
+    val clock: TurnDeadline? = clockFlow?.collectAsStateWithLifecycle()?.value
+    val shownSeat = when {
+        state.awaitingDraw || state.playing -> snapshot.viewerSeat.index
+        else -> thinking?.index
+    }
+    var nowMs by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    androidx.compose.runtime.LaunchedEffect(clock) {
+        while (clock != null) {
+            nowMs = android.os.SystemClock.elapsedRealtime()
+            kotlinx.coroutines.delay(500)
+        }
+    }
+    val leftMs = clock?.takeIf { it.seat == shownSeat }?.let { (it.deadlineElapsedMs - nowMs).coerceAtLeast(0) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -1243,12 +1259,23 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
             .testTag("action-bar").tourTarget("action-bar"),
     ) {
         // Uma linha só: o texto da vez diminui até caber em telas estreitas ou com fonte grande.
-        com.gtranca.ui.theme.FitText(
-            status,
-            MaterialTheme.typography.bodyLarge.copy(color = TableAccent, fontWeight = FontWeight.Bold),
-            Modifier.fillMaxWidth().testTag("turn-status"),
-            minFontSp = 11,
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            com.gtranca.ui.theme.FitText(
+                status,
+                MaterialTheme.typography.bodyLarge.copy(color = TableAccent, fontWeight = FontWeight.Bold),
+                Modifier.weight(1f).testTag("turn-status"),
+                minFontSp = 11,
+            )
+            if (leftMs != null) {
+                val secs = (leftMs + 999) / 1000
+                Text(
+                    "⏱ %d:%02d".format(secs / 60, secs % 60),
+                    Modifier.testTag("turn-clock"),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                    color = if (leftMs <= 60_000) GColors.Ruby else GColors.Champagne,
+                )
+            }
+        }
         // Os botões dividem a largura numa linha (o texto de cada um diminui até caber); "Limpar" é um ícone de 48 dp.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (snapshot.view.phase != Phase.PLAYING || !state.isHumanTurn) {

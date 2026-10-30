@@ -74,6 +74,15 @@ class OnlineTableDriver private constructor(
     private val _ended = MutableStateFlow<OnlineGameEnd?>(null)
     val ended: StateFlow<OnlineGameEnd?> = _ended.asStateFlow()
 
+    private val _turnClock = MutableStateFlow<com.gtranca.ui.game.TurnDeadline?>(null)
+
+    /** §18.4 relógio da vez pela vista mais recente do servidor (não pela mostrada: o tempo corre no servidor). */
+    val turnClock: StateFlow<com.gtranca.ui.game.TurnDeadline?> = _turnClock.asStateFlow()
+
+    private fun clockFrom(view: OnlineSeatView) {
+        _turnClock.value = view.turn?.let { com.gtranca.ui.game.TurnDeadline(it.seat.index, android.os.SystemClock.elapsedRealtime() + it.leftMs, it.limitMs) }
+    }
+
     private val _reconnecting = MutableStateFlow(false)
 
     /** A conexão caiu e o cliente tenta voltar (a mesa segue no servidor). */
@@ -138,6 +147,7 @@ class OnlineTableDriver private constructor(
     }
 
     init {
+        clockFrom(first)
         if (shown.stage == Stage.ROUND_OVER) holdingRound = shown.roundNumber
         scope.launch { pacer.run(shown) }
         scope.launch { answered.collect { refresh() } }
@@ -155,11 +165,17 @@ class OnlineTableDriver private constructor(
                 when (val m = event.message) {
                     // Reconexão: a vista atual chega logo depois; o pedido respondido antes da queda vale de novo.
                     is Welcome -> { _seats.value = m.seats; answered.value = 0 }
-                    is SeatUpdate -> offer(m.view.toSnapshot(config, welcome))
+                    is SeatUpdate -> {
+                        clockFrom(m.view)
+                        offer(m.view.toSnapshot(config, welcome))
+                    }
                     is SeatsChanged -> _seats.value = m.seats
                     is Rejected -> {
                         answered.value = 0
-                        _rejections.emit(null)
+                        // ILLEGAL traz o erro do motor: o mesmo texto em pt-BR do jogo local; as demais só devolvem a vez.
+                        if (m.reason == com.gtranca.online.contracts.RejectReason.ILLEGAL) {
+                            _rejections.emit(com.gtranca.multiplayer.MultiplayerDriver.ruleErrorOf(m.ruleError))
+                        }
                     }
                     is YouResigned -> { resigned = true; refresh() }
                     is TableClosed -> _ended.value = OnlineGameEnd.Closed(m.message)
