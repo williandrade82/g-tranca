@@ -208,6 +208,11 @@ class MatchSession internal constructor(
         val status = response.status.value
         if (status < 400) return Outcome.Dropped(false, OnlineException(OnlineErrorKind.NETWORK, status = status, cause = cause))
         val error = client.failure(status, runCatching { response.bodyAsText() }.getOrDefault(""))
+        // 426 com REQUISICAO_INVALIDA = "use uma conexão WebSocket": o handshake passou (versão, acesso e assento valem) e
+        // só o upgrade falhou nesta tentativa. Não é "Atualize o aplicativo": tenta de novo.
+        if (status == 426 && error.code == com.gtranca.online.contracts.ErrorCode.REQUISICAO_INVALIDA) {
+            return Outcome.Dropped(false, OnlineException(OnlineErrorKind.NETWORK, status = status, cause = cause))
+        }
         return if (error.retryable) Outcome.Dropped(false, error) else Outcome.Refused(error)
     }
 

@@ -57,10 +57,29 @@ class OnlineGameHolder(client: OnlineClient, account: OnlineAccount, tableId: St
     /** Fim sem o fim de jogo normal (mesa encerrada, outro aparelho, recusa): a tela avisa e volta. */
     val ended: StateFlow<OnlineGameEnd?> = _ended.asStateFlow()
 
+    /** Fotos dos outros jogadores (§18.2), por id do convidado, baixadas uma vez cada. */
+    private val photos = MutableStateFlow<Map<String, ByteArray>>(emptyMap())
+    private val fetched = mutableSetOf<String>()
+
     /** Nome e avatar por assento (a tela do jogo os usa no lugar do sorteio local). */
     val personas: StateFlow<List<Persona>> = _driver.flatMapLatest { d ->
-        d?.seats?.map { seats -> seats.map { personaOf(it, d.welcome.you.index) } } ?: flowOf(emptyList())
+        d?.seats?.let { seats ->
+            kotlinx.coroutines.flow.combine(seats, photos) { list, pics -> list.map { personaOf(it, d.welcome.you.index, pics) } }
+        } ?: flowOf(emptyList())
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private fun fetchPhotos(account: OnlineAccount, seats: List<SeatInfo>) {
+        seats.mapNotNull { it.guestId }.filter { fetched.add(it) }.forEach { id ->
+            viewModelScope.launch {
+                val base64 = runCatching { account.call { api, g -> api.photo(g.token, "/api/lobby/guests/$id/photo") } }.getOrNull()
+                if (base64 == null) {
+                    fetched.remove(id) // tenta de novo na próxima mudança dos assentos
+                    return@launch
+                }
+                runCatching { java.util.Base64.getDecoder().decode(base64) }.getOrNull()?.let { bytes -> photos.value = photos.value + (id to bytes) }
+            }
+        }
+    }
 
     init {
         viewModelScope.launch {
@@ -71,11 +90,12 @@ class OnlineGameHolder(client: OnlineClient, account: OnlineAccount, tableId: St
             }
             val d = OnlineTableDriver.connect(client.matchSession(token, tableId), viewModelScope, onFailure = { _ended.value = it })
             _driver.value = d
+            if (d != null) launch { d.seats.collect { fetchPhotos(account, it) } }
             d?.ended?.collect { if (it != null) _ended.value = it }
         }
     }
 
-    private fun personaOf(seat: SeatInfo, mine: Int): Persona = when {
+    private fun personaOf(seat: SeatInfo, mine: Int, pics: Map<String, ByteArray>): Persona = when {
         seat.index == mine -> self
         seat.kind == SeatKind.ROBO && seat.profile != null -> {
             val profile = com.gtranca.game.BotProfile.valueOf(seat.profile!!.name)
@@ -86,7 +106,7 @@ class OnlineGameHolder(client: OnlineClient, account: OnlineAccount, tableId: St
             }
             Persona(profile.botName, character = BotCharacter(profile, level))
         }
-        else -> Persona(seat.name.ifBlank { "?" }, color = seat.name.hashCode().mod(Persona.COLORS))
+        else -> Persona(seat.name.ifBlank { "?" }, color = seat.name.hashCode().mod(Persona.COLORS), photoBytes = seat.guestId?.let(pics::get))
     }
 }
 

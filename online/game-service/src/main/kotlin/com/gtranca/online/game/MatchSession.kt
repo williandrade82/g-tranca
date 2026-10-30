@@ -700,7 +700,7 @@ class MatchSession(
 
     private fun seatInfos(): List<SeatInfo> = slots.mapIndexed { i, s ->
         when (s) {
-            is Slot.Human -> SeatInfo(i, SeatKind.HUMANO, s.name, connected = links[i] != null, resigned = i in forfeited)
+            is Slot.Human -> SeatInfo(i, SeatKind.HUMANO, s.name, connected = links[i] != null, resigned = i in forfeited, guestId = s.guestId)
             is Slot.Robot -> SeatInfo(
                 i, SeatKind.ROBO, robotName(s.profile), s.profile, s.level, connected = true,
                 resigned = s.replacedGuestId != null,

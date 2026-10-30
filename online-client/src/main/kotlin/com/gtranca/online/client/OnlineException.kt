@@ -40,6 +40,8 @@ class OnlineException(
     companion object {
         /** Traduz a recusa HTTP ([status], corpo já lido como [api] se for JSON do lobby). */
         fun fromResponse(status: Int, api: ApiError?): OnlineException = when {
+            // 426 do canal da partida pedido sem upgrade ("use uma conexão WebSocket") não é versão antiga.
+            status == 426 && api?.code == ErrorCode.REQUISICAO_INVALIDA -> OnlineException(OnlineErrorKind.API, api.code, status, api.message)
             status == 426 -> OnlineException(OnlineErrorKind.UPDATE_APP, ErrorCode.VERSAO_INCOMPATIVEL, status, api?.message)
             api?.code == ErrorCode.VERSAO_INCOMPATIVEL -> OnlineException(OnlineErrorKind.MAINTENANCE, api.code, status, api.message)
             // §18.2: app sem a chave certa. Nao e token vencido: recriar o convidado nao resolve.

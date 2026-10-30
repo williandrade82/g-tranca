@@ -171,6 +171,8 @@ data class SeatInfo(
     val connected: Boolean = true,
     /** Humano que desistiu; o assento agora e de um robo ([kind] = ROBO). */
     val resigned: Boolean = false,
+    /** Humano: id do convidado, para o app buscar a foto (§18.2) e mostrar no assento. */
+    val guestId: String? = null,
 )
 
 /** Relogio da vez (§18.4): so existe com tempo de jogada definido, durante a vez de um humano. [leftMs] e o que resta no envio. */

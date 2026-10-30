@@ -806,7 +806,7 @@
     <string name="online_title">Jogar online</string>
     <string name="online_no_server">Informe o servidor online no Perfil para jogar pela internet.</string>
     <string name="online_go_profile">Abrir o Perfil</string>
-    <string name="online_playing_as">Jogando como %1$s (convidado)</string>
+    <string name="online_playing_as">Jogando como %1$s</string>
     <string name="online_google_soon">Entrar com o Google (em breve)</string>
     <string name="online_create">Criar mesa</string>
     <string name="online_join">Entrar numa mesa</string>

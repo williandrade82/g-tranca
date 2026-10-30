@@ -244,7 +244,7 @@ fun AppNavHost() {
     val coinBalance by remember(data) { data.wallet.wallet.map { it.balance as Int? }.catch { emit(null) } }
         .collectAsStateWithLifecycle(null)
     // Na mesa de jogo o saldo vai na linha do cabeçalho (não ganha faixa).
-    val onGame = entry?.destination?.let { it.hasRoute<GameRoute>() || it.hasRoute<MultiplayerGameRoute>() } == true
+    val onGame = entry?.destination?.let { it.hasRoute<GameRoute>() || it.hasRoute<MultiplayerGameRoute>() || it.hasRoute<com.gtranca.ui.online.OnlineGameRoute>() } == true
     CompositionLocalProvider(
         com.gtranca.ui.theme.LocalCoinBalance provides coinBalance,
         com.gtranca.ui.tour.LocalTours provides tourSettings,
