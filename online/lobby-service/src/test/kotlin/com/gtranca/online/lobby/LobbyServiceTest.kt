@@ -269,4 +269,31 @@ class LobbyServiceTest {
         val id = firstOpen().id
         service.join(ana, id.lowercase(), null).id shouldBe id
     }
+
+    @Test
+    fun `18_2 o jogador troca para um lugar livre e nao para um ocupado`() {
+        val id = firstOpen().id
+        service.join(ana, id, 0)
+        service.join(beto, id, 1)
+        val t = service.move(ana, id, 3)
+        t.seats[3].guestId shouldBe "a"
+        t.seats[0].kind shouldBe SeatKind.VAGO
+        t.hostId shouldBe "a"
+        codeOf { service.move(ana, id, 1) } shouldBe ErrorCode.MESA_CHEIA
+        codeOf { service.move(caio, id, 2) } shouldBe ErrorCode.LUGAR_INVALIDO
+    }
+
+    @Test
+    fun `18_2 cada lugar humano informa o caminho da foto que muda com a foto`() {
+        val versions = mutableMapOf("a" to 1)
+        val s = LobbyService(InMemoryTableStore(), { now }, Random(2), photoVersion = { versions[it] })
+        val id = s.list(0).tables.first().id
+        s.join(ana, id, 0)
+        s.join(beto, id, 1)
+        val seats = s.get(ana, id).seats
+        seats[0].photoUrl shouldBe "/api/lobby/guests/a/photo?v=1"
+        seats[1].photoUrl shouldBe null
+        versions["a"] = 2
+        s.get(ana, id).seats[0].photoUrl shouldBe "/api/lobby/guests/a/photo?v=2"
+    }
 }

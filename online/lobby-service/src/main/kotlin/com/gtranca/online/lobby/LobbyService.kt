@@ -54,8 +54,12 @@ class LobbyService(
     private val clock: () -> Long = System::currentTimeMillis,
     private val random: Random = Random.Default,
     private val config: LobbyConfig = LobbyConfig(),
+    /** Versao da foto do convidado (§18.2), para o caminho da foto em cada lugar. */
+    private val photoVersion: (String) -> Int? = { null },
 ) {
     private val lock = Any()
+
+    private fun Table.toView() = toView(photoVersion)
 
     /** Quando abrir a proxima mesa por tempo (`null` = sem contagem). */
     private var nextOpenAt: Long? = null
@@ -112,6 +116,18 @@ class LobbyService(
             host = if (first) guest else t.host,
             entryOrder = t.entryOrder + guest.id,
         )
+    }
+
+    /** Trocar de lugar antes do jogo (§18.2): só para um lugar VAGO; o primeiro pedido vence. Anfitrião não muda. */
+    fun move(guest: Guest, rawId: String, seat: Int): TableView = mutate(rawId) { t ->
+        requireOpen(t)
+        val from = t.seatOf(guest.id)
+        if (from < 0) lobbyError(ErrorCode.LUGAR_INVALIDO, "Você não está nesta mesa.", 409)
+        checkSeat(t, seat)
+        if (from == seat) return@mutate t
+        if (t.seats[seat] !is Seat.Vago) lobbyError(ErrorCode.MESA_CHEIA, "Esse lugar já está ocupado.", 409)
+        val me = t.seats[from]
+        t.withSeat(from, Seat.Vago).withSeat(seat, me)
     }
 
     /** Sair antes do jogo; o anfitriao tambem pode (o cargo passa ao proximo pela ordem de entrada, §18.2). */
@@ -339,7 +355,7 @@ class LobbyService(
     }
 }
 
-fun Table.toView() = TableView(
+fun Table.toView(photoVersion: (String) -> Int? = { null }) = TableView(
     id = id,
     hostId = host?.id.orEmpty(),
     hostName = host?.name.orEmpty(),
@@ -349,7 +365,10 @@ fun Table.toView() = TableView(
         when (s) {
             Seat.Vago -> SeatView(i, SeatKind.VAGO)
             is Seat.Robo -> SeatView(i, SeatKind.ROBO, profile = s.profile, level = s.level)
-            is Seat.Humano -> SeatView(i, SeatKind.HUMANO, s.guestId, s.name)
+            is Seat.Humano -> SeatView(
+                i, SeatKind.HUMANO, s.guestId, s.name,
+                photoUrl = photoVersion(s.guestId)?.let { v -> "/api/lobby/guests/${s.guestId}/photo?v=$v" },
+            )
         }
     },
 )

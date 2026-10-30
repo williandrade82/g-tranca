@@ -194,4 +194,18 @@ class LobbyHttpTest {
             client.call(HttpMethod.Get, "/api/lobby/tables", ana.token, version = ONLINE_PROTOCOL_VERSION - 1).error() shouldBe ErrorCode.VERSAO_INCOMPATIVEL
         }
     }
+
+    @Test
+    fun `18_2 o jogador envia a foto e os outros a baixam pelo caminho do lugar`() = withApp {
+        val ana = client.guest("Ana")
+        val beto = client.guest("Beto")
+        val jpeg = java.util.Base64.getEncoder().encodeToString(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 1, 2))
+        client.call(HttpMethod.Put, "/api/lobby/guests/me/photo", ana.token, """{"photoBase64":"$jpeg"}""").status shouldBe HttpStatusCode.OK
+        client.call(HttpMethod.Put, "/api/lobby/guests/me/photo", ana.token, """{"photoBase64":"bmFvIGUganBlZw=="}""").status shouldBe HttpStatusCode.BadRequest
+        val t = client.serverTable(ana.token)
+        val url = t.seats.first { it.name == "Ana" }.photoUrl!!
+        val r = client.call(HttpMethod.Get, url.substringBefore('?'), beto.token)
+        json.decodeFromString<com.gtranca.online.contracts.GuestPhoto>(r.bodyAsText()).photoBase64 shouldBe jpeg
+        client.call(HttpMethod.Get, url.substringBefore('?'), null).status shouldBe HttpStatusCode.Unauthorized
+    }
 }

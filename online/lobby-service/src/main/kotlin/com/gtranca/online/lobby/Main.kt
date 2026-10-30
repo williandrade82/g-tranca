@@ -5,6 +5,7 @@ import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
 import com.gtranca.online.contracts.ErrorCode
+import com.gtranca.online.contracts.GuestPhoto
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.MatchEndedNotice
 import com.gtranca.online.contracts.PassHostRequest
@@ -40,6 +41,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import java.security.MessageDigest
@@ -97,7 +99,7 @@ class LobbyDeps(
     val appKey: String? = null,
 ) {
     val guests = GuestRegistry(clock)
-    val service = LobbyService(store, clock, config = config)
+    val service = LobbyService(store, clock, config = config, photoVersion = guests::photoVersion)
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val tokenLimiter = RateLimiter(tokenLimitPerMinute, clock = clock)
     val guestLimiter = RateLimiter(guestCreationPerMinute, clock = clock)
@@ -251,6 +253,21 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 call.respondJson(deps.guests.create(req.name), HttpStatusCode.Created)
             }
         }
+        // §18.2: a foto do proprio jogador (reduzida no app) e a foto de outro jogador, so para quem tem token.
+        put("/api/lobby/guests/me/photo") {
+            call.guarded { guest ->
+                deps.guests.setPhoto(guest.id, call.receiveLimited<GuestPhoto>().photoBase64)
+                call.respondJson(Health())
+            }
+        }
+        get("/api/lobby/guests/{id}/photo") {
+            call.guarded { _ ->
+                val photo = deps.guests.photo(call.parameters["id"].orEmpty())
+                    ?: lobbyError(ErrorCode.REQUISICAO_INVALIDA, "Sem foto.", 404)
+                call.response.header(HttpHeaders.CacheControl, "private, max-age=3600")
+                call.respondJson(GuestPhoto(photo))
+            }
+        }
         post("/api/lobby/tables") {
             call.guarded { guest ->
                 val req = call.receiveLimited<CreateTableRequest>()
@@ -287,6 +304,13 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
             call.guarded { guest ->
                 val req = call.receiveLimited<JoinRequest>()
                 call.respondJson(service.join(guest, call.parameters["id"].orEmpty(), req.seat))
+            }
+        }
+        post("/api/lobby/tables/{id}/move") {
+            call.guarded { guest ->
+                val seat = call.receiveLimited<JoinRequest>().seat
+                    ?: lobbyError(ErrorCode.LUGAR_INVALIDO, "Escolha um lugar.", 400)
+                call.respondJson(service.move(guest, call.parameters["id"].orEmpty(), seat))
             }
         }
         post("/api/lobby/tables/{id}/leave") {

@@ -12,6 +12,9 @@ object LobbyLimits {
     const val MAX_TARGET_SCORE = 100_000
     const val MAX_BET = 1_000_000
     const val MAX_BODY_BYTES = 32 * 1024
+
+    /** Foto do jogador (JPEG pequeno em Base64), o mesmo teto da mesa local (§16.2). */
+    const val MAX_PHOTO_BASE64 = 20_480
 }
 
 /** Modo da mesa (§14.4): individual = 2 lugares, duplas = 4. */
@@ -67,7 +70,10 @@ data class SeatView(
     val kind: SeatKind,
     val guestId: String? = null,
     val name: String? = null,
-    /** Foto do humano (conta Google, fase 2); hoje sempre `null`. */
+    /**
+     * Foto do humano (§18.2): caminho para baixa-la (`/api/lobby/guests/{id}/photo?v=N`); muda quando a foto muda, entao
+     * serve de chave de cache. `null` = sem foto.
+     */
     val photoUrl: String? = null,
     /** Robo: personagem e nivel (§14.5), conhecidos depois do inicio; antes, so o nivel da mesa. */
     val profile: BotProfile? = null,
@@ -99,6 +105,10 @@ data class TableListView(
     val onlinePlayers: Int,
     val tables: List<TableView>,
 )
+
+/** A foto do jogador (§18.2): JPEG pequeno em Base64; `null` tira a foto. */
+@Serializable
+data class GuestPhoto(val photoBase64: String? = null)
 
 /** Entregar a mesa (§18.2, §16.10): o anfitriao passa o cargo ao humano deste assento. */
 @Serializable

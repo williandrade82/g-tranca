@@ -48,6 +48,38 @@ class GuestRegistry(
         return entry.guest
     }
 
+    private class Photo(val base64: String, val version: Int)
+
+    private val photos = HashMap<String, Photo>()
+    private var photoVersions = 0
+
+    /** Guarda (ou tira, com `null`) a foto do convidado (§18.2). */
+    @Synchronized
+    fun setPhoto(guestId: String, base64: String?) {
+        if (base64 == null) {
+            photos.remove(guestId)
+            return
+        }
+        val clean = base64.trim()
+        if (clean.isEmpty() || clean.length > LobbyLimits.MAX_PHOTO_BASE64 || !isJpegBase64(clean)) {
+            lobbyError(ErrorCode.REQUISICAO_INVALIDA, "Foto inválida ou grande demais.", 400)
+        }
+        if (photos[guestId]?.base64 == clean) return
+        photos[guestId] = Photo(clean, ++photoVersions)
+    }
+
+    @Synchronized
+    fun photo(guestId: String): String? = photos[guestId]?.base64
+
+    /** Versao da foto (chave de cache do app), ou `null` sem foto. */
+    @Synchronized
+    fun photoVersion(guestId: String): Int? = photos[guestId]?.version
+
+    private fun isJpegBase64(text: String): Boolean = runCatching {
+        val bytes = Base64.getDecoder().decode(text)
+        bytes.size > 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
+    }.getOrDefault(false)
+
     /** Convidados que usaram o token nos ultimos [windowMs] (jogadores online, §18.2). */
     @Synchronized
     fun activeIds(windowMs: Long): Set<String> {
@@ -58,6 +90,8 @@ class GuestRegistry(
     private fun sweep() {
         val now = clock()
         byHash.values.removeIf { now - it.lastUsedMs > ttlMs }
+        val alive = byHash.values.map { it.guest.id }.toSet()
+        photos.keys.retainAll(alive)
     }
 
     companion object {
