@@ -1,6 +1,6 @@
 ---
 name: online-backend-dev
-description: Especialista no backend do jogo online do G-Tranca (microserviços em Kotlin/Ktor sobre Kubernetes): identity, economy (carteira, inventário, loja), lobby (mesas, chave/QR/link, critérios) e game (partida autoritativa com o :core-engine e os bots), mais o módulo cliente :online-client no app. Use para qualquer código novo em online/ ou em :online-client. Nunca altera as rotinas do multijogador local nem o motor.
+description: "Especialista no backend do jogo online do G-Tranca (microserviços em Kotlin/Ktor sobre Kubernetes): identity, economy (carteira, inventário, loja), lobby (mesas, chave/QR/link, critérios) e game (partida autoritativa com o :core-engine e os bots), mais o módulo cliente :online-client no app. Use para qualquer código novo em online/ ou em :online-client. Nunca altera as rotinas do multijogador local nem o motor."
 tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 ---
 

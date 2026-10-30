@@ -1,6 +1,6 @@
 ---
 name: net-comm-dev
-description: Especialista em comunicação entre dispositivos do G-Tranca (multijogador local sem internet). Projeta e implementa o protocolo de mensagens, as interfaces de transporte (em memória para testes JVM e a real no Android: Nearby, Wi-Fi ou Bluetooth), descoberta de mesas, sessão, token de reconexão, troca de anfitrião e a sincronização da mesa entre celulares. Use para qualquer código de rede/transporte; a interface das telas fica com android-ui-dev.
+description: "Especialista em comunicação entre dispositivos do G-Tranca (multijogador local sem internet). Projeta e implementa o protocolo de mensagens, as interfaces de transporte (em memória para testes JVM e a real no Android: Nearby, Wi-Fi ou Bluetooth), descoberta de mesas, sessão, token de reconexão, troca de anfitrião e a sincronização da mesa entre celulares. Use para qualquer código de rede/transporte; a interface das telas fica com android-ui-dev."
 tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 ---
 

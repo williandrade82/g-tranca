@@ -1,6 +1,6 @@
 ---
 name: admin-console-dev
-description: Especialista na interface de gerenciamento do jogo online do G-Tranca, backend (admin-api) e frontend (admin-web): contas, mesas ativas, economia (saldos e livro-razão auditados, catálogo e ofertas da loja), configurações do serviço, denúncias e saúde dos microserviços. Use para qualquer código em online/admin-api e online/admin-web. Não mexe no app Android nem nas regras do jogo.
+description: "Especialista na interface de gerenciamento do jogo online do G-Tranca, backend (admin-api) e frontend (admin-web): contas, mesas ativas, economia (saldos e livro-razão auditados, catálogo e ofertas da loja), configurações do serviço, denúncias e saúde dos microserviços. Use para qualquer código em online/admin-api e online/admin-web. Não mexe no app Android nem nas regras do jogo."
 tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 ---
 
