@@ -158,3 +158,17 @@ Saida real da prova (imagens `59d92bb`, protocolo 2, tempo real de 1 minuto; no 
 - `encerrar`: Beto (nao anfitriao) -> 403; Ana encerra -> 200; os dois recebem `TableClosed` e a conexao fecha com `1000 Mesa encerrada`; lobby `ENCERRADA`; reconectar -> `404 MESA_INEXISTENTE`.
 - `tempo`: vista com `turn=TurnClock(seat=0, limitMs=60000, leftMs=59997)`; 60 s depois `seats ... RESIGNED (TEMPO)`, tipos `[ROBO*, HUMANO, ROBO, ROBO]`, a Ana recebe `YouResigned` e a conexao fecha; a mesa segue EM_JOGO; o anfitriao encerra e o lobby fica `ENCERRADA`.
 - `jogo` (normal, com queda e volta do Beto): `FIM DO JOGO` com o mesmo placar nas duas vistas e, 2 s depois, lobby `estado=ENCERRADA` (aviso do game-service).
+
+## Chave do aplicativo (§18.2 "Só o aplicativo oficial")
+Cada pedido do app (lobby e handshake do WebSocket) leva `X-App-Time` e `X-App-Signature` (HMAC-SHA256 com a chave do app de `método
+caminho
+horário
+token`, horário com ±5 min). A chave fica **fora do repositório**: no cluster, no Secret `gtranca-app-key`; no app, em `local.properties` (`online.appKey=...`). Sem o Secret os serviços sobem sem verificar (aviso no log).
+
+```bash
+KEY=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-40)
+kubectl --context docker-desktop -n gtranca create secret generic gtranca-app-key --from-literal=APP_SIGNING_KEY="$KEY"
+kubectl --context docker-desktop -n gtranca rollout restart deploy/lobby-service deploy/game-service
+# probe com a mesma chave:
+APP_SIGNING_KEY="$KEY" ./gradlew.bat :probe:run --args="192.168.1.5"
+```

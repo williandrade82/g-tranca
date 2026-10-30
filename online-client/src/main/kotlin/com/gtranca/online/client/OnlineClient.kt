@@ -8,8 +8,11 @@ import com.gtranca.online.contracts.JoinRequest
 import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.OnlineJson
 import com.gtranca.online.contracts.PROTOCOL_HEADER
+import com.gtranca.online.contracts.AppSignature
+import com.gtranca.online.contracts.PassHostRequest
 import com.gtranca.online.contracts.TableId
 import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.TableListView
 import com.gtranca.online.contracts.TableView
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -38,6 +41,9 @@ class OnlineClient(
     val endpoint: OnlineEndpoint,
     internal val http: HttpClient,
     private val requestTimeoutMs: Long = 15_000,
+    /** Chave do aplicativo (§18.2): assina cada pedido. `null` = sem assinatura (servidor de desenvolvimento). */
+    private val appKey: String? = null,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : LobbyApi {
 
     override suspend fun createGuest(name: String): GuestIdentity = call(
@@ -48,6 +54,14 @@ class OnlineClient(
     override suspend fun createTable(token: String, rules: TableRules): TableView = call(
         TableView.serializer(), token, HttpMethod.Post, "tables",
         OnlineJson.encodeToString(CreateTableRequest.serializer(), CreateTableRequest(rules)),
+    )
+
+    override suspend fun tables(token: String): TableListView =
+        call(TableListView.serializer(), token, HttpMethod.Get, "tables")
+
+    override suspend fun passHost(token: String, tableId: String, seat: Int): TableView = call(
+        TableView.serializer(), token, HttpMethod.Post, "tables/${idOf(tableId)}/host",
+        OnlineJson.encodeToString(PassHostRequest.serializer(), PassHostRequest(seat)),
     )
 
     override suspend fun table(token: String, tableId: String): TableView =
@@ -82,9 +96,13 @@ class OnlineClient(
 
     private fun idOf(tableId: String) = TableId.normalize(tableId) ?: tableId.trim()
 
-    internal fun HttpRequestBuilder.protocol(token: String?) {
+    internal fun HttpRequestBuilder.protocol(token: String?, method: HttpMethod, path: String) {
         header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
         if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+        val key = appKey ?: return
+        val now = clock()
+        header(AppSignature.TIME_HEADER, now.toString())
+        header(AppSignature.SIGNATURE_HEADER, AppSignature.sign(key, method.value, path, now, token))
     }
 
     private suspend fun <T> call(
@@ -98,7 +116,7 @@ class OnlineClient(
             withTimeout(requestTimeoutMs) {
                 http.request("${endpoint.httpBase}/api/lobby/$path") {
                     this.method = method
-                    protocol(token)
+                    protocol(token, method, "/api/lobby/$path")
                     if (body != null) {
                         contentType(ContentType.Application.Json)
                         setBody(body)

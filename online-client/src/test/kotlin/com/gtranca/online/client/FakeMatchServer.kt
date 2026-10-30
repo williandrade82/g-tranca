@@ -1,5 +1,6 @@
 package com.gtranca.online.client
 
+import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.ClientMessage
 import com.gtranca.online.contracts.ErrorCode
@@ -68,7 +69,7 @@ class FakeMatchServer {
                             val body = r.second?.let { OnlineJson.encodeToString(ApiError.serializer(), it) } ?: ""
                             call.respondText(body, ContentType.Application.Json, HttpStatusCode.fromValue(r.first))
                             finish()
-                        } else if (call.request.header(PROTOCOL_HEADER) != "2") {
+                        } else if (call.request.header(PROTOCOL_HEADER) != ONLINE_PROTOCOL_VERSION.toString()) {
                             val body = OnlineJson.encodeToString(ApiError.serializer(), ApiError(ErrorCode.VERSAO_INCOMPATIVEL, "Atualize o aplicativo"))
                             call.respondText(body, ContentType.Application.Json, HttpStatusCode.UpgradeRequired)
                             finish()

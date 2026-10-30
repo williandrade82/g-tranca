@@ -36,6 +36,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.internalSecret.name }}
                   key: {{ .Values.internalSecret.key }}
+            - name: APP_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appKey.name }}
+                  key: {{ .Values.appKey.key }}
+                  optional: true
           livenessProbe:
             httpGet: { path: /health, port: http }
             initialDelaySeconds: 15

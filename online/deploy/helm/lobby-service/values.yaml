@@ -36,3 +36,9 @@ ingress:
 resources:
   requests: { cpu: 100m, memory: 256Mi }
   limits: { memory: 512Mi }
+
+# Chave do aplicativo (APP_SIGNING_KEY, §18.2 "So o aplicativo oficial"): Secret criado no cluster, a mesma que vai no
+# build do app (local.properties). Sem o Secret o servico sobe SEM verificar a assinatura (aviso no log).
+appKey:
+  name: gtranca-app-key
+  key: APP_SIGNING_KEY

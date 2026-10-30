@@ -2,6 +2,7 @@ package com.gtranca.online.client
 
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.Card
+import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.GameError
@@ -60,7 +61,7 @@ class MatchSessionTest {
             c.message().shouldBeInstanceOf<Welcome>()
             c.message().shouldBeInstanceOf<SeatUpdate>()
             c.job.cancel()
-            server.handshakeVersions.first() shouldBe "2"
+            server.handshakeVersions.first() shouldBe ONLINE_PROTOCOL_VERSION.toString()
             server.handshakeAuth.first() shouldBe "Bearer tok-secreto"
             server.handshakeUris.first() shouldBe "/ws/match/ABC234"
         }

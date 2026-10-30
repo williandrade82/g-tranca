@@ -1,6 +1,7 @@
 package com.gtranca.online.lobby
 
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
 import com.gtranca.online.contracts.ErrorCode
@@ -69,6 +70,8 @@ fun main() {
             openTtlMs = (System.getenv("TABLE_OPEN_TTL_MINUTES")?.toLongOrNull() ?: 30L) * 60_000L,
         ),
         ipLimitPerMinute = System.getenv("RATE_LIMIT_PER_MINUTE")?.toIntOrNull() ?: 120,
+        appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() }
+            ?: null.also { System.err.println("AVISO: APP_SIGNING_KEY ausente; o lobby aceita pedidos sem assinatura do app") },
         guestCreationPerMinute = System.getenv("GUEST_CREATION_PER_MINUTE")?.toIntOrNull() ?: 10,
         gateway = HttpGameGateway(System.getenv("GAME_SERVICE_URL")?.takeIf { it.isNotBlank() } ?: "http://game-service", secret),
         internalSecret = secret,
@@ -90,6 +93,8 @@ class LobbyDeps(
     val internalSecret: String? = null,
     /** A cada quanto o servidor roda os prazos das mesas (abrir a proxima, §18.2). 0 = so nas chamadas (testes). */
     val maintainEveryMs: Long = 5_000L,
+    /** Chave do aplicativo (§18.2). `null` = sem verificacao (desenvolvimento e testes antigos). */
+    val appKey: String? = null,
 ) {
     val guests = GuestRegistry(clock)
     val service = LobbyService(store, clock, config = config)
@@ -190,6 +195,18 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 if (!ok) {
                     call.response.header(HttpHeaders.RetryAfter, "60")
                     call.respondError(LobbyException(ErrorCode.LIMITE_DE_TAXA, "Muitas requisições. Aguarde um instante.", 429))
+                    return@onCall
+                }
+                // §18.2: so o aplicativo oficial. Versao diferente segue para a recusa "Atualize o aplicativo" (§18.8).
+                val key = deps.appKey
+                val sameVersion = call.request.headers[PROTOCOL_HEADER]?.toIntOrNull() == ONLINE_PROTOCOL_VERSION
+                if (key != null && sameVersion && path.startsWith("/api/lobby") &&
+                    !AppSignature.verify(
+                        key, call.request.httpMethod.value, call.request.path(), call.request.headers[AppSignature.TIME_HEADER],
+                        call.request.headers[AppSignature.SIGNATURE_HEADER], call.bearer(), deps.clock(),
+                    )
+                ) {
+                    call.respondError(LobbyException(ErrorCode.APP_NAO_RECONHECIDO, "Aplicativo não reconhecido. Atualize o Tranca-Bot.", 401))
                 }
             }
         }

@@ -39,3 +39,9 @@ resources:
   # O motor + robos usam CPU (o Dificil faz busca por decisao); 2 CPUs de teto, memoria 768Mi.
   requests: { cpu: 500m, memory: 384Mi }
   limits: { cpu: "2", memory: 768Mi }
+
+# Chave do aplicativo (APP_SIGNING_KEY, §18.2 "So o aplicativo oficial"): Secret criado no cluster, a mesma que vai no
+# build do app (local.properties). Sem o Secret o servico sobe SEM verificar a assinatura (aviso no log).
+appKey:
+  name: gtranca-app-key
+  key: APP_SIGNING_KEY

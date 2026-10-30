@@ -2,6 +2,7 @@ package com.gtranca.online.client
 
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.TableListView
 import com.gtranca.online.contracts.TableView
 
 /**
@@ -13,6 +14,12 @@ interface LobbyApi {
     suspend fun createGuest(name: String): GuestIdentity
 
     suspend fun createTable(token: String, rules: TableRules): TableView
+
+    /** §18.2: todas as mesas do servidor e os jogadores online. */
+    suspend fun tables(token: String): TableListView
+
+    /** Entregar a mesa (§18.2). */
+    suspend fun passHost(token: String, tableId: String, seat: Int): TableView
 
     suspend fun table(token: String, tableId: String): TableView
 

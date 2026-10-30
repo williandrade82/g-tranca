@@ -20,6 +20,8 @@ data class GameConfig(
      * tela bloqueada ou ligacao nao destroem a mesa na hora).
      */
     val disconnectGraceMs: Long = 90_000L,
+    /** Chave do aplicativo (§18.2) para o handshake. `null` = sem verificacao. */
+    val appKey: String? = null,
     /**
      * §18.4: prazo para o PRIMEIRO humano conectar depois que a partida e criada (60 s).
      * A sessao nasce sem ninguem conectado (o app abre o canal logo apos o /start); a regra de destruicao so vale depois
@@ -51,6 +53,7 @@ data class GameConfig(
                 maxMatches = int("MAX_MATCHES", d.maxMatches),
                 retainAfterEndMs = long("RETAIN_AFTER_END_MS", d.retainAfterEndMs),
                 disconnectGraceMs = long("DISCONNECT_GRACE_MS", d.disconnectGraceMs),
+                appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() },
                 firstConnectMs = long("FIRST_CONNECT_MS", d.firstConnectMs),
                 wsMessagesPerSecond = int("WS_MESSAGES_PER_SECOND", d.wsMessagesPerSecond),
                 wsBurst = int("WS_BURST", d.wsBurst),

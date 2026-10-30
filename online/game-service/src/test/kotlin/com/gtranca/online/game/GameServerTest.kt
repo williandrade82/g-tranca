@@ -376,4 +376,23 @@ class GameServerTest {
             withTimeout(10_000) { closeReason.await() }?.code?.toInt() shouldBe MatchSession.CLOSE_REPLACED
         }
     }
+
+    @Test
+    fun `18_2 o canal da partida so abre para o aplicativo oficial`() = testApplication {
+        val cfg = GameConfig(internalSecret = TEST_SECRET, botDelayMs = 0, roundPauseMs = 0, appKey = "chave")
+        application { gameModule(testDeps(cfg, resolver)) }
+        val http = createClient { }
+        http.createMatch(duplasRequest())
+        val unsigned = http.upgrade("tok-ga")
+        unsigned.status shouldBe HttpStatusCode.Unauthorized
+        unsigned.apiError().code shouldBe ErrorCode.APP_NAO_RECONHECIDO
+        val now = System.currentTimeMillis()
+        val signed = http.get("/ws/match/ABC234") {
+            header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
+            header(HttpHeaders.Authorization, "Bearer tok-ga")
+            header(com.gtranca.online.contracts.AppSignature.TIME_HEADER, now.toString())
+            header(com.gtranca.online.contracts.AppSignature.SIGNATURE_HEADER, com.gtranca.online.contracts.AppSignature.sign("chave", "GET", "/ws/match/ABC234", now, "tok-ga"))
+        }
+        signed.status shouldBe HttpStatusCode.UpgradeRequired // passou pelo handshake; so falta o WebSocket
+    }
 }

@@ -168,4 +168,30 @@ class LobbyHttpTest {
     fun `18_2 sem convite nesta fase a pagina do convite nao existe`() = withApp {
         client.call(HttpMethod.Get, "/m/ABC234", version = null).status shouldBe HttpStatusCode.NotFound
     }
+
+    @Test
+    fun `18_2 so o aplicativo oficial, pedido sem assinatura valida e recusado`() {
+        var now = 10_000_000L
+        withApp(LobbyDeps(appKey = "chave", clock = { now })) {
+            fun signed(method: String, path: String, token: String?, at: Long = now): io.ktor.client.request.HttpRequestBuilder.() -> Unit = {
+                header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION)
+                if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+                header(com.gtranca.online.contracts.AppSignature.TIME_HEADER, at.toString())
+                header(com.gtranca.online.contracts.AppSignature.SIGNATURE_HEADER, com.gtranca.online.contracts.AppSignature.sign("chave", method, path, at, token))
+            }
+            val unsigned = client.call(HttpMethod.Post, "/api/lobby/guests", body = """{"name":"Ana"}""")
+            unsigned.status shouldBe HttpStatusCode.Unauthorized
+            unsigned.error() shouldBe ErrorCode.APP_NAO_RECONHECIDO
+            val ok = client.request("/api/lobby/guests") { method = HttpMethod.Post; signed("POST", "/api/lobby/guests", null)(); setBody("""{"name":"Ana"}""") }
+            ok.status shouldBe HttpStatusCode.Created
+            val ana = json.decodeFromString<GuestIdentity>(ok.bodyAsText())
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/tables", ana.token)() }.status shouldBe HttpStatusCode.OK
+            // assinatura de outro caminho, de outro token ou velha demais nao vale
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/guests", ana.token)() }.status shouldBe HttpStatusCode.Unauthorized
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/tables", "outro")(); header(HttpHeaders.Authorization, "Bearer ${ana.token}") }.status shouldBe HttpStatusCode.Unauthorized
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/tables", ana.token, at = now - 5 * 60_000L - 1)() }.status shouldBe HttpStatusCode.Unauthorized
+            // versao antiga recebe "Atualize o aplicativo" e nao "app nao reconhecido"
+            client.call(HttpMethod.Get, "/api/lobby/tables", ana.token, version = ONLINE_PROTOCOL_VERSION - 1).error() shouldBe ErrorCode.VERSAO_INCOMPATIVEL
+        }
+    }
 }

@@ -12,6 +12,7 @@ import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableClosed
 import com.gtranca.online.contracts.Welcome
 import com.gtranca.online.contracts.YouResigned
+import io.ktor.http.HttpMethod
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.request
 import io.ktor.client.statement.bodyAsText
@@ -145,7 +146,7 @@ class MatchSession internal constructor(
         try {
             client.http.webSocket(
                 "${client.endpoint.wsBase}/ws/match/$tableId",
-                request = { with(client) { protocol(token) } },
+                request = { with(client) { protocol(token, HttpMethod.Get, "/ws/match/$tableId") } },
             ) {
                 opened = true
                 val out = Channel<ClientMessage>(OUTBOX_SIZE)
@@ -198,7 +199,7 @@ class MatchSession internal constructor(
      */
     private suspend fun diagnose(cause: Exception): Outcome {
         val response = try {
-            client.http.request("${client.endpoint.httpBase}/ws/match/$tableId") { with(client) { protocol(token) } }
+            client.http.request("${client.endpoint.httpBase}/ws/match/$tableId") { with(client) { protocol(token, HttpMethod.Get, "/ws/match/$tableId") } }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

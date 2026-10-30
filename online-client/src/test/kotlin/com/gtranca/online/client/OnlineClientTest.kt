@@ -1,5 +1,6 @@
 package com.gtranca.online.client
 
+import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
@@ -59,9 +60,33 @@ class OnlineClientTest {
         guest.token shouldBe "tok"
         seen!!.url.toString() shouldBe "http://192.0.2.1:8080/api/lobby/guests"
         seen!!.method shouldBe HttpMethod.Post
-        seen!!.headers["X-Protocol-Version"] shouldBe "2"
+        seen!!.headers["X-Protocol-Version"] shouldBe ONLINE_PROTOCOL_VERSION.toString()
         seen!!.headers[HttpHeaders.Authorization] shouldBe null
         OnlineJson.decodeFromString(CreateGuestRequest.serializer(), body).name shouldBe "Ana"
+    }
+
+    // §18.2 so o aplicativo oficial
+    @Test
+    fun `com a chave do app cada pedido leva horario e assinatura que o servidor confere`() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val http = OnlineClient.newHttpClient(
+            MockEngine { req ->
+                seen = req
+                respond(OnlineJson.encodeToString(TableView.serializer(), table), HttpStatusCode.OK, json)
+            },
+        )
+        val c = OnlineClient(OnlineEndpoint.parse("192.0.2.1:8080", cleartext = true)!!, http, appKey = "chave", clock = { 1_000_000L })
+        c.table("tok", "ABC234")
+        val h = seen!!.headers
+        h[com.gtranca.online.contracts.AppSignature.TIME_HEADER] shouldBe "1000000"
+        com.gtranca.online.contracts.AppSignature.verify(
+            "chave", "GET", "/api/lobby/tables/ABC234", h[com.gtranca.online.contracts.AppSignature.TIME_HEADER],
+            h[com.gtranca.online.contracts.AppSignature.SIGNATURE_HEADER], "tok", 1_000_000L,
+        ) shouldBe true
+        com.gtranca.online.contracts.AppSignature.verify(
+            "outra", "GET", "/api/lobby/tables/ABC234", h[com.gtranca.online.contracts.AppSignature.TIME_HEADER],
+            h[com.gtranca.online.contracts.AppSignature.SIGNATURE_HEADER], "tok", 1_000_000L,
+        ) shouldBe false
     }
 
     // §18.2
