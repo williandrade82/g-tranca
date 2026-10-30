@@ -146,7 +146,7 @@ internal data class Inspection(
     val winner: Side?,
 ) {
     val resignations: List<ResignRecord>
-        get() = abandonments.filter { it.reason != AbandonReason.ANFITRIAO_ENCERROU }
+        get() = abandonments.filter { it.reason == AbandonReason.DESISTIU || it.reason == AbandonReason.TEMPO }
             .map { ResignRecord(it.seat, it.guestId, it.round) }
 }
 
@@ -157,7 +157,7 @@ internal data class Inspection(
  *
  * Relogio de jogada (§18.4, etapa 1.3c): com tempo definido a VEZ do humano conta (comprar, baixar e descartar) e a queda de
  * conexao NAO a para; esgotar = abandono (nunca se joga por ele). Sem tempo (indeterminado) a mesa espera. Abandono
- * (desistir/tempo): um robo assume o assento, exceto no 1x1 entre dois humanos (o outro vence na hora). Sem economia
+ * (desistir/tempo): um robo assume o assento, exceto se nao resta humano (ou no 1x1): o jogo termina na hora (§18.4). Sem economia
  * ainda: cada abandono vira um [AbandonEvent]. O relogio e INJETADO ([now], monotonico em ms) e os prazos disparam antes
  * de qualquer comando, entao os testes avancam o relogio sem dormir.
  */
@@ -216,7 +216,9 @@ class MatchSession(
     private var stage = TableStage.PLAYING
     private var autoAt: Long? = null
     private var endedAt: Long? = null
-    private val startedAt = now()
+    /** Inicio do jogo para a janela dos 60 s (§18.4): criacao da sessao, refeito na 1a conexao humana. */
+    private var startedAt = now()
+    private var everConnected = false
 
     /** 1x1 entre humanos: quem abandonou (continua `Slot.Human`, mas nao volta) e o vencedor declarado (§13.1). */
     private val forfeited = mutableSetOf<Int>()
@@ -227,7 +229,7 @@ class MatchSession(
     private var turnSeat: Int? = null
     private var turnStartedAt = 0L
 
-    /** Desde quando nenhum humano esta conectado (`null` = ha algum, ou nao se aplica). */
+    /** Desde quando nenhum humano esta conectado (`null` = ha algum, ou nao se aplica); base da regra "todos desconectados". */
     private var emptySince: Long? = null
 
     @Volatile
@@ -341,6 +343,10 @@ class MatchSession(
             }
         }
         links[seat] = link
+        if (!everConnected) {
+            everConnected = true
+            startedAt = now() // §18.4: os 60 s contam desde o inicio da 1a partida entregue aos jogadores
+        }
         refreshPresence()
         send(
             seat, link,
@@ -358,8 +364,9 @@ class MatchSession(
         if (links[seat] !== link) return // conexao antiga ja substituida
         links[seat] = null
         link.close(1000, "Conexao encerrada")
-        refreshPresence() // queda NAO para o relogio da vez (§18.4); so conta para a inatividade
+        refreshPresence() // queda NAO para o relogio da vez (§18.4)
         if (slots[seat] is Slot.Human) broadcastSeats(seat, SeatChange.DISCONNECTED)
+        destroyIfNobodyConnected() // §18.4 todos desconectados: percebido aqui, dentro do ator (sem corrida com o laco)
     }
 
     private fun onIncoming(seat: Int, link: PlayerLink, message: ClientMessage) {
@@ -419,8 +426,8 @@ class MatchSession(
     }
 
     /**
-     * Abandono voluntario ou por tempo (§13.1, §18.4): um robo assume o assento e o jogo segue; no 1x1 entre dois humanos
-     * nao ha robo e o outro vence na hora. Sem volta. Aposta/punicao: so registrado (fase 2).
+     * Abandono voluntario ou por tempo (§13.1, §18.4): um robo assume o assento e o jogo segue, MAS se for um 1x1 ou nao
+     * restar humano o jogo termina na hora (o outro lado vence, sem robo). Sem volta. Aposta/punicao: so registrado (fase 2).
      */
     private fun abandon(seat: Int, reason: AbandonReason) {
         val human = slots[seat] as? Slot.Human ?: return
@@ -432,18 +439,21 @@ class MatchSession(
         } else {
             "Você desistiu."
         }
-        val duel = table.mode == TableMode.INDIVIDUAL && slots.all { it is Slot.Human }
+        // §18.4 "Nunca se joga sem humano": 1x1 (humano x humano ou humano x robo) ou o ultimo humano de uma mesa maior.
+        val othersPlaying = slots.indices.any { it != seat && slots[it] is Slot.Human && it !in forfeited }
         links[seat] = null
-        if (duel) {
-            // §13.1/§18.4: 1x1 entre humanos, o outro vence; a partida em andamento nao e pontuada.
+        if (table.mode == TableMode.INDIVIDUAL || !othersPlaying) {
+            // §13.1: o lado de quem abandonou perde e o outro vence; a partida em andamento nao e pontuada. Nenhum robo assume.
+            val versus = if (slots.indices.any { it != seat && slots[it] is Slot.Human }) "O outro jogador venceu." else "O jogo terminou: você perdeu."
             forfeited += seat
-            forcedWinner = match.mode.sideOf(Seat(1 - seat))
+            val loser = match.mode.sideOf(Seat(seat))
+            forcedWinner = match.mode.sides.first { it != loser }
             stage = TableStage.GAME_OVER
             endedAt = now()
             syncTurn()
             version++
             link?.let {
-                send(seat, it, YouResigned("$text O outro jogador venceu."))
+                send(seat, it, YouResigned("$text $versus"))
                 it.close(1000, "Abandono")
             }
             refreshPresence()
@@ -466,6 +476,7 @@ class MatchSession(
         broadcastSeats(seat, SeatChange.RESIGNED, reason)
         broadcastUpdate(null)
         scheduleAuto()
+        destroyIfNobodyConnected() // sobraram so humanos desconectados
     }
 
     /** O anfitriao encerra a mesa em jogo (§18.4): abandono dele, sem robo; os demais recebem a aposta de volta. */
@@ -564,14 +575,11 @@ class MatchSession(
 
     // ------------------------------------------------------------------------------------------------ tempo
 
-    private fun botDelay(): Long = if (humansActive()) config.botDelayMs else 0
-
-    /** Ha humano que ainda joga (nao desistiu)? Os humanos sao sempre `Slot.Human` enquanto jogam. */
-    private fun humansActive(): Boolean = slots.any { it is Slot.Human }
+    private fun botDelay(): Long = config.botDelayMs // nunca ha jogo so de robos: o jogo termina quando o ultimo humano sai
 
     private fun scheduleAuto() {
         autoAt = when (stage) {
-            TableStage.ROUND_OVER -> now() + (if (humansActive()) config.roundPauseMs else 0)
+            TableStage.ROUND_OVER -> now() + config.roundPauseMs
             TableStage.GAME_OVER -> (endedAt ?: now()) + config.retainAfterEndMs
             TableStage.PLAYING ->
                 if (slots[match.currentRound.currentSeat.index] is Slot.Robot) now() + botDelay() else null
@@ -582,7 +590,7 @@ class MatchSession(
         val waits = listOfNotNull(
             autoAt?.let { it - now() },
             turnDeadline()?.let { it - now() },
-            emptySince?.let { it + config.idleTtlMs - now() },
+            emptySince?.let { it + presenceGraceMs() - now() },
         )
         return maxOf(0L, waits.minOrNull() ?: IDLE_POLL_MS)
     }
@@ -596,18 +604,13 @@ class MatchSession(
         }
     }
 
-    /** Prazos que correm sozinhos: fim da vez de um humano (§18.4) e inatividade (todos os humanos fora por muito tempo). */
+    /** Prazos que correm sozinhos: fim da vez de um humano (§18.4) e a folga de "todos desconectados" (padrao 0). */
     private fun fireDueTimers() {
         if (finished) return
         val deadline = turnDeadline()
         val seat = turnSeat
         if (deadline != null && seat != null && now() >= deadline) abandon(seat, AbandonReason.TEMPO)
-        val gone = emptySince
-        if (!finished && stage != TableStage.GAME_OVER && gone != null && now() - gone >= config.idleTtlMs) {
-            log.info("Sessao sem humanos conectados descartada por inatividade table={}", tableId)
-            endGame(GameEndReason.INATIVIDADE)
-            finished = true
-        }
+        destroyIfNobodyConnected()
     }
 
     // --- relogio da vez (§18.4)
@@ -637,6 +640,25 @@ class MatchSession(
         val seat = turnSeat ?: return null
         if (stage != TableStage.PLAYING || slots[seat] !is Slot.Human) return null
         return turnStartedAt + limit
+    }
+
+    /** Folga entre "nenhum humano conectado" e a destruicao: antes da 1a conexao e o prazo de entrada, depois a folga tecnica. */
+    private fun presenceGraceMs(): Long = if (everConnected) config.disconnectGraceMs else config.firstConnectMs
+
+    /**
+     * §18.4 "Todos desconectados": nenhum humano que ainda joga esta conectado (apos a 1a conexao, ou passado o prazo da
+     * 1a conexao) = a mesa e destruida na hora: abandono registrado por assento (sem mexer em moedas), sem robo, sem volta.
+     * Nao vale com o jogo acabado (a sessao fica retida para o placar). Roda dentro do ator.
+     */
+    private fun destroyIfNobodyConnected() {
+        if (finished || end != null || stage == TableStage.GAME_OVER) return
+        val since = emptySince ?: return
+        if (now() - since < presenceGraceMs()) return
+        log.info("Mesa destruida: nenhum humano conectado table={} firstConnection={}", tableId, everConnected)
+        slots.forEachIndexed { i, s -> if (s is Slot.Human && i !in forfeited) recordAbandon(i, s.guestId, AbandonReason.TODOS_DESCONECTADOS) }
+        links.forEachIndexed { i, l -> l?.close(1001, "Mesa destruida"); links[i] = null }
+        endGame(GameEndReason.TODOS_DESCONECTADOS)
+        finished = true
     }
 
     private fun refreshPresence() {

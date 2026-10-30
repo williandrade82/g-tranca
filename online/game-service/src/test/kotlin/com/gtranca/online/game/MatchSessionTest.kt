@@ -275,7 +275,8 @@ class MatchSessionTest {
         val run = startSession(TableMode.DUPLAS, duplasSeats(), seed = 3)
         val a = TestPlayer(run.session, "ga")
         a.attach()
-        // Os robos jogam ate chegar a vez de um humano; entao A cai (o outro humano nunca entrou).
+        TestPlayer(run.session, "gb").attach() // §18.4: com ao menos um humano conectado a queda de A so reserva o assento
+        // Os robos jogam ate chegar a vez de um humano; entao A cai.
         var info = run.session.inspect()
         val deadline = System.currentTimeMillis() + 30_000
         while (info.match.currentRound.currentSeat.index !in listOf(0, 2) && System.currentTimeMillis() < deadline) {
@@ -333,22 +334,19 @@ class MatchSessionTest {
     }
 
     @Test
-    fun `18_4 quando o ultimo humano desiste os robos terminam o jogo sozinhos`() = runBlocking {
+    fun `18_4 nunca se joga sem humano, o ultimo humano que desiste encerra o jogo na hora e o lado dele perde`() = runBlocking {
         val run = startSession(TableMode.DUPLAS, duplasSeats(), target = 150, seed = 9)
         val a = TestPlayer(run.session, "ga")
         val b = TestPlayer(run.session, "gb")
         a.attach()
         b.attach()
-        a.resign()
-        b.resign()
-        var info = run.session.inspect()
-        val deadline = System.currentTimeMillis() + 60_000
-        while (info.stage != TableStage.GAME_OVER && System.currentTimeMillis() < deadline) {
-            delay(50)
-            info = run.session.inspect()
-        }
+        a.resign() // o 1o ainda deixa outro humano: um robo assume
+        b.resign() // §18.4: o ultimo humano; ninguem assume e o jogo termina agora
+        val info = run.session.inspect()
         info.stage shouldBe TableStage.GAME_OVER
         info.resignations.size shouldBe 2
+        info.end!!.reason shouldBe com.gtranca.online.contracts.GameEndReason.ABANDONO
+        info.winner shouldBe com.gtranca.engine.model.Side(1) // b esta no assento 2 (lado 0): o lado 1 vence (§13.1)
         run.stop()
     }
 

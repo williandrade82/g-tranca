@@ -44,13 +44,25 @@ object GameLimits {
     const val MAX_CLIENT_MESSAGE_BYTES = 16 * 1024
 }
 
-/** Por que um jogador abandonou (§18.4): desistiu, o tempo da vez esgotou, ou o anfitriao encerrou a mesa em jogo. */
+/**
+ * Por que um jogador abandonou (§18.4): desistiu, o tempo da vez esgotou, o anfitriao encerrou a mesa em jogo, ou nenhum
+ * humano ficou conectado e a mesa foi destruida ([TODOS_DESCONECTADOS]; so registrado no servidor, nunca vai ao cliente).
+ */
 @Serializable
-enum class AbandonReason { DESISTIU, TEMPO, ANFITRIAO_ENCERROU }
+enum class AbandonReason { DESISTIU, TEMPO, ANFITRIAO_ENCERROU, TODOS_DESCONECTADOS }
 
 /** Como o jogo terminou (§13, §18.4). */
 @Serializable
-enum class GameEndReason { PONTUACAO, ABANDONO, ANFITRIAO_ENCERROU, INATIVIDADE, ERRO }
+enum class GameEndReason {
+    PONTUACAO, ABANDONO, ANFITRIAO_ENCERROU,
+
+    /** Reservado (antigo descarte por 2 h); o servidor nao o emite mais desde §18.4 "Todos desconectados". */
+    INATIVIDADE,
+    ERRO,
+
+    /** §18.4: nenhum humano da partida conectado; a mesa foi destruida na hora. */
+    TODOS_DESCONECTADOS,
+}
 
 /** Perfis de robo (§14.5). */
 @Serializable

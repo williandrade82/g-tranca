@@ -16,10 +16,16 @@ data class GameConfig(
     /** Depois do fim do jogo a sessao continua aceitando reconexao (para receber o resultado) por este tempo. */
     val retainAfterEndMs: Long = 10 * 60_000L,
     /**
-     * Sessao com TODOS os humanos desconectados por este tempo e descartada (encerramento por inatividade, §18.4). Jogo com
-     * humano conectado nao e descartado (sem relogio de jogada a mesa espera); com tempo definido o relogio decide.
+     * §18.4 "Todos desconectados": a mesa e destruida quando NENHUM humano esta conectado. Este e o tempo tecnico de folga
+     * entre perceber isso e destruir; o padrao 0 e o da regra (imediato).
      */
-    val idleTtlMs: Long = 2 * 3_600_000L,
+    val disconnectGraceMs: Long = 0,
+    /**
+     * PROVISORIO (pendente de decisao do usuario): prazo para o PRIMEIRO humano conectar depois que a partida e criada.
+     * A sessao nasce sem ninguem conectado (o app abre o canal logo apos o /start); a regra de destruicao so vale depois
+     * que algum humano conectou ao menos uma vez ou, sem nenhuma conexao, passado este prazo.
+     */
+    val firstConnectMs: Long = 60_000L,
     /** Abandono dentro deste tempo desde o inicio do jogo devolve a aposta mesmo com `PERDE_APOSTA` (§18.4: 60 s). */
     val abandonGraceMs: Long = 60_000,
     val hardConfig: HardBotConfig = HardBotConfig.DEFAULT,
@@ -44,7 +50,8 @@ data class GameConfig(
                 roundPauseMs = long("ROUND_PAUSE_MS", d.roundPauseMs),
                 maxMatches = int("MAX_MATCHES", d.maxMatches),
                 retainAfterEndMs = long("RETAIN_AFTER_END_MS", d.retainAfterEndMs),
-                idleTtlMs = long("IDLE_TTL_MS", d.idleTtlMs),
+                disconnectGraceMs = long("DISCONNECT_GRACE_MS", d.disconnectGraceMs),
+                firstConnectMs = long("FIRST_CONNECT_MS", d.firstConnectMs),
                 wsMessagesPerSecond = int("WS_MESSAGES_PER_SECOND", d.wsMessagesPerSecond),
                 wsBurst = int("WS_BURST", d.wsBurst),
                 wsPingMs = long("WS_PING_MS", d.wsPingMs),

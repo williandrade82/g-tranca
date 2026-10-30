@@ -48,7 +48,9 @@ import io.ktor.websocket.readReason
 import io.ktor.websocket.readText
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
 
@@ -244,6 +246,7 @@ class GameServerTest {
             header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
             header(HttpHeaders.Authorization, "Bearer tok-ga")
         }
+        ws.withPartnerConnected {
         var firstView: com.gtranca.online.contracts.OnlineSeatView? = null
         var sent = 0L
         ws.webSocket("/ws/match/ABC234", request = req) {
@@ -269,6 +272,20 @@ class GameServerTest {
             sendMessage(PlayAction(sent, u.view.version, Action.DrawFromStock))
             close()
         }
+        }
+    }
+
+    /** §18.4: mantem o 2o humano (gb) conectado, para a queda de A nao destruir a mesa ("todos desconectados"). */
+    private suspend fun io.ktor.client.HttpClient.withPartnerConnected(block: suspend () -> Unit) = coroutineScope {
+        val partner = launch {
+            webSocket("/ws/match/ABC234", request = {
+                header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
+                header(HttpHeaders.Authorization, "Bearer tok-gb")
+            }) { for (f in incoming) Unit }
+        }
+        delay(200)
+        block()
+        partner.cancel()
     }
 
     private suspend fun DefaultClientWebSocketSession.awaitMessage(pred: (ServerMessage) -> Boolean): ServerMessage? {
@@ -297,6 +314,7 @@ class GameServerTest {
             header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
             header(HttpHeaders.Authorization, "Bearer tok-ga")
         }
+        ws.withPartnerConnected {
         // JSON invalido e carta invalida (IllegalArgumentException do motor) nao derrubam a partida.
         for (bad in listOf("{nao e json", """{"type":"play","seq":1,"stateVersion":1,"action":{"type":"discard","card":"ZZ"}}""")) {
             ws.webSocket("/ws/match/ABC234", request = req) {
@@ -316,6 +334,7 @@ class GameServerTest {
         ws.webSocket("/ws/match/ABC234", request = req) {
             nextMessage().shouldBeInstanceOf<Welcome>()
             close()
+        }
         }
     }
 
