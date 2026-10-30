@@ -131,7 +131,9 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
             val leaveRoom = {
                 // O anfitrião encerra a mesa (com confirmação) e o convidado sai dela: nenhuma mesa fica esquecida aberta.
                 when {
-                    state.started -> navController.popBackStack(OnlineHomeRoute, inclusive = false)
+                    // Jogo iniciado, ou sem rede (sair/encerrar não chegariam ao servidor): volta direto; a mesa expira sozinha.
+                    state.started || state.connectionLost || state.problem == OnlineProblem.NETWORK || state.problem == OnlineProblem.MAINTENANCE ->
+                        navController.popBackStack(OnlineHomeRoute, inclusive = false)
                     state.isHost -> vm.onAskClose()
                     else -> vm.onLeave()
                 }
