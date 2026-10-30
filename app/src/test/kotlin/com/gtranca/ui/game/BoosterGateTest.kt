@@ -28,7 +28,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.random.Random
 
-/** §17.3 cada partida depois da primeira começa pelo seletor de boosters; a nova partida só começa depois do Seguir. */
+/** §17.3 (30/10/2026) os boosters são escolhidos no início do jogo e valem até o fim: as partidas seguintes não têm seletor. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class BoosterGateTest {
     private val dispatcher = StandardTestDispatcher()
@@ -84,35 +84,16 @@ class BoosterGateTest {
     }
 
     @Test
-    fun `§17_3 a partida seguinte so comeca depois do Seguir do seletor e os boosters valem so nela`() = runTest(dispatcher) {
+    fun `§17_3 os boosters do inicio do jogo valem na partida seguinte, sem novo seletor`() = runTest(dispatcher) {
         val game = vm(FakeInventory(), boosters = listOf("b1"))
         game.uiState.value.boosters shouldBe listOf("b1")
         playRound(game)
         game.uiState.value.snapshot.stage shouldBe Stage.ROUND_OVER
         game.onNextRound()
         advanceUntilIdle()
-        // o seletor está na tela e a partida 2 ainda não começou
-        game.uiState.value.boosterSelectorPending shouldBe true
-        game.uiState.value.snapshot.roundNumber shouldBe 1
-        game.onBoostersConfirmed(listOf("b3"))
-        advanceUntilIdle()
         game.uiState.value.boosterSelectorPending shouldBe false
         game.uiState.value.snapshot.roundNumber shouldBe 2
-        game.uiState.value.boosters shouldBe listOf("b3")
-    }
-
-    @Test
-    fun `§17_3 confirmar duas vezes nao pula de partida`() = runTest(dispatcher) {
-        val game = vm(FakeInventory())
-        playRound(game)
-        game.onNextRound()
-        advanceUntilIdle()
-        game.onBoostersConfirmed(listOf("b2"))
-        advanceUntilIdle()
-        game.onBoostersConfirmed(listOf("b1"))
-        advanceUntilIdle()
-        game.uiState.value.boosters shouldBe listOf("b2")
-        game.uiState.value.snapshot.roundNumber shouldBe 2
+        game.uiState.value.boosters shouldBe listOf("b1")
     }
 
     @Test
@@ -134,9 +115,8 @@ class BoosterGateTest {
         playRound(game)
         game.onNextRound()
         advanceUntilIdle()
-        game.onBoostersConfirmed(listOf("b3"))
-        advanceUntilIdle()
         game.uiState.value.snapshot.roundNumber shouldBe 2
+        game.uiState.value.boosters shouldBe listOf("b3")
         game.uiState.value.reactionsLeft shouldBe 3
     }
 }

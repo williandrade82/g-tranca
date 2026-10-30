@@ -105,6 +105,8 @@ fun RoundSummaryScreen(
         contentAlignment = Alignment.Center,
     ) {
         val maxModal = maxHeight * MODAL_MAX_FRACTION
+        // Texto da tabela um pouco menor que o padrão: o modal é mais estreito que a tela cheia de antes.
+        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium.copy(color = GColors.Ivory)) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -209,6 +211,7 @@ fun RoundSummaryScreen(
                 }
             }
         }
+        }
     }
     }
 }
@@ -240,7 +243,7 @@ private const val MODAL_MAX_FRACTION = 0.92f
 /** Altura mínima da janela dos detalhes, para não sumir em telas pequenas. */
 private val DETAILS_MIN_HEIGHT = 200.dp
 
-private const val LABEL_WEIGHT = 1.1f
+private const val LABEL_WEIGHT = 1.25f
 private const val VALUE_WEIGHT = 0.5f
 private const val COUNT_WEIGHT = 0.42f
 private const val POINTS_WEIGHT = 0.78f
@@ -369,6 +372,8 @@ private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = fal
     val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums, fontWeight = weight, textAlign = TextAlign.End)
     Row(
         Modifier.fillMaxWidth()
+            .heightIn(min = 34.dp)
+            .padding(vertical = 2.dp)
             .then(if (tag != null) Modifier.testTag(tag) else Modifier)
             .then(if (tourKey != null) Modifier.tourTarget(tourKey) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
@@ -376,7 +381,14 @@ private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = fal
         if (examples != null) {
             Box(Modifier.weight(LABEL_WEIGHT)) { CardExamples(examples, label) }
         } else {
-            Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
+            // Totais: o rótulo cabe numa linha (encolhe a fonte se precisar) para não encostar nas cápsulas.
+            if (pill) {
+                Box(Modifier.weight(LABEL_WEIGHT)) {
+                    com.gtranca.ui.theme.FitText(label, LocalTextStyle.current.copy(fontWeight = weight, color = GColors.Gold), minFontSp = 10)
+                }
+            } else {
+                Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight)
+            }
         }
         // §12 valor de cada carta/item (vazio nos subtotais e totais).
         Box(Modifier.weight(VALUE_WEIGHT), contentAlignment = Alignment.CenterEnd) {

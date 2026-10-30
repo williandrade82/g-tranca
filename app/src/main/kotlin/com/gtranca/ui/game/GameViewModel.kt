@@ -931,14 +931,10 @@ class GameViewModel(
     }
 
     fun onNextRound() {
-        // §17.3 contra robôs, cada partida começa pelo seletor de boosters (antes de ver a distribuição).
-        // §17.3 a partida nova zera os boosters de todos os assentos (todos escolhem de novo).
+        // §17.3 (30/10/2026) os boosters valem o jogo todo: a partida nova não tem seletor; só as reações recomeçam (§17.8).
         table = table.newRound()
-        if (boosterInventory != null && playsLocally && !multiplayer) local.update { it.copy(selectorPending = true, ownReaction = null) }
-        else {
-            local.update { it.copy(ownReaction = null) }
-            controller.continueToNextRound()
-        }
+        local.update { it.copy(ownReaction = null) }
+        controller.continueToNextRound()
     }
 
     private val reactionIds = AtomicLong(0)
