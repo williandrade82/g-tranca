@@ -755,7 +755,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 
 # **18. Jogo online**
 
-O jogo online é um **adicional**: permite jogar pela internet, em **mesas por convite**, com um **servidor dedicado**. Tudo o que existe para jogadores **próximos** (jogo contra robôs, §14, e multijogador local por Nearby, §16) **continua exatamente como está** e não depende de conta nem de internet. Plano e arquitetura (microserviços): `docs/plano-online.md`. Onde esta seção não diz o contrário, valem as regras do jogo (§1 a §13), as regras por mesa (§14.2 a §14.5), as moedas (§14.6) e os boosters (§17).
+O jogo online é um **adicional**: permite jogar pela internet, em **mesas mantidas pelo servidor**, com um **servidor dedicado**. Tudo o que existe para jogadores **próximos** (jogo contra robôs, §14, e multijogador local por Nearby, §16) **continua exatamente como está** e não depende de conta nem de internet. Plano e arquitetura (microserviços): `docs/plano-online.md`. Onde esta seção não diz o contrário, valem as regras do jogo (§1 a §13), as regras por mesa (§14.2 a §14.5), as moedas (§14.6) e os boosters (§17).
 
 ### **18.1. Servidor e conta**
 - O jogador informa o **servidor online** (IP ou nome) num **campo temporário do Perfil**, gravado **só no aparelho**. Sem servidor informado, ou sem conta entrada, as telas online mostram o que falta e o resto do app segue normal.
@@ -763,12 +763,31 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas por c
 - Quem não tem conta, ou não quer entrar, joga offline e por perto como sempre.
 
 ### **18.2. Mesa online**
-- Quem cria a mesa é o **anfitrião da mesa**. Ele escolhe as mesmas opções de §14.4 (modo, perfil de regras, pontuação-alvo, aposta, boosters de skill, §17.9) e mais os **critérios online** (§18.4). Tudo isso é **imutável** depois que o jogo começa.
-- Cada mesa tem um **id da mesa**: **6 caracteres** fáceis de digitar (letras e números **sem** os que se confundem: 0/O, 1/I/L), sem diferença entre maiúsculas e minúsculas, **único entre as mesas abertas**; vale enquanto a mesa existir.
-- **Visibilidade:** toda mesa é **privada** (só entra quem tem o id). *(Mesas públicas ficam para uma versão futura.)*
-- **Como entrar:** (a) **link** (`https://<servidor>/m/<id>`) enviado por mensagem; (b) **QR Code** na tela do anfitrião, lido pela **câmera padrão** do celular; os dois abrem uma página que **abre o aplicativo** já na mesa; (c) **digitando o id** na tela *Entrar numa mesa*, depois de configurar o servidor no Perfil. O aplicativo **não** lê QR Code por conta própria.
-- Os **assentos** são ocupados pelos amigos que entram; o que ficar vago o anfitrião preenche com **robôs** (como em §14.4, §14.5). O anfitrião **inicia** o jogo quando todos os lugares estão preenchidos.
-- **Aposta** (§14.6): cada humano precisa de **saldo maior ou igual** à aposta da mesa para ocupar um assento. A aposta é **retida** ao iniciar o jogo.
+- **Quem cria as mesas é o servidor**; o jogador **não** cria mesa nesta fase. *(Mesa criada pelo jogador fica para uma versão futura, provavelmente paga em moedas; com ela voltam os convites por link, QR Code e id.)*
+- **Mesa do servidor** — toda mesa nova nasce com estas opções, **imutáveis**:
+
+| Opção | Valor |
+|---|---|
+| Modo | Duplas |
+| Perfil de regras | Clássica (§14.3) |
+| Boosters de skill (§17.9) | Permitidos |
+| Pontuação-alvo | 1500 |
+| Tempo de jogada (§18.4) | 15 minutos |
+| Punição de abandono (§18.4) | Perde a aposta |
+| Aposta (§14.6) | 50 moedas |
+| Nível dos robôs (§14.5) | Fácil |
+
+- **Sempre há mesa aberta:** o servidor mantém **ao menos uma mesa aberta** (aguardando jogadores).
+  - Quando o **primeiro jogador** entra numa mesa aberta, o servidor conta **5 minutos** e então abre **mais uma mesa**.
+  - Quando o **último lugar** de uma mesa é ocupado e **não sobra nenhuma mesa aberta com lugar livre**, uma nova mesa é aberta **na hora**.
+  - O servidor nunca mantém **mais de uma mesa aberta vazia** (sem ninguém): se já existe uma, não abre outra. *(provisório, revisar com produto)*
+- **Lista de mesas:** a tela *Jogar online* mostra as **mesas abertas** do servidor (id, lugares ocupados com os nomes, lugares livres) e o jogador entra **tocando numa mesa** com lugar livre. Mesas em jogo **não** aparecem na lista.
+- Cada mesa tem um **id da mesa** de **6 caracteres** (letras e números **sem** os que se confundem: 0/O, 1/I/L), **único entre as mesas existentes**; serve para identificar a mesa na lista e nos registros.
+- **Anfitrião:** o **primeiro jogador** que entra na mesa é o **anfitrião da mesa**. Se ele sair **antes** de o jogo começar, o anfitrião passa ao jogador que entrou **logo depois** dele; se a mesa ficar vazia, ela volta a ser uma mesa aberta vazia.
+- **Início:** o anfitrião **inicia** o jogo quando quiser; os lugares ainda vagos são preenchidos com **robôs** do nível da mesa (§14.5). Lugar ocupado por humano não vira robô ao iniciar.
+- **Poderes do anfitrião durante o jogo** ficam **só com ele** e **não passam** a ninguém se ele cair; enquanto ele estiver fora, ninguém os tem, e a partida segue normalmente (ela roda no servidor, §18.3).
+- **Aposta** (§14.6): cada humano precisa de **saldo maior ou igual** à aposta da mesa para ocupar um assento. A aposta é **retida** ao iniciar o jogo. Enquanto não houver carteira online (§18.5, fase 2), a aposta é só **registrada** e nenhuma moeda muda de dono.
+- **Só o aplicativo oficial:** o servidor só atende o **Tranca-Bot**. Cada pedido do aplicativo leva uma **assinatura** feita com uma chave do aplicativo e um carimbo de tempo; pedido sem assinatura válida, ou com carimbo velho, é recusado. Quando o app estiver no Google Play, entra também o **atestado do Google** (Play Integrity). Isso impede robôs de terceiros de ocupar as mesas; não substitui a conta (§18.1).
 
 ### **18.3. A partida**
 - O **servidor** é a autoridade: guarda todas as cartas, valida cada jogada com as mesmas regras do motor e só envia a cada jogador a **vista do assento** dele (§16.4: mão **só** do próprio jogador; nunca a mão dos outros, o monte nem os mortos). O celular só envia a jogada que quer fazer.
@@ -776,22 +795,25 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas por c
 - **Boosters:** vêm do **inventário online** da conta (§18.5). Antes de cada partida cada humano vê o **seletor** (§17.3, prazo de 30 s); o custo é debitado do inventário **da conta**.
 
 ### **18.4. Critérios da mesa: tempo de jogada e abandono**
-- **Tempo de jogada** (escolha do anfitrião ao criar a mesa): **indeterminado**, **1 minuto** ou **5 minutos**. A contagem é da **vez** do jogador (comprar, baixar e descartar) e aparece na mesa. No **indeterminado** não há limite.
+- **Tempo de jogada** (opção da mesa): **indeterminado**, **1 minuto**, **5 minutos** ou **15 minutos** (a mesa do servidor usa 15 minutos, §18.2). A contagem é da **vez** do jogador (comprar, baixar e descartar) e aparece na mesa. No **indeterminado** não há limite.
 - **Tempo esgotado** vale como **abandono** do jogador (abaixo): nunca se joga por ele escolhendo entre jogadas legais.
-- **Punição de abandono** (escolha do anfitrião): **sem punição** ou **perde a aposta**.
+- **Punição de abandono** (opção da mesa): **sem punição** ou **perde a aposta**.
   - **Sem punição:** quem abandona **recebe a aposta de volta**.
   - **Perde a aposta:** quem abandona perde a aposta (retida no assento, como em §16.9), **exceto** se sair nos **primeiros 60 segundos do jogo** (contados desde o início da 1ª partida): então a aposta é **devolvida**.
 - **Abandonar** é sair voluntariamente da mesa (**desistir**, §13.1) ou deixar o tempo esgotar. Um **robô** assume o assento e o jogo segue para os demais; o robô guarda os boosters e as reações que sobraram (§17.4).
-- **1×1 entre dois humanos:** quem abandona (desistir ou tempo esgotado) entrega a vitória ao outro na hora (§13.1, §16.9); não entra robô.
+- **1×1 entre dois humanos:** quem abandona (desistir ou tempo esgotado) entrega a vitória ao outro na hora (§13.1, §16.9); não entra robô. Se o anfitrião **encerra** um 1×1 entre humanos, **ninguém vence** e o outro recebe a aposta de volta.
 - **Nunca se joga sem humano:** se, depois de um abandono, **não resta nenhum humano** na partida (um 1×1 entre humano e robô, ou o último humano de uma mesa maior), o jogo **termina na hora**: o **lado de quem abandonou perde** e o outro vence (§13.1); nenhum robô assume nem o jogo segue só entre robôs.
-- **Todos desconectados:** se **nenhum humano** da partida está conectado, a mesa é **destruída imediatamente**, assim que o servidor percebe (conexão fechada ou sem resposta ao ping). Não entra robô e ninguém volta. A **queda de conexão** (abaixo) só dá direito de voltar enquanto **houver ao menos um humano conectado**. O tratamento das apostas nesse caso será definido na §18.5, antes da economia online (fase 2).
+- **Todos desconectados:** se **nenhum humano** da partida está conectado por **90 segundos** seguidos (tela bloqueada ou ligação não destroem a mesa na hora), a mesa é **destruída**. Não entra robô e ninguém volta; **todos recebem a aposta de volta**. Quem volta dentro dos 90 s retoma o assento normalmente. A partida recém-iniciada dá **60 segundos** para o primeiro humano conectar antes de valer esta regra.
 - **Sem volta:** quem abandonou **não retoma** o assento (o robô fica nele até o fim do jogo); diferente do jogo local (§16.9).
 - **Próxima partida:** inicia sozinha alguns segundos depois do fim da anterior (§16.11); a mesa não espera por telas.
-- **Nível dos robôs da mesa:** escolha do anfitrião ao criar a mesa (padrão **Fácil**), imutável depois de iniciar.
-- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode, a qualquer momento, **substituí-lo por um robô** (conta como abandono).
+- **Nível dos robôs da mesa:** opção da mesa (a do servidor é **Fácil**, §18.2), imutável.
+- **Duplas:** cada humano joga a **própria vez** no próprio celular; o parceiro não joga por ele.
+- **Moedas dos abandonos em duplas:** como na mesa multijogador local (§16.13).
+- **Fim do jogo:** todos veem a **tela final**; a mesa guarda o resultado por **10 minutos** para quem estava fora e então é apagada. Não há "nova partida" na mesma mesa: para jogar de novo, entra-se noutra mesa da lista.
+- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião, se estiver conectado, pode **substituí-lo por um robô** (conta como abandono).
 - **Mesa encerrada durante o jogo:** se o anfitrião da mesa a **encerra** com o jogo em andamento, conta como **abandono do anfitrião** (a punição escolhida vale para ele) e os **demais jogadores humanos recebem a aposta de volta**; nenhum robô assume uma mesa encerrada.
 - **Boosters de skill:** a mesa os **permite ou não** (a mesma escolha de §17.9); não há escolha por tipo.
-- Os critérios aparecem no **convite** (link e tela de entrada), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
+- Os critérios aparecem na **lista de mesas** (§18.2), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
 
 ### **18.5. Moedas, inventário e loja online**
 - A conta tem **carteira** e **inventário de boosters** **guardados no servidor**, separados dos do aparelho. Nada do que se ganha ou gasta no online altera a carteira e o inventário **locais**, e vice-versa (depois da migração, §18.6).
