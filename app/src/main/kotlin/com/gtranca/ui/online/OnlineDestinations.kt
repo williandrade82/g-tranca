@@ -31,6 +31,10 @@ object OnlineHomeRoute
 @Serializable
 data class OnlineRoomRoute(val tableId: String)
 
+/** A partida online da mesa (etapa B, §18.3). */
+@Serializable
+data class OnlineGameRoute(val tableId: String)
+
 /** Chave, na entrada de [OnlineHomeRoute], do aviso de volta de uma sala (um [OnlineRoomEnd]). */
 private const val ONLINE_NOTICE = "online-notice"
 
@@ -53,14 +57,14 @@ internal object OnlineServices {
 }
 
 /** Conta e endereço para o servidor atual do Perfil. */
-internal class OnlineEnv(val account: OnlineAccount, val endpoint: OnlineEndpoint)
+internal class OnlineEnv(val account: OnlineAccount, val endpoint: OnlineEndpoint, val client: OnlineClient)
 
 private fun accountFor(data: GameData, defaultName: String, server: String): OnlineEnv? {
     val client = OnlineServices.client(server) ?: return null
     val account = OnlineAccount(client, data.settings) {
         PlayerProfile.decode(data.settings.settings.first().profileId).name.trim().ifBlank { defaultName }
     }
-    return OnlineEnv(account, client.endpoint)
+    return OnlineEnv(account, client.endpoint, client)
 }
 
 /** Lê o servidor do Perfil uma vez; `null` enquanto carrega e `Unit`-vazio se o online está desligado. */
@@ -140,7 +144,23 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
                     }
                 },
                 onBack = { navController.popBackStack(OnlineHomeRoute, inclusive = false) },
+                // §18.3 o anfitrião iniciou: todos vão à mesa de jogo.
+                onStarted = {
+                    navController.navigate(OnlineGameRoute(route.tableId)) { popUpTo(OnlineRoomRoute(route.tableId)) { inclusive = true } }
+                },
             )
         } ?: env?.let { LaunchedEffect(Unit) { navController.popBackStack() } }
+    }
+    composable<OnlineGameRoute> { entry ->
+        val route = entry.toRoute<OnlineGameRoute>()
+        val env = rememberOnlineEnv(data)
+        val leave: () -> Unit = {
+            if (!navController.popBackStack(OnlineHomeRoute, inclusive = false)) {
+                navController.navigate(OnlineHomeRoute) { popUpTo(OnlineGameRoute(route.tableId)) { inclusive = true } }
+            }
+        }
+        env?.getOrNull()?.let { online ->
+            OnlineGameDestination(data, online.client, online.account, route.tableId, onExit = { leave() })
+        } ?: env?.let { LaunchedEffect(Unit) { leave() } }
     }
 }

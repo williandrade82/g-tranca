@@ -225,9 +225,9 @@ private fun TableCard(table: TableView, myId: String, self: Persona, photos: Map
             // Fora da mesa: tocar senta; já nela: tocar troca de lugar (§18.2).
             onSeatTap = if (table.state == TableState.ABERTA) onSeatTap else null,
         )
-        if (mine && table.state == TableState.ABERTA) {
+        if (mine) {
             GButton(onBackToRoom, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-table-enter-${table.id}")) {
-                Text(stringResource(R.string.online_table_back_to_room), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(if (table.state == TableState.EM_JOGO) R.string.online_table_back_to_game else R.string.online_table_back_to_room), style = MaterialTheme.typography.titleMedium)
             }
         }
         TableSummary(table)
@@ -410,10 +410,13 @@ fun OnlineRoomScreen(
     self: Persona,
     onEnded: (OnlineRoomEnd) -> Unit,
     onBack: () -> Unit,
+    /** O jogo começou (§18.3): a tela vai à mesa de jogo. */
+    onStarted: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val photos by viewModel.photos.collectAsStateWithLifecycle()
     LaunchedEffect(state.ended) { state.ended?.let(onEnded) }
+    LaunchedEffect(state.started) { if (state.started) onStarted() }
     val table = state.table
     TableFrame(
         stringResource(R.string.online_room_title),

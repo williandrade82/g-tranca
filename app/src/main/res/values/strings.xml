@@ -826,7 +826,9 @@
     <string name="online_dupla_seat">Dupla %1$d – %2$d</string>
     <string name="online_table_enter">Entrar</string>
     <string name="online_table_back_to_room">Voltar à sala</string>
+    <string name="online_table_back_to_game">Voltar ao jogo</string>
     <string name="online_table_choose_title">Mesa %1$s</string>
+    <string name="online_game_ended_title">Fim da mesa</string>
     <string name="online_waiting_host">Aguardando início pelo anfitrião</string>
     <string name="online_table_id_small">id %1$s</string>
     <string name="online_seat_tap_hint">Toque num lugar VAGO para sentar.</string>
