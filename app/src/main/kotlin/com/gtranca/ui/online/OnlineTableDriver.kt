@@ -98,6 +98,25 @@ class OnlineTableDriver private constructor(
 
     private val lock = Any()
 
+    /**
+     * §12 a pontuação da partida fica na tela até o Continuar: o servidor já distribui a seguinte (§18.4, poucos segundos
+     * depois), então as vistas de partidas mais novas esperam aqui e só entram na fila depois do Continuar.
+     */
+    private var holdingRound: Int? = null
+    private val held = ArrayDeque<GameSnapshot>()
+
+    private fun offer(snapshot: GameSnapshot) {
+        synchronized(lock) {
+            val hold = holdingRound
+            if (hold != null && snapshot.roundNumber > hold) {
+                held.addLast(snapshot)
+                return
+            }
+            if (snapshot.stage == Stage.ROUND_OVER) holdingRound = snapshot.roundNumber
+        }
+        pacer.offer(snapshot)
+    }
+
     private val pacer = SnapshotPacer(
         paceMillis = paceMillis,
         dealWaitMillis = { if (paceMillis() > 0) (DEAL_MILLIS * dealDelayScale).toLong() + WAIT_GRACE_MILLIS else 0 },
@@ -119,6 +138,7 @@ class OnlineTableDriver private constructor(
     }
 
     init {
+        if (shown.stage == Stage.ROUND_OVER) holdingRound = shown.roundNumber
         scope.launch { pacer.run(shown) }
         scope.launch { answered.collect { refresh() } }
         scope.launch {
@@ -135,7 +155,7 @@ class OnlineTableDriver private constructor(
                 when (val m = event.message) {
                     // Reconexão: a vista atual chega logo depois; o pedido respondido antes da queda vale de novo.
                     is Welcome -> { _seats.value = m.seats; answered.value = 0 }
-                    is SeatUpdate -> pacer.offer(m.view.toSnapshot(config, welcome))
+                    is SeatUpdate -> offer(m.view.toSnapshot(config, welcome))
                     is SeatsChanged -> _seats.value = m.seats
                     is Rejected -> {
                         answered.value = 0
@@ -183,8 +203,19 @@ class OnlineTableDriver private constructor(
 
     override fun dealAnimationDone(roundNumber: Int) = pacer.dealAnimationDone(roundNumber)
 
-    /** A próxima partida começa sozinha no servidor (§18.4); nada a enviar. */
-    override fun continueToNextRound() = Unit
+    /**
+     * O jogador terminou as telas de resultado: a próxima partida já começou no servidor (§18.4); as vistas guardadas
+     * entram na fila e a tela as mostra no ritmo de sempre até alcançar a mesa.
+     */
+    override fun continueToNextRound() {
+        val pending = synchronized(lock) {
+            holdingRound = null
+            val list = held.toList()
+            held.clear()
+            list
+        }
+        pending.forEach(::offer)
+    }
 
     override fun resign() {
         scope.launch { session.resign() }
