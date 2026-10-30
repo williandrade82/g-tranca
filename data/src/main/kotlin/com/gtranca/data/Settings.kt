@@ -55,7 +55,20 @@ data class Settings(
     val refusalAlert: RefusalAlert = RefusalAlert.EXPLAIN,
     /** §14.4 última montagem da mesa (docs/telas.md 3.2), ou `null` se ainda não montou nenhuma. */
     val tableSetup: TableSetup? = null,
+    /** §18.1 servidor online (campo temporário do Perfil, só no aparelho): `host` ou `host:porta`; vazio = online desligado. */
+    val onlineServer: String = "",
+    /** §18.1 convidado provisório no servidor online (fase 1; some quando entrar o login Google), ou `null` se ainda não entrou. */
+    val onlineGuest: OnlineGuest? = null,
 )
+
+/**
+ * Identidade de convidado no servidor online (§18.1, fase 1): [id], [name] e o [token] de acesso. O token fica só no
+ * armazenamento privado do app; nunca vai em log nem em URL.
+ */
+@kotlinx.serialization.Serializable
+data class OnlineGuest(val id: String, val name: String, val token: String) {
+    override fun toString() = "OnlineGuest(id=$id, name=$name, token=***)"
+}
 
 interface SettingsRepository {
     val settings: Flow<Settings>
@@ -88,6 +101,12 @@ interface SettingsRepository {
 
     /** §14.4 grava a montagem da mesa (substitui a configuração antiga de "Criar mesa"). */
     suspend fun setTableSetup(setup: TableSetup) = Unit
+
+    /** §18.1 grava o servidor online (sem espaços nas pontas; vazio desliga). Trocar de servidor esquece o convidado. */
+    suspend fun setOnlineServer(server: String) = Unit
+
+    /** §18.1 guarda (ou, com `null`, esquece) o convidado provisório do servidor online. */
+    suspend fun setOnlineGuest(guest: OnlineGuest?) = Unit
 }
 
 /** Preferências no DataStore Preferences. */
@@ -111,6 +130,8 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             refusalAlert = prefs[REFUSAL_ALERT]?.let { name -> RefusalAlert.entries.firstOrNull { it.name == name } } ?: RefusalAlert.EXPLAIN,
             // A configuração antiga de "Criar mesa" vale só enquanto não há montagem nova (tipo e nome da mesa ignorados).
             tableSetup = prefs[TABLE_SETUP]?.let(TableSetup::decode) ?: prefs[CREATE_TABLE]?.let(TableSetup::fromLegacy),
+            onlineServer = prefs[ONLINE_SERVER].orEmpty(),
+            onlineGuest = prefs[ONLINE_GUEST]?.let { text -> runCatching { RULES_JSON.decodeFromString(OnlineGuest.serializer(), text) }.getOrNull() },
         )
     }
 
@@ -142,6 +163,21 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         store.edit {
             it[TABLE_SETUP] = setup.encode()
             it.remove(CREATE_TABLE)
+        }
+    }
+
+    override suspend fun setOnlineServer(server: String) {
+        store.edit {
+            val clean = server.trim()
+            // O convidado é do servidor: outro endereço, outro convidado.
+            if (clean != (it[ONLINE_SERVER] ?: "")) it.remove(ONLINE_GUEST)
+            if (clean.isEmpty()) it.remove(ONLINE_SERVER) else it[ONLINE_SERVER] = clean
+        }
+    }
+
+    override suspend fun setOnlineGuest(guest: OnlineGuest?) {
+        store.edit {
+            if (guest == null) it.remove(ONLINE_GUEST) else it[ONLINE_GUEST] = RULES_JSON.encodeToString(OnlineGuest.serializer(), guest)
         }
     }
 
@@ -182,6 +218,8 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         /** Formato antigo (até a mesa montada): lido uma vez como [TableSetup.fromLegacy] e apagado ao gravar. */
         val CREATE_TABLE = stringPreferencesKey("create_table")
         val TABLE_SETUP = stringPreferencesKey("table_setup")
+        val ONLINE_SERVER = stringPreferencesKey("online_server")
+        val ONLINE_GUEST = stringPreferencesKey("online_guest")
         val TOURS_SEEN = androidx.datastore.preferences.core.stringSetPreferencesKey("tours_seen")
         val SLOW_ANIMATIONS = booleanPreferencesKey("slow_animations")
         val CUSTOM_RULES = stringPreferencesKey("custom_rules")
