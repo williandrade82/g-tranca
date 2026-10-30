@@ -27,3 +27,9 @@ include(":sim")
 include(":data")
 include(":app")
 include(":net")
+
+// Jogo online (docs/plano-online.md): o :online-client usa os DTOs de online/contracts SEM duplicá-los. O módulo é incluído
+// por caminho (nenhum arquivo de online/ muda); não se usa includeBuild porque o build de online/ também inclui :core-engine.
+include(":online-contracts")
+project(":online-contracts").projectDir = file("online/contracts")
+include(":online-client")
