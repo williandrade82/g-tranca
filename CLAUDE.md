@@ -1,8 +1,12 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # G-Tranca
 
 Nome público do app: **Tranca-Bot** (`app_name`; no logotipo e nos modais, "TRANCA-BOT" em caixa alta), descrição **Um jogo de tranca robotizado pra jogar entre família** (`home_title_tagline`). `applicationId` = `br.com.funnyandplay.trancabot`; o código continua no pacote `com.gtranca` e "G-Tranca" é o nome interno. Identidade visual: paleta do robô (azul royal, azul-pele, ouro, creme) e a coroa dourada como símbolo; feltro verde só na mesa.
 
-Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a máquina (individual) ou humano + parceiro virtual contra dupla virtual (duplas).
+Jogo de Tranca (família Canastra) para Android. Contra os robôs é 100% offline: humano contra a máquina (individual) ou humano + parceiro virtual contra dupla virtual (duplas). Também há multijogador local (até 4 celulares próximos, sem internet, §16) e jogo online em construção (§18), aditivo: não altera o offline nem o local.
 
 ## Fonte da verdade
 
@@ -29,8 +33,11 @@ Jogo de Tranca (família Canastra) para Android, 100% offline: humano contra a m
 | `:net` | Kotlin/JVM puro | Multijogador local: protocolo versionado, sessão (anfitrião/convidado), interface `LocalTransport` e transporte em memória. Depende só de `:core-engine`. |
 | `:data` | Android library | DataStore (configurações), persistência da partida salva e estatísticas. |
 | `:app` | Android app | Telas Compose, ViewModels, `GameController`. |
+| `:online-contracts` | Kotlin/JVM | Contratos do online; mora em `online/contracts`, incluído por caminho no build raiz. |
+| `:online-client` | Kotlin/JVM | Cliente do online (lobby HTTP + partida WebSocket), `api` de `:online-contracts`. |
+| `online/` | build Gradle próprio | Backend Ktor (`lobby-service`, `game-service`, `probe`, `deploy/` Helm, k8s local). Ver `online/deploy/README.md`. |
 
-Regra de dependência: `app → data, ai, net, core-engine`; `ai → core-engine`; `net → core-engine`; `sim → ai, core-engine`. O `core-engine` não depende de nada do projeto.
+Regra de dependência: `app → data, ai, net, online-client, core-engine`; `online-client → online-contracts`; `ai → core-engine`; `net → core-engine`; `sim → ai, core-engine`. O `core-engine` não depende de nada do projeto.
 
 ## Princípios do motor
 
@@ -67,7 +74,10 @@ Identificadores em inglês; textos da interface em português (pt-BR) em `string
 ./gradlew.bat test                     # todos os testes JVM
 ./gradlew.bat :app:assembleDebug       # APK debug
 ./gradlew.bat :sim:run --args="--games 1000 --seed 42"
+./gradlew.bat :core-engine:test --tests "*NomeDaClasseTest*"   # um teste só
 ```
+
+O backend `online/` compila com o próprio wrapper (`online\gradlew.bat`); os módulos dele não mudam quando se mexe no app.
 
 ## Agentes do projeto (`.claude/agents/`)
 
