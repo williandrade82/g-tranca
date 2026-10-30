@@ -1,9 +1,12 @@
 # Traefik oficial como ingress. Escolhido por ser um unico pod, ja ouvir nas portas 80/443 do host via LoadBalancer
-# do Docker Desktop e porque o ingress-nginx foi aposentado. Apenas definido; ainda nao instalado.
+# do Docker Desktop e porque o ingress-nginx foi aposentado.
 # helm repo add traefik https://traefik.github.io/charts && helm repo update
-# helm install traefik traefik/traefik -n traefik --create-namespace --kube-context docker-desktop -f traefik-values.yaml
+# helm upgrade --install traefik traefik/traefik -n traefik --create-namespace --kube-context docker-desktop -f traefik-values.yaml
 service:
   type: LoadBalancer
+  # Preserva o IP de origem do cliente; sem isso o lobby ve todos como o gateway 10.244.0.1 e o limite por IP vira global.
+  spec:
+    externalTrafficPolicy: Local
 ports:
   web:
     port: 8000
@@ -14,3 +17,6 @@ providers:
   kubernetesIngress:
     publishedService:
       enabled: true
+# Log de acesso (stdout do pod): kubectl --context docker-desktop -n traefik logs deploy/traefik
+accessLog:
+  enabled: true

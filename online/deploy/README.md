@@ -13,7 +13,7 @@ cd .. && TAG=$(git rev-parse --short HEAD) && docker build -f online/game-servic
 
 # 2. Ingress (Traefik) - uma vez
 helm repo add traefik https://traefik.github.io/charts && helm repo update
-helm install traefik traefik/traefik -n traefik --create-namespace --kube-context docker-desktop -f deploy/infra/traefik-values.yaml
+helm upgrade --install traefik traefik/traefik --version 42.1.3 -n traefik --create-namespace --kube-context docker-desktop -f deploy/infra/traefik-values.yaml
 
 # 3. game-service
 helm upgrade --install game-service deploy/helm/game-service -n gtranca --create-namespace \
@@ -45,7 +45,7 @@ helm upgrade --install lobby-service deploy/helm/lobby-service -n gtranca --kube
 
 Ingress por prefixo no Traefik: `/m` e `/api/lobby` vao para o lobby-service; `/health`, `/info` e o resto seguem no game-service. (Os Dockerfiles copiam todos os modulos porque o `settings.gradle.kts` inclui todos.)
 
-Variaveis: `PORT`, `TABLE_OPEN_TTL_MINUTES` (30), `RATE_LIMIT_PER_MINUTE` (120 por IP), `TRUST_FORWARDED_FOR` (`true` atras do Traefik: usa o ultimo IP de `X-Forwarded-For` no limite de taxa).
+Variaveis: `PORT`, `TABLE_OPEN_TTL_MINUTES` (30), `RATE_LIMIT_PER_MINUTE` (120 por IP; no cluster local 2000, porque o Docker Desktop entrega todos os clientes com o mesmo IP interno), `GUEST_CREATION_PER_MINUTE` (10 por IP; local 200), `TRUST_FORWARDED_FOR` (`true` atras do Traefik: usa o ultimo IP de `X-Forwarded-For` no limite de taxa).
 
 Exemplo (toda chamada de `/api/lobby` leva `X-Protocol-Version: 2`; depois do convidado, `Authorization: Bearer <token>`):
 

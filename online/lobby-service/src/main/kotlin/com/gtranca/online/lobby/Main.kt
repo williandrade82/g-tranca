@@ -64,6 +64,7 @@ fun main() {
             openTtlMs = (System.getenv("TABLE_OPEN_TTL_MINUTES")?.toLongOrNull() ?: 30L) * 60_000L,
         ),
         ipLimitPerMinute = System.getenv("RATE_LIMIT_PER_MINUTE")?.toIntOrNull() ?: 120,
+        guestCreationPerMinute = System.getenv("GUEST_CREATION_PER_MINUTE")?.toIntOrNull() ?: 10,
         gateway = HttpGameGateway(System.getenv("GAME_SERVICE_URL")?.takeIf { it.isNotBlank() } ?: "http://game-service", secret),
         internalSecret = secret,
     )
