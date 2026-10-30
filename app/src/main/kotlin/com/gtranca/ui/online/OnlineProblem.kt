@@ -20,6 +20,9 @@ enum class OnlineProblem {
     UNAUTHENTICATED,
     TABLE_NOT_FOUND,
     TABLE_FULL,
+
+    /** §18.2: outro jogador pediu o mesmo lugar antes. */
+    SEAT_TAKEN,
     ALREADY_STARTED,
     NOT_HOST,
     EMPTY_SEATS,

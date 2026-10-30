@@ -54,9 +54,8 @@ data class OnlineHomeUiState(
     val onlinePlayers: Int = 0,
     /** A última consulta da lista falhou; segue tentando sozinho. */
     val listProblem: OnlineProblem? = null,
-    /** Mesa tocada: mostra as opções e "Ocupar este lugar" antes de entrar. */
-    val selected: TableView? = null,
-    val joining: Boolean = false,
+    /** Lugar pedido ao servidor e ainda sem resposta (mesa, assento). */
+    val joining: Pair<String, Int>? = null,
     /** Já entrou: a tela abre a sala e chama [OnlineHomeViewModel.onJoinedHandled]. */
     val joinedId: String? = null,
 ) {
@@ -121,39 +120,36 @@ class OnlineHomeViewModel(
     private suspend fun refreshList(acc: OnlineAccount) {
         attempt { acc.call { api, guest -> guest.id to api.tables(guest.token) } }.fold(
             onSuccess = { (myId, list) ->
-                _uiState.update { s ->
-                    // A mesa escolhida acompanha a lista (alguém pode ter ocupado o último lugar).
-                    val selected = s.selected?.let { sel -> list.tables.firstOrNull { it.id == sel.id } }?.takeIf { it.canEnter(myId) }
-                    s.copy(myId = myId, tables = list.tables, onlinePlayers = list.onlinePlayers, listProblem = null, selected = selected)
-                }
+                _uiState.update { s -> s.copy(myId = myId, tables = list.tables, onlinePlayers = list.onlinePlayers, listProblem = null) }
             },
             onFailure = { e -> _uiState.update { it.copy(listProblem = e.problem()) } },
         )
     }
 
-    /** Tocar numa mesa: a minha mesa reabre a sala direto; outra mostra as opções e "Ocupar este lugar". */
-    fun onSelect(table: TableView) {
-        val s = _uiState.value
-        if (!table.canEnter(s.myId) || s.joining) return
-        if (table.seats.any { it.guestId == s.myId }) {
-            _uiState.update { it.copy(joinedId = table.id, selected = null) }
-            return
-        }
-        _uiState.update { it.copy(selected = table, problem = null) }
+    /** A minha mesa: reabre a sala ("Voltar à sala"). */
+    fun onBackToRoom(table: TableView) {
+        if (table.seats.any { it.guestId == _uiState.value.myId }) _uiState.update { it.copy(joinedId = table.id) }
     }
 
-    fun onDismissSelected() = _uiState.update { it.copy(selected = null) }
-
-    /** "Ocupar este lugar": entra no primeiro lugar livre da mesa escolhida. */
-    fun onOccupy() {
+    /**
+     * Tocar num lugar VAGO (§18.2): pede aquele lugar ao servidor. Aceito, abre a sala; se outro chegou antes, o servidor
+     * recusa e a tela avisa "Esse lugar acabou de ser ocupado" e atualiza a mesa.
+     */
+    fun onSeatTap(table: TableView, seat: Int) {
         val acc = account ?: return
-        val table = _uiState.value.selected ?: return
-        if (_uiState.value.joining) return
-        _uiState.update { it.copy(joining = true, problem = null) }
+        val s = _uiState.value
+        if (s.joining != null || table.state != TableState.ABERTA) return
+        if (table.seats.any { it.guestId == s.myId }) return onBackToRoom(table)
+        if (table.seats.getOrNull(seat)?.kind != SeatKind.VAGO) return
+        _uiState.update { it.copy(joining = table.id to seat, problem = null) }
         viewModelScope.launch {
-            attempt { acc.call { api, guest -> api.join(guest.token, table.id) } }.fold(
-                onSuccess = { t -> _uiState.update { it.copy(joining = false, selected = null, joinedId = t.id) } },
-                onFailure = { e -> _uiState.update { it.copy(joining = false, selected = null, problem = e.problem()) } },
+            attempt { acc.call { api, guest -> api.join(guest.token, table.id, seat) } }.fold(
+                onSuccess = { t -> _uiState.update { it.copy(joining = null, joinedId = t.id) } },
+                onFailure = { e ->
+                    val problem = e.problem().let { if (it == OnlineProblem.TABLE_FULL) OnlineProblem.SEAT_TAKEN else it }
+                    _uiState.update { it.copy(joining = null, problem = problem) }
+                    refreshList(acc)
+                },
             )
         }
     }
@@ -182,6 +178,8 @@ data class OnlineRoomUiState(
     val connectionLost: Boolean = false,
     /** Escolhendo a quem entregar a mesa (§18.2). */
     val choosingHost: Boolean = false,
+    /** Anfitrião tocou num jogador: confirma se o remove. */
+    val askRemove: Int? = null,
     val ended: OnlineRoomEnd? = null,
 ) {
     val started: Boolean get() = table?.state == TableState.EM_JOGO
@@ -278,8 +276,15 @@ class OnlineRoomViewModel(
         }
     }
 
+    /** Anfitrião tocou num jogador da mesa: pergunta se o remove. */
+    fun onAskRemove(seat: Int) = _uiState.update { if (it.isHost) it.copy(askRemove = seat) else it }
+    fun onDismissRemove() = _uiState.update { it.copy(askRemove = null) }
+
     /** Anfitrião: tira um jogador da mesa. */
-    fun onRemove(seat: Int) = act({ api, token -> api.removeHuman(token, tableId, seat) })
+    fun onRemove(seat: Int) {
+        _uiState.update { it.copy(askRemove = null) }
+        act({ api, token -> api.removeHuman(token, tableId, seat) })
+    }
 
     /** Anfitrião: inicia o jogo; os lugares livres viram robôs (§18.2). */
     fun onStart() = act({ api, token -> api.start(token, tableId) })

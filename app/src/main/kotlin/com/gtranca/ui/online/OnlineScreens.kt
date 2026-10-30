@@ -33,10 +33,24 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.Seat
+import com.gtranca.game.Persona
+import com.gtranca.game.SeatRole
+import com.gtranca.ui.persona.PersonaAvatar
+import com.gtranca.ui.selection.Felt
+import com.gtranca.ui.selection.FeltDark
+import com.gtranca.ui.selection.RobotPhoto
+import com.gtranca.ui.selection.Wood
 import com.gtranca.R
 import com.gtranca.game.BotCharacter
 import com.gtranca.online.contracts.BotLevel
@@ -48,11 +62,8 @@ import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
 import com.gtranca.online.contracts.TempoDeJogada
-import com.gtranca.ui.persona.CharacterPortrait
-import com.gtranca.ui.persona.Pose
 import com.gtranca.ui.tables.BottomButton
 import com.gtranca.ui.tables.TableFrame
-import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.theme.FitText
 import com.gtranca.ui.theme.GButton
 import com.gtranca.ui.theme.GButtonKind
@@ -72,6 +83,7 @@ fun OnlineProblem.textRes(): Int = when (this) {
     OnlineProblem.UNAUTHENTICATED -> R.string.online_problem_unauthenticated
     OnlineProblem.TABLE_NOT_FOUND -> R.string.online_problem_table_not_found
     OnlineProblem.TABLE_FULL -> R.string.online_problem_table_full
+    OnlineProblem.SEAT_TAKEN -> R.string.online_problem_seat_taken
     OnlineProblem.ALREADY_STARTED -> R.string.online_problem_already_started
     OnlineProblem.NOT_HOST -> R.string.online_problem_not_host
     OnlineProblem.EMPTY_SEATS -> R.string.online_problem_empty_seats
@@ -104,6 +116,8 @@ private fun ProblemText(problem: OnlineProblem, tag: String, modifier: Modifier 
 @Composable
 fun OnlineHomeScreen(
     viewModel: OnlineHomeViewModel,
+    /** O próprio jogador (nome e foto do Perfil), para o lugar dele na mesa. */
+    self: Persona,
     onJoined: (String) -> Unit,
     onProfile: () -> Unit,
     onBack: () -> Unit,
@@ -158,6 +172,7 @@ fun OnlineHomeScreen(
                     )
                 }
                 state.problem?.let { ProblemText(it, "online-error") }
+                Text(stringResource(R.string.online_seat_tap_hint), Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel, textAlign = TextAlign.Center)
                 state.listProblem?.let {
                     Text(stringResource(R.string.online_list_problem), Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne, textAlign = TextAlign.Center)
                 }
@@ -169,7 +184,10 @@ fun OnlineHomeScreen(
                     }
                     tables.isEmpty() -> Text(stringResource(R.string.online_tables_opening), Modifier.testTag("online-tables-empty"), style = MaterialTheme.typography.bodyLarge)
                     else -> Column(Modifier.fillMaxWidth().testTag("online-tables"), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        tables.forEach { table -> TableRow(table, state.myId) { viewModel.onSelect(table) } }
+                        tables.forEach { table ->
+                            TableCard(table, state.myId, self, joiningSeat = state.joining?.takeIf { it.first == table.id }?.second,
+                                onSeatTap = { seat -> viewModel.onSeatTap(table, seat) }, onBackToRoom = { viewModel.onBackToRoom(table) })
+                        }
                     }
                 }
                 // O login Google entra na fase 2 (identity-service): por ora o botão aparece desabilitado.
@@ -179,36 +197,13 @@ fun OnlineHomeScreen(
             }
         }
     }
-    state.selected?.let { table ->
-        GMessage(
-            modifier = Modifier.testTag("online-table-choose"),
-            title = stringResource(R.string.online_table_choose_title, table.id),
-            text = stringResource(R.string.online_invite_accept),
-            illustration = MessageIllustration.Cards,
-            tone = MessageTone.Info,
-            confirmText = stringResource(R.string.online_join_seat),
-            onConfirm = viewModel::onOccupy,
-            confirmTag = "online-join-seat",
-            dismissText = stringResource(R.string.cancel),
-            onDismiss = viewModel::onDismissSelected,
-            onDismissRequest = viewModel::onDismissSelected,
-        ) {
-            TableSummary(table)
-        }
-    }
 }
 
-/** Uma mesa da lista: id, estado e as quatro posições das duplas com foto e nome (§18.2). */
+/** Uma mesa da lista: id, estado, a mesa de lugares (tocar num VAGO senta ali, §18.2) e as opções fixas. */
 @Composable
-private fun TableRow(table: TableView, myId: String, onClick: () -> Unit) {
+private fun TableCard(table: TableView, myId: String, self: Persona, joiningSeat: Int?, onSeatTap: (Int) -> Unit, onBackToRoom: () -> Unit) {
     val mine = table.seats.any { it.guestId == myId }
-    val enter = table.canEnter(myId)
-    GPanel(
-        Modifier
-            .fillMaxWidth()
-            .then(if (enter) Modifier.clickable(onClick = onClick) else Modifier)
-            .testTag("online-table-row-${table.id}"),
-    ) {
+    GPanel(Modifier.fillMaxWidth().testTag("online-table-row-${table.id}")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(
                 table.id,
@@ -224,69 +219,112 @@ private fun TableRow(table: TableView, myId: String, onClick: () -> Unit) {
             }
             Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = if (table.state == TableState.EM_JOGO) GColors.Steel else GColors.Champagne)
         }
-        DUPLA_ORDER.filter { it < table.seats.size }.forEach { i -> SeatLine(table.seats[i], isHost = table.seats[i].guestId == table.hostId && table.hostId.isNotEmpty(), isMine = table.seats[i].guestId == myId) }
-        if (enter) {
-            GButton(onClick, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-table-enter-${table.id}")) {
-                Text(stringResource(if (mine) R.string.online_table_back_to_room else R.string.online_table_enter), style = MaterialTheme.typography.titleMedium)
+        OnlineSeatTable(
+            table, myId, self,
+            modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
+            tagPrefix = "online-seat-${table.id}",
+            busySeat = joiningSeat,
+            onSeatTap = if (table.state == TableState.ABERTA && !mine) onSeatTap else null,
+        )
+        if (mine && table.state == TableState.ABERTA) {
+            GButton(onBackToRoom, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-table-enter-${table.id}")) {
+                Text(stringResource(R.string.online_table_back_to_room), style = MaterialTheme.typography.titleMedium)
             }
         }
+        TableSummary(table)
     }
 }
 
-/** Uma posição: "Dupla x – y", avatar (retrato do robô ou inicial do humano) e o nome, ou "livre". */
+/**
+ * A mesa de lugares online (o desenho de 3.3, §18.2): feltro com aro de madeira e as quatro posições em cruz; quem olha
+ * fica embaixo se está sentado (senão, o lugar 0). Cada lugar mostra foto e nome; VAGO é tracejado. [onSeatTap] (nulo =
+ * só leitura) recebe o toque num lugar; [busySeat] marca o lugar pedido ao servidor.
+ */
 @Composable
-private fun SeatLine(seat: SeatView, isHost: Boolean, isMine: Boolean, trailing: @Composable () -> Unit = {}) {
-    val (dupla, pos) = duplaPosition(seat.index)
-    val shape = RoundedCornerShape(Corner.sm)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .background(GColors.IndigoLight, shape)
-            .border(1.dp, if (isMine) GColors.Gold else GColors.Steel.copy(alpha = 0.3f), shape)
-            .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
-            .testTag("online-seat-${seat.index}"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-    ) {
-        SeatAvatar(seat, 36.dp)
-        Column(Modifier.weight(1f)) {
-            Text(stringResource(R.string.online_dupla_seat, dupla, pos), style = MaterialTheme.typography.labelSmall, color = GColors.Steel)
+fun OnlineSeatTable(
+    table: TableView,
+    myId: String,
+    self: Persona,
+    modifier: Modifier = Modifier,
+    tagPrefix: String = "online-seat",
+    busySeat: Int? = null,
+    onSeatTap: ((Int) -> Unit)? = null,
+    /** Toque nos humanos (menos o próprio) em vez dos lugares VAGO (sala do anfitrião: remover). */
+    tapsFilled: Boolean = false,
+) {
+    val gameMode = if (table.rules.mode == TableMode.DUPLAS) GameMode.DUPLAS else GameMode.INDIVIDUAL
+    val viewer = table.seats.indexOfFirst { it.guestId == myId }.takeIf { it >= 0 } ?: 0
+    Box(modifier.aspectRatio(if (gameMode.seatCount == 2) 1.15f else 1f), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize().padding(if (gameMode.seatCount == 2) 28.dp else 36.dp)) {
+            val radius = size.minDimension / 2
+            drawCircle(Brush.radialGradient(listOf(Felt, FeltDark), center, radius), radius)
+            drawCircle(Wood, radius, style = Stroke(radius * 0.09f))
+            drawCircle(GColors.Gold.copy(alpha = 0.5f), radius * 0.955f, style = Stroke(2f))
+            drawCircle(GColors.Gold.copy(alpha = 0.25f), radius * 0.35f, center, style = Stroke(2f))
+        }
+        table.seats.forEach { seat ->
+            val align = when (SeatRole.of(gameMode, Seat(seat.index), Seat(viewer))) {
+                SeatRole.YOU -> Alignment.BottomCenter
+                SeatRole.PARTNER, SeatRole.OPPONENT -> Alignment.TopCenter
+                SeatRole.LEFT_OPPONENT -> Alignment.CenterStart
+                SeatRole.RIGHT_OPPONENT -> Alignment.CenterEnd
+            }
+            val isMine = seat.guestId != null && seat.guestId == myId
+            val isHost = seat.guestId != null && seat.guestId == table.hostId
             val name = when (seat.kind) {
-                SeatKind.VAGO -> stringResource(R.string.online_seat_free)
+                SeatKind.VAGO -> stringResource(R.string.selection_seat_vacant)
                 SeatKind.ROBO -> seat.profile?.let { robotCharacter(it, seat.level).profile.botName } ?: stringResource(R.string.online_seat_robot)
-                SeatKind.HUMANO -> seat.name.orEmpty()
+                SeatKind.HUMANO -> if (isMine) self.firstName else seat.name.orEmpty()
             }
-            Text(
-                name,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (seat.kind == SeatKind.VAGO) GColors.Steel else GColors.Champagne,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val tags = listOfNotNull(
-                stringResource(R.string.online_seat_host).takeIf { isHost },
-                stringResource(R.string.online_seat_you).takeIf { isMine },
-            )
-            if (tags.isNotEmpty()) Text(tags.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = GColors.Gold)
+            val (dupla, pos) = duplaPosition(seat.index)
+            val where = stringResource(R.string.online_dupla_seat, dupla, pos)
+            val tappable = onSeatTap != null && busySeat == null &&
+                if (tapsFilled) seat.kind == SeatKind.HUMANO && !isMine else seat.kind == SeatKind.VAGO
+            Column(
+                Modifier
+                    .align(align)
+                    .widthIn(max = 96.dp)
+                    .semantics(mergeDescendants = true) { contentDescription = "$where: $name" }
+                    .testTag("$tagPrefix-${seat.index}")
+                    .then(if (tappable) Modifier.clickable { onSeatTap?.invoke(seat.index) } else Modifier),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(Modifier.size(SeatAvatarSize + 6.dp), contentAlignment = Alignment.Center) {
+                    when {
+                        busySeat == seat.index -> CircularProgressIndicator(color = GColors.Gold, modifier = Modifier.size(SeatAvatarSize))
+                        seat.kind == SeatKind.VAGO -> Box(
+                            Modifier
+                                .size(SeatAvatarSize)
+                                .clip(CircleShape)
+                                .background(GColors.Midnight.copy(alpha = 0.55f))
+                                .border(if (tappable) 2.dp else 1.5.dp, if (tappable) GColors.Gold.copy(alpha = 0.8f) else GColors.Steel.copy(alpha = 0.7f), CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(stringResource(R.string.selection_seat_vacant), color = GColors.Steel, style = MaterialTheme.typography.labelMedium)
+                        }
+                        seat.kind == SeatKind.ROBO && seat.profile != null -> {
+                            val c = robotCharacter(seat.profile!!, seat.level)
+                            RobotPhoto(c.profile, c.level, SeatAvatarSize)
+                        }
+                        isMine -> PersonaAvatar(self, SeatAvatarSize)
+                        else -> PersonaAvatar(Persona(name.ifBlank { "?" }, color = (seat.guestId ?: name).hashCode().mod(Persona.COLORS)), SeatAvatarSize)
+                    }
+                    if (isMine || isHost) Box(Modifier.matchParentSize().border(if (isMine) 3.dp else 1.5.dp, GColors.Gold, CircleShape))
+                }
+                Text(name, color = GColors.Champagne, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
+                val tag = when {
+                    isHost && isMine -> stringResource(R.string.online_seat_host) + " · " + stringResource(R.string.online_seat_you)
+                    isHost -> stringResource(R.string.online_seat_host)
+                    isMine -> stringResource(R.string.online_seat_you)
+                    else -> where
+                }
+                Text(tag, color = if (isHost || isMine) GColors.Gold else GColors.Steel, maxLines = 1, style = MaterialTheme.typography.labelSmall)
+            }
         }
-        trailing()
     }
 }
 
-/** Robô: retrato do personagem (§14.5). Humano: medalhão com a inicial (a foto chega com a conta Google, fase 2). */
-@Composable
-private fun SeatAvatar(seat: SeatView, size: Dp) {
-    val profile = seat.profile
-    when {
-        seat.kind == SeatKind.ROBO && profile != null ->
-            CharacterPortrait(robotCharacter(profile, seat.level), Pose.APRESENTACAO, Modifier.size(size).clip(CircleShape), animate = false, effects = false)
-        seat.kind == SeatKind.HUMANO -> Box(Modifier.size(size).clip(CircleShape).background(GColors.Gold), contentAlignment = Alignment.Center) {
-            Text(seat.name.orEmpty().take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = GColors.Indigo, fontWeight = FontWeight.Bold)
-        }
-        else -> Box(Modifier.size(size).clip(CircleShape).border(1.dp, GColors.Steel.copy(alpha = 0.5f), CircleShape))
-    }
-}
+private val SeatAvatarSize = 52.dp
 
 /** Personagem do app para o robô do servidor (mesmos perfis; Fácil = Iniciante, Médio = Maduro, Difícil = Sênior). */
 private fun robotCharacter(profile: BotProfile, level: BotLevel?): BotCharacter = BotCharacter(
@@ -354,6 +392,7 @@ private fun TableSummary(table: TableView, modifier: Modifier = Modifier) {
 @Composable
 fun OnlineRoomScreen(
     viewModel: OnlineRoomViewModel,
+    self: Persona,
     onEnded: (OnlineRoomEnd) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -399,17 +438,13 @@ fun OnlineRoomScreen(
         }
         GPanel(Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.online_seats_title), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
-            DUPLA_ORDER.filter { it < table.seats.size }.forEach { i ->
-                val seat = table.seats[i]
-                val isHostSeat = seat.guestId != null && seat.guestId == table.hostId
-                SeatLine(seat, isHost = isHostSeat, isMine = seat.guestId != null && seat.guestId == state.myId) {
-                    if (state.isHost && !state.busy && !state.started && seat.kind == SeatKind.HUMANO && !isHostSeat) {
-                        GButton({ viewModel.onRemove(seat.index) }, Modifier.heightIn(min = 48.dp).testTag("online-seat-remove-${seat.index}"), kind = GButtonKind.DangerOutline, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
-                            Text(stringResource(R.string.online_seat_remove), style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
-            }
+            OnlineSeatTable(
+                table, state.myId, self,
+                modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
+                // Anfitrião: tocar num jogador pergunta se quer removê-lo (antes do jogo).
+                onSeatTap = if (state.isHost && !state.busy && !state.started) viewModel::onAskRemove else null,
+                tapsFilled = true,
+            )
             if (state.isHost && state.passCandidates.isNotEmpty()) {
                 GButton(viewModel::onAskPass, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-table-pass"), kind = GButtonKind.Secondary, enabled = !state.busy) {
                     Text(stringResource(R.string.online_pass_host), style = MaterialTheme.typography.titleSmall)
@@ -418,6 +453,21 @@ fun OnlineRoomScreen(
         }
         TableSummary(table)
         state.problem?.let { ProblemText(it, "online-table-error") }
+    }
+    val removing = state.askRemove?.let { table?.seats?.getOrNull(it) }
+    if (removing != null) {
+        GMessage(
+            modifier = Modifier.testTag("online-remove-dialog"),
+            title = stringResource(R.string.online_remove_title, removing.name.orEmpty()),
+            illustration = MessageIllustration.Exit,
+            tone = MessageTone.Danger,
+            confirmText = stringResource(R.string.online_seat_remove),
+            onConfirm = { viewModel.onRemove(removing.index) },
+            confirmTag = "online-seat-remove-${removing.index}",
+            dismissText = stringResource(R.string.cancel),
+            onDismiss = viewModel::onDismissRemove,
+            onDismissRequest = viewModel::onDismissRemove,
+        )
     }
     if (state.choosingHost && table != null) {
         GMessage(

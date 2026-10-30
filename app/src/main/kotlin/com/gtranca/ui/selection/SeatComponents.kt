@@ -62,9 +62,9 @@ import com.gtranca.ui.persona.Pose
 import com.gtranca.ui.persona.characterRes
 import com.gtranca.ui.theme.GColors
 
-private val Felt = Color(0xFF1E6B3A)
-private val FeltDark = Color(0xFF124A27)
-private val Wood = Color(0xFF6B3E1F)
+internal val Felt = Color(0xFF1E6B3A)
+internal val FeltDark = Color(0xFF124A27)
+internal val Wood = Color(0xFF6B3E1F)
 
 /** Selos de convite (docs/telas.md, glossário): [CALLED] = chamado (avatar esmaecido), [RECRUITED] = aceitou. */
 enum class Seal { CALLED, RECRUITED }

@@ -114,8 +114,8 @@ class FakeLobby : LobbyApi {
         val t = find(tableId)
         if (t.state != TableState.ABERTA) error(ErrorCode.MESA_JA_INICIADA)
         if (t.seats.any { it.guestId == me.id }) return t
-        val target = t.seats.indexOfFirst { it.kind == SeatKind.VAGO }
-        if (target < 0) error(ErrorCode.MESA_CHEIA)
+        val target = seat ?: t.seats.indexOfFirst { it.kind == SeatKind.VAGO }
+        if (target < 0 || t.seats[target].kind != SeatKind.VAGO) error(ErrorCode.MESA_CHEIA)
         return sit(t, target, me)
     }
 

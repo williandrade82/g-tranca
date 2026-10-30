@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -74,6 +75,15 @@ private fun rememberOnlineEnv(data: GameData): Result<OnlineEnv?>? {
 }
 
 /** Registra as telas online no NavHost do app (um único ponto de contato com [com.gtranca.ui.AppNavHost]). */
+/** O próprio jogador (nome e foto do Perfil) para o lugar dele nas mesas online. */
+@Composable
+private fun rememberSelf(data: GameData): com.gtranca.game.Persona {
+    val context = LocalContext.current
+    val photo = remember { com.gtranca.ui.profile.ProfilePhoto.savedPath(context) }
+    val profileId by data.settings.settings.collectAsStateWithLifecycle(initialValue = com.gtranca.data.Settings())
+    return PlayerProfile.decode(profileId.profileId).persona(PlayerProfile.DEFAULT_NAME, photo)
+}
+
 fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData) {
     composable<OnlineHomeRoute> { entry ->
         val defaultName = LocalContext.current.getString(R.string.online_default_name)
@@ -83,6 +93,7 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
         LaunchedEffect(Unit) { vm.refresh() }
         OnlineHomeScreen(
             vm,
+            self = rememberSelf(data),
             onJoined = { id ->
                 entry.savedStateHandle[ONLINE_NOTICE] = null
                 navController.navigate(OnlineRoomRoute(id)) { launchSingleTop = true }
@@ -111,6 +122,7 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
             BackHandler(enabled = state.ended == null, onBack = leaveRoom)
             OnlineRoomScreen(
                 vm,
+                self = rememberSelf(data),
                 onEnded = { end ->
                     runCatching { navController.getBackStackEntry<OnlineHomeRoute>() }.getOrNull()
                         ?.savedStateHandle?.set(ONLINE_NOTICE, end.name)

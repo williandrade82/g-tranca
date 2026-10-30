@@ -827,6 +827,9 @@
     <string name="online_table_enter">Entrar</string>
     <string name="online_table_back_to_room">Voltar à sala</string>
     <string name="online_table_choose_title">Mesa %1$s</string>
+    <string name="online_seat_tap_hint">Toque num lugar VAGO para sentar.</string>
+    <string name="online_problem_seat_taken">Esse lugar acabou de ser ocupado. Escolha outro.</string>
+    <string name="online_remove_title">Remover %1$s da mesa?</string>
     <string name="online_list_problem">A lista não atualizou. Tentando de novo…</string>
     <string name="online_pass_host">Entregar a mesa</string>
     <string name="online_pass_title">Entregar a mesa a quem?</string>

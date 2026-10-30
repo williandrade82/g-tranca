@@ -153,32 +153,49 @@ class OnlineViewModelsTest {
         vm.viewModelScope.cancel()
     }
 
-    // §18.2 tocar numa mesa mostra as opcoes e so entra ao ocupar o lugar; o 1o a entrar e o anfitriao
+    // §18.2 tocar num lugar VAGO senta ali; o 1o a entrar e o anfitriao
     @Test
-    fun `tocar numa mesa mostra as opcoes e ocupar entra como anfitriao`() = runTest(dispatcher) {
+    fun `tocar num lugar vago senta naquele lugar e o primeiro vira anfitriao`() = runTest(dispatcher) {
         val id = lobby.serverTable()
         val vm = home()
         runCurrent()
-        vm.onSelect(vm.uiState.value.tables!!.single())
-        vm.uiState.value.selected!!.id shouldBe id
-        lobby.calls.count { it == "join" } shouldBe 0
-        vm.onOccupy()
+        vm.onSeatTap(vm.uiState.value.tables!!.single(), 3)
         runCurrent()
         vm.uiState.value.joinedId shouldBe id
-        lobby.tables.getValue(id).hostId shouldBe settings.state.value.onlineGuest!!.id
+        val me = settings.state.value.onlineGuest!!.id
+        lobby.tables.getValue(id).seats[3].guestId shouldBe me
+        lobby.tables.getValue(id).hostId shouldBe me
         vm.viewModelScope.cancel()
     }
 
-    // §18.2 mesa em jogo e so para ver
+    // §18.2 dois pedem o mesmo lugar: o segundo e recusado e a mesa se atualiza
     @Test
-    fun `mesa em jogo nao abre`() = runTest(dispatcher) {
+    fun `lugar pedido por outro antes e recusado e a mesa atualiza`() = runTest(dispatcher) {
         val id = lobby.serverTable()
-        lobby.otherJoins(id, "Beto")
-        lobby.setState(id, TableState.EM_JOGO)
         val vm = home()
         runCurrent()
-        vm.onSelect(vm.uiState.value.tables!!.single())
-        vm.uiState.value.selected shouldBe null
+        val stale = vm.uiState.value.tables!!.single()
+        lobby.otherJoins(id, "Beto") // Beto pega o lugar 0 antes
+        vm.onSeatTap(stale, 0)
+        runCurrent()
+        vm.uiState.value.problem shouldBe OnlineProblem.SEAT_TAKEN
+        vm.uiState.value.joinedId shouldBe null
+        vm.uiState.value.tables!!.single().seats[0].name shouldBe "Beto"
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.2 lugar ocupado e mesa em jogo nao respondem ao toque
+    @Test
+    fun `lugar ocupado e mesa em jogo nao pedem nada`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        lobby.otherJoins(id, "Beto")
+        val vm = home()
+        runCurrent()
+        vm.onSeatTap(vm.uiState.value.tables!!.single(), 0)
+        lobby.setState(id, TableState.EM_JOGO)
+        vm.onSeatTap(vm.uiState.value.tables!!.single().copy(state = TableState.EM_JOGO), 1)
+        runCurrent()
+        lobby.calls.count { it == "join" } shouldBe 0
         vm.viewModelScope.cancel()
     }
 
@@ -190,23 +207,8 @@ class OnlineViewModelsTest {
         val vm = home()
         runCurrent()
         vm.uiState.value.myTable!!.id shouldBe id
-        vm.onSelect(vm.uiState.value.tables!!.single())
+        vm.onBackToRoom(vm.uiState.value.tables!!.single())
         vm.uiState.value.joinedId shouldBe id
-        vm.viewModelScope.cancel()
-    }
-
-    // §18.2 recusa ao entrar (mesa lotou nesse meio tempo) vira mensagem
-    @Test
-    fun `mesa que lotou antes de entrar mostra o problema`() = runTest(dispatcher) {
-        val id = lobby.serverTable()
-        val vm = home()
-        runCurrent()
-        vm.onSelect(vm.uiState.value.tables!!.single())
-        repeat(4) { lobby.otherJoins(id, "J$it") }
-        vm.onOccupy()
-        runCurrent()
-        vm.uiState.value.problem shouldBe OnlineProblem.TABLE_FULL
-        vm.uiState.value.joinedId shouldBe null
         vm.viewModelScope.cancel()
     }
 
@@ -285,6 +287,8 @@ class OnlineViewModelsTest {
         lobby.otherJoins(id, "Beto")
         val vm = room(id)
         runCurrent()
+        vm.onAskRemove(1)
+        vm.uiState.value.askRemove shouldBe 1
         vm.onRemove(1)
         runCurrent()
         vm.uiState.value.table!!.seats[1].kind shouldBe SeatKind.VAGO
