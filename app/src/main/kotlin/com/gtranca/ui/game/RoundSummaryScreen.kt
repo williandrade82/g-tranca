@@ -106,7 +106,9 @@ fun RoundSummaryScreen(
     ) {
         val maxModal = maxHeight * MODAL_MAX_FRACTION
         // Texto da tabela um pouco menor que o padrão: o modal é mais estreito que a tela cheia de antes.
-        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium.copy(color = GColors.Ivory)) {
+        // Cor clara pelo LocalContentColor (não pelo estilo): o botão dourado continua com a cor escura dele.
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides GColors.Ivory) {
+        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -134,7 +136,7 @@ fun RoundSummaryScreen(
             // do jogador no seu lado, cinza-claro no adversário) e o nome do lado.
             val ownDeck = com.gtranca.ui.cards.LocalDeckColor.current
             Row(Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom).tourTarget("score-col-item"), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom).tourTarget("score-col-item"), fontWeight = FontWeight.Bold, color = GColors.Ivory)
                 Box(Modifier.weight(VALUE_WEIGHT))
                 sides.forEach { side ->
                     Column(Modifier.weight(COUNT_WEIGHT + POINTS_WEIGHT).tourTarget("score-side-${if (side == view.side) "own" else "other"}"), horizontalAlignment = Alignment.End) {
@@ -212,6 +214,7 @@ fun RoundSummaryScreen(
             }
         }
         }
+        }
     }
     }
 }
@@ -279,6 +282,7 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
             stringResource(if (section == ScoreSection.TABLE) R.string.score_table_header else R.string.score_hand_header),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
+            color = GColors.Gold,
             modifier = Modifier.semantics { heading() }.tourTarget(tag),
         )
         // Os títulos das colunas de novo, no topo da seção.
@@ -387,7 +391,7 @@ private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = fal
                     com.gtranca.ui.theme.FitText(label, LocalTextStyle.current.copy(fontWeight = weight, color = GColors.Gold), minFontSp = 10)
                 }
             } else {
-                Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight)
+                Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = GColors.Ivory)
             }
         }
         // §12 valor de cada carta/item (vazio nos subtotais e totais).
