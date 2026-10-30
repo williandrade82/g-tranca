@@ -26,6 +26,10 @@ android {
         versionCode = build
         versionName = "0.$build"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // §18.2: chave do aplicativo para o jogo online, lida de local.properties (fora do git). Vazia = sem assinatura.
+        val onlineAppKey = rootProject.file("local.properties").takeIf { it.exists() }
+            ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("online.appKey") }.orEmpty()
+        buildConfigField("String", "ONLINE_APP_KEY", "\"${onlineAppKey.replace("\"", "")}\"")
     }
 
     // Assinatura de release: lida de keystore.properties (fora do git). Sem o arquivo, o release sai assinado com a

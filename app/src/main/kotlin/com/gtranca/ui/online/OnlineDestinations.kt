@@ -5,7 +5,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -24,15 +23,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 
-/** Rotas do jogo online (docs/telas.md 3.21 a 3.24). */
+/** Rotas do jogo online (docs/telas.md 3.21 e 3.23; sem criar mesa nem entrar por id nesta fase, §18.2). */
 @Serializable
 object OnlineHomeRoute
-
-@Serializable
-object OnlineCreateRoute
-
-@Serializable
-object OnlineJoinRoute
 
 @Serializable
 data class OnlineRoomRoute(val tableId: String)
@@ -52,7 +45,9 @@ internal object OnlineServices {
         val endpoint = OnlineEndpoint.parse(server, cleartext = BuildConfig.DEBUG) ?: return null
         cached?.takeIf { it.endpoint == endpoint }?.let { return it }
         cached?.shutdown()
-        return OnlineClient(endpoint, OnlineClient.newHttpClient()).also { cached = it }
+        // §18.2: a chave do aplicativo (local.properties, fora do git) assina cada pedido.
+        val appKey = BuildConfig.ONLINE_APP_KEY.takeIf { it.isNotBlank() }
+        return OnlineClient(endpoint, OnlineClient.newHttpClient(), appKey = appKey).also { cached = it }
     }
 }
 
@@ -88,38 +83,14 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
         LaunchedEffect(Unit) { vm.refresh() }
         OnlineHomeScreen(
             vm,
-            onCreate = { entry.savedStateHandle[ONLINE_NOTICE] = null; navController.navigate(OnlineCreateRoute) { launchSingleTop = true } },
-            onJoin = { entry.savedStateHandle[ONLINE_NOTICE] = null; navController.navigate(OnlineJoinRoute) { launchSingleTop = true } },
+            onJoined = { id ->
+                entry.savedStateHandle[ONLINE_NOTICE] = null
+                navController.navigate(OnlineRoomRoute(id)) { launchSingleTop = true }
+            },
             onProfile = { navController.navigate(ProfileRoute) { launchSingleTop = true } },
             onBack = { navController.popBackStack() },
             notice = notice?.let { name -> OnlineRoomEnd.entries.firstOrNull { it.name == name } },
         )
-    }
-    composable<OnlineCreateRoute> {
-        val env = rememberOnlineEnv(data)
-        env?.getOrNull()?.let { online ->
-            val vm = viewModel { OnlineCreateViewModel(online.account, data.settings) }
-            OnlineCreateScreen(
-                vm,
-                onCreated = { id ->
-                    navController.navigate(OnlineRoomRoute(id)) { popUpTo(OnlineCreateRoute) { inclusive = true } }
-                },
-                onBack = { navController.popBackStack() },
-            )
-        } ?: env?.let { LaunchedEffect(Unit) { navController.popBackStack() } }
-    }
-    composable<OnlineJoinRoute> {
-        val env = rememberOnlineEnv(data)
-        env?.getOrNull()?.let { online ->
-            val vm = viewModel { OnlineJoinViewModel(online.account) }
-            OnlineJoinScreen(
-                vm,
-                onJoined = { id ->
-                    navController.navigate(OnlineRoomRoute(id)) { popUpTo(OnlineJoinRoute) { inclusive = true } }
-                },
-                onBack = { navController.popBackStack() },
-            )
-        } ?: env?.let { LaunchedEffect(Unit) { navController.popBackStack() } }
     }
     composable<OnlineRoomRoute> { entry ->
         val route = entry.toRoute<OnlineRoomRoute>()
@@ -127,14 +98,12 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
         env?.getOrNull()?.let { online ->
             val vm = viewModel { OnlineRoomViewModel(online.account, route.tableId) }
             val state by vm.uiState.collectAsStateWithLifecycle()
-            val link = remember(online, route.tableId) { online.endpoint.inviteLink(route.tableId) }
             val leaveRoom = {
-                // O anfitrião encerra a mesa (com confirmação) e o convidado sai dela: nenhuma mesa fica esquecida aberta.
+                // Voltar sai da mesa (o anfitrião também: o cargo passa ao próximo, §18.2); assim ninguém fica esquecido nela.
                 when {
-                    // Jogo iniciado, ou sem rede (sair/encerrar não chegariam ao servidor): volta direto; a mesa expira sozinha.
+                    // Jogo iniciado, ou sem rede (sair não chegaria ao servidor): volta direto; a sala esvazia sozinha.
                     state.started || state.connectionLost || state.problem == OnlineProblem.NETWORK || state.problem == OnlineProblem.MAINTENANCE ->
                         navController.popBackStack(OnlineHomeRoute, inclusive = false)
-                    state.isHost -> vm.onAskClose()
                     else -> vm.onLeave()
                 }
                 Unit
@@ -142,7 +111,6 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
             BackHandler(enabled = state.ended == null, onBack = leaveRoom)
             OnlineRoomScreen(
                 vm,
-                inviteLink = link,
                 onEnded = { end ->
                     runCatching { navController.getBackStackEntry<OnlineHomeRoute>() }.getOrNull()
                         ?.savedStateHandle?.set(ONLINE_NOTICE, end.name)

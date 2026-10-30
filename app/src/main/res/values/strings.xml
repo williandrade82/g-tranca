@@ -811,6 +811,29 @@
     <string name="online_create">Criar mesa</string>
     <string name="online_join">Entrar numa mesa</string>
     <string name="online_retry">Tentar de novo</string>
+    <!-- 3.21 lista de mesas do servidor (§18.2) -->
+    <plurals name="online_players_count">
+        <item quantity="one">%1$d jogador online</item>
+        <item quantity="many">%1$d jogadores online</item>
+        <item quantity="other">%1$d jogadores online</item>
+    </plurals>
+    <string name="online_tables_title">Mesas</string>
+    <string name="online_tables_opening">Abrindo uma mesa…</string>
+    <string name="online_table_open">Aberta</string>
+    <string name="online_table_playing">Em jogo</string>
+    <string name="online_table_mine">Você está aqui</string>
+    <string name="online_seat_free">livre</string>
+    <string name="online_dupla_seat">Dupla %1$d – %2$d</string>
+    <string name="online_table_enter">Entrar</string>
+    <string name="online_table_back_to_room">Voltar à sala</string>
+    <string name="online_table_choose_title">Mesa %1$s</string>
+    <string name="online_list_problem">A lista não atualizou. Tentando de novo…</string>
+    <string name="online_pass_host">Entregar a mesa</string>
+    <string name="online_pass_title">Entregar a mesa a quem?</string>
+    <string name="online_pass_text">Quem receber passa a ser o anfitrião: inicia o jogo e pode entregar a mesa de novo.</string>
+    <string name="online_time_15">15 minutos</string>
+    <string name="online_bet_value">Aposta: %1$d moedas (registrada; as moedas online chegam na próxima fase)</string>
+    <string name="online_problem_app_not_recognized">Aplicativo não reconhecido. Atualize o Tranca-Bot.</string>
     <string name="online_default_name">Jogador</string>
     <string name="online_ended_closed">A mesa foi encerrada.</string>
     <string name="online_ended_not_found">A mesa não existe mais.</string>

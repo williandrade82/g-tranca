@@ -29,6 +29,9 @@ enum class OnlineProblem {
     GAME_UNAVAILABLE,
     INSUFFICIENT_BALANCE,
 
+    /** §18.2: o servidor não reconheceu a assinatura do aplicativo. */
+    APP_NOT_RECOGNIZED,
+
     /** O id digitado não tem 6 caracteres válidos (checado no aparelho, sem chamar o servidor). */
     INVALID_ID,
 
@@ -57,6 +60,7 @@ fun OnlineException.toProblem(): OnlineProblem = when (kind) {
         ErrorCode.SALDO_INSUFICIENTE -> OnlineProblem.INSUFFICIENT_BALANCE
         ErrorCode.NAO_AUTENTICADO -> OnlineProblem.UNAUTHENTICATED
         ErrorCode.VERSAO_INCOMPATIVEL -> OnlineProblem.UPDATE_APP
+        ErrorCode.APP_NAO_RECONHECIDO -> OnlineProblem.APP_NOT_RECOGNIZED
         ErrorCode.ASSENTO_ABANDONADO, null -> OnlineProblem.UNEXPECTED
     }
 }

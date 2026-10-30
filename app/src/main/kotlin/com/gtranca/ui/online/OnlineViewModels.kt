@@ -3,19 +3,10 @@ package com.gtranca.ui.online
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gtranca.data.SettingsRepository
-import com.gtranca.engine.RuleSet
-import com.gtranca.engine.model.GameMode
 import com.gtranca.online.client.OnlineException
-import com.gtranca.online.contracts.BotLevel
-import com.gtranca.online.contracts.LobbyLimits
-import com.gtranca.online.contracts.Punicao
 import com.gtranca.online.contracts.SeatKind
-import com.gtranca.online.contracts.TableId
-import com.gtranca.online.contracts.TableMode
-import com.gtranca.online.contracts.TableRules
 import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
-import com.gtranca.online.contracts.TempoDeJogada
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,7 +18,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 
 private suspend fun <T> attempt(block: suspend () -> T): Result<T> = try {
     Result.success(block())
@@ -39,8 +29,16 @@ private suspend fun <T> attempt(block: suspend () -> T): Result<T> = try {
 
 private fun Throwable.problem(): OnlineProblem = (this as? OnlineException)?.toProblem() ?: OnlineProblem.UNEXPECTED
 
+/**
+ * Posições de duplas (§16.2, §18.2): assentos 0 e 2 = Dupla 1, 1 e 3 = Dupla 2. Devolve (dupla, posição na dupla), de 1.
+ */
+fun duplaPosition(seat: Int): Pair<Int, Int> = (seat % 2 + 1) to (seat / 2 + 1)
+
+/** Ordem de exibição: Dupla 1 – 1, Dupla 1 – 2, Dupla 2 – 1, Dupla 2 – 2. */
+val DUPLA_ORDER = listOf(0, 2, 1, 3)
+
 // ---------------------------------------------------------------------------------------------------------------
-// 3.21 Jogar online
+// 3.21 Jogar online (lista de mesas do servidor)
 // ---------------------------------------------------------------------------------------------------------------
 
 enum class OnlineHomeStatus { LOADING, NO_SERVER, READY, ERROR }
@@ -49,21 +47,42 @@ data class OnlineHomeUiState(
     val status: OnlineHomeStatus = OnlineHomeStatus.LOADING,
     /** Nome do convidado (Etapa A: o nome do Perfil no momento em que o convidado foi criado). */
     val name: String = "",
+    val myId: String = "",
     val problem: OnlineProblem? = null,
-)
+    /** Mesas do servidor: abertas primeiro, depois em jogo (§18.2). `null` = ainda não chegou a 1ª lista. */
+    val tables: List<TableView>? = null,
+    val onlinePlayers: Int = 0,
+    /** A última consulta da lista falhou; segue tentando sozinho. */
+    val listProblem: OnlineProblem? = null,
+    /** Mesa tocada: mostra as opções e "Ocupar este lugar" antes de entrar. */
+    val selected: TableView? = null,
+    val joining: Boolean = false,
+    /** Já entrou: a tela abre a sala e chama [OnlineHomeViewModel.onJoinedHandled]. */
+    val joinedId: String? = null,
+) {
+    /** Mesa aberta em que eu já estou sentado (voltar à sala em vez de ocupar outro lugar). */
+    val myTable: TableView? get() = tables?.firstOrNull { t -> t.state == TableState.ABERTA && t.seats.any { it.guestId == myId } }
+}
+
+/** Mesa em que dá para entrar: aberta e com lugar livre, ou aberta e já com o meu lugar. */
+fun TableView.canEnter(myId: String): Boolean =
+    state == TableState.ABERTA && (seats.any { it.kind == SeatKind.VAGO } || seats.any { it.guestId == myId })
 
 /**
- * Porta do online (3.21, §18.1). Sem servidor no Perfil: NO_SERVER. Com servidor: garante o convidado provisório no
- * servidor (cria se ainda não existe) e fica READY; falha de rede/versão vira ERROR com "Tentar de novo".
+ * Porta do online (3.21, §18.1, §18.2). Sem servidor no Perfil: NO_SERVER. Com servidor: garante o convidado provisório
+ * e fica READY, consultando a lista de mesas a cada [pollMs]; falha de rede/versão vira ERROR com "Tentar de novo".
  *
  * @param accountFor conta para o servidor informado, ou `null` se o texto não é um endereço válido.
  */
 class OnlineHomeViewModel(
     private val settings: SettingsRepository,
+    private val pollMs: Long = 3_000,
     private val accountFor: (String) -> OnlineAccount?,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OnlineHomeUiState())
     val uiState: StateFlow<OnlineHomeUiState> = _uiState.asStateFlow()
+
+    private var account: OnlineAccount? = null
 
     fun retry() = load()
 
@@ -81,179 +100,67 @@ class OnlineHomeViewModel(
         _uiState.value = OnlineHomeUiState()
         loadJob = viewModelScope.launch {
             val server = settings.settings.catch { emit(com.gtranca.data.Settings()) }.first().onlineServer
-            val account = server.takeIf { it.isNotBlank() }?.let(accountFor)
-            if (account == null) {
+            val acc = server.takeIf { it.isNotBlank() }?.let(accountFor)
+            account = acc
+            if (acc == null) {
                 _uiState.value = OnlineHomeUiState(OnlineHomeStatus.NO_SERVER)
                 return@launch
             }
-            attempt { account.guest() }.fold(
-                onSuccess = { _uiState.value = OnlineHomeUiState(OnlineHomeStatus.READY, name = it.name) },
-                onFailure = { _uiState.value = OnlineHomeUiState(OnlineHomeStatus.ERROR, problem = it.problem()) },
-            )
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// 3.23 Criar mesa online
-// ---------------------------------------------------------------------------------------------------------------
-
-enum class OnlineRulesChoice { CLASSICA, PAULISTA }
-
-data class OnlineCreateUiState(
-    val mode: GameMode = GameMode.INDIVIDUAL,
-    val rules: OnlineRulesChoice = OnlineRulesChoice.CLASSICA,
-    val targetText: String = DEFAULT_TARGET.toString(),
-    val skillBoosters: Boolean = true,
-    val tempo: TempoDeJogada = TempoDeJogada.INDETERMINADO,
-    val punicao: Punicao = Punicao.SEM_PUNICAO,
-    val robotLevel: BotLevel = BotLevel.FACIL,
-    val creating: Boolean = false,
-    val problem: OnlineProblem? = null,
-    /** Id da mesa criada: a tela abre a sala e chama [OnlineCreateViewModel.onCreatedHandled]. */
-    val createdId: String? = null,
-) {
-    val target: Int? get() = targetText.trim().takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toIntOrNull()?.takeIf { it in 1..LobbyLimits.MAX_TARGET_SCORE }
-    val canCreate: Boolean get() = !creating && target != null
-
-    companion object {
-        const val DEFAULT_TARGET = 3000
-    }
-}
-
-/** Criar mesa (3.23, §18.2, §18.4). Etapa A: aposta fixa em 0 (sem economia online, §18.5). */
-class OnlineCreateViewModel(
-    private val account: OnlineAccount,
-    private val settings: SettingsRepository? = null,
-) : ViewModel() {
-    private val _uiState = MutableStateFlow(OnlineCreateUiState())
-    val uiState: StateFlow<OnlineCreateUiState> = _uiState.asStateFlow()
-
-    /** O jogador já mexeu: a leitura tardia da última montagem não sobrescreve. */
-    private var touched = false
-
-    init {
-        // Modo e pontuação-alvo partem da última montagem da mesa (3.2); só leitura.
-        settings?.let { repo ->
-            viewModelScope.launch {
-                val setup = repo.settings.catch { }.first().tableSetup ?: return@launch
-                if (!touched) {
-                    _uiState.update {
-                        it.copy(mode = setup.mode, targetText = setup.target.ifBlank { OnlineCreateUiState.DEFAULT_TARGET.toString() })
-                    }
-                }
+            val guest = attempt { acc.guest() }.getOrElse {
+                _uiState.value = OnlineHomeUiState(OnlineHomeStatus.ERROR, problem = it.problem())
+                return@launch
+            }
+            _uiState.value = OnlineHomeUiState(OnlineHomeStatus.READY, name = guest.name, myId = guest.id)
+            while (isActive) {
+                refreshList(acc)
+                delay(pollMs)
             }
         }
     }
 
-    private fun edit(change: (OnlineCreateUiState) -> OnlineCreateUiState) {
-        touched = true
-        _uiState.update { change(it).copy(problem = null) }
+    private suspend fun refreshList(acc: OnlineAccount) {
+        attempt { acc.call { api, guest -> guest.id to api.tables(guest.token) } }.fold(
+            onSuccess = { (myId, list) ->
+                _uiState.update { s ->
+                    // A mesa escolhida acompanha a lista (alguém pode ter ocupado o último lugar).
+                    val selected = s.selected?.let { sel -> list.tables.firstOrNull { it.id == sel.id } }?.takeIf { it.canEnter(myId) }
+                    s.copy(myId = myId, tables = list.tables, onlinePlayers = list.onlinePlayers, listProblem = null, selected = selected)
+                }
+            },
+            onFailure = { e -> _uiState.update { it.copy(listProblem = e.problem()) } },
+        )
     }
 
-    fun onMode(mode: GameMode) = edit { it.copy(mode = mode) }
-    fun onRules(rules: OnlineRulesChoice) = edit { it.copy(rules = rules) }
-    fun onTarget(text: String) = edit { it.copy(targetText = text.filter(Char::isDigit).take(6)) }
-    fun onSkillBoosters(allowed: Boolean) = edit { it.copy(skillBoosters = allowed) }
-    fun onTempo(tempo: TempoDeJogada) = edit { it.copy(tempo = tempo) }
-    fun onPunicao(punicao: Punicao) = edit { it.copy(punicao = punicao) }
-    fun onRobotLevel(level: BotLevel) = edit { it.copy(robotLevel = level) }
+    /** Tocar numa mesa: a minha mesa reabre a sala direto; outra mostra as opções e "Ocupar este lugar". */
+    fun onSelect(table: TableView) {
+        val s = _uiState.value
+        if (!table.canEnter(s.myId) || s.joining) return
+        if (table.seats.any { it.guestId == s.myId }) {
+            _uiState.update { it.copy(joinedId = table.id, selected = null) }
+            return
+        }
+        _uiState.update { it.copy(selected = table, problem = null) }
+    }
 
-    fun onCreatedHandled() = _uiState.update { it.copy(createdId = null) }
+    fun onDismissSelected() = _uiState.update { it.copy(selected = null) }
 
-    fun onCreate() {
-        val state = _uiState.value
-        if (state.creating) return
-        val target = state.target ?: return _uiState.update { it.copy(problem = OnlineProblem.INVALID_TARGET) }
-        _uiState.update { it.copy(creating = true, problem = null) }
+    /** "Ocupar este lugar": entra no primeiro lugar livre da mesa escolhida. */
+    fun onOccupy() {
+        val acc = account ?: return
+        val table = _uiState.value.selected ?: return
+        if (_uiState.value.joining) return
+        _uiState.update { it.copy(joining = true, problem = null) }
         viewModelScope.launch {
-            val rules = TableRules(
-                mode = if (state.mode == GameMode.DUPLAS) TableMode.DUPLAS else TableMode.INDIVIDUAL,
-                rulesJson = RULES_JSON.encodeToString(RuleSet.serializer(), state.rules.ruleSet()),
-                targetScore = target,
-                bet = 0,
-                skillBoostersAllowed = state.skillBoosters,
-                tempoDeJogada = state.tempo,
-                punicao = state.punicao,
-                robotLevel = state.robotLevel,
-            )
-            attempt { account.call { api, guest -> api.createTable(guest.token, rules) } }.fold(
-                onSuccess = { table -> _uiState.update { it.copy(creating = false, createdId = table.id) } },
-                onFailure = { e -> _uiState.update { it.copy(creating = false, problem = e.problem()) } },
+            attempt { acc.call { api, guest -> api.join(guest.token, table.id) } }.fold(
+                onSuccess = { t -> _uiState.update { it.copy(joining = false, selected = null, joinedId = t.id) } },
+                onFailure = { e -> _uiState.update { it.copy(joining = false, selected = null, problem = e.problem()) } },
             )
         }
-    }
-
-    private fun OnlineRulesChoice.ruleSet(): RuleSet = when (this) {
-        OnlineRulesChoice.CLASSICA -> RuleSet.CLASSICA
-        OnlineRulesChoice.PAULISTA -> RuleSet.PAULISTA
-    }
-
-    private companion object {
-        val RULES_JSON = Json { encodeDefaults = true }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// 3.24 Entrar numa mesa
-// ---------------------------------------------------------------------------------------------------------------
-
-data class OnlineJoinUiState(
-    val idText: String = "",
-    val loading: Boolean = false,
-    val problem: OnlineProblem? = null,
-    /** O convite (a mesa consultada), antes de ocupar o lugar. */
-    val invite: TableView? = null,
-    /** Já ocupou o lugar: a tela abre a sala. */
-    val joinedId: String? = null,
-) {
-    val canGo: Boolean get() = !loading && idText.isNotBlank()
-}
-
-/** Entrar por id (3.24, §18.2): consulta a mesa, mostra o convite e só entra quando o jogador aceita ("Ocupar este lugar"). */
-class OnlineJoinViewModel(private val account: OnlineAccount) : ViewModel() {
-    private val _uiState = MutableStateFlow(OnlineJoinUiState())
-    val uiState: StateFlow<OnlineJoinUiState> = _uiState.asStateFlow()
-
-    fun onId(text: String) = _uiState.update {
-        it.copy(idText = text.filter(Char::isLetterOrDigit).take(TableId.LENGTH).uppercase(), problem = null, invite = null)
     }
 
     fun onJoinedHandled() = _uiState.update { it.copy(joinedId = null) }
 
-    /** "Entrar": id fora do formato é recusado aqui, sem chamar o servidor. */
-    fun onGo() {
-        val id = TableId.normalize(_uiState.value.idText)
-            ?: return _uiState.update { it.copy(problem = OnlineProblem.INVALID_ID, invite = null) }
-        _uiState.update { it.copy(loading = true, problem = null, invite = null) }
-        viewModelScope.launch {
-            attempt { account.call { api, guest -> api.table(guest.token, id) } }.fold(
-                onSuccess = { table ->
-                    val problem = when (table.state) {
-                        TableState.ABERTA -> if (table.seats.any { it.kind == SeatKind.VAGO }) null else OnlineProblem.TABLE_FULL
-                        TableState.EM_JOGO -> OnlineProblem.ALREADY_STARTED
-                        TableState.ENCERRADA -> OnlineProblem.TABLE_NOT_FOUND
-                    }
-                    // Quem já está sentado (voltando à mesa) entra direto, sem o convite.
-                    _uiState.update { it.copy(loading = false, problem = problem, invite = table.takeIf { problem == null }) }
-                },
-                onFailure = { e -> _uiState.update { it.copy(loading = false, problem = e.problem()) } },
-            )
-        }
-    }
-
-    /** "Ocupar este lugar": entrar de fato (primeiro lugar vago). */
-    fun onOccupy() {
-        val invite = _uiState.value.invite ?: return
-        if (_uiState.value.loading) return
-        _uiState.update { it.copy(loading = true, problem = null) }
-        viewModelScope.launch {
-            attempt { account.call { api, guest -> api.join(guest.token, invite.id) } }.fold(
-                onSuccess = { table -> _uiState.update { it.copy(loading = false, joinedId = table.id) } },
-                onFailure = { e -> _uiState.update { it.copy(loading = false, problem = e.problem(), invite = null) } },
-            )
-        }
-    }
+    fun onProblemShown() = _uiState.update { it.copy(problem = null) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -273,17 +180,24 @@ data class OnlineRoomUiState(
     val problem: OnlineProblem? = null,
     /** A última consulta falhou por rede; segue tentando sozinho. */
     val connectionLost: Boolean = false,
-    val confirmClose: Boolean = false,
+    /** Escolhendo a quem entregar a mesa (§18.2). */
+    val choosingHost: Boolean = false,
     val ended: OnlineRoomEnd? = null,
 ) {
     val started: Boolean get() = table?.state == TableState.EM_JOGO
-    val canStart: Boolean get() = isHost && !busy && table?.state == TableState.ABERTA && table.seats.none { it.kind == SeatKind.VAGO }
+
+    /** §18.2: o anfitrião inicia quando quiser; os lugares livres viram robôs. */
+    val canStart: Boolean get() = isHost && !busy && table?.state == TableState.ABERTA
     val mySeat: Int get() = table?.seats?.indexOfFirst { it.guestId == myId } ?: -1
+
+    /** Humanos a quem o anfitrião pode entregar a mesa (todos os outros da sala). */
+    val passCandidates: List<Int>
+        get() = table?.seats?.filter { it.kind == SeatKind.HUMANO && it.guestId != myId }?.map { it.index }.orEmpty()
 }
 
 /**
  * Sala da mesa (3.23, §18.2). A lista de lugares é atualizada consultando o servidor a cada [pollMs] (o lobby não envia
- * eventos); a consulta também mantém a mesa aberta no servidor.
+ * eventos); a consulta também mantém a sala ativa no servidor.
  */
 class OnlineRoomViewModel(
     private val account: OnlineAccount,
@@ -312,7 +226,7 @@ class OnlineRoomViewModel(
     /** Uma consulta ao servidor agora. */
     suspend fun refresh() {
         attempt { account.call { api, guest -> guest to api.table(guest.token, tableId) } }.fold(
-            onSuccess = { (guest, table) -> applyTable(table, guest.id, connected = true) },
+            onSuccess = { (guest, table) -> applyTable(table, guest.id) },
             onFailure = { e -> onRefreshFailed(e) },
         )
     }
@@ -328,7 +242,7 @@ class OnlineRoomViewModel(
         }
     }
 
-    private fun applyTable(table: TableView, myId: String, connected: Boolean) {
+    private fun applyTable(table: TableView, myId: String) {
         val mine = table.seats.any { it.guestId == myId }
         if (mine) wasSeated = true
         _uiState.update {
@@ -337,11 +251,13 @@ class OnlineRoomViewModel(
                 wasSeated && !mine && table.state == TableState.ABERTA -> OnlineRoomEnd.REMOVED
                 else -> it.ended
             }
+            val isHost = table.hostId == myId
             it.copy(
                 table = table,
                 myId = myId,
-                isHost = table.hostId == myId,
-                connectionLost = !connected,
+                isHost = isHost,
+                choosingHost = it.choosingHost && isHost,
+                connectionLost = false,
                 busy = false,
                 ended = ended,
             )
@@ -354,7 +270,7 @@ class OnlineRoomViewModel(
         viewModelScope.launch {
             attempt { account.call { api, guest -> guest to block(api, guest.token) } }.fold(
                 onSuccess = { (guest, table) ->
-                    applyTable(table, guest.id, connected = true)
+                    applyTable(table, guest.id)
                     after(table)
                 },
                 onFailure = { e -> _uiState.update { it.copy(busy = false, problem = e.problem()) } },
@@ -362,27 +278,24 @@ class OnlineRoomViewModel(
         }
     }
 
-    /** Anfitrião: lugar vago vira robô. */
-    fun onSeatRobot(seat: Int) = act({ api, token -> api.seatRobot(token, tableId, seat) })
-
     /** Anfitrião: tira um jogador da mesa. */
     fun onRemove(seat: Int) = act({ api, token -> api.removeHuman(token, tableId, seat) })
 
-    /** Anfitrião: inicia o jogo (todos os lugares preenchidos). */
+    /** Anfitrião: inicia o jogo; os lugares livres viram robôs (§18.2). */
     fun onStart() = act({ api, token -> api.start(token, tableId) })
 
-    /** Convidado: sai da mesa (o lugar fica vago). */
+    /** Sai da mesa (o lugar fica livre); se era o anfitrião, o cargo passa ao próximo pela ordem de entrada (§18.2). */
     fun onLeave() = act({ api, token -> api.leave(token, tableId) }, after = {
         _uiState.update { it.copy(ended = OnlineRoomEnd.LEFT) }
     })
 
-    fun onAskClose() = _uiState.update { it.copy(confirmClose = true) }
-    fun onDismissClose() = _uiState.update { it.copy(confirmClose = false) }
+    /** Entregar a mesa (§18.2): abre a escolha entre os outros humanos da sala. */
+    fun onAskPass() = _uiState.update { if (it.isHost && it.passCandidates.isNotEmpty()) it.copy(choosingHost = true) else it }
+    fun onDismissPass() = _uiState.update { it.copy(choosingHost = false) }
 
-    /** Anfitrião: encerra a mesa (depois da confirmação). */
-    fun onConfirmClose() {
-        _uiState.update { it.copy(confirmClose = false) }
-        act({ api, token -> api.close(token, tableId) })
+    fun onPassTo(seat: Int) {
+        _uiState.update { it.copy(choosingHost = false) }
+        act({ api, token -> api.passHost(token, tableId, seat) })
     }
 
     fun onProblemShown() = _uiState.update { it.copy(problem = null) }

@@ -31,7 +31,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
-/** Telas online da etapa A (docs/telas.md 3.21 a 3.24): conta de convidado, criar, entrar e a sala. */
+/** Telas online (docs/telas.md 3.21 e 3.23): conta de convidado, lista de mesas do servidor e a sala (§18.2). */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OnlineViewModelsTest {
     private val dispatcher = StandardTestDispatcher()
@@ -70,7 +70,8 @@ class OnlineViewModelsTest {
         val acc = account()
         val first = acc.guest()
         lobby.forgotten += first.token
-        val table = acc.call { api, g -> api.createTable(g.token, FakeLobby.rules) }
+        val id = lobby.serverTable()
+        val table = acc.call { api, g -> api.join(g.token, id) }
         table.hostId shouldBe settings.state.value.onlineGuest!!.id
         (settings.state.value.onlineGuest!!.token == first.token) shouldBe false
     }
@@ -89,9 +90,10 @@ class OnlineViewModelsTest {
     @Test
     fun `com servidor entra como convidado e fica READY`() = runTest(dispatcher) {
         val vm = OnlineHomeViewModel(settings) { account("Ana") }
-        advanceUntilIdle()
+        runCurrent()
         vm.uiState.value.status shouldBe OnlineHomeStatus.READY
         vm.uiState.value.name shouldBe "Ana"
+        vm.viewModelScope.cancel() // a lista de mesas consulta sem parar
     }
 
     // §18.8 versão incompatível e rede viram mensagem com Tentar de novo
@@ -99,12 +101,13 @@ class OnlineViewModelsTest {
     fun `falha de versao ou rede vira ERROR e o retry recupera`() = runTest(dispatcher) {
         lobby.failNext = OnlineException(OnlineErrorKind.UPDATE_APP, ErrorCode.VERSAO_INCOMPATIVEL, 426)
         val vm = OnlineHomeViewModel(settings) { account() }
-        advanceUntilIdle()
+        runCurrent()
         vm.uiState.value.status shouldBe OnlineHomeStatus.ERROR
         vm.uiState.value.problem shouldBe OnlineProblem.UPDATE_APP
         vm.retry()
-        advanceUntilIdle()
+        runCurrent()
         vm.uiState.value.status shouldBe OnlineHomeStatus.READY
+        vm.viewModelScope.cancel()
     }
 
     // §18.8 servidor em manutenção
@@ -112,147 +115,107 @@ class OnlineViewModelsTest {
     fun `503 vira MAINTENANCE`() = runTest(dispatcher) {
         lobby.failNext = OnlineException(OnlineErrorKind.MAINTENANCE, ErrorCode.VERSAO_INCOMPATIVEL, 503)
         val vm = OnlineHomeViewModel(settings) { account() }
-        advanceUntilIdle()
+        runCurrent()
         vm.uiState.value.problem shouldBe OnlineProblem.MAINTENANCE
+        vm.viewModelScope.cancel()
     }
 
-    // ---------- 3.23 Criar mesa ----------
+    // ---------- 3.21 lista de mesas do servidor (§18.2) ----------
 
-    // §18.4 critérios padrão da mesa: indeterminado, sem punição, robôs Fáceis; aposta fixa em 0 (§18.5)
+    private fun home() = OnlineHomeViewModel(settings, pollMs = 3_000) { account("Ana") }
+
+    // §18.2 a tela mostra os jogadores online e as mesas do servidor, abertas primeiro
     @Test
-    fun `cria a mesa com os criterios escolhidos e aposta zero`() = runTest(dispatcher) {
-        val vm = OnlineCreateViewModel(account(), settings)
-        advanceUntilIdle()
-        vm.uiState.value.tempo shouldBe TempoDeJogada.INDETERMINADO
-        vm.uiState.value.punicao shouldBe Punicao.SEM_PUNICAO
-        vm.uiState.value.robotLevel shouldBe BotLevel.FACIL
-        vm.uiState.value.targetText shouldBe "3000"
-        vm.onMode(GameMode.DUPLAS)
-        vm.onRules(OnlineRulesChoice.PAULISTA)
-        vm.onTarget("1500")
-        vm.onSkillBoosters(false)
-        vm.onTempo(TempoDeJogada.UM_MINUTO)
-        vm.onPunicao(Punicao.PERDE_APOSTA)
-        vm.onRobotLevel(BotLevel.DIFICIL)
-        vm.onCreate()
-        advanceUntilIdle()
-        val id = vm.uiState.value.createdId!!
-        val rules = lobby.tables.getValue(id).rules
-        rules.mode shouldBe TableMode.DUPLAS
-        rules.targetScore shouldBe 1500
-        rules.bet shouldBe 0
-        rules.skillBoostersAllowed shouldBe false
-        rules.tempoDeJogada shouldBe TempoDeJogada.UM_MINUTO
-        rules.punicao shouldBe Punicao.PERDE_APOSTA
-        rules.robotLevel shouldBe BotLevel.DIFICIL
-        Json.decodeFromString(RuleSet.serializer(), rules.rulesJson).id shouldBe RuleSet.PAULISTA.id
+    fun `a lista mostra os jogadores online e as mesas abertas antes das em jogo`() = runTest(dispatcher) {
+        val playing = lobby.serverTable()
+        lobby.otherJoins(playing, "Beto")
+        lobby.setState(playing, TableState.EM_JOGO)
+        val open = lobby.serverTable()
+        lobby.onlinePlayers = 5
+        val vm = home()
+        runCurrent()
+        vm.uiState.value.onlinePlayers shouldBe 5
+        vm.uiState.value.tables!!.map { it.id } shouldBe listOf(open, playing)
+        vm.viewModelScope.cancel()
     }
 
-    // §14.4 modo e pontuação-alvo partem da última montagem da mesa
+    // §18.2 a lista se atualiza sozinha
     @Test
-    fun `parte do modo e do alvo da ultima montagem`() = runTest(dispatcher) {
-        val s = FakeSettings(Settings(tableSetup = com.gtranca.data.TableSetup(mode = GameMode.DUPLAS, target = "500")))
-        val vm = OnlineCreateViewModel(account(), s)
-        advanceUntilIdle()
-        vm.uiState.value.mode shouldBe GameMode.DUPLAS
-        vm.uiState.value.targetText shouldBe "500"
+    fun `a lista atualiza sozinha`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        val vm = home()
+        runCurrent()
+        vm.uiState.value.tables!!.single().seats.count { it.kind == SeatKind.HUMANO } shouldBe 0
+        lobby.otherJoins(id, "Beto")
+        advanceTimeBy(3_001)
+        runCurrent()
+        vm.uiState.value.tables!!.single().seats.count { it.kind == SeatKind.HUMANO } shouldBe 1
+        vm.viewModelScope.cancel()
     }
 
+    // §18.2 tocar numa mesa mostra as opcoes e so entra ao ocupar o lugar; o 1o a entrar e o anfitriao
     @Test
-    fun `alvo invalido nao cria e nao chama o servidor`() = runTest(dispatcher) {
-        val vm = OnlineCreateViewModel(account(), settings)
-        vm.onTarget("")
-        vm.uiState.value.canCreate shouldBe false
-        vm.onCreate()
-        advanceUntilIdle()
-        vm.uiState.value.problem shouldBe OnlineProblem.INVALID_TARGET
-        lobby.calls.none { it == "createTable" } shouldBe true
-    }
-
-    @Test
-    fun `recusa do servidor ao criar vira problema na tela`() = runTest(dispatcher) {
-        val vm = OnlineCreateViewModel(account(), settings)
-        advanceUntilIdle()
-        lobby.failNext = OnlineException(OnlineErrorKind.API, ErrorCode.REQUISICAO_INVALIDA, 400)
-        vm.onCreate()
-        advanceUntilIdle()
-        vm.uiState.value.problem shouldBe OnlineProblem.INVALID_REQUEST
-        vm.uiState.value.creating shouldBe false
-        vm.uiState.value.createdId shouldBe null
-    }
-
-    // ---------- 3.24 Entrar numa mesa ----------
-
-    // §18.2 id fora do formato é recusado no aparelho
-    @Test
-    fun `id invalido e recusado sem chamar o servidor`() = runTest(dispatcher) {
-        val vm = OnlineJoinViewModel(account())
-        vm.onId("ab0il")
-        vm.onGo()
-        advanceUntilIdle()
-        vm.uiState.value.problem shouldBe OnlineProblem.INVALID_ID
-        lobby.calls.none { it == "table" } shouldBe true
-    }
-
-    // §18.2 o campo aceita 6 caracteres, sem diferenciar maiúsculas
-    @Test
-    fun `o campo limpa, corta em 6 e poe em maiusculas`() = runTest(dispatcher) {
-        val vm = OnlineJoinViewModel(account())
-        vm.onId(" abc 234xyz")
-        vm.uiState.value.idText shouldBe "ABC234"
-    }
-
-    // §18.2 id inexistente mostra a mensagem própria sem fechar a tela
-    @Test
-    fun `mesa inexistente vira TABLE_NOT_FOUND`() = runTest(dispatcher) {
-        val vm = OnlineJoinViewModel(account())
-        vm.onId("zzzzzz")
-        vm.onGo()
-        advanceUntilIdle()
-        vm.uiState.value.problem shouldBe OnlineProblem.TABLE_NOT_FOUND
-        vm.uiState.value.invite shouldBe null
-    }
-
-    // §18.2 mesa cheia e mesa iniciada
-    @Test
-    fun `mesa cheia ou iniciada nao mostra o convite`() = runTest(dispatcher) {
-        val host = account("Ana")
-        val table = host.call { api, g -> api.createTable(g.token, FakeLobby.rules) }
-        lobby.otherJoins(table.id)
-        val vm = OnlineJoinViewModel(OnlineAccount(lobby, FakeSettings(Settings(onlineServer = "x"))) { "Caio" })
-        vm.onId(table.id)
-        vm.onGo()
-        advanceUntilIdle()
-        vm.uiState.value.problem shouldBe OnlineProblem.TABLE_FULL
-        lobby.setState(table.id, TableState.EM_JOGO)
-        vm.onGo()
-        advanceUntilIdle()
-        vm.uiState.value.problem shouldBe OnlineProblem.ALREADY_STARTED
-    }
-
-    // §18.4 ocupar o lugar é aceitar as regras: só entra depois do convite
-    @Test
-    fun `mostra o convite e so entra ao ocupar o lugar`() = runTest(dispatcher) {
-        val table = account("Ana").call { api, g -> api.createTable(g.token, FakeLobby.rules) }
-        val guestSettings = FakeSettings(Settings(onlineServer = "x"))
-        val vm = OnlineJoinViewModel(OnlineAccount(lobby, guestSettings) { "Beto" })
-        vm.onId(table.id.lowercase())
-        vm.onGo()
-        advanceUntilIdle()
-        vm.uiState.value.invite!!.id shouldBe table.id
-        lobby.tables.getValue(table.id).seats[1].kind shouldBe SeatKind.VAGO // ainda não entrou
+    fun `tocar numa mesa mostra as opcoes e ocupar entra como anfitriao`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        val vm = home()
+        runCurrent()
+        vm.onSelect(vm.uiState.value.tables!!.single())
+        vm.uiState.value.selected!!.id shouldBe id
+        lobby.calls.count { it == "join" } shouldBe 0
         vm.onOccupy()
-        advanceUntilIdle()
-        vm.uiState.value.joinedId shouldBe table.id
-        lobby.tables.getValue(table.id).seats[1].name shouldBe "Beto"
+        runCurrent()
+        vm.uiState.value.joinedId shouldBe id
+        lobby.tables.getValue(id).hostId shouldBe settings.state.value.onlineGuest!!.id
+        vm.viewModelScope.cancel()
     }
 
-    // ---------- 3.23 Mesa online (a sala) ----------
+    // §18.2 mesa em jogo e so para ver
+    @Test
+    fun `mesa em jogo nao abre`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        lobby.otherJoins(id, "Beto")
+        lobby.setState(id, TableState.EM_JOGO)
+        val vm = home()
+        runCurrent()
+        vm.onSelect(vm.uiState.value.tables!!.single())
+        vm.uiState.value.selected shouldBe null
+        vm.viewModelScope.cancel()
+    }
 
-    private fun TestScope.room(table: String, acc: OnlineAccount = account("Ana"), pollMs: Long = 2_000) =
-        OnlineRoomViewModel(acc, table, pollMs)
+    // §18.2 quem ja esta sentado volta direto a sala
+    @Test
+    fun `a minha mesa volta direto a sala`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        account("Ana").call { api, g -> api.join(g.token, id) }
+        val vm = home()
+        runCurrent()
+        vm.uiState.value.myTable!!.id shouldBe id
+        vm.onSelect(vm.uiState.value.tables!!.single())
+        vm.uiState.value.joinedId shouldBe id
+        vm.viewModelScope.cancel()
+    }
 
-    private suspend fun newTable(): String = account("Ana").call { api, g -> api.createTable(g.token, FakeLobby.rules) }.id
+    // §18.2 recusa ao entrar (mesa lotou nesse meio tempo) vira mensagem
+    @Test
+    fun `mesa que lotou antes de entrar mostra o problema`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        val vm = home()
+        runCurrent()
+        vm.onSelect(vm.uiState.value.tables!!.single())
+        repeat(4) { lobby.otherJoins(id, "J$it") }
+        vm.onOccupy()
+        runCurrent()
+        vm.uiState.value.problem shouldBe OnlineProblem.TABLE_FULL
+        vm.uiState.value.joinedId shouldBe null
+        vm.viewModelScope.cancel()
+    }
+
+    // ---------- 3.23 sala ----------
+
+    private fun room(id: String, acc: OnlineAccount = account("Ana")) = OnlineRoomViewModel(acc, id)
+
+    /** Mesa do servidor com Ana sentada (anfitria, a 1a a entrar). */
+    private suspend fun newTable(): String = lobby.serverTable().also { id -> account("Ana").call { api, g -> api.join(g.token, id) } }
 
     // §18.2 quem entra aparece sozinho (consulta a cada ~2 s)
     @Test
@@ -269,32 +232,49 @@ class OnlineViewModelsTest {
         vm.viewModelScope.cancel()
     }
 
-    // §18.2 iniciar so com todos os lugares preenchidos; o anfitrião troca vago por robô
+    // §18.2 o anfitriao inicia quando quiser; os lugares livres viram robos
     @Test
-    fun `anfitriao coloca robo e inicia quando preenchido`() = runTest(dispatcher) {
+    fun `anfitriao inicia com lugares livres e eles viram robos`() = runTest(dispatcher) {
         val id = newTable()
         val vm = room(id)
         runCurrent()
-        vm.uiState.value.canStart shouldBe false
-        vm.onSeatRobot(1)
-        runCurrent()
-        vm.uiState.value.table!!.seats[1].kind shouldBe SeatKind.ROBO
         vm.uiState.value.canStart shouldBe true
         vm.onStart()
         runCurrent()
         vm.uiState.value.started shouldBe true
+        vm.uiState.value.table!!.seats.count { it.kind == SeatKind.ROBO } shouldBe 3
         vm.viewModelScope.cancel()
     }
 
+    // §18.2 Entregar a mesa: escolhe outro humano da sala
     @Test
-    fun `iniciar com lugar vago mostra o problema e a mesa segue aberta`() = runTest(dispatcher) {
+    fun `anfitriao entrega a mesa a outro jogador`() = runTest(dispatcher) {
         val id = newTable()
+        val beto = lobby.otherJoins(id, "Beto")
         val vm = room(id)
         runCurrent()
-        vm.onStart()
+        vm.uiState.value.passCandidates shouldBe listOf(1)
+        vm.onAskPass()
+        vm.uiState.value.choosingHost shouldBe true
+        vm.onPassTo(1)
         runCurrent()
-        vm.uiState.value.problem shouldBe OnlineProblem.EMPTY_SEATS
-        vm.uiState.value.started shouldBe false
+        vm.uiState.value.choosingHost shouldBe false
+        vm.uiState.value.isHost shouldBe false
+        lobby.tables.getValue(id).hostId shouldBe beto.id
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.2 o anfitriao tambem sai; o cargo passa ao proximo
+    @Test
+    fun `anfitriao sai e o cargo passa ao proximo`() = runTest(dispatcher) {
+        val id = newTable()
+        val beto = lobby.otherJoins(id, "Beto")
+        val vm = room(id)
+        runCurrent()
+        vm.onLeave()
+        runCurrent()
+        vm.uiState.value.ended shouldBe OnlineRoomEnd.LEFT
+        lobby.tables.getValue(id).hostId shouldBe beto.id
         vm.viewModelScope.cancel()
     }
 
@@ -311,25 +291,6 @@ class OnlineViewModelsTest {
         vm.viewModelScope.cancel()
     }
 
-    // §18.4 encerrar a mesa pede confirmação
-    @Test
-    fun `encerrar pede confirmacao e termina a sala`() = runTest(dispatcher) {
-        val id = newTable()
-        val vm = room(id)
-        runCurrent()
-        vm.onAskClose()
-        vm.uiState.value.confirmClose shouldBe true
-        vm.onDismissClose()
-        vm.uiState.value.confirmClose shouldBe false
-        lobby.tables.getValue(id).state shouldBe TableState.ABERTA
-        vm.onAskClose()
-        vm.onConfirmClose()
-        runCurrent()
-        lobby.tables.getValue(id).state shouldBe TableState.ENCERRADA
-        vm.uiState.value.ended shouldBe OnlineRoomEnd.CLOSED
-        vm.viewModelScope.cancel()
-    }
-
     // §18.2 quem não é anfitrião vê a sala só para leitura e pode sair
     @Test
     fun `convidado entra, ve a sala sem poderes de anfitriao e sai`() = runTest(dispatcher) {
@@ -341,6 +302,7 @@ class OnlineViewModelsTest {
         runCurrent()
         vm.uiState.value.isHost shouldBe false
         vm.uiState.value.canStart shouldBe false
+        vm.uiState.value.passCandidates shouldBe listOf(0)
         vm.uiState.value.mySeat shouldBe 1
         vm.onLeave()
         runCurrent()
@@ -423,6 +385,7 @@ class OnlineViewModelsTest {
         OnlineException(OnlineErrorKind.API, ErrorCode.LUGARES_VAGOS).toProblem() shouldBe OnlineProblem.EMPTY_SEATS
         OnlineException(OnlineErrorKind.API, ErrorCode.PARTIDA_INDISPONIVEL).toProblem() shouldBe OnlineProblem.GAME_UNAVAILABLE
         OnlineException(OnlineErrorKind.API, ErrorCode.SALDO_INSUFICIENTE).toProblem() shouldBe OnlineProblem.INSUFFICIENT_BALANCE
+        OnlineException(OnlineErrorKind.API, ErrorCode.APP_NAO_RECONHECIDO).toProblem() shouldBe OnlineProblem.APP_NOT_RECOGNIZED
     }
 
     @Test

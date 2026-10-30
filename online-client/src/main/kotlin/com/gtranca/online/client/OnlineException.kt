@@ -42,6 +42,8 @@ class OnlineException(
         fun fromResponse(status: Int, api: ApiError?): OnlineException = when {
             status == 426 -> OnlineException(OnlineErrorKind.UPDATE_APP, ErrorCode.VERSAO_INCOMPATIVEL, status, api?.message)
             api?.code == ErrorCode.VERSAO_INCOMPATIVEL -> OnlineException(OnlineErrorKind.MAINTENANCE, api.code, status, api.message)
+            // §18.2: app sem a chave certa. Nao e token vencido: recriar o convidado nao resolve.
+            api?.code == ErrorCode.APP_NAO_RECONHECIDO -> OnlineException(OnlineErrorKind.API, api.code, status, api.message)
             status == 401 || api?.code == ErrorCode.NAO_AUTENTICADO && status != 503 ->
                 OnlineException(OnlineErrorKind.UNAUTHENTICATED, api?.code, status, api?.message)
             api != null -> OnlineException(OnlineErrorKind.API, api.code, status, api.message)
