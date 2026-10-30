@@ -367,11 +367,14 @@ class LobbyService(
     companion object {
         private const val MAX_ID_ATTEMPTS = 50
 
-        /** Praias e lugares do Brasil (§18.2; lista provisória). */
+        /** Praias do Brasil, com as mais conhecidas de Florianópolis (§18.2). */
         val TABLE_NAMES = listOf(
-            "Ipanema", "Copacabana", "Jericoacoara", "Fernando de Noronha", "Porto de Galinhas", "Trancoso", "Arraial",
-            "Bonito", "Chapada", "Lençóis", "Maragogi", "Búzios", "Paraty", "Ilhabela", "Floripa", "Pipa", "Morro de São Paulo",
-            "Canoa Quebrada", "Jalapão", "Alter do Chão", "Itacaré", "Ubatuba", "Garopaba", "Caraíva",
+            // Florianópolis
+            "Joaquina", "Campeche", "Jurerê", "Mole", "Ingleses", "Canasvieiras", "Barra da Lagoa", "Lagoinha do Leste",
+            "Santinho", "Brava", "Armação", "Daniela", "Moçambique", "Pântano do Sul", "Matadeiro", "Galheta",
+            // outras praias do Brasil
+            "Ipanema", "Copacabana", "Jericoacoara", "Porto de Galinhas", "Trancoso", "Maragogi", "Pipa", "Canoa Quebrada",
+            "Itacaré", "Caraíva", "Garopaba", "Geribá", "Lopes Mendes", "Praia do Forte",
         )
     }
 }

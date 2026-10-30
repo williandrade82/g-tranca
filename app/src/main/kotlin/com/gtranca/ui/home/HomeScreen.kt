@@ -230,7 +230,7 @@ fun HomeScreen(
             GButton(
                 onClick = onPlayOnline,
                 enabled = state.ready,
-                kind = GButtonKind.Wood,
+                kind = GButtonKind.Primary,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("online-play"),
             ) {
                 com.gtranca.ui.theme.AnimatedGlobe(26.dp)
