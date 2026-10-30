@@ -113,3 +113,24 @@ Desenhar já o campo `visibilidade` da mesa (`PRIVADA` | `PUBLICA`) mas **implem
 - **Migração:** o inventário de boosters migra junto com a carteira?
 - **Papéis do console** (§18.7): divisão leitor/operador/administrador proposta, a confirmar.
 - **Início dos 60 s:** contados desde o início da 1ª partida do jogo.
+
+## Revisão de 30/10/2026: mesas mantidas pelo servidor (`definition.md` §18.2)
+O jogador **não cria mesa**; o servidor mantém mesas abertas (Duplas, Clássica, 1500, 15 min, perde a aposta, aposta 50, boosters de skill permitidos, robôs Fáceis), a tela *Jogar online* lista as abertas e o 1º a entrar é o anfitrião. Decisões B1–B8 escritas na §18.4 (B5: os poderes do anfitrião **não** passam a ninguém; B2: 90 s sem humano conectado destroem a mesa).
+
+### O que já existe e o que muda
+| Parte | Situação | Mudança |
+|---|---|---|
+| game-service: partida autoritativa, relógio, abandono, §18.4 "nunca sem humano", reconexão, probe | **vale como está** | `disconnectGraceMs` 0 → **90 s** (B2); `TempoDeJogada.QUINZE_MINUTOS` (contrato, protocolo 3); B1 e B6 só registram até a fase 2 |
+| lobby-service: convidado, mesa, lugares, robô, início, encerrar, `/internal/...` | **reaproveitado** | `POST /api/lobby/tables` sai do jogador → **pool de mesas** no servidor (sempre 1 aberta; +1 cinco minutos depois do 1º jogador; +1 na hora ao lotar sem outra livre; no máximo 1 vazia); **`GET /api/lobby/tables`** (lista das abertas); anfitrião = 1º a entrar, **sucessão antes do jogo** pela ordem de entrada; mesa que esvazia volta a ser "aberta vazia" (sem expirar); "pôr robô" sai (Iniciar completa com robôs); `DELETE` (encerrar) só em jogo |
+| lobby: página de convite `/m/<id>` e id digitado | **sai desta fase** | rota desligada (o código fica para a mesa criada pelo jogador) |
+| Autenticação do app | **novo** | chave do app (fora do repositório, injetada no build por `local.properties`/variável de CI) + cabeçalho com HMAC-SHA256 de método, caminho, carimbo de tempo e corpo; servidor recusa sem assinatura ou com carimbo fora de ±5 min (lobby e handshake do WebSocket); Play Integrity quando o app estiver na loja |
+| Limite de taxa | ajustado em `c9c7c39` | Docker Desktop esconde o IP real; por token continua 120/min |
+| App etapa A (3.21–3.24, `:online-client`) | **parcial** | 3.21 vira a lista; 3.23 perde criar/QR/link/robô e ganha Iniciar sempre habilitado; 3.24 sai; o cliente assina os pedidos |
+| Aposta 50 / carteira | fase 2 | até lá só registrada |
+
+### Próximas tarefas (ordem)
+1. **Backend (online-backend-dev):** pool de mesas + lista + anfitrião/sucessão + 90 s + 15 min + assinatura do app; testes citando §18.2/§18.4; reimplantar e provar com o probe (o probe passa a assinar e a usar a lista).
+2. **App (android-ui-dev):** lista de mesas (3.21), sala (3.23), assinatura no `:online-client`, mensagens de erro (429, app não reconhecido), retry de `STALE_STATE`, permissão de rede local do Android 17.
+3. **Teste com 2–4 celulares** na sala (APK com hash).
+4. **Etapa B:** mesa de jogo online (`OnlineTableDriver`).
+5. Fase 2 (conta Google, carteira: aposta 50 e devoluções de B1/B6/B7), fase 3 (console).
