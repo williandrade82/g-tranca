@@ -6,6 +6,8 @@ import com.gtranca.online.contracts.CreateTableRequest
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.MatchEndedNotice
+import com.gtranca.online.contracts.PassHostRequest
+import com.gtranca.online.contracts.PresenceNotice
 import com.gtranca.online.contracts.ResolveGuestRequest
 import com.gtranca.online.contracts.ResolvedGuest
 import com.gtranca.online.contracts.Health
@@ -41,6 +43,9 @@ import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import java.security.MessageDigest
 import kotlin.system.exitProcess
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.io.readByteArray
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -83,6 +88,8 @@ class LobbyDeps(
     val gateway: GameGateway? = null,
     /** Segredo servico a servico. Vazio/nulo = rotas `/internal/...` FECHADAS. */
     val internalSecret: String? = null,
+    /** A cada quanto o servidor roda os prazos das mesas (abrir a proxima, §18.2). 0 = so nas chamadas (testes). */
+    val maintainEveryMs: Long = 5_000L,
 ) {
     val guests = GuestRegistry(clock)
     val service = LobbyService(store, clock, config = config)
@@ -100,6 +107,20 @@ private fun ApplicationCall.clientIp(trustForwarded: Boolean): String {
     }
     return request.local.remoteAddress
 }
+
+/** Confere o segredo servico a servico; responde o erro e devolve `false` se nao vale. */
+private suspend fun ApplicationCall.internalAllowed(expected: String?): Boolean {
+    when {
+        expected == null -> respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Rotas internas desativadas.", 503))
+        !MessageDigest.isEqual(expected.toByteArray(), (request.headers[INTERNAL_SECRET_HEADER] ?: "").toByteArray()) ->
+            respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Não autorizado.", 401))
+        else -> return true
+    }
+    return false
+}
+
+/** Jogador "online" (§18.2): usou o token neste intervalo (a lista e a sala consultam a cada poucos segundos). */
+private const val ONLINE_WINDOW_MS = 60_000L
 
 private suspend fun ApplicationCall.respondError(e: LobbyException) {
     respondText(json.encodeToString(e.toApiError()), ContentType.Application.Json, HttpStatusCode.fromValue(e.status))
@@ -175,6 +196,15 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
     }
     install(limiter)
 
+    if (deps.maintainEveryMs > 0) {
+        launch {
+            while (isActive) {
+                delay(deps.maintainEveryMs)
+                runCatching { deps.service.maintain() }
+            }
+        }
+    }
+
     suspend fun ApplicationCall.guarded(authenticated: Boolean = true, block: suspend (Guest) -> Unit) {
         try {
             checkVersion()
@@ -196,17 +226,7 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
         get("/health") { call.respondJson(Health()) }
         get("/info") { call.respondJson(ServerInfo(SERVICE_NAME)) }
 
-        // Pagina do convite (§18.2). Sem token: o id da mesa e o segredo; nada da mesa e revelado aqui.
-        get("/m/{id}") {
-            val (status, html) = InvitePage.render(call.parameters["id"].orEmpty(), call.request.headers[HttpHeaders.Host])
-            call.response.header(HttpHeaders.CacheControl, "no-store")
-            call.response.header("X-Content-Type-Options", "nosniff")
-            call.response.header(
-                "Content-Security-Policy",
-                "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
-            )
-            call.respondText(html, ContentType.Text.Html, HttpStatusCode.fromValue(status))
-        }
+        // Pagina do convite /m/<id>: desligada nesta fase (§18.2, sem convite); InvitePage fica para a mesa do jogador.
 
         post("/api/lobby/guests") {
             call.guarded(authenticated = false) {
@@ -218,6 +238,13 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
             call.guarded { guest ->
                 val req = call.receiveLimited<CreateTableRequest>()
                 call.respondJson(service.createTable(guest, req.rules), HttpStatusCode.Created)
+            }
+        }
+        // §18.2: todas as mesas do servidor e quantos jogadores estao online.
+        get("/api/lobby/tables") {
+            call.guarded { _ ->
+                val online = deps.guests.activeIds(ONLINE_WINDOW_MS) + service.connectedInGame()
+                call.respondJson(service.list(online.size))
             }
         }
         get("/api/lobby/tables/{id}") {
@@ -248,9 +275,10 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
         post("/api/lobby/tables/{id}/leave") {
             call.guarded { guest -> call.respondJson(service.leave(guest, call.parameters["id"].orEmpty())) }
         }
-        post("/api/lobby/tables/{id}/seats/{n}/robot") {
+        post("/api/lobby/tables/{id}/host") {
             call.guarded { guest ->
-                call.respondJson(service.seatRobot(guest, call.parameters["id"].orEmpty(), call.seatParam()))
+                val req = call.receiveLimited<PassHostRequest>()
+                call.respondJson(service.passHost(guest, call.parameters["id"].orEmpty(), req.seat))
             }
         }
         post("/api/lobby/tables/{id}/seats/{n}/remove") {
@@ -263,7 +291,8 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 val id = call.parameters["id"].orEmpty()
                 val gateway = deps.gateway
                 if (gateway == null) {
-                    call.respondJson(service.start(guest, id))
+                    service.beginStart(guest, id)
+                    call.respondJson(service.commitStart(id))
                 } else {
                     // §18.3: pede a partida ao game-service (rede interna) ANTES de marcar EM_JOGO. Falhou = mesa ABERTA.
                     val plan = service.beginStart(guest, id)
@@ -301,6 +330,18 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 } catch (e: LobbyException) {
                     call.respondError(e)
                 }
+            }
+        }
+
+        // Servico a servico (game-service): quem esta conectado/abandonou; base da sucessao do anfitriao (§18.2).
+        post("/internal/tables/{id}/presence") {
+            if (!call.internalAllowed(deps.internalSecret)) return@post
+            try {
+                val notice = call.receiveLimited<PresenceNotice>()
+                service.presence(call.parameters["id"].orEmpty(), notice.connected.toSet(), notice.abandoned.toSet())
+                call.respondJson(Health())
+            } catch (e: LobbyException) {
+                call.respondError(e)
             }
         }
 

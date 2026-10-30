@@ -28,7 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
 
-val FAST = GameConfig(internalSecret = TEST_SECRET, botDelayMs = 0, roundPauseMs = 0, retainAfterEndMs = 60_000)
+/** Folga de "todos desconectados" zerada: os testes antigos provam a destruicao sem esperar os 90 s do padrao. */
+val FAST = GameConfig(internalSecret = TEST_SECRET, botDelayMs = 0, roundPauseMs = 0, retainAfterEndMs = 60_000, disconnectGraceMs = 0)
 
 fun humans2(): List<SeatSpec> = listOf(SeatSpec.Human("ga", "Ana"), SeatSpec.Human("gb", "Beto"))
 

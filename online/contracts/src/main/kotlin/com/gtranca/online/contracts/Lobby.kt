@@ -20,7 +20,7 @@ enum class TableMode(val seats: Int) { INDIVIDUAL(2), DUPLAS(4) }
 
 /** Tempo de jogada (§18.4). */
 @Serializable
-enum class TempoDeJogada { INDETERMINADO, UM_MINUTO, CINCO_MINUTOS }
+enum class TempoDeJogada { INDETERMINADO, UM_MINUTO, CINCO_MINUTOS, QUINZE_MINUTOS }
 
 /** Punicao de abandono (§18.4). */
 @Serializable
@@ -67,8 +67,17 @@ data class SeatView(
     val kind: SeatKind,
     val guestId: String? = null,
     val name: String? = null,
+    /** Foto do humano (conta Google, fase 2); hoje sempre `null`. */
+    val photoUrl: String? = null,
+    /** Robo: personagem e nivel (§14.5), conhecidos depois do inicio; antes, so o nivel da mesa. */
+    val profile: BotProfile? = null,
+    val level: BotLevel? = null,
 )
 
+/**
+ * Uma mesa (§18.2). [hostId]/[hostName] vazios = mesa sem anfitriao (vazia, ou ninguem conectado pode assumir).
+ * Assentos de duplas (§16.2): 0 e 2 = Dupla 1, 1 e 3 = Dupla 2.
+ */
 @Serializable
 data class TableView(
     val id: String,
@@ -80,8 +89,20 @@ data class TableView(
     val protocolVersion: Int = ONLINE_PROTOCOL_VERSION,
 )
 
+/** Mantido para a futura mesa criada pelo jogador; o servidor recusa nesta fase (§18.2). */
 @Serializable
 data class CreateTableRequest(val rules: TableRules)
+
+/** GET /api/lobby/tables (§18.2): jogadores online no servidor e todas as mesas (abertas primeiro, depois em jogo). */
+@Serializable
+data class TableListView(
+    val onlinePlayers: Int,
+    val tables: List<TableView>,
+)
+
+/** Entregar a mesa (§18.2, §16.10): o anfitriao passa o cargo ao humano deste assento. */
+@Serializable
+data class PassHostRequest(val seat: Int)
 
 /** [seat] opcional: sem ele, ocupa o primeiro lugar vago. */
 @Serializable
@@ -109,6 +130,9 @@ enum class ErrorCode {
 
     /** O assento foi assumido por um robo (desistencia): nao ha como voltar a ele. */
     ASSENTO_ABANDONADO,
+
+    /** Pedido sem assinatura valida do aplicativo (§18.2 "So o aplicativo oficial"). */
+    APP_NAO_RECONHECIDO,
 }
 
 @Serializable

@@ -16,12 +16,12 @@ data class GameConfig(
     /** Depois do fim do jogo a sessao continua aceitando reconexao (para receber o resultado) por este tempo. */
     val retainAfterEndMs: Long = 10 * 60_000L,
     /**
-     * §18.4 "Todos desconectados": a mesa e destruida quando NENHUM humano esta conectado. Este e o tempo tecnico de folga
-     * entre perceber isso e destruir; o padrao 0 e o da regra (imediato).
+     * §18.4 "Todos desconectados": a mesa e destruida quando NENHUM humano esta conectado por este tempo seguido (90 s:
+     * tela bloqueada ou ligacao nao destroem a mesa na hora).
      */
-    val disconnectGraceMs: Long = 0,
+    val disconnectGraceMs: Long = 90_000L,
     /**
-     * PROVISORIO (pendente de decisao do usuario): prazo para o PRIMEIRO humano conectar depois que a partida e criada.
+     * §18.4: prazo para o PRIMEIRO humano conectar depois que a partida e criada (60 s).
      * A sessao nasce sem ninguem conectado (o app abre o canal logo apos o /start); a regra de destruicao so vale depois
      * que algum humano conectou ao menos uma vez ou, sem nenhuma conexao, passado este prazo.
      */

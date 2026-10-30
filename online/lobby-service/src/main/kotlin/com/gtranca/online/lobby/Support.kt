@@ -48,6 +48,13 @@ class GuestRegistry(
         return entry.guest
     }
 
+    /** Convidados que usaram o token nos ultimos [windowMs] (jogadores online, §18.2). */
+    @Synchronized
+    fun activeIds(windowMs: Long): Set<String> {
+        val now = clock()
+        return byHash.values.filter { now - it.lastUsedMs <= windowMs }.map { it.guest.id }.toSet()
+    }
+
     private fun sweep() {
         val now = clock()
         byHash.values.removeIf { now - it.lastUsedMs > ttlMs }

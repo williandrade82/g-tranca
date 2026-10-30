@@ -171,6 +171,8 @@ class MatchSession(
     private val wallClock: () -> Long = System::currentTimeMillis,
     /** Chamado UMA vez quando o jogo termina ou e encerrado (dentro do ator: nao pode bloquear nem fazer rede). */
     private val onEnded: (MatchEnd) -> Unit = {},
+    /** Quem esta conectado e quem abandonou, a cada mudanca (§18.2: o lobby faz a sucessao do anfitriao). */
+    private val onPresence: (connected: Set<String>, abandoned: Set<String>) -> Unit = { _, _ -> },
 ) {
     private val log = LoggerFactory.getLogger(MatchSession::class.java)
 
@@ -619,6 +621,7 @@ class MatchSession(
         TempoDeJogada.INDETERMINADO -> null
         TempoDeJogada.UM_MINUTO -> 60_000L
         TempoDeJogada.CINCO_MINUTOS -> 300_000L
+        TempoDeJogada.QUINZE_MINUTOS -> 900_000L
     }
 
     /** A vez recomeca so quando muda o assento da vez ou comeca partida nova (comprar, baixar e descartar sao UMA vez). */
@@ -661,10 +664,28 @@ class MatchSession(
         finished = true
     }
 
+    private var lastPresence: Pair<Set<String>, Set<String>>? = null
+
     private fun refreshPresence() {
         val humans = slots.indices.filter { slots[it] is Slot.Human && it !in forfeited }
         val anyConnected = humans.any { links[it] != null }
         emptySince = if (humans.isEmpty() || anyConnected || stage == TableStage.GAME_OVER) null else (emptySince ?: now())
+        val connected = humans.filter { links[it] != null }.map { (slots[it] as Slot.Human).guestId }.toSet()
+        val abandoned = slots.indices.mapNotNull { i ->
+            when (val s = slots[i]) {
+                is Slot.Robot -> s.replacedGuestId
+                is Slot.Human -> if (i in forfeited) s.guestId else null
+            }
+        }.toSet()
+        val presence = connected to abandoned
+        if (presence != lastPresence) {
+            lastPresence = presence
+            try {
+                onPresence(connected, abandoned)
+            } catch (ex: Exception) {
+                log.warn("Aviso de presenca falhou table={}: {}", tableId, ex.toString())
+            }
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ vistas

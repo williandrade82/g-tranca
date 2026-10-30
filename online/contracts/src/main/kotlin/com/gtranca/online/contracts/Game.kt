@@ -115,6 +115,13 @@ data class CloseMatchResponse(val alreadyOver: Boolean = false)
 @Serializable
 data class MatchEndedNotice(val reason: GameEndReason)
 
+/**
+ * game -> lobby: quem esta conectado e quem abandonou (§18.2, §18.4); enviado a cada mudanca. O lobby usa para a
+ * sucessao do anfitriao (nunca um robo) e para contar os jogadores online.
+ */
+@Serializable
+data class PresenceNotice(val connected: List<String>, val abandoned: List<String> = emptyList())
+
 /** game -> lobby: de quem e este token? (o corpo, nao a URL, leva o token). */
 @Serializable
 data class ResolveGuestRequest(val token: String)

@@ -4,6 +4,7 @@ import com.gtranca.online.contracts.GameEndReason
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.MatchEndedNotice
 import com.gtranca.online.contracts.OnlineJson
+import com.gtranca.online.contracts.PresenceNotice
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -17,13 +18,18 @@ import kotlinx.coroutines.CancellationException
 /** O lobby nao registrou o fim do jogo (fora do ar, segredo errado...). */
 class LobbyNotifyException(message: String) : RuntimeException(message)
 
-/** Avisa o lobby que o jogo terminou ou foi encerrado, para a mesa virar ENCERRADA (§18.4). */
-fun interface LobbyNotifier {
+/** Avisa o lobby que o jogo terminou ou foi encerrado (§18.4) e quem esta conectado (§18.2, sucessao do anfitriao). */
+interface LobbyNotifier {
     /** Lanca [LobbyNotifyException] se nao deu certo (o chamador tenta de novo). Mesa desconhecida (404) conta como ok. */
     suspend fun matchEnded(tableId: String, reason: GameEndReason)
 
+    /** Melhor esforco: vale o ultimo estado; falha so e registrada. */
+    suspend fun presence(tableId: String, notice: PresenceNotice) {}
+
     companion object {
-        val None = LobbyNotifier { _, _ -> }
+        val None = object : LobbyNotifier {
+            override suspend fun matchEnded(tableId: String, reason: GameEndReason) = Unit
+        }
     }
 }
 
@@ -38,13 +44,19 @@ class HttpLobbyNotifier(private val baseUrl: String, private val secret: String?
         }
     }
 
-    override suspend fun matchEnded(tableId: String, reason: GameEndReason) {
+    override suspend fun matchEnded(tableId: String, reason: GameEndReason) =
+        post("/internal/tables/$tableId/ended", OnlineJson.encodeToString(MatchEndedNotice.serializer(), MatchEndedNotice(reason)))
+
+    override suspend fun presence(tableId: String, notice: PresenceNotice) =
+        post("/internal/tables/$tableId/presence", OnlineJson.encodeToString(PresenceNotice.serializer(), notice))
+
+    private suspend fun post(path: String, body: String) {
         if (secret.isNullOrBlank()) throw LobbyNotifyException("segredo interno nao configurado")
         val response = try {
-            client.post("${baseUrl.trimEnd('/')}/internal/tables/$tableId/ended") {
+            client.post("${baseUrl.trimEnd('/')}$path") {
                 header(INTERNAL_SECRET_HEADER, secret)
                 contentType(ContentType.Application.Json)
-                setBody(OnlineJson.encodeToString(MatchEndedNotice.serializer(), MatchEndedNotice(reason)))
+                setBody(body)
             }
         } catch (e: CancellationException) {
             throw e

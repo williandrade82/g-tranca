@@ -16,6 +16,8 @@ import com.gtranca.online.contracts.ResolvedGuest
 import com.gtranca.online.contracts.SeatSpec
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.SeatKind
+import com.gtranca.online.contracts.TableListView
 import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
 import io.kotest.matchers.collections.shouldHaveSize
@@ -65,11 +67,15 @@ class LobbyHandoffTest {
     private suspend fun HttpClient.guest(name: String): GuestIdentity =
         json.decodeFromString(call(HttpMethod.Post, "/api/lobby/guests", body = json.encodeToString(CreateGuestRequest(name))).bodyAsText())
 
-    private suspend fun HttpClient.table(token: String, rules: TableRules): TableView =
-        json.decodeFromString(call(HttpMethod.Post, "/api/lobby/tables", token, json.encodeToString(CreateTableRequest(rules))).bodyAsText())
-
     private suspend fun HttpClient.view(token: String, id: String): TableView =
         json.decodeFromString(call(HttpMethod.Get, "/api/lobby/tables/$id", token).bodyAsText())
+
+    /** §18.2: o jogador entra na mesa aberta do servidor (nao cria mesa). */
+    private suspend fun HttpClient.serverTable(token: String): TableView {
+        val list = json.decodeFromString<TableListView>(call(HttpMethod.Get, "/api/lobby/tables", token).bodyAsText())
+        val id = list.tables.first { it.state == TableState.ABERTA && it.seats.any { s -> s.kind == SeatKind.VAGO } }.id
+        return json.decodeFromString(call(HttpMethod.Post, "/api/lobby/tables/$id/join", token, "{}").bodyAsText())
+    }
 
     private suspend fun HttpResponse.error(): ErrorCode = json.decodeFromString<ApiError>(bodyAsText()).code
 
@@ -79,34 +85,28 @@ class LobbyHandoffTest {
             block()
         }
 
-    private val duplas = TableRules(TableMode.DUPLAS, "{}", targetScore = 500, robotLevel = BotLevel.MEDIO)
-
     @Test
     fun `18_3 ao iniciar o lobby cria a partida no game-service com humanos e robos de perfis diferentes`() {
         val gw = FakeGateway()
         withApp(gw) {
             val ana = client.guest("Ana")
             val beto = client.guest("Beto")
-            val t = client.table(ana.token, duplas)
+            val t = client.serverTable(ana.token)
             client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/join", beto.token, "{}")
-            // Ainda com lugares vagos: nada e enviado ao game-service.
-            client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token).error() shouldBe ErrorCode.LUGARES_VAGOS
             gw.requests shouldHaveSize 0
-            client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/seats/2/robot", ana.token)
-            client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/seats/3/robot", ana.token)
 
             val started = client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token)
             started.status shouldBe HttpStatusCode.OK
             json.decodeFromString<TableView>(started.bodyAsText()).state shouldBe TableState.EM_JOGO
             val req = gw.requests.single()
             req.tableId shouldBe t.id
-            req.rules shouldBe duplas
+            req.rules shouldBe SERVER_TABLE_RULES
             req.seats[0] shouldBe SeatSpec.Human(ana.id, "Ana")
             req.seats[1] shouldBe SeatSpec.Human(beto.id, "Beto")
             val robots = req.seats.filterIsInstance<SeatSpec.Robot>()
             robots shouldHaveSize 2
             robots.map { it.profile }.toSet() shouldHaveSize 2 // perfis diferentes entre si (§14.5)
-            robots.all { it.level == BotLevel.MEDIO } shouldBe true
+            robots.all { it.level == BotLevel.FACIL } shouldBe true
             // Iniciar de novo: a mesa ja comecou.
             client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token).error() shouldBe ErrorCode.MESA_JA_INICIADA
             gw.requests shouldHaveSize 1
@@ -118,15 +118,14 @@ class LobbyHandoffTest {
         val gw = FakeGateway(fail = GameGatewayException(null, "fora do ar"))
         withApp(gw) {
             val ana = client.guest("Ana")
-            val t = client.table(ana.token, TableRules(TableMode.INDIVIDUAL, "{}"))
-            client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/seats/1/robot", ana.token)
+            val t = client.serverTable(ana.token)
 
             val r = client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token)
             r.status shouldBe HttpStatusCode.ServiceUnavailable
             r.error() shouldBe ErrorCode.PARTIDA_INDISPONIVEL
             client.view(ana.token, t.id).state shouldBe TableState.ABERTA
             // A mesa segue editavel (nao ficou presa em "iniciando") e da para tentar de novo.
-            client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/seats/1/remove", ana.token).error() shouldBe ErrorCode.LUGAR_INVALIDO
+            client.view(ana.token, t.id).seats.count { it.kind == SeatKind.VAGO } shouldBe 3 // os robos sairam
             gw.fail = GameGatewayException(400, "regras")
             val bad = client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token)
             bad.status shouldBe HttpStatusCode.BadRequest
@@ -143,8 +142,8 @@ class LobbyHandoffTest {
         val service = LobbyService(InMemoryTableStore(), { 1_000L }, kotlin.random.Random(1))
         val ana = Guest("a", "Ana")
         val beto = Guest("b", "Beto")
-        val t = service.createTable(ana, TableRules(TableMode.INDIVIDUAL, "{}"))
-        service.seatRobot(ana, t.id, 1)
+        val t = service.list(0).tables.first()
+        service.join(ana, t.id, null)
         service.beginStart(ana, t.id)
         fun code(block: () -> Unit) = io.kotest.assertions.throwables.shouldThrow<LobbyException> { block() }.code
         code { service.join(beto, t.id, null) } shouldBe ErrorCode.MESA_JA_INICIADA
@@ -152,7 +151,7 @@ class LobbyHandoffTest {
         code { service.beginStart(ana, t.id) } shouldBe ErrorCode.MESA_JA_INICIADA
         service.get(ana, t.id).state shouldBe TableState.ABERTA
         service.abortStart(t.id).state shouldBe TableState.ABERTA
-        code { service.join(beto, t.id, null) } shouldBe ErrorCode.MESA_CHEIA // aceita de novo (e a mesa ja esta cheia)
+        service.join(beto, t.id, null).seats.count { it.kind == SeatKind.HUMANO } shouldBe 2 // aceita de novo
     }
 
     @Test

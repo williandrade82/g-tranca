@@ -604,4 +604,35 @@ class MatchClockTest {
         r.ended.single().reason shouldBe GameEndReason.TODOS_DESCONECTADOS
         r.stop()
     }
+
+    // ------------------------------------------------------------------------------------------ 30/10/2026
+
+    @Test
+    fun `18_4 todos desconectados por 90 s seguidos destroem a mesa, nao antes`() = runBlocking {
+        val r = rig(TableMode.INDIVIDUAL, humans2(), config = FAST.copy(disconnectGraceMs = GameConfig().disconnectGraceMs))
+        GameConfig().disconnectGraceMs shouldBe 90_000L
+        val (a, b) = r.humans()
+        a.detach()
+        b.detach()
+        r.session.inspect() // a queda foi percebida (relogio parado)
+        r.clock.advance(89_999)
+        r.session.inspect().end shouldBe null
+        r.clock.advance(1)
+        r.session.inspect()
+        r.awaitFinished()
+        r.ended.single().reason shouldBe GameEndReason.TODOS_DESCONECTADOS
+        r.stop()
+    }
+
+    @Test
+    fun `18_4 tempo de jogada de 15 minutos`() = runBlocking {
+        val r = rig(TableMode.INDIVIDUAL, humans2(), TempoDeJogada.QUINZE_MINUTOS)
+        r.humans()
+        r.awaitHumanTurn().turnLeftMs shouldBe 900_000L
+        r.clock.advance(899_999)
+        r.session.inspect().abandonments shouldBe emptyList()
+        r.clock.advance(1)
+        r.session.inspect().abandonments.single().reason shouldBe AbandonReason.TEMPO
+        r.stop()
+    }
 }

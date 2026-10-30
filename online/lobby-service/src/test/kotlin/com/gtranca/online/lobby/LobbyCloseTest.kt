@@ -9,11 +9,14 @@ import com.gtranca.online.contracts.GameEndReason
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.MatchEndedNotice
+import com.gtranca.online.contracts.PresenceNotice
 import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.OnlineJson
 import com.gtranca.online.contracts.PROTOCOL_HEADER
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.SeatKind
+import com.gtranca.online.contracts.TableListView
 import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
 import io.kotest.matchers.shouldBe
@@ -69,16 +72,20 @@ class LobbyCloseTest {
     private suspend fun HttpClient.view(token: String, id: String): TableView =
         json.decodeFromString(call(HttpMethod.Get, "/api/lobby/tables/$id", token).bodyAsText())
 
+    /** §18.2: o jogador entra na mesa aberta do servidor (nao cria mesa). */
+    private suspend fun HttpClient.serverTable(token: String): TableView {
+        val list = json.decodeFromString<TableListView>(call(HttpMethod.Get, "/api/lobby/tables", token).bodyAsText())
+        val id = list.tables.first { it.state == TableState.ABERTA && it.seats.any { s -> s.kind == SeatKind.VAGO } }.id
+        return json.decodeFromString(call(HttpMethod.Post, "/api/lobby/tables/$id/join", token, "{}").bodyAsText())
+    }
+
     private suspend fun HttpResponse.error(): ErrorCode = json.decodeFromString<ApiError>(bodyAsText()).code
 
-    /** Mesa 1x1 de Ana com um robo, ja EM_JOGO. */
+    /** Mesa do servidor com Ana (anfitria) e Beto, ja EM_JOGO. */
     private suspend fun HttpClient.inGame(): Triple<GuestIdentity, GuestIdentity, TableView> {
         val ana = guest("Ana")
         val beto = guest("Beto")
-        val rules = TableRules(TableMode.INDIVIDUAL, "{}")
-        val t: TableView = json.decodeFromString(
-            call(HttpMethod.Post, "/api/lobby/tables", ana.token, json.encodeToString(CreateTableRequest(rules))).bodyAsText(),
-        )
+        val t = serverTable(ana.token)
         call(HttpMethod.Post, "/api/lobby/tables/${t.id}/join", beto.token, "{}")
         call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token).status shouldBe HttpStatusCode.OK
         view(ana.token, t.id).state shouldBe TableState.EM_JOGO
@@ -121,16 +128,25 @@ class LobbyCloseTest {
     }
 
     @Test
-    fun `18_4 mesa ainda aberta e encerrada sem falar com o game-service`() {
+    fun `18_2 mesa ainda aberta nao e encerrada e o game-service nao e chamado`() {
         val gw = Gateway(failClose = GameGatewayException(null, "nao deveria ser chamado"))
         withApp(gw) {
             val ana = client.guest("Ana")
-            val rules = TableRules(TableMode.INDIVIDUAL, "{}")
-            val t: TableView = json.decodeFromString(
-                client.call(HttpMethod.Post, "/api/lobby/tables", ana.token, json.encodeToString(CreateTableRequest(rules))).bodyAsText(),
-            )
-            client.call(HttpMethod.Delete, "/api/lobby/tables/${t.id}", ana.token).status shouldBe HttpStatusCode.OK
-            client.view(ana.token, t.id).state shouldBe TableState.ENCERRADA
+            val t = client.serverTable(ana.token)
+            client.call(HttpMethod.Delete, "/api/lobby/tables/${t.id}", ana.token).error() shouldBe ErrorCode.SEM_PERMISSAO
+            client.view(ana.token, t.id).state shouldBe TableState.ABERTA
+            gw.closed.size shouldBe 0
+        }
+    }
+
+    @Test
+    fun `18_2 o game-service informa a presenca e o anfitriao que caiu passa o cargo`() {
+        withApp(Gateway()) {
+            val (ana, beto, t) = client.inGame()
+            val body = json.encodeToString(PresenceNotice(connected = listOf(beto.id)))
+            client.call(HttpMethod.Post, "/internal/tables/${t.id}/presence", body = body).status shouldBe HttpStatusCode.Unauthorized
+            client.call(HttpMethod.Post, "/internal/tables/${t.id}/presence", body = body, secretHeader = secret).status shouldBe HttpStatusCode.OK
+            client.view(ana.token, t.id).hostId shouldBe beto.id
         }
     }
 
@@ -158,12 +174,7 @@ class LobbyCloseTest {
     fun `18_4 aviso de fim de jogo nao fecha uma mesa que ainda esta aberta`() {
         withApp(Gateway()) {
             val ana = client.guest("Ana")
-            val t: TableView = json.decodeFromString(
-                client.call(
-                    HttpMethod.Post, "/api/lobby/tables", ana.token,
-                    json.encodeToString(CreateTableRequest(TableRules(TableMode.INDIVIDUAL, "{}"))),
-                ).bodyAsText(),
-            )
+            val t = client.serverTable(ana.token)
             val body = json.encodeToString(MatchEndedNotice(GameEndReason.ABANDONO))
             client.call(HttpMethod.Post, "/internal/tables/${t.id}/ended", body = body, secretHeader = secret).status shouldBe HttpStatusCode.OK
             client.view(ana.token, t.id).state shouldBe TableState.ABERTA

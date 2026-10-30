@@ -5,8 +5,10 @@ import kotlinx.serialization.Serializable
 /**
  * Versao do protocolo online (§18.8). Sobe quando app e servidor deixam de se entender.
  * 2 (etapa 1.3c): relogio de jogada na vista (`turn`), `endReason`, `reason` em `SeatsChanged` e a mensagem `closed`.
+ * 3 (30/10/2026): mesas mantidas pelo servidor (§18.2): lista de mesas, anfitriao = 1o a entrar, Entregar a mesa,
+ * 15 minutos de jogada e assinatura do aplicativo.
  */
-const val ONLINE_PROTOCOL_VERSION: Int = 2
+const val ONLINE_PROTOCOL_VERSION: Int = 3
 
 /** Resposta de GET /health. */
 @Serializable

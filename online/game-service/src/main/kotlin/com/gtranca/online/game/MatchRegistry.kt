@@ -2,6 +2,7 @@ package com.gtranca.online.game
 
 import com.gtranca.online.contracts.CreateMatchRequest
 import com.gtranca.online.contracts.LobbyLimits
+import com.gtranca.online.contracts.PresenceNotice
 import com.gtranca.online.contracts.SeatSpec
 import com.gtranca.online.contracts.TableId
 import com.gtranca.online.contracts.GameEndReason
@@ -10,6 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
@@ -54,20 +57,35 @@ class MatchRegistry(
         if (req.rules.targetScore !in 1..LobbyLimits.MAX_TARGET_SCORE) bad("Pontuação-alvo inválida.")
         sessions.values.removeIf { it.isFinished }
         if (sessions.size >= config.maxMatches) throw MatchCreateException(503, "Servidor cheio. Tente de novo em instantes.")
+        val presence = MutableStateFlow<PresenceNotice?>(null)
         val session = try {
             MatchSession(
                 id, req.rules, req.seats, req.seed ?: secure.nextLong(), config,
                 onEnded = { end -> scope.launch { notifyLobby(id, end.reason) } },
+                onPresence = { connected, abandoned -> presence.value = PresenceNotice(connected.sorted(), abandoned.sorted()) },
             )
         } catch (e: IllegalArgumentException) {
             bad(e.message ?: "Regras inválidas.")
         }
         sessions[id] = session
+        // Presenca ao lobby: um coletor por partida, em ordem e so com o estado mais recente (StateFlow e conflado).
+        val sender = scope.launch {
+            presence.filterNotNull().collect { notice ->
+                try {
+                    notifier.presence(id, notice)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn("Presenca ao lobby falhou table={}: {}", id, e.message)
+                }
+            }
+        }
         scope.launch {
             try {
                 session.run()
             } finally {
                 sessions.remove(id, session)
+                sender.cancel()
             }
         }
         return session to true
