@@ -40,6 +40,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.gtranca.ui.online.onlineGraph
 import com.gtranca.ai.Difficulty
 import com.gtranca.data.GameData
 import com.gtranca.game.WriteQueue
@@ -289,9 +290,12 @@ fun AppNavHost() {
                 onStats = { navController.navigateFromHome(StatsRoute) },
                 onInventory = { navController.navigateFromHome(InventoryRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
+                onPlayOnline = { navController.navigateFromHome(com.gtranca.ui.online.OnlineHomeRoute) },
             )
             }
         }
+        // Jogo online (§18): rotas novas, aditivas (docs/telas.md 3.21 a 3.24).
+        onlineGraph(navController, data)
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
         composable<ProfileRoute> {
             ProfileScreen(

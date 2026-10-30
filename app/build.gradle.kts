@@ -73,6 +73,9 @@ dependencies {
     implementation(project(":ai"))
     implementation(project(":data"))
     implementation(project(":net"))
+    // Jogo online (docs/plano-online.md): cliente do lobby/partida e QR Code do convite (só gera; o app não lê QR).
+    implementation(project(":online-client"))
+    implementation(libs.zxing.core)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

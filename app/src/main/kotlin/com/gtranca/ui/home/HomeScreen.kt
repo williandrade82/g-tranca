@@ -113,6 +113,7 @@ fun HomeScreen(
     onStats: () -> Unit = {},
     onInventory: () -> Unit = {},
     onProfile: () -> Unit = {},
+    onPlayOnline: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Ao voltar para esta tela, o jogo salvo pode ter mudado (jogado, terminado).
@@ -224,6 +225,15 @@ fun HomeScreen(
                 modifier = newGameModifier,
             ) {
                 Text(stringResource(R.string.home_new_game), style = MaterialTheme.typography.titleMedium)
+            }
+            // §18 jogo online (adicional; o jogo contra robôs e o multijogador local seguem como sempre).
+            GButton(
+                onClick = onPlayOnline,
+                enabled = state.ready,
+                kind = GButtonKind.Secondary,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("online-play"),
+            ) {
+                Text(stringResource(R.string.home_online), style = MaterialTheme.typography.titleMedium)
             }
         }
         }

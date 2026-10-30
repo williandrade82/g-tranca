@@ -800,4 +800,90 @@
     <string name="shop_buy">Comprar</string>
     <string name="shop_bought">Compra feita: %1$s, %2$s.</string>
     <string name="shop_failed">Não foi possível concluir a compra. Tente de novo.</string>
+
+    <!-- Jogar online (§18, docs/telas.md 3.21 a 3.24) -->
+    <string name="home_online">Jogar online</string>
+    <string name="online_title">Jogar online</string>
+    <string name="online_no_server">Informe o servidor online no Perfil para jogar pela internet.</string>
+    <string name="online_go_profile">Abrir o Perfil</string>
+    <string name="online_playing_as">Jogando como %1$s (convidado)</string>
+    <string name="online_google_soon">Entrar com o Google (em breve)</string>
+    <string name="online_create">Criar mesa</string>
+    <string name="online_join">Entrar numa mesa</string>
+    <string name="online_retry">Tentar de novo</string>
+    <string name="online_default_name">Jogador</string>
+    <string name="online_ended_closed">A mesa foi encerrada.</string>
+    <string name="online_ended_not_found">A mesa não existe mais.</string>
+    <string name="online_ended_removed">Você foi removido da mesa.</string>
+    <string name="online_ended_left">Você saiu da mesa.</string>
+
+    <string name="online_problem_network">Não foi possível falar com o servidor. Confira o endereço no Perfil e a sua conexão.</string>
+    <string name="online_problem_update_app">Atualize o aplicativo.</string>
+    <string name="online_problem_maintenance">Servidor em manutenção. Tente de novo mais tarde.</string>
+    <string name="online_problem_unauthenticated">Seu acesso expirou. Tente de novo.</string>
+    <string name="online_problem_table_not_found">Mesa não encontrada. Confira o id.</string>
+    <string name="online_problem_table_full">A mesa está cheia.</string>
+    <string name="online_problem_already_started">O jogo desta mesa já começou.</string>
+    <string name="online_problem_not_host">Só o anfitrião pode fazer isso.</string>
+    <string name="online_problem_empty_seats">Preencha todos os lugares (com jogadores ou robôs) para iniciar.</string>
+    <string name="online_problem_invalid_seat">Esse lugar não pode ser alterado.</string>
+    <string name="online_problem_invalid_request">O servidor não aceitou esta mesa. Revise as opções.</string>
+    <string name="online_problem_rate_limit">Servidor ocupado. Tente de novo em instantes.</string>
+    <string name="online_problem_game_unavailable">Não foi possível iniciar a partida agora. A mesa continua aberta; tente de novo.</string>
+    <string name="online_problem_insufficient_balance">Saldo menor que a aposta da mesa.</string>
+    <string name="online_problem_invalid_id">O id tem 6 letras e números (sem 0, O, 1, I e L).</string>
+    <string name="online_problem_invalid_target">Informe uma pontuação-alvo inteira e positiva.</string>
+    <string name="online_problem_unexpected">Algo deu errado. Tente de novo.</string>
+
+    <string name="online_create_title">Criar mesa online</string>
+    <string name="online_bet_none">Aposta: nenhuma (por enquanto)</string>
+    <string name="online_time_limit">Tempo de jogada</string>
+    <string name="online_time_indefinite">Indeterminado</string>
+    <string name="online_time_1">1 minuto</string>
+    <string name="online_time_5">5 minutos</string>
+    <string name="online_penalty">Punição de abandono</string>
+    <string name="online_penalty_none">Sem punição</string>
+    <string name="online_penalty_bet">Perde a aposta</string>
+    <string name="online_robot_level">Nível dos robôs</string>
+
+    <string name="online_room_title">Mesa online</string>
+    <string name="online_table_id_label">Id da mesa</string>
+    <string name="online_qr_desc">QR Code do convite da mesa %1$s</string>
+    <string name="online_copy">Copiar id</string>
+    <string name="online_copied">Id copiado</string>
+    <string name="online_share">Compartilhar link</string>
+    <string name="online_share_text">Venha jogar Tranca-Bot comigo! Mesa %1$s: %2$s</string>
+    <string name="online_seats_title">Lugares</string>
+    <string name="online_seat_empty">Lugar vago</string>
+    <string name="online_seat_robot">Robô</string>
+    <string name="online_seat_host">anfitrião</string>
+    <string name="online_seat_you">você</string>
+    <string name="online_seat_add_robot">Colocar robô</string>
+    <string name="online_seat_remove">Remover</string>
+    <string name="online_start">Iniciar jogo</string>
+    <string name="online_close">Encerrar mesa</string>
+    <string name="online_close_title">Encerrar a mesa?</string>
+    <string name="online_close_text">Todos que estão na mesa saem. Com o jogo em andamento, isso conta como abandono seu.</string>
+    <string name="online_leave">Sair da mesa</string>
+    <string name="online_started">Jogo iniciado</string>
+    <string name="online_started_hint">A mesa de jogo online chega na próxima etapa.</string>
+    <string name="online_connection_lost">Sem conexão com o servidor. Tentando de novo…</string>
+    <string name="online_summary_mode">%1$s · alvo %2$d</string>
+    <string name="online_summary_time">Tempo de jogada: %1$s</string>
+    <string name="online_summary_penalty">Punição de abandono: %1$s</string>
+    <string name="online_summary_robots">Nível dos robôs: %1$s</string>
+    <string name="online_summary_skill_on">Boosters de skill: permitidos</string>
+    <string name="online_summary_skill_off">Boosters de skill: não permitidos</string>
+
+    <string name="online_join_title">Entrar numa mesa</string>
+    <string name="online_join_id_label">Id da mesa (6 caracteres)</string>
+    <string name="online_join_go">Entrar</string>
+    <string name="online_join_seat">Ocupar este lugar</string>
+    <string name="online_invite_title">Convite</string>
+    <string name="online_invite_host">Anfitrião: %1$s</string>
+    <string name="online_invite_accept">Ao ocupar o lugar você aceita as regras e os critérios desta mesa.</string>
+
+    <string name="profile_online_server">Servidor online</string>
+    <string name="profile_online_server_hint">Temporário, só neste aparelho. Endereço (IP ou nome) do servidor do jogo online, com porta se houver (ex.: 192.168.0.10:8080). Vazio desliga o online.</string>
+    <string name="profile_online_server_invalid">Endereço inválido. Use IP ou nome, com :porta se houver.</string>
 </resources>

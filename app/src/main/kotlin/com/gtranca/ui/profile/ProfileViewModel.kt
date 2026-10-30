@@ -6,6 +6,7 @@ import com.gtranca.data.RefusalAlert
 import com.gtranca.data.SettingsRepository
 import com.gtranca.game.PlayerProfile
 import com.gtranca.game.WriteQueue
+import com.gtranca.online.client.OnlineEndpoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,7 +40,12 @@ data class ProfileUiState(
     val importingPhoto: Boolean = false,
     /** A foto escolhida não pôde ser usada. */
     val photoError: Boolean = false,
-)
+    /** §18.1 servidor online no rascunho (texto digitado; grava ao salvar). Vazio = online desligado. */
+    val onlineServer: String = "",
+) {
+    /** O servidor digitado é um endereço aceito (ou está em branco). */
+    val onlineServerValid: Boolean get() = onlineServer.isBlank() || OnlineEndpoint.parse(onlineServer, cleartext = true) != null
+}
 
 /** Perfil do jogador (§14.1): edita um rascunho e grava ao salvar. Preferências ilegíveis: perfil padrão. */
 class ProfileViewModel(
@@ -54,6 +60,9 @@ class ProfileViewModel(
     /** O jogador já mexeu no rascunho: a leitura tardia do perfil gravado não o sobrescreve. */
     private var touched = false
 
+    /** O jogador mexeu no campo do servidor online: só então o Salvar o grava (senão a leitura tardia seria apagada). */
+    private var serverTouched = false
+
     init {
         settings?.let { repo ->
             viewModelScope.launch {
@@ -61,10 +70,10 @@ class ProfileViewModel(
                 val saved = PlayerProfile.decode(stored.profileId)
                 _uiState.update {
                     if (touched) {
-                        it.copy(loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, refusalAlert = stored.refusalAlert)
+                        it.copy(loaded = true, onlineServer = if (serverTouched) it.onlineServer else stored.onlineServer, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, refusalAlert = stored.refusalAlert)
                     } else {
                         val photo = if (saved.hasPhoto && photos != null) PhotoState.SAVED else PhotoState.NONE
-                        ProfileUiState(saved, loaded = true, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, refusalAlert = stored.refusalAlert, photo = photo)
+                        ProfileUiState(saved, loaded = true, onlineServer = if (serverTouched) it.onlineServer else stored.onlineServer, soundOn = stored.soundOn, slowAnimations = stored.slowAnimations, wifiOn = stored.wifiOn, showSharedPhotos = stored.showSharedPhotos, tourAuto = stored.tourAuto, refusalAlert = stored.refusalAlert, photo = photo)
                     }
                 }
             }
@@ -118,6 +127,12 @@ class ProfileViewModel(
         settings?.let { repo -> writes?.enqueue { repo.setSlowAnimations(slow) } }
     }
 
+    /** §18.1 servidor online (campo temporário); o rascunho grava ao salvar, e só se o endereço for aceito. */
+    fun onOnlineServer(text: String) {
+        serverTouched = true
+        _uiState.update { it.copy(onlineServer = text.take(MAX_SERVER)) }
+    }
+
     fun onName(raw: String) = edit { it.copy(name = PlayerProfile.sanitizeName(raw)) }
 
     /** §14.1 cor do medalhão (índice da paleta); índice fora dela é ignorado. */
@@ -165,6 +180,8 @@ class ProfileViewModel(
             it.copy(name = it.name.trim().ifBlank { unnamed }, hasPhoto = state.photo != PhotoState.NONE)
         }
         val encoded = profile.encode()
+        // §18.1 servidor online: normalizado (sem esquema nem espaços); inválido não é gravado.
+        val server = if (serverTouched && state.onlineServerValid) OnlineEndpoint.parse(state.onlineServer, cleartext = true)?.hostPort.orEmpty() else null
         val store = photos
         // A foto vai para o lugar definitivo antes de o perfil apontar para ela.
         val photoStep: suspend () -> Unit = {
@@ -175,10 +192,15 @@ class ProfileViewModel(
             }
         }
         if (writes != null) {
-            writes.enqueue { photoStep(); settings?.setProfile(encoded) }
+            writes.enqueue { photoStep(); settings?.setProfile(encoded); server?.let { settings?.setOnlineServer(it) } }
         } else {
-            viewModelScope.launch { photoStep(); settings?.setProfile(encoded) }
+            viewModelScope.launch { photoStep(); settings?.setProfile(encoded); server?.let { settings?.setOnlineServer(it) } }
         }
         return profile
+    }
+
+    private companion object {
+        /** Tamanho máximo do texto do servidor (um nome de host tem até 253 caracteres, mais a porta). */
+        const val MAX_SERVER = 260
     }
 }
