@@ -212,6 +212,50 @@ class OnlineViewModelsTest {
         vm.viewModelScope.cancel()
     }
 
+    // §18.2 sentado, tocar noutro lugar livre troca de lugar (sem sair da lista)
+    @Test
+    fun `sentado tocar noutro lugar livre troca de lugar`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        account("Ana").call { api, g -> api.join(g.token, id, 0) }
+        val vm = home()
+        runCurrent()
+        vm.onSeatTap(vm.uiState.value.tables!!.single(), 2)
+        runCurrent()
+        vm.uiState.value.joinedId shouldBe null
+        val me = settings.state.value.onlineGuest!!.id
+        lobby.tables.getValue(id).seats[2].guestId shouldBe me
+        lobby.tables.getValue(id).seats[0].kind shouldBe SeatKind.VAGO
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.2 a foto do Perfil vai ao servidor e a dos outros aparece na mesa
+    @Test
+    fun `envia a minha foto e baixa a dos outros jogadores`() = runTest(dispatcher) {
+        val id = lobby.serverTable()
+        val beto = lobby.otherJoins(id, "Beto")
+        lobby.photos[beto.id] = java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
+        lobby.tables[id] = lobby.tables.getValue(id).let { t ->
+            t.copy(seats = t.seats.map { if (it.guestId == beto.id) it.copy(photoUrl = "/api/lobby/guests/${beto.id}/photo?v=1") else it })
+        }
+        val vm = OnlineHomeViewModel(settings, pollMs = 3_000, myPhoto = { "bWluaGE=" }) { account("Ana") }
+        runCurrent()
+        lobby.photos[settings.state.value.onlineGuest!!.id] shouldBe "bWluaGE="
+        vm.photos.value[beto.id]!!.toList() shouldBe listOf<Byte>(1, 2, 3)
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.2 na sala, tocar num lugar livre troca de lugar
+    @Test
+    fun `na sala tocar num lugar livre troca de lugar`() = runTest(dispatcher) {
+        val id = newTable()
+        val vm = room(id)
+        runCurrent()
+        vm.onMove(3)
+        runCurrent()
+        vm.uiState.value.mySeat shouldBe 3
+        vm.viewModelScope.cancel()
+    }
+
     // ---------- 3.23 sala ----------
 
     private fun room(id: String, acc: OnlineAccount = account("Ana")) = OnlineRoomViewModel(acc, id)

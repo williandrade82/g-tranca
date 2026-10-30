@@ -88,7 +88,16 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
     composable<OnlineHomeRoute> { entry ->
         val defaultName = LocalContext.current.getString(R.string.online_default_name)
         val notice by entry.savedStateHandle.getStateFlow<String?>(ONLINE_NOTICE, null).collectAsStateWithLifecycle()
-        val vm = viewModel { OnlineHomeViewModel(data.settings) { server -> accountFor(data, defaultName, server)?.account } }
+        val context = LocalContext.current.applicationContext
+        val vm = viewModel {
+            OnlineHomeViewModel(
+                data.settings,
+                myPhoto = {
+                    val profile = PlayerProfile.decode(data.settings.settings.catch { emit(com.gtranca.data.Settings()) }.first().profileId)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
+                },
+            ) { server -> accountFor(data, defaultName, server)?.account }
+        }
         // Voltando do Perfil (servidor trocado) ou de uma sala: lê de novo.
         LaunchedEffect(Unit) { vm.refresh() }
         OnlineHomeScreen(

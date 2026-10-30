@@ -76,12 +76,20 @@ fun TableView.canEnter(myId: String): Boolean =
 class OnlineHomeViewModel(
     private val settings: SettingsRepository,
     private val pollMs: Long = 3_000,
+    /** A foto do Perfil reduzida (JPEG em Base64), enviada ao servidor ao entrar (§18.2); `null` = sem foto. */
+    private val myPhoto: suspend () -> String? = { null },
     private val accountFor: (String) -> OnlineAccount?,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OnlineHomeUiState())
     val uiState: StateFlow<OnlineHomeUiState> = _uiState.asStateFlow()
 
     private var account: OnlineAccount? = null
+    private var photoCache: OnlinePhotos? = null
+
+    private val _photos = MutableStateFlow<Map<String, ByteArray>>(emptyMap())
+
+    /** Fotos dos jogadores das mesas, por id do convidado. */
+    val photos: StateFlow<Map<String, ByteArray>> = _photos.asStateFlow()
 
     fun retry() = load()
 
@@ -110,6 +118,10 @@ class OnlineHomeViewModel(
                 return@launch
             }
             _uiState.value = OnlineHomeUiState(OnlineHomeStatus.READY, name = guest.name, myId = guest.id)
+            // §18.2: a foto do Perfil vai ao servidor (melhor esforço: sem ela, os outros veem a inicial).
+            attempt { acc.call { api, g -> api.setPhoto(g.token, myPhoto()) } }
+            val cache = OnlinePhotos(acc).also { photoCache = it }
+            launch { cache.photos.collect { _photos.value = it } }
             while (isActive) {
                 refreshList(acc)
                 delay(pollMs)
@@ -121,6 +133,7 @@ class OnlineHomeViewModel(
         attempt { acc.call { api, guest -> guest.id to api.tables(guest.token) } }.fold(
             onSuccess = { (myId, list) ->
                 _uiState.update { s -> s.copy(myId = myId, tables = list.tables, onlinePlayers = list.onlinePlayers, listProblem = null) }
+                photoCache?.refresh(list.tables)
             },
             onFailure = { e -> _uiState.update { it.copy(listProblem = e.problem()) } },
         )
@@ -139,12 +152,16 @@ class OnlineHomeViewModel(
         val acc = account ?: return
         val s = _uiState.value
         if (s.joining != null || table.state != TableState.ABERTA) return
-        if (table.seats.any { it.guestId == s.myId }) return onBackToRoom(table)
         if (table.seats.getOrNull(seat)?.kind != SeatKind.VAGO) return
+        // §18.2: quem já está sentado nesta mesa troca de lugar; os outros entram.
+        val seated = table.seats.any { it.guestId == s.myId }
         _uiState.update { it.copy(joining = table.id to seat, problem = null) }
         viewModelScope.launch {
-            attempt { acc.call { api, guest -> api.join(guest.token, table.id, seat) } }.fold(
-                onSuccess = { t -> _uiState.update { it.copy(joining = null, joinedId = t.id) } },
+            attempt { acc.call { api, guest -> if (seated) api.move(guest.token, table.id, seat) else api.join(guest.token, table.id, seat) } }.fold(
+                onSuccess = { t ->
+                    _uiState.update { it.copy(joining = null, joinedId = t.id.takeIf { !seated }) }
+                    if (seated) refreshList(acc)
+                },
                 onFailure = { e ->
                     val problem = e.problem().let { if (it == OnlineProblem.TABLE_FULL) OnlineProblem.SEAT_TAKEN else it }
                     _uiState.update { it.copy(joining = null, problem = problem) }
@@ -206,6 +223,10 @@ class OnlineRoomViewModel(
     val uiState: StateFlow<OnlineRoomUiState> = _uiState.asStateFlow()
 
     private var poller: Job? = null
+    private val photoCache = OnlinePhotos(account)
+
+    /** Fotos dos jogadores da mesa, por id do convidado. */
+    val photos: StateFlow<Map<String, ByteArray>> = photoCache.photos
 
     /** Já vi o meu lugar na mesa (para distinguir "ainda não entrei" de "fui removido"). */
     private var wasSeated = false
@@ -224,7 +245,10 @@ class OnlineRoomViewModel(
     /** Uma consulta ao servidor agora. */
     suspend fun refresh() {
         attempt { account.call { api, guest -> guest to api.table(guest.token, tableId) } }.fold(
-            onSuccess = { (guest, table) -> applyTable(table, guest.id) },
+            onSuccess = { (guest, table) ->
+                applyTable(table, guest.id)
+                photoCache.refresh(listOf(table))
+            },
             onFailure = { e -> onRefreshFailed(e) },
         )
     }
@@ -274,6 +298,13 @@ class OnlineRoomViewModel(
                 onFailure = { e -> _uiState.update { it.copy(busy = false, problem = e.problem()) } },
             )
         }
+    }
+
+    /** Trocar para um lugar VAGO antes do jogo (§18.2); se outro chegou antes, o servidor recusa. */
+    fun onMove(seat: Int) {
+        val s = _uiState.value
+        if (s.started || s.table?.seats?.getOrNull(seat)?.kind != SeatKind.VAGO) return
+        act({ api, token -> api.move(token, tableId, seat) })
     }
 
     /** Anfitrião tocou num jogador da mesa: pergunta se o remove. */

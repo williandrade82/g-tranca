@@ -18,6 +18,15 @@ interface LobbyApi {
     /** §18.2: todas as mesas do servidor e os jogadores online. */
     suspend fun tables(token: String): TableListView
 
+    /** Trocar para um lugar livre antes do jogo (§18.2). */
+    suspend fun move(token: String, tableId: String, seat: Int): TableView
+
+    /** Envia (ou tira, com `null`) a foto do próprio jogador (§18.2). */
+    suspend fun setPhoto(token: String, photoBase64: String?)
+
+    /** A foto de outro jogador pelo caminho do lugar ([com.gtranca.online.contracts.SeatView.photoUrl]); `null` = sem foto. */
+    suspend fun photo(token: String, photoUrl: String): String?
+
     /** Entregar a mesa (§18.2). */
     suspend fun passHost(token: String, tableId: String, seat: Int): TableView
 

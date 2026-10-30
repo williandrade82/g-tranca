@@ -10,6 +10,7 @@ import com.gtranca.online.contracts.OnlineJson
 import com.gtranca.online.contracts.PROTOCOL_HEADER
 import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.PassHostRequest
+import com.gtranca.online.contracts.GuestPhoto
 import com.gtranca.online.contracts.TableId
 import com.gtranca.online.contracts.TableRules
 import com.gtranca.online.contracts.TableListView
@@ -63,6 +64,27 @@ class OnlineClient(
         TableView.serializer(), token, HttpMethod.Post, "tables/${idOf(tableId)}/host",
         OnlineJson.encodeToString(PassHostRequest.serializer(), PassHostRequest(seat)),
     )
+
+    override suspend fun move(token: String, tableId: String, seat: Int): TableView = call(
+        TableView.serializer(), token, HttpMethod.Post, "tables/${idOf(tableId)}/move",
+        OnlineJson.encodeToString(JoinRequest.serializer(), JoinRequest(seat)),
+    )
+
+    override suspend fun setPhoto(token: String, photoBase64: String?) {
+        call(com.gtranca.online.contracts.Health.serializer(), token, HttpMethod.Put, "guests/me/photo",
+            OnlineJson.encodeToString(GuestPhoto.serializer(), GuestPhoto(photoBase64)))
+    }
+
+    override suspend fun photo(token: String, photoUrl: String): String? {
+        // So caminhos do proprio lobby (nunca uma URL de fora): /api/lobby/guests/{id}/photo
+        val path = photoUrl.substringBefore('?').removePrefix("/api/lobby/")
+        require(path.startsWith("guests/") && path.endsWith("/photo") && path.count { it == '/' } == 2) { "caminho de foto invalido" }
+        return try {
+            call(GuestPhoto.serializer(), token, HttpMethod.Get, path).photoBase64
+        } catch (e: OnlineException) {
+            if (e.status == 404) null else throw e
+        }
+    }
 
     override suspend fun table(token: String, tableId: String): TableView =
         call(TableView.serializer(), token, HttpMethod.Get, "tables/${idOf(tableId)}")

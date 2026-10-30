@@ -93,6 +93,35 @@ class FakeLobby : LobbyApi {
         return TableListView(onlinePlayers, sorted)
     }
 
+    val photos = mutableMapOf<String, String>()
+
+    override suspend fun move(token: String, tableId: String, seat: Int): TableView {
+        enter("move", token)
+        val me = who(token)
+        val t = find(tableId)
+        val from = t.seats.indexOfFirst { it.guestId == me.id }
+        if (from < 0) error(ErrorCode.LUGAR_INVALIDO)
+        if (t.seats[seat].kind != SeatKind.VAGO) error(ErrorCode.MESA_CHEIA)
+        return put(t, t.seats.map {
+            when (it.index) {
+                from -> SeatView(from, SeatKind.VAGO)
+                seat -> t.seats[from].copy(index = seat)
+                else -> it
+            }
+        })
+    }
+
+    override suspend fun setPhoto(token: String, photoBase64: String?) {
+        enter("setPhoto", token)
+        val me = who(token)
+        if (photoBase64 == null) photos.remove(me.id) else photos[me.id] = photoBase64
+    }
+
+    override suspend fun photo(token: String, photoUrl: String): String? {
+        enter("photo", token)
+        return photos[photoUrl.removePrefix("/api/lobby/guests/").substringBefore('/')]
+    }
+
     override suspend fun passHost(token: String, tableId: String, seat: Int): TableView {
         enter("passHost", token)
         val t = host(token, tableId)

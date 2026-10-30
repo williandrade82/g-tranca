@@ -125,6 +125,7 @@ fun OnlineHomeScreen(
     notice: OnlineRoomEnd? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val photos by viewModel.photos.collectAsStateWithLifecycle()
     LaunchedEffect(state.joinedId) {
         state.joinedId?.let {
             viewModel.onJoinedHandled()
@@ -185,7 +186,7 @@ fun OnlineHomeScreen(
                     tables.isEmpty() -> Text(stringResource(R.string.online_tables_opening), Modifier.testTag("online-tables-empty"), style = MaterialTheme.typography.bodyLarge)
                     else -> Column(Modifier.fillMaxWidth().testTag("online-tables"), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                         tables.forEach { table ->
-                            TableCard(table, state.myId, self, joiningSeat = state.joining?.takeIf { it.first == table.id }?.second,
+                            TableCard(table, state.myId, self, photos, joiningSeat = state.joining?.takeIf { it.first == table.id }?.second,
                                 onSeatTap = { seat -> viewModel.onSeatTap(table, seat) }, onBackToRoom = { viewModel.onBackToRoom(table) })
                         }
                     }
@@ -201,7 +202,7 @@ fun OnlineHomeScreen(
 
 /** Uma mesa da lista: id, estado, a mesa de lugares (tocar num VAGO senta ali, §18.2) e as opções fixas. */
 @Composable
-private fun TableCard(table: TableView, myId: String, self: Persona, joiningSeat: Int?, onSeatTap: (Int) -> Unit, onBackToRoom: () -> Unit) {
+private fun TableCard(table: TableView, myId: String, self: Persona, photos: Map<String, ByteArray>, joiningSeat: Int?, onSeatTap: (Int) -> Unit, onBackToRoom: () -> Unit) {
     val mine = table.seats.any { it.guestId == myId }
     GPanel(Modifier.fillMaxWidth().testTag("online-table-row-${table.id}")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -220,11 +221,12 @@ private fun TableCard(table: TableView, myId: String, self: Persona, joiningSeat
             Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = if (table.state == TableState.EM_JOGO) GColors.Steel else GColors.Champagne)
         }
         OnlineSeatTable(
-            table, myId, self,
+            table, myId, self, photos,
             modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
             tagPrefix = "online-seat-${table.id}",
             busySeat = joiningSeat,
-            onSeatTap = if (table.state == TableState.ABERTA && !mine) onSeatTap else null,
+            // Fora da mesa: tocar senta; já nela: tocar troca de lugar (§18.2).
+            onSeatTap = if (table.state == TableState.ABERTA) onSeatTap else null,
         )
         if (mine && table.state == TableState.ABERTA) {
             GButton(onBackToRoom, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-table-enter-${table.id}")) {
@@ -245,11 +247,13 @@ fun OnlineSeatTable(
     table: TableView,
     myId: String,
     self: Persona,
+    /** Fotos dos jogadores (§18.2), por id do convidado; sem foto, o medalhão com a inicial. */
+    photos: Map<String, ByteArray>,
     modifier: Modifier = Modifier,
     tagPrefix: String = "online-seat",
     busySeat: Int? = null,
     onSeatTap: ((Int) -> Unit)? = null,
-    /** Toque nos humanos (menos o próprio) em vez dos lugares VAGO (sala do anfitrião: remover). */
+    /** Também aceita toque nos humanos (menos o próprio): sala do anfitrião, para remover. */
     tapsFilled: Boolean = false,
 ) {
     val gameMode = if (table.rules.mode == TableMode.DUPLAS) GameMode.DUPLAS else GameMode.INDIVIDUAL
@@ -279,7 +283,7 @@ fun OnlineSeatTable(
             val (dupla, pos) = duplaPosition(seat.index)
             val where = stringResource(R.string.online_dupla_seat, dupla, pos)
             val tappable = onSeatTap != null && busySeat == null &&
-                if (tapsFilled) seat.kind == SeatKind.HUMANO && !isMine else seat.kind == SeatKind.VAGO
+                (seat.kind == SeatKind.VAGO || tapsFilled && seat.kind == SeatKind.HUMANO && !isMine)
             Column(
                 Modifier
                     .align(align)
@@ -307,7 +311,10 @@ fun OnlineSeatTable(
                             RobotPhoto(c.profile, c.level, SeatAvatarSize)
                         }
                         isMine -> PersonaAvatar(self, SeatAvatarSize)
-                        else -> PersonaAvatar(Persona(name.ifBlank { "?" }, color = (seat.guestId ?: name).hashCode().mod(Persona.COLORS)), SeatAvatarSize)
+                        else -> PersonaAvatar(
+                            Persona(name.ifBlank { "?" }, color = (seat.guestId ?: name).hashCode().mod(Persona.COLORS), photoBytes = seat.guestId?.let(photos::get)),
+                            SeatAvatarSize,
+                        )
                     }
                     if (isMine || isHost) Box(Modifier.matchParentSize().border(if (isMine) 3.dp else 1.5.dp, GColors.Gold, CircleShape))
                 }
@@ -397,6 +404,7 @@ fun OnlineRoomScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val photos by viewModel.photos.collectAsStateWithLifecycle()
     LaunchedEffect(state.ended) { state.ended?.let(onEnded) }
     val table = state.table
     TableFrame(
@@ -439,11 +447,13 @@ fun OnlineRoomScreen(
         GPanel(Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.online_seats_title), style = MaterialTheme.typography.titleMedium, color = GColors.Champagne)
             OnlineSeatTable(
-                table, state.myId, self,
+                table, state.myId, self, photos,
                 modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
-                // Anfitrião: tocar num jogador pergunta se quer removê-lo (antes do jogo).
-                onSeatTap = if (state.isHost && !state.busy && !state.started) viewModel::onAskRemove else null,
-                tapsFilled = true,
+                // Antes do jogo: tocar num VAGO troca de lugar; o anfitrião, tocando num jogador, pergunta se o remove.
+                onSeatTap = if (!state.busy && !state.started) { seat ->
+                    if (table.seats[seat].kind == SeatKind.VAGO) viewModel.onMove(seat) else viewModel.onAskRemove(seat)
+                } else null,
+                tapsFilled = state.isHost,
             )
             if (state.isHost && state.passCandidates.isNotEmpty()) {
                 GButton(viewModel::onAskPass, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-table-pass"), kind = GButtonKind.Secondary, enabled = !state.busy) {
