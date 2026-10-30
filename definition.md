@@ -778,14 +778,14 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 | Nível dos robôs (§14.5) | Fácil |
 
 - **Sempre há mesa aberta:** o servidor mantém **ao menos uma mesa aberta** (aguardando jogadores).
-  - Quando o **primeiro jogador** entra numa mesa aberta, o servidor conta **5 minutos** e então abre **mais uma mesa**.
-  - Quando o **último lugar** de uma mesa é ocupado e **não sobra nenhuma mesa aberta com lugar livre**, uma nova mesa é aberta **na hora**.
+  - Quando o **primeiro jogador** entra numa mesa aberta, o servidor começa a contar **5 minutos**; ao fim deles, abre **mais uma mesa**.
+  - Se o **último lugar** de uma mesa é ocupado e **não sobra nenhuma mesa com lugar livre**, a contagem em curso é **encerrada na hora** e a nova mesa é aberta já, **antecipando** a abertura por tempo (não se abrem duas).
   - O servidor nunca mantém **mais de uma mesa aberta vazia** (sem ninguém): se já existe uma, não abre outra. *(provisório, revisar com produto)*
-- **Lista de mesas:** a tela *Jogar online* mostra as **mesas abertas** do servidor (id, lugares ocupados com os nomes, lugares livres) e o jogador entra **tocando numa mesa** com lugar livre. Mesas em jogo **não** aparecem na lista.
+- **Lista de mesas:** a tela *Jogar online* mostra a **quantidade de jogadores online** no servidor e **todas as mesas** do servidor, as **abertas** e as **em jogo** (estas marcadas como "em jogo"). Cada mesa mostra o id e as quatro posições — **Time A 1**, **Time A 2**, **Time B 1** e **Time B 2** — com o **nome e a foto** de quem está nela (robô com o nome e o retrato do personagem; lugar vago como "livre"). O jogador entra **tocando numa mesa aberta** com lugar livre; mesa em jogo é só para ver.
 - Cada mesa tem um **id da mesa** de **6 caracteres** (letras e números **sem** os que se confundem: 0/O, 1/I/L), **único entre as mesas existentes**; serve para identificar a mesa na lista e nos registros.
-- **Anfitrião:** o **primeiro jogador** que entra na mesa é o **anfitrião da mesa**. Se ele sair **antes** de o jogo começar, o anfitrião passa ao jogador que entrou **logo depois** dele; se a mesa ficar vazia, ela volta a ser uma mesa aberta vazia.
+- **Anfitrião:** o **primeiro jogador** que entra na mesa é o **anfitrião da mesa**. Se a mesa ficar vazia antes do jogo, ela volta a ser uma mesa aberta vazia.
+- **Passar o cargo** (como na mesa local, §16.10): o anfitrião pode, a qualquer momento, **passar o cargo** a outro humano **conectado** da mesa, que é avisado. Se o anfitrião **sai, desiste ou cai**, o cargo passa sozinho ao **próximo humano conectado pela ordem de entrada** (**nunca um robô**) e todos são avisados; se ninguém pode assumir, a mesa segue sem anfitrião até alguém poder (o jogo não para: ele roda no servidor, §18.3). O antigo anfitrião, se voltar, é **jogador comum**. Diferente da mesa local, não há troca de estado nem anfitrião provisório: o servidor guarda a mesa.
 - **Início:** o anfitrião **inicia** o jogo quando quiser; os lugares ainda vagos são preenchidos com **robôs** do nível da mesa (§14.5). Lugar ocupado por humano não vira robô ao iniciar.
-- **Poderes do anfitrião durante o jogo** ficam **só com ele** e **não passam** a ninguém se ele cair; enquanto ele estiver fora, ninguém os tem, e a partida segue normalmente (ela roda no servidor, §18.3).
 - **Aposta** (§14.6): cada humano precisa de **saldo maior ou igual** à aposta da mesa para ocupar um assento. A aposta é **retida** ao iniciar o jogo. Enquanto não houver carteira online (§18.5, fase 2), a aposta é só **registrada** e nenhuma moeda muda de dono.
 - **Só o aplicativo oficial:** o servidor só atende o **Tranca-Bot**. Cada pedido do aplicativo leva uma **assinatura** feita com uma chave do aplicativo e um carimbo de tempo; pedido sem assinatura válida, ou com carimbo velho, é recusado. Quando o app estiver no Google Play, entra também o **atestado do Google** (Play Integrity). Isso impede robôs de terceiros de ocupar as mesas; não substitui a conta (§18.1).
 
@@ -810,7 +810,7 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - **Duplas:** cada humano joga a **própria vez** no próprio celular; o parceiro não joga por ele.
 - **Moedas dos abandonos em duplas:** como na mesa multijogador local (§16.13).
 - **Fim do jogo:** todos veem a **tela final**; a mesa guarda o resultado por **10 minutos** para quem estava fora e então é apagada. Não há "nova partida" na mesma mesa: para jogar de novo, entra-se noutra mesa da lista.
-- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião, se estiver conectado, pode **substituí-lo por um robô** (conta como abandono).
+- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode **substituí-lo por um robô** (conta como abandono).
 - **Mesa encerrada durante o jogo:** se o anfitrião da mesa a **encerra** com o jogo em andamento, conta como **abandono do anfitrião** (a punição escolhida vale para ele) e os **demais jogadores humanos recebem a aposta de volta**; nenhum robô assume uma mesa encerrada.
 - **Boosters de skill:** a mesa os **permite ou não** (a mesma escolha de §17.9); não há escolha por tipo.
 - Os critérios aparecem na **lista de mesas** (§18.2), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
