@@ -23,8 +23,7 @@ helm upgrade --install game-service deploy/helm/game-service -n gtranca --create
 curl http://192.168.1.5/health        # via ingress
 kubectl --context docker-desktop -n gtranca port-forward svc/game-service 8080:80   # alternativa: http://localhost:8080/health
 
-# 5. Infra (so quando for usada; senha do Postgres em deploy/infra/postgres.yaml deve ser trocada)
-kubectl --context docker-desktop apply -f deploy/infra/postgres.yaml
+# 5. Infra: Postgres, backup e rede -> ver "Postgres, backup e rede" abaixo
 helm repo add nats https://nats-io.github.io/k8s/helm/charts/
 helm install nats nats/nats -n gtranca --kube-context docker-desktop -f deploy/infra/nats-values.yaml
 ```
@@ -172,3 +171,66 @@ kubectl --context docker-desktop -n gtranca rollout restart deploy/lobby-service
 # probe com a mesma chave:
 APP_SIGNING_KEY="$KEY" ./gradlew.bat :probe:run --args="192.168.1.5"
 ```
+
+## Postgres, backup e rede
+
+### Layout de `online/deploy/`
+```
+helm/<servico>/            um chart por servico (lobby-service, game-service)
+infra/postgres.yaml        Service + StatefulSet do Postgres (comum local/nuvem)
+infra/postgres-backup.yaml CronJob de pg_dump diario
+infra/networkpolicies.yaml negar por padrao + liberacoes
+infra/local/               SO cluster local: StorageClass gtranca-local, PVs hostPath, PVCs
+infra/cloud/               nuvem: os mesmos PVCs com a StorageClass do provedor (nao testado)
+infra/traefik-values.yaml, infra/nats-values.yaml
+```
+
+### Secrets necessarios (o usuario cria; nunca no repositorio)
+`gtranca-internal` (INTERNAL_SECRET), `gtranca-app-key` (APP_SIGNING_KEY, opcional) - comandos acima - e:
+```bash
+kubectl --context docker-desktop -n gtranca create secret generic postgres-credentials \
+  --from-literal=POSTGRES_USER=gtranca --from-literal=POSTGRES_DB=gtranca \
+  --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+```
+
+### Onde ficam os dados (local)
+O Kubernetes do Docker Desktop roda no **modo kind**: o no (`desktop-control-plane`) e um conteiner **sem acesso as pastas do Windows** (conferido: nao existe `/run/desktop/mnt/host` no no, e o Docker Desktop nao deixa adicionar montagens a ele). Por isso:
+- **Dados vivos**: `/var/lib/gtranca/postgres` do no (PV `gtranca-postgres-data`, hostPath, `Retain`). Fica num volume do Docker: sobrevive a apagar pod/StatefulSet/PVC e a reiniciar o Docker Desktop; **some com "Reset Kubernetes cluster"** ou desinstalar o Docker Desktop.
+- **Dumps**: `/var/lib/gtranca/backups` do no (PV `gtranca-postgres-backups`), copiados para **`C:\Users\willi\gtranca-data\backups`** (fora do Git e fora do OneDrive). E o dump (`pg_dump -Fc`), nao a pasta de dados, que serve para levar o banco para a nuvem: a pasta crua so funciona na mesma versao maior do Postgres e nao entra num Postgres gerenciado.
+- Alternativa (decisao do usuario): trocar o Kubernetes do Docker Desktop para o modo kubeadm expoe `C:\` no no em `/run/desktop/mnt/host/c/...`, mas recria o cluster (Traefik, servicos e Secrets precisam ser refeitos) e montagens do Windows costumam brigar com o dono 999/permissao 0700 que o Postgres exige.
+
+### Subir (primeira vez ou apos reset do cluster)
+```bash
+# pastas no no, com dono 999 (hostPath ignora fsGroup)
+MSYS_NO_PATHCONV=1 docker exec desktop-control-plane sh -c 'mkdir -p /var/lib/gtranca/postgres /var/lib/gtranca/backups && chown 999:999 /var/lib/gtranca/postgres /var/lib/gtranca/backups && chmod 700 /var/lib/gtranca/postgres'
+kubectl --context docker-desktop apply -f deploy/infra/local/postgres-storage.yaml -f deploy/infra/postgres.yaml -f deploy/infra/postgres-backup.yaml -f deploy/infra/networkpolicies.yaml
+kubectl --context docker-desktop -n gtranca rollout status sts/postgres
+```
+Na nuvem: troque `infra/local/postgres-storage.yaml` por `infra/cloud/postgres-storage.yaml` (com a StorageClass do provedor); o resto e igual.
+
+**Recriar o PVC apos apaga-lo** (o PV `Retain` fica `Released` e nao religa sozinho):
+```bash
+kubectl --context docker-desktop patch pv gtranca-postgres-data --type merge -p '{"spec":{"claimRef":{"uid":null,"resourceVersion":null}}}'
+kubectl --context docker-desktop apply -f deploy/infra/local/postgres-storage.yaml
+```
+
+### Backup e restauracao (testado em 31/10/2026)
+CronJob `postgres-backup`: 03:30 UTC, `pg_dump -Fc` em `/backups/<db>-<data>.dump`, apaga dumps com mais de 7 dias (`BACKUP_KEEP_DAYS`).
+```bash
+K="kubectl --context docker-desktop -n gtranca"
+# disparar agora
+$K create job --from=cronjob/postgres-backup backup-manual-$(date +%s)
+# copiar os dumps para o Windows (manual; pode virar tarefa do Agendador de Tarefas do Windows)
+MSYS_NO_PATHCONV=1 docker cp desktop-control-plane:/var/lib/gtranca/backups/. "C:/Users/willi/gtranca-data/backups"
+# restaurar um dump do Windows (substitui os objetos existentes)
+F="C:/Users/willi/gtranca-data/backups/gtranca-AAAAMMDD-HHMMSS.dump"
+$K exec -i postgres-0 -- sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < "$F"
+```
+Teste feito: tabela `restore_test` com uma linha -> job manual -> copia para o Windows -> `drop table` -> `pg_restore` do arquivo no Windows -> a linha voltou -> tabela apagada. Persistencia: linha sobreviveu a apagar o pod e a apagar StatefulSet + PVC e recriar.
+
+### Endurecimento
+Todos os pods: `runAsNonRoot` com uid fixo (servicos 10001, Postgres/backup 999), `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `readOnlyRootFilesystem` (emptyDir em `/tmp`; no Postgres tambem `/var/run/postgresql`), `automountServiceAccountToken: false`, requests e limite de memoria, startupProbe. Imagens com tag fixa em `values.yaml` (`image.tag`, hash do commit; Postgres `17.11`): troque com `--set image.tag=$TAG` a cada build.
+
+### NetworkPolicy (`infra/networkpolicies.yaml`)
+Nega tudo no namespace `gtranca` e libera: DNS (kube-system, 53 UDP/TCP) para todos; Traefik (namespace `traefik`) -> lobby e game (8080); lobby <-> game (8080); Postgres (5432) so a partir de pods `app: economy-service` (futuro: o chart dele deve usar esse rotulo) e `app: postgres-backup`. Nenhum servico sai para a internet.
+**O kindnet do Docker Desktop APLICA as politicas** (conferido: um pod qualquer nao alcanca o lobby nem o Postgres; ingress, lobby<->game, backup->Postgres e a prova ponta a ponta seguem funcionando). Servico novo no namespace precisa da sua liberacao aqui, senao fica mudo.
