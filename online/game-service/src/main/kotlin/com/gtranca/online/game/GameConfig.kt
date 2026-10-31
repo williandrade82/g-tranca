@@ -8,6 +8,8 @@ data class GameConfig(
     val internalSecret: String? = null,
     /** Endereco interno do lobby-service (nome do Service do cluster). */
     val lobbyUrl: String = "http://lobby-service",
+    /** Endereco interno do economy-service (apostas, §18.2). `null` = sem economia (a aposta so e registrada). */
+    val economyUrl: String? = null,
     /** Pausa antes de cada jogada de robo, para o humano acompanhar. */
     val botDelayMs: Long = 1_200,
     /** Pausa entre o fim de uma partida e a distribuicao da proxima (§16.11: o jogo nao espera telas). */
@@ -48,6 +50,7 @@ data class GameConfig(
             return GameConfig(
                 internalSecret = env["INTERNAL_SECRET"]?.takeIf { it.isNotBlank() },
                 lobbyUrl = env["LOBBY_URL"]?.takeIf { it.isNotBlank() } ?: d.lobbyUrl,
+                economyUrl = env["ECONOMY_URL"]?.takeIf { it.isNotBlank() },
                 botDelayMs = long("BOT_DELAY_MS", d.botDelayMs),
                 roundPauseMs = long("ROUND_PAUSE_MS", d.roundPauseMs),
                 maxMatches = int("MAX_MATCHES", d.maxMatches),

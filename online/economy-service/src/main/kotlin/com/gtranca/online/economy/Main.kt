@@ -1,6 +1,11 @@
 package com.gtranca.online.economy
 
 import com.gtranca.online.contracts.AppSignature
+import com.gtranca.online.contracts.BetHoldRequest
+import com.gtranca.online.contracts.BetHoldResponse
+import com.gtranca.online.contracts.BetSettleRequest
+import com.gtranca.online.contracts.BetSettleResponse
+import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.BuyRequest
 import com.gtranca.online.contracts.DailyClaimRequest
 import com.gtranca.online.contracts.EconomyError
@@ -28,6 +33,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import kotlin.system.exitProcess
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.io.readByteArray
@@ -47,8 +53,10 @@ fun main() {
     Database.migrate(db)
     val appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() }
         ?: null.also { System.err.println("AVISO: APP_SIGNING_KEY ausente; a economia aceita pedidos sem assinatura do app") }
+    val secret = required("INTERNAL_SECRET")
+    val lobbyUrl = System.getenv("LOBBY_URL")?.takeIf { it.isNotBlank() } ?: "http://lobby-service"
     embeddedServer(Netty, port = port, host = "0.0.0.0") {
-        economyModule(EconomyDeps(EconomyStore(db), appKey))
+        economyModule(EconomyDeps(EconomyStore(db), appKey, internalSecret = secret, guests = CachedGuestResolver(HttpGuestResolver(lobbyUrl, secret))))
     }.start(wait = true)
 }
 
@@ -57,6 +65,10 @@ class EconomyDeps(
     /** Chave do aplicativo (§18.2). `null` = sem verificacao (so desenvolvimento). */
     val appKey: String? = null,
     val clock: () -> Long = System::currentTimeMillis,
+    /** Segredo servico a servico (rotas internas de economia). `null` = rotas internas FECHADAS. */
+    val internalSecret: String? = null,
+    /** Dono do token do jogador (o lobby). `null` = rotas publicas FECHADAS (falha fechada). */
+    val guests: GuestResolver? = null,
 )
 
 private class HttpFail(val status: Int, val code: EconomyErrorCode, message: String) : RuntimeException(message)
@@ -84,7 +96,8 @@ private fun EconomyState.toDto() = EconomyStateDto(balance, inventory, lastDaily
 private fun EconomyException.status(): Int = when (code) {
     EconomyException.Code.SALDO_INSUFICIENTE, EconomyException.Code.JA_RESGATADO -> 409
     EconomyException.Code.CONTA_INEXISTENTE -> 404
-    EconomyException.Code.OFERTA_INEXISTENTE -> 400
+    EconomyException.Code.OFERTA_INEXISTENTE, EconomyException.Code.REQUISICAO_INVALIDA -> 400
+    EconomyException.Code.APOSTA_INEXISTENTE -> 404
 }
 
 private val GUEST_ID = Regex("[A-Za-z0-9_-]{1,${EconomyLimits.MAX_GUEST_ID}}")
@@ -113,6 +126,16 @@ fun Application.economyModule(deps: EconomyDeps) {
         try {
             val id = parameters["guestId"].orEmpty()
             if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+            // §18.1: so o proprio jogador ve e mexe na propria carteira (o token e o mesmo do lobby).
+            val token = request.headers[HttpHeaders.Authorization]?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")?.trim()
+                ?.takeIf { it.isNotEmpty() } ?: throw HttpFail(401, EconomyErrorCode.NAO_AUTENTICADO, "Entre novamente.")
+            val resolver = deps.guests ?: throw HttpFail(503, EconomyErrorCode.INDISPONIVEL, "Carteira indisponível agora. Tente de novo.")
+            val owner = try {
+                resolver.resolve(token)
+            } catch (e: LobbyUnavailableException) {
+                throw HttpFail(503, EconomyErrorCode.INDISPONIVEL, "Carteira indisponível agora. Tente de novo.")
+            } ?: throw HttpFail(401, EconomyErrorCode.NAO_AUTENTICADO, "Entre novamente.")
+            if (owner != id) throw HttpFail(403, EconomyErrorCode.SEM_PERMISSAO, "Esta carteira não é sua.")
             respondJson(block(id).toDto())
         } catch (e: HttpFail) {
             respondError(e.status, e.code, e.message.orEmpty())
@@ -145,6 +168,71 @@ fun Application.economyModule(deps: EconomyDeps) {
             }
         }
 
-        // Etapa 2.3: /internal/economy/* (reter e liquidar apostas, §14.6), so trafego interno do game-service.
+        internalEconomyRoutes(deps)
     }
 }
+
+/** Confere o segredo servico a servico; responde o erro e devolve `false` se nao vale (sem segredo = rotas FECHADAS). */
+private suspend fun ApplicationCall.internalAllowed(expected: String?): Boolean {
+    val given = request.headers[INTERNAL_SECRET_HEADER] ?: ""
+    when {
+        expected == null -> respondError(503, EconomyErrorCode.INDISPONIVEL, "Rotas internas desativadas.")
+        !MessageDigest.isEqual(expected.toByteArray(), given.toByteArray()) ->
+            respondError(401, EconomyErrorCode.NAO_AUTENTICADO, "Não autorizado.")
+        else -> return true
+    }
+    return false
+}
+
+/**
+ * Etapa 2.3, so trafego interno (lobby e game; o ingress expoe apenas /economy): saldo para sentar (§18.2), reter e
+ * liquidar apostas (§14.6, §16.13, §18.4). Protegidas pelo segredo servico a servico, sem assinatura do app.
+ */
+private fun io.ktor.server.routing.Routing.internalEconomyRoutes(deps: EconomyDeps) {
+    val store = deps.store
+    suspend fun ApplicationCall.internal(block: suspend () -> Unit) {
+        if (!internalAllowed(deps.internalSecret)) return
+        try {
+            block()
+        } catch (e: HttpFail) {
+            respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+    fun ApplicationCall.betId(): String = parameters["betId"].orEmpty().takeIf { BET_ID.matches(it) }
+        ?: throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Aposta inválida.")
+    fun checkAccounts(ids: Collection<String>) {
+        if (ids.isEmpty() || ids.size > 8 || ids.any { !GUEST_ID.matches(it) }) {
+            throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+        }
+    }
+
+    get("/internal/economy/accounts/{guestId}") {
+        call.internal {
+            val id = call.parameters["guestId"].orEmpty()
+            checkAccounts(listOf(id))
+            call.respondJson(withContext(Dispatchers.IO) { store.ensureAccount(id) }.toDto())
+        }
+    }
+    post("/internal/economy/bets/{betId}/hold") {
+        call.internal {
+            val betId = call.betId()
+            val req = call.receiveLimited<BetHoldRequest>()
+            checkAccounts(req.accounts)
+            val held = withContext(Dispatchers.IO) { store.holdBets(betId, req.amount, req.accounts) }
+            call.respondJson(BetHoldResponse(req.accounts.filter { it in held }, req.accounts.filter { it !in held }))
+        }
+    }
+    post("/internal/economy/bets/{betId}/settle") {
+        call.internal {
+            val betId = call.betId()
+            val req = call.receiveLimited<BetSettleRequest>()
+            checkAccounts(req.payouts.map { it.accountId })
+            val (done, before) = withContext(Dispatchers.IO) { store.settleBets(betId, req.payouts) }
+            call.respondJson(BetSettleResponse(done, before))
+        }
+    }
+}
+
+private val BET_ID = Regex("[A-Za-z0-9_-]{1,64}")

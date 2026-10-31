@@ -77,6 +77,8 @@ fun main() {
         guestCreationPerMinute = System.getenv("GUEST_CREATION_PER_MINUTE")?.toIntOrNull() ?: 10,
         gateway = HttpGameGateway(System.getenv("GAME_SERVICE_URL")?.takeIf { it.isNotBlank() } ?: "http://game-service", secret),
         internalSecret = secret,
+        economy = System.getenv("ECONOMY_URL")?.takeIf { it.isNotBlank() }?.let { HttpEconomyGateway(it, secret) }
+            ?: null.also { System.err.println("AVISO: ECONOMY_URL ausente; o lobby nao confere o saldo ao sentar") },
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { lobbyModule(deps) }.start(wait = true)
 }
@@ -97,6 +99,8 @@ class LobbyDeps(
     val maintainEveryMs: Long = 5_000L,
     /** Chave do aplicativo (§18.2). `null` = sem verificacao (desenvolvimento e testes antigos). */
     val appKey: String? = null,
+    /** Saldo para sentar (§18.2). `null` = nao confere (desenvolvimento e testes antigos). */
+    val economy: EconomyGateway? = null,
 ) {
     val guests = GuestRegistry(clock)
     val service = LobbyService(store, clock, config = config, photoVersion = guests::photoVersion)
@@ -303,7 +307,23 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
         post("/api/lobby/tables/{id}/join") {
             call.guarded { guest ->
                 val req = call.receiveLimited<JoinRequest>()
-                call.respondJson(service.join(guest, call.parameters["id"].orEmpty(), req.seat))
+                val id = call.parameters["id"].orEmpty()
+                deps.economy?.let { eco ->
+                    // §18.2: so ocupa um assento quem tem saldo >= aposta da mesa. Conferido fora da trava do lobby.
+                    val table = service.get(guest, id)
+                    val bet = table.rules.bet
+                    if (bet > 0 && table.seats.none { it.guestId == guest.id }) {
+                        val balance = try {
+                            eco.balance(guest.id)
+                        } catch (e: EconomyGatewayException) {
+                            lobbyError(ErrorCode.PARTIDA_INDISPONIVEL, "Não foi possível conferir o seu saldo agora. Tente de novo.", 503)
+                        }
+                        if (balance < bet) {
+                            lobbyError(ErrorCode.SALDO_INSUFICIENTE, "Saldo insuficiente: a aposta desta mesa é de $bet moedas.", 409)
+                        }
+                    }
+                }
+                call.respondJson(service.join(guest, id, req.seat))
             }
         }
         post("/api/lobby/tables/{id}/move") {

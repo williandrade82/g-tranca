@@ -130,7 +130,16 @@ data class MatchEnd(
     val othersRefunded: Boolean,
     /** Todos os abandonos do jogo, para a liquidacao da economia (fase 2). */
     val abandonments: List<AbandonEvent> = emptyList(),
-)
+    /** Indice do lado vencedor (§13, §13.1); `null` = ninguem venceu (mesa encerrada, destruida, erro). */
+    val winnerSide: Int? = null,
+    /** Lado (indice) de cada assento, na ordem dos assentos. */
+    val seatSides: List<Int> = emptyList(),
+    /** Assento de origem de cada humano (guestId -> assento). Fica so na memoria do servidor. */
+    val humanSeats: Map<String, Int> = emptyMap(),
+) {
+    override fun toString(): String =
+        "MatchEnd(reason=$reason, elapsedMs=$elapsedMs, winnerSide=$winnerSide, abandonments=${abandonments.size})"
+}
 
 /** Fotografia do estado para os testes (nunca sai do servidor). */
 internal data class Inspection(
@@ -506,6 +515,9 @@ class MatchSession(
         val e = MatchEnd(
             reason, wallClock(), elapsedMs(), othersRefunded = reason == GameEndReason.ANFITRIAO_ENCERROU,
             abandonments = abandonments.toList(),
+            winnerSide = if (reason == GameEndReason.PONTUACAO || reason == GameEndReason.ABANDONO) (forcedWinner ?: match.winner)?.index else null,
+            seatSides = slots.indices.map { match.mode.sideOf(Seat(it)).index },
+            humanSeats = humanSeats,
         )
         end = e
         log.info("Jogo encerrado table={} reason={} elapsedMs={}", tableId, reason, e.elapsedMs)

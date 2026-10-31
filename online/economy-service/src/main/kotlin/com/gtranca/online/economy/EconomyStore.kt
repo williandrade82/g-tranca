@@ -4,6 +4,8 @@ import com.gtranca.engine.BoosterCatalog
 import com.gtranca.engine.Coins
 import com.gtranca.engine.Inventory
 import com.gtranca.engine.Shop
+import com.gtranca.online.contracts.BetPayout
+import com.gtranca.online.contracts.PayoutKind
 import java.sql.Connection
 import javax.sql.DataSource
 
@@ -12,7 +14,7 @@ data class EconomyState(val balance: Long, val inventory: Map<String, Int>, val 
 
 /** Recusa de uma operação da economia, com o motivo em pt-BR. */
 class EconomyException(val code: Code, message: String) : RuntimeException(message) {
-    enum class Code { SALDO_INSUFICIENTE, JA_RESGATADO, OFERTA_INEXISTENTE, CONTA_INEXISTENTE }
+    enum class Code { SALDO_INSUFICIENTE, JA_RESGATADO, OFERTA_INEXISTENTE, CONTA_INEXISTENTE, REQUISICAO_INVALIDA, APOSTA_INEXISTENTE }
 }
 
 /**
@@ -72,7 +74,77 @@ class EconomyStore(private val db: DataSource) {
         read(c, accountId)
     }
 
+    /**
+     * §18.2 a aposta é **retida** ao iniciar o jogo, de todos os humanos numa transação só. As carteiras são travadas em
+     * ordem de id (sem deadlock entre jogos simultâneos). Quem não tem mais saldo fica de fora (§14.6: joga **sem aposta**,
+     * nada debitado nem pago). Idempotente por ([betId], conta): repetir devolve o mesmo resultado sem reter de novo.
+     * @return as contas com aposta retida.
+     */
+    fun holdBets(betId: String, amount: Long, accounts: List<String>): Set<String> {
+        if (amount <= 0 || betId.isBlank()) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Aposta inválida.")
+        accounts.forEach { ensureAccount(it) }
+        return tx { c ->
+            val held = mutableSetOf<String>()
+            for (id in accounts.distinct().sorted()) {
+                val balance = lockWallet(c, id).first
+                if (betRow(c, betId, id, lock = true) != null) { held += id; continue }
+                if (balance < amount) continue
+                c.prepareStatement("INSERT INTO aposta (mesa_id, conta_id, valor, estado) VALUES (?, ?, ?, 'RETIDA')").use {
+                    it.setString(1, betId); it.setString(2, id); it.setLong(3, amount); it.executeUpdate()
+                }
+                apply(c, id, "APOSTA", "aposta-$betId", coins = -amount, reference = betId)
+                held += id
+            }
+            held
+        }
+    }
+
+    /**
+     * Liquida a aposta (§14.6, §16.13, §18.4): prêmio, devolução ou perda por conta, numa transação só. Aposta já
+     * LIQUIDADA não muda (repetir por falha de rede nunca paga duas vezes). Conta sem aposta retida neste [betId] é
+     * recusada (nunca se ganha sem apostar). Devolução = a aposta inteira; perda = 0; prêmio até 4× a aposta.
+     * @return (liquidadas agora, já liquidadas antes).
+     */
+    fun settleBets(betId: String, payouts: List<BetPayout>): Pair<Int, Int> = tx { c ->
+        if (payouts.map { it.accountId }.toSet().size != payouts.size) {
+            throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Conta repetida na liquidação.")
+        }
+        var done = 0
+        var before = 0
+        for (p in payouts.sortedBy { it.accountId }) {
+            lockWallet(c, p.accountId)
+            val (value, state) = betRow(c, betId, p.accountId, lock = true)
+                ?: throw EconomyException(EconomyException.Code.APOSTA_INEXISTENTE, "Aposta não encontrada.")
+            if (state == "LIQUIDADA") { before++; continue }
+            val ok = when (p.kind) {
+                PayoutKind.DEVOLUCAO -> p.amount == value
+                PayoutKind.PERDA -> p.amount == 0L
+                PayoutKind.PREMIO -> p.amount in 0..value * 4
+            }
+            if (!ok) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Valor de liquidação inválido.")
+            if (p.amount > 0) apply(c, p.accountId, p.kind.name, "liquidacao-$betId", coins = p.amount, reference = betId)
+            c.prepareStatement(
+                "UPDATE aposta SET estado = 'LIQUIDADA', resultado = ?, recebido = ?, liquidada_em = now() WHERE mesa_id = ? AND conta_id = ?",
+            ).use {
+                it.setString(1, p.kind.name); it.setLong(2, p.amount); it.setString(3, betId); it.setString(4, p.accountId)
+                it.executeUpdate()
+            }
+            done++
+        }
+        done to before
+    }
+
+    /** (valor, estado) da aposta, ou `null`. */
+    fun bet(betId: String, accountId: String): Pair<Long, String>? = tx { c -> betRow(c, betId, accountId, lock = false) }
+
     // ---------------------------------------------------------------------------------------------- apoio
+
+    private fun betRow(c: Connection, betId: String, accountId: String, lock: Boolean): Pair<Long, String>? =
+        c.prepareStatement("SELECT valor, estado FROM aposta WHERE mesa_id = ? AND conta_id = ?" + if (lock) " FOR UPDATE" else "").use { st ->
+            st.setString(1, betId)
+            st.setString(2, accountId)
+            st.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) to rs.getString(2) else null }
+        }
 
     /** Trava a carteira e devolve (saldo, último resgate). */
     private fun lockWallet(c: Connection, accountId: String): Pair<Long, Long?> =

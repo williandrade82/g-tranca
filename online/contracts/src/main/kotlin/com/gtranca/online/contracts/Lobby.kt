@@ -128,7 +128,7 @@ enum class ErrorCode {
     VERSAO_INCOMPATIVEL,
     SEM_PERMISSAO,
     NAO_AUTENTICADO,
-    /** Declarado; o lobby ainda nao consulta o saldo (sem economy-service). */
+    /** §18.2: saldo menor que a aposta da mesa ao sentar. */
     SALDO_INSUFICIENTE,
     LUGARES_VAGOS,
     LUGAR_INVALIDO,
