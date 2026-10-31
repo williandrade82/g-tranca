@@ -1,0 +1,39 @@
+image:
+  repository: gtranca/economy-service
+  tag: "1bcb12b"   # hash do commit da imagem; nunca latest (troque com --set image.tag=...)
+  pullPolicy: IfNotPresent
+
+replicaCount: 1   # dono do saldo; rollout sem downtime (maxUnavailable 0)
+terminationGracePeriodSeconds: 30
+containerPort: 8080
+
+env:
+  PORT: "8080"
+  JAVA_OPTS: "-XX:MaxRAMPercentage=65"
+
+# Postgres: host/porta aqui; usuario, senha e banco vem do Secret criado pelo usuario (ver README).
+database:
+  host: postgres
+  port: 5432
+  secret: postgres-credentials   # chaves POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+
+# Chave do aplicativo (§18.2): obrigatoria aqui; as rotas /economy exigem assinatura.
+appKey:
+  name: gtranca-app-key
+  key: APP_SIGNING_KEY
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: traefik
+  host: ""
+  # So /economy sai pelo ingress. /internal/economy (game-service, 2.3) e /health ficam so dentro do cluster
+  # (/health e /info no ingress ja pertencem ao game-service).
+  paths: [/economy]
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: "1", memory: 512Mi }

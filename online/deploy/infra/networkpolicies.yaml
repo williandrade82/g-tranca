@@ -1,6 +1,6 @@
 # Rede minima no namespace gtranca: nega tudo por padrao e libera so o necessario.
 # Rotulos: lobby/game pelos charts (app.kubernetes.io/name), postgres (app: postgres),
-# backup (app: postgres-backup), economy-service futuro (app: economy-service).
+# backup (app: postgres-backup), economy-service (app: economy-service).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: { name: default-deny-all, namespace: gtranca }
@@ -72,7 +72,7 @@ spec:
       ports:
         - { protocol: TCP, port: 8080 }
 ---
-# Postgres: entrada so do economy-service (futuro) e do backup.
+# Postgres: entrada so do economy-service e do backup.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: { name: allow-postgres-clients, namespace: gtranca }
@@ -100,3 +100,30 @@ spec:
         - podSelector: { matchLabels: { app: postgres } }
       ports:
         - { protocol: TCP, port: 5432 }
+---
+# economy-service: entrada do Traefik (rota publica /economy) e do game-service (/internal/economy, etapa 2.3).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-economy-ingress, namespace: gtranca }
+spec:
+  podSelector: { matchLabels: { app: economy-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: traefik } }
+        - podSelector: { matchLabels: { app.kubernetes.io/name: game-service } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# game-service -> economy-service (saida).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-game-to-economy-egress, namespace: gtranca }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: game-service } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: economy-service } }
+      ports:
+        - { protocol: TCP, port: 8080 }
