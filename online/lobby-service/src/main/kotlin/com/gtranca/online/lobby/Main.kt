@@ -66,7 +66,15 @@ fun main() {
             System.err.println("ERRO: INTERNAL_SECRET nao definido (Secret do Kubernetes). Sem ele o lobby nao inicia partidas.")
             exitProcess(1)
         }
+    // Plano 2.4: com DB_URL, convidados, fotos e mesas ficam no Postgres (schema `lobby`); sem, tudo em memoria.
+    val dbUrl = System.getenv("DB_URL")?.takeIf { it.isNotBlank() }
+    val db = dbUrl?.let {
+        LobbyDatabase.connect(it, System.getenv("DB_USER").orEmpty(), System.getenv("DB_PASSWORD").orEmpty())
+            .also(LobbyDatabase::migrateWithRetry)
+    } ?: null.also { System.err.println("AVISO: DB_URL ausente; convidados e mesas ficam so na memoria (perdidos ao reiniciar)") }
     val deps = LobbyDeps(
+        store = db?.let { PersistentTableStore(PostgresTablePersistence(it)) } ?: InMemoryTableStore(),
+        guestPersistence = db?.let(::PostgresGuestPersistence),
         trustForwardedFor = System.getenv("TRUST_FORWARDED_FOR") == "true",
         config = LobbyConfig(
             openTtlMs = (System.getenv("TABLE_OPEN_TTL_MINUTES")?.toLongOrNull() ?: 30L) * 60_000L,
@@ -101,8 +109,10 @@ class LobbyDeps(
     val appKey: String? = null,
     /** Saldo para sentar (§18.2). `null` = nao confere (desenvolvimento e testes antigos). */
     val economy: EconomyGateway? = null,
+    /** Convidados e fotos no banco (plano 2.4). `null` = memoria. */
+    val guestPersistence: GuestPersistence? = null,
 ) {
-    val guests = GuestRegistry(clock)
+    val guests = GuestRegistry(clock, persistence = guestPersistence)
     val service = LobbyService(store, clock, config = config, photoVersion = guests::photoVersion)
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val tokenLimiter = RateLimiter(tokenLimitPerMinute, clock = clock)

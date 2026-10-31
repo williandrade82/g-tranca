@@ -9,18 +9,35 @@ import java.util.Base64
 import java.util.UUID
 
 /**
- * Convidados anonimos em MEMORIA. O token e opaco (32 bytes aleatorios); so o hash SHA-256 fica guardado,
+ * Convidados anonimos: cache em memoria, com copia no banco quando ha [persistence] (plano 2.4). O token e opaco (32 bytes aleatorios); so o hash SHA-256 fica guardado,
  * entao nem um despejo de memoria/log revela tokens validos. Expiram por inatividade.
  */
 class GuestRegistry(
     private val clock: () -> Long = System::currentTimeMillis,
     private val ttlMs: Long = 24 * 3_600_000L,
     private val maxGuests: Int = 50_000,
+    /** Copia duravel (plano 2.4). `null` = so memoria (testes e desenvolvimento). */
+    private val persistence: GuestPersistence? = null,
 ) {
-    private class Entry(val guest: Guest, var lastUsedMs: Long)
+    private class Entry(val guest: Guest, var lastUsedMs: Long, var persistedMs: Long = lastUsedMs)
 
     private val byHash = HashMap<String, Entry>()
     private val secure = SecureRandom()
+
+    private class Photo(val base64: String, val version: Int)
+
+    private val photos = HashMap<String, Photo>()
+    private var photoVersions = 0
+
+    init {
+        persistence?.let { p ->
+            p.loadGuests().forEach { byHash[it.tokenHash] = Entry(Guest(it.id, it.name), it.lastUsedMs) }
+            p.loadPhotos().forEach {
+                photos[it.guestId] = Photo(it.base64, it.version)
+                photoVersions = maxOf(photoVersions, it.version)
+            }
+        }
+    }
 
     @Synchronized
     fun create(rawName: String): GuestIdentity {
@@ -32,7 +49,9 @@ class GuestRegistry(
         val bytes = ByteArray(32).also(secure::nextBytes)
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
         val guest = Guest(UUID.randomUUID().toString(), name)
-        byHash[hash(token)] = Entry(guest, clock())
+        val now = clock()
+        persistence?.saveGuest(GuestPersistence.StoredGuest(hash(token), guest.id, guest.name, now))
+        byHash[hash(token)] = Entry(guest, now)
         return GuestIdentity(guest.id, guest.name, token)
     }
 
@@ -42,21 +61,23 @@ class GuestRegistry(
         val now = clock()
         if (now - entry.lastUsedMs > ttlMs) {
             byHash.remove(hash(token))
+            persistence?.deleteGuests(listOf(hash(token)))
             return null
         }
         entry.lastUsedMs = now
+        // Grava o ultimo uso no maximo uma vez por minuto (a expiracao e de horas; nao precisa de cada chamada).
+        val p = persistence
+        if (p != null && now - entry.persistedMs >= 60_000L) {
+            runCatching { p.touch(hash(token), now) }.onSuccess { entry.persistedMs = now }
+        }
         return entry.guest
     }
-
-    private class Photo(val base64: String, val version: Int)
-
-    private val photos = HashMap<String, Photo>()
-    private var photoVersions = 0
 
     /** Guarda (ou tira, com `null`) a foto do convidado (§18.2). */
     @Synchronized
     fun setPhoto(guestId: String, base64: String?) {
         if (base64 == null) {
+            persistence?.deletePhotos(listOf(guestId))
             photos.remove(guestId)
             return
         }
@@ -65,7 +86,9 @@ class GuestRegistry(
             lobbyError(ErrorCode.REQUISICAO_INVALIDA, "Foto inválida ou grande demais.", 400)
         }
         if (photos[guestId]?.base64 == clean) return
-        photos[guestId] = Photo(clean, ++photoVersions)
+        val photo = Photo(clean, ++photoVersions)
+        persistence?.savePhoto(GuestPersistence.StoredPhoto(guestId, photo.base64, photo.version))
+        photos[guestId] = photo
     }
 
     @Synchronized
@@ -89,9 +112,13 @@ class GuestRegistry(
 
     private fun sweep() {
         val now = clock()
-        byHash.values.removeIf { now - it.lastUsedMs > ttlMs }
-        val alive = byHash.values.map { it.guest.id }.toSet()
-        photos.keys.retainAll(alive)
+        val expired = byHash.filterValues { now - it.lastUsedMs > ttlMs }.keys
+        val alive = byHash.filterKeys { it !in expired }.values.map { it.guest.id }.toSet()
+        val orphanPhotos = photos.keys.filter { it !in alive }
+        persistence?.deleteGuests(expired)
+        persistence?.deletePhotos(orphanPhotos)
+        byHash.keys.removeAll(expired)
+        photos.keys.removeAll(orphanPhotos.toSet())
     }
 
     companion object {

@@ -18,12 +18,17 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
+    implementation(libs.postgresql)
+    implementation(libs.hikari)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.postgresql)
     runtimeOnly(libs.logback.classic)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.embedded.postgres)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

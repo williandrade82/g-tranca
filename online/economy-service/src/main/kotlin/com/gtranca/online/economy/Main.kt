@@ -50,7 +50,7 @@ fun main() {
         ?: run { System.err.println("ERRO: $name nao definido."); exitProcess(1) }
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     val db = Database.connect(required("DB_URL"), required("DB_USER"), required("DB_PASSWORD"))
-    Database.migrate(db)
+    Database.migrateWithRetry(db)
     val appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() }
         ?: null.also { System.err.println("AVISO: APP_SIGNING_KEY ausente; a economia aceita pedidos sem assinatura do app") }
     val secret = required("INTERNAL_SECRET")
