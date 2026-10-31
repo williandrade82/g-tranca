@@ -1,6 +1,6 @@
 image:
   repository: gtranca/economy-service
-  tag: "1bcb12b"   # hash do commit da imagem; nunca latest (troque com --set image.tag=...)
+  tag: "2218e8d"   # hash do commit da imagem; nunca latest (troque com --set image.tag=...)
   pullPolicy: IfNotPresent
 
 replicaCount: 1   # dono do saldo; rollout sem downtime (maxUnavailable 0)
@@ -10,12 +10,22 @@ containerPort: 8080
 env:
   PORT: "8080"
   JAVA_OPTS: "-XX:MaxRAMPercentage=65"
+  LOBBY_URL: "http://lobby-service"   # Service do lobby (porta 80); valida o token do jogador
 
 # Postgres: host/porta aqui; usuario, senha e banco vem do Secret criado pelo usuario (ver README).
 database:
   host: postgres
   port: 5432
   secret: postgres-credentials   # chaves POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+
+# Segredo servico a servico (INTERNAL_SECRET), o mesmo do lobby e do game; criado pelo usuario (ver README).
+internalSecret:
+  name: gtranca-internal
+  key: INTERNAL_SECRET
+
+# initContainer que espera o Postgres aceitar conexoes antes da JVM subir (o Hikari falha rapido e derruba o pod).
+waitForPostgres:
+  image: postgres:17.11   # mesma imagem do StatefulSet (ja local); so usa pg_isready
 
 # Chave do aplicativo (§18.2): obrigatoria aqui; as rotas /economy exigem assinatura.
 appKey:

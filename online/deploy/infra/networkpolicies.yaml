@@ -101,7 +101,7 @@ spec:
       ports:
         - { protocol: TCP, port: 5432 }
 ---
-# economy-service: entrada do Traefik (rota publica /economy) e do game-service (/internal/economy, etapa 2.3).
+# economy-service: entrada do Traefik (rota publica /economy), do lobby e do game-service (/internal/economy, etapa 2.3).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: { name: allow-economy-ingress, namespace: gtranca }
@@ -111,19 +111,49 @@ spec:
   ingress:
     - from:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: traefik } }
-        - podSelector: { matchLabels: { app.kubernetes.io/name: game-service } }
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: In, values: [game-service, lobby-service] }
       ports:
         - { protocol: TCP, port: 8080 }
 ---
-# game-service -> economy-service (saida).
+# game-service e lobby-service -> economy-service (saida).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: { name: allow-game-to-economy-egress, namespace: gtranca }
 spec:
-  podSelector: { matchLabels: { app.kubernetes.io/name: game-service } }
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: In, values: [game-service, lobby-service] }
   policyTypes: [Egress]
   egress:
     - to:
+        - podSelector: { matchLabels: { app: economy-service } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# economy-service -> lobby-service (validacao do token do jogador).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-economy-to-lobby-egress, namespace: gtranca }
+spec:
+  podSelector: { matchLabels: { app: economy-service } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: lobby-service } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# lobby-service: entrada do economy-service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-economy-to-lobby-ingress, namespace: gtranca }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: lobby-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
         - podSelector: { matchLabels: { app: economy-service } }
       ports:
         - { protocol: TCP, port: 8080 }

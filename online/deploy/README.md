@@ -232,13 +232,14 @@ Teste feito: tabela `restore_test` com uma linha -> job manual -> copia para o W
 Todos os pods: `runAsNonRoot` com uid fixo (servicos 10001, Postgres/backup 999), `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `readOnlyRootFilesystem` (emptyDir em `/tmp`; no Postgres tambem `/var/run/postgresql`), `automountServiceAccountToken: false`, requests e limite de memoria, startupProbe. Imagens com tag fixa em `values.yaml` (`image.tag`, hash do commit; Postgres `17.11`): troque com `--set image.tag=$TAG` a cada build.
 
 ### NetworkPolicy (`infra/networkpolicies.yaml`)
-Nega tudo no namespace `gtranca` e libera: DNS (kube-system, 53 UDP/TCP) para todos; Traefik (namespace `traefik`) -> lobby e game (8080); lobby <-> game (8080); Postgres (5432) so a partir de pods `app: economy-service` e `app: postgres-backup`; Traefik e game-service -> economy-service (8080). Nenhum servico sai para a internet.
+Nega tudo no namespace `gtranca` e libera: DNS (kube-system, 53 UDP/TCP) para todos; Traefik (namespace `traefik`) -> lobby e game (8080); lobby <-> game (8080); Postgres (5432) so a partir de pods `app: economy-service` e `app: postgres-backup`; Traefik e game-service -> economy-service (8080). Etapa 2.3: tambem lobby -> economy e economy -> lobby (8080). Nenhum servico sai para a internet.
 **O kindnet do Docker Desktop APLICA as politicas** (conferido: um pod qualquer nao alcanca o lobby nem o Postgres; ingress, lobby<->game, backup->Postgres e a prova ponta a ponta seguem funcionando). Servico novo no namespace precisa da sua liberacao aqui, senao fica mudo.
 
 ## economy-service (saldo, ganho diario, compras; etapa 2.2)
 Chart `helm/economy-service`. Usa os Secrets ja existentes (o usuario cria; nada no repositorio):
 - `postgres-credentials` (chaves `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`): viram `DB_USER`/`DB_PASSWORD`; `DB_URL` = `jdbc:postgresql://postgres:5432/$(POSTGRES_DB)` (expansao do Kubernetes).
 - `gtranca-app-key` (chave `APP_SIGNING_KEY`): obrigatoria; sem ela o pod nao sobe.
+- `gtranca-internal` (chave `INTERNAL_SECRET`, etapa 2.3): obrigatoria; o mesmo Secret do lobby e do game. Aplique o chart com esta referencia ANTES (ou junto) da imagem 2.3, senao o pod entra em CrashLoop.
 
 O Flyway cria as tabelas ao iniciar (`conta`, `carteira`, `inventario`, `lancamento`, `aposta`), com o usuario `POSTGRES_USER` (dono do banco).
 
@@ -249,7 +250,9 @@ kubectl --context docker-desktop -n gtranca rollout status deploy/economy-servic
 ```
 
 Ingress: so `/economy` (assinado, §18.2; sem assinatura -> 401). `/internal/economy` nunca sai pelo ingress; `/health` e `/info` no ingress sao do game-service, entao confira a saude do economy por `kubectl port-forward deploy/economy-service 18080:8080` e `curl localhost:18080/health`.
-Rede: Traefik e game-service (2.3, `http://economy-service/internal/economy/...`) -> economy (8080); economy -> Postgres (5432).
+Rede: Traefik, lobby e game-service (2.3, `http://economy-service/...`, Service na porta 80) -> economy (8080); economy -> lobby (`LOBBY_URL=http://lobby-service`) e -> Postgres (5432). Lobby e game recebem `ECONOMY_URL=http://economy-service` (porta 80 do Service, nao 8080).
+
+Inicio apos reinicio do Docker Desktop: o Hikari falha rapido se o Postgres (ou o DNS) ainda nao voltou e a JVM sai (eram 8 reinicios). O initContainer `wait-for-postgres` (imagem `postgres:17.11`, so `pg_isready`, nao-root, raiz somente leitura) segura o pod ate o Postgres aceitar conexoes.
 Rollout `maxUnavailable: 0` (sobe o novo antes de derrubar o antigo; o estado esta no Postgres).
 
 Conferido em 31/10/2026: rollout ok, `/health` UP, `GET /economy/probe-k8s-01` assinado pelo ingress -> 200 (conta criada com saldo inicial), sem assinatura -> 401, `/internal/economy` pelo ingress -> 404, tabelas criadas.

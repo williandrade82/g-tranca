@@ -1,6 +1,6 @@
 image:
   repository: gtranca/game-service
-  tag: "df8d10a"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
+  tag: "2218e8d"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
   pullPolicy: IfNotPresent   # imagem local, sem registro externo
 
 replicaCount: 1
@@ -10,6 +10,7 @@ containerPort: 8080
 # Configuracao por variaveis de ambiente (nada fixo em codigo)
 env:
   PORT: "8080"
+  ECONOMY_URL: "http://economy-service"   # Service do economy (porta 80, nao a do conteiner)
   JAVA_OPTS: "-XX:MaxRAMPercentage=65"   # heap = 65% do limite do conteiner
   LOBBY_URL: "http://lobby-service"        # nome do Service do lobby (rede interna)
   TRUST_FORWARDED_FOR: "true"             # atras do Traefik: IP real no limite de taxa do handshake
