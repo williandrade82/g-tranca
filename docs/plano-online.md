@@ -134,3 +134,16 @@ O jogador **não cria mesa**; o servidor mantém mesas abertas (Duplas, Clássic
 3. **Teste com 2–4 celulares** na sala (APK com hash).
 4. **Etapa B:** mesa de jogo online (`OnlineTableDriver`).
 5. Fase 2 (conta Google, carteira: aposta 50 e devoluções de B1/B6/B7), fase 3 (console).
+
+## Fase 2 (iniciada em 30/10/2026): contas e economia
+Decisões: o **convidado também tem carteira** (§18.5, migra para a conta Google no 1º login se a conta ainda não tem carteira); ordem **banco + carteira primeiro**, login Google depois.
+
+| Etapa | Entrega | Verificação |
+|---|---|---|
+| **2.1 Banco** | Postgres no cluster (Secret com senha nova); migrações (Flyway); testes com Postgres embutido (sem Docker) | serviço sobe e migra; testes passam |
+| **2.2 economy-service** | carteira, inventário e **livro-razão** (cada lançamento com motivo e chave de idempotência; saldo nunca negativo, sob concorrência); saldo inicial e boosters iniciais ao criar o convidado; ganho diário, presente diário e loja (§14.6, §17.5, §17.10) | testes de concorrência e idempotência citando §18.5 |
+| **2.3 Apostas na mesa** | lobby confere saldo ≥ 50 ao sentar (§18.2); retenção ao iniciar; liquidação no fim (§14.6 prêmio por assento, §16.13); abandonos (perde a aposta / 60 s / todos desconectados devolvem, B1/B6/B7) | probe com saldos antes/depois; testes por caso de §18.4 |
+| **2.4 Persistência do lobby** | convidados, fotos e mesas no banco (reiniciar o servidor não apaga ninguém) | reiniciar o pod e seguir jogando |
+| **2.5 App** | saldo online na tela Jogar online, seletor de boosters online no início do jogo (§18.3), loja online, ganho diário online | APK + teste com celulares |
+| **2.6 Login Google** | identity: verificação do ID token no servidor; convidado → conta; foto da conta | depende do projeto no Google Cloud (usuário) |
+| **2.7 Migração da carteira local** | uma vez por conta (§18.6) | teste |

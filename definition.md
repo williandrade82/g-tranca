@@ -819,6 +819,9 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - A conta tem **carteira** e **inventário de boosters** **guardados no servidor**, separados dos do aparelho. Nada do que se ganha ou gasta no online altera a carteira e o inventário **locais**, e vice-versa (depois da migração, §18.6).
 - Valem as mesmas regras de §14.6 (saldo inicial, ganho diário, aposta, rateio e prêmio), §17.5 (presente diário) e §17.10 (loja e suas ofertas); o servidor as aplica e **registra cada lançamento** (ninguém altera o saldo sem registro).
 - Operações são **idempotentes**: repetir uma compra ou uma liquidação por falha de rede não debita nem credita duas vezes. O saldo **nunca fica negativo**.
+- **Convidado (30/10/2026):** antes do login Google, o **convidado** do servidor (§18.1) também tem **carteira e inventário online**, criados junto com ele, com o saldo inicial de §14.6 (1.000 moedas) e a quantidade inicial de cada booster (§17.1), e vale tudo o que vale para a conta (apostas, ganho diário, presente, loja).
+- **Do convidado para a conta:** ao entrar com o Google pela primeira vez **no mesmo aparelho**, a carteira e o inventário do convidado **passam para a conta** se ela **ainda não tem** carteira online; se a conta já tem, a do convidado fica com ele e deixa de ser usada. *(provisório, revisar com produto: evita juntar saldos iniciais de vários convidados numa conta)*
+- Cada reinstalação do app sem login cria um convidado novo com saldo inicial: risco aceito até o login Google (o limite de criação de convidados por endereço continua valendo).
 
 ### **18.6. Migração da carteira local**
 - Cada conta pode **trazer a carteira do aparelho para o online uma única vez**: o saldo local é **copiado** para a carteira online, **sem teto**, e o servidor marca que a conta já migrou. O saldo local **não é alterado** e o jogo offline continua como sempre.
