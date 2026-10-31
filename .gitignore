@@ -32,3 +32,6 @@ apk-out/
 
 # APKs gerados para teste
 Tranca-Bots-*.apk
+
+# credenciais do Google Cloud (nunca no Git)
+docs/google-secrets/
