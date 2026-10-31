@@ -102,4 +102,19 @@ class EconomyBetsTest {
         store.state("g1").balance shouldBe 1_050L - 10 * 50
         store.state("g2").balance shouldBe 950L - 10 * 50
     }
+
+    @Test
+    fun `18_5 devolver uma retencao parcial nao falha e a retencao atrasada depois da devolucao nao debita`() {
+        store.ensureAccount("pobre")
+        db.connection.use { it.createStatement().execute("UPDATE carteira SET saldo = 30 WHERE conta_id = 'pobre'") }
+        store.holdBets("b1", 50, listOf("g1", "pobre")) shouldBe setOf("g1")
+        val refund = listOf(BetPayout("g1", PayoutKind.DEVOLUCAO, 50), BetPayout("pobre", PayoutKind.DEVOLUCAO, 50))
+        store.settleBets("b1", refund) shouldBe (1 to 1)
+        store.state("g1").balance shouldBe 1_000
+        store.state("pobre").balance shouldBe 30
+        // Devolucao chegou antes da retencao (tempo esgotado na rede): a retencao atrasada nao debita.
+        store.settleBets("b2", listOf(BetPayout("g2", PayoutKind.DEVOLUCAO, 50)))
+        store.holdBets("b2", 50, listOf("g2")) shouldBe emptySet()
+        store.state("g2").balance shouldBe 1_000
+    }
 }

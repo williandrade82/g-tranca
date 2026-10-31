@@ -87,7 +87,8 @@ class EconomyStore(private val db: DataSource) {
             val held = mutableSetOf<String>()
             for (id in accounts.distinct().sorted()) {
                 val balance = lockWallet(c, id).first
-                if (betRow(c, betId, id, lock = true) != null) { held += id; continue }
+                val existing = betRow(c, betId, id, lock = true)
+                if (existing != null) { if (existing.first > 0) held += id; continue } // valor 0 = lapide (devolvida antes)
                 if (balance < amount) continue
                 c.prepareStatement("INSERT INTO aposta (mesa_id, conta_id, valor, estado) VALUES (?, ?, ?, 'RETIDA')").use {
                     it.setString(1, betId); it.setString(2, id); it.setLong(3, amount); it.executeUpdate()
@@ -105,7 +106,12 @@ class EconomyStore(private val db: DataSource) {
      * recusada (nunca se ganha sem apostar). Devolução = a aposta inteira; perda = 0; prêmio até 4× a aposta.
      * @return (liquidadas agora, já liquidadas antes).
      */
-    fun settleBets(betId: String, payouts: List<BetPayout>): Pair<Int, Int> = tx { c ->
+    fun settleBets(betId: String, payouts: List<BetPayout>): Pair<Int, Int> {
+        payouts.filter { it.kind == PayoutKind.DEVOLUCAO }.forEach { ensureAccount(it.accountId) }
+        return settleTx(betId, payouts)
+    }
+
+    private fun settleTx(betId: String, payouts: List<BetPayout>): Pair<Int, Int> = tx { c ->
         if (payouts.map { it.accountId }.toSet().size != payouts.size) {
             throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Conta repetida na liquidação.")
         }
@@ -113,7 +119,18 @@ class EconomyStore(private val db: DataSource) {
         var before = 0
         for (p in payouts.sortedBy { it.accountId }) {
             lockWallet(c, p.accountId)
-            val (value, state) = betRow(c, betId, p.accountId, lock = true)
+            val row = betRow(c, betId, p.accountId, lock = true)
+            if (row == null && p.kind == PayoutKind.DEVOLUCAO) {
+                // Devolucao de uma retencao que nao aconteceu (falhou, sem saldo ou ainda nao chegou): grava uma
+                // "lapide" LIQUIDADA sem lancamento. Uma retencao atrasada com o mesmo id encontra a linha e nao debita.
+                c.prepareStatement(
+                    "INSERT INTO aposta (mesa_id, conta_id, valor, estado, resultado, recebido, liquidada_em) " +
+                        "VALUES (?, ?, 0, 'LIQUIDADA', 'DEVOLUCAO', 0, now())",
+                ).use { it.setString(1, betId); it.setString(2, p.accountId); it.executeUpdate() }
+                before++
+                continue
+            }
+            val (value, state) = row
                 ?: throw EconomyException(EconomyException.Code.APOSTA_INEXISTENTE, "Aposta não encontrada.")
             if (state == "LIQUIDADA") { before++; continue }
             val ok = when (p.kind) {

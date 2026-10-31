@@ -19,8 +19,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
 
-/** A economia nao respondeu como esperado (fora do ar, segredo errado, recusa). */
-class EconomyUnavailableException(message: String) : RuntimeException(message)
+/** A economia nao respondeu como esperado. [permanent] = recusou o pedido (4xx): repetir nao adianta. */
+class EconomyUnavailableException(message: String, val permanent: Boolean = false) : RuntimeException(message)
 
 /** Apostas no economy-service (§18.2 retida ao iniciar; §14.6/§16.13/§18.4 liquidada no fim). Ambas idempotentes por [betId]. */
 interface EconomyClient {
@@ -62,7 +62,8 @@ class HttpEconomyClient(private val baseUrl: String, private val secret: String?
         } catch (e: Exception) {
             throw EconomyUnavailableException("economia inacessivel: ${e::class.simpleName}")
         }
-        if (response.status.value !in 200..299) throw EconomyUnavailableException("economia respondeu ${response.status.value}")
+        val code = response.status.value
+        if (code !in 200..299) throw EconomyUnavailableException("economia respondeu $code", permanent = code in 400..499 && code != 408 && code != 429)
         return response.bodyAsText()
     }
 }

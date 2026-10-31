@@ -166,6 +166,10 @@ class MatchRegistry(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (e is EconomyUnavailableException && e.permanent) {
+                    log.error("Liquidacao recusada pela economia table={} bet={}: {}", tableId, betId, e.message)
+                    return
+                }
                 log.warn("Liquidacao falhou table={} bet={} tentativa={}: {}", tableId, betId, attempt + 1, e.message)
                 if (attempt < settleRetryDelaysMs.size) delay(settleRetryDelaysMs[attempt])
             }
