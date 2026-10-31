@@ -88,3 +88,4 @@ O backend `online/` compila com o próprio wrapper (`online\gradlew.bat`); os m�
 - `rules-auditor`: revisão somente leitura do código contra `definition.md`.
 - `online-backend-dev`: backend do jogo online (microserviços em `online/` e o módulo `:online-client`); aditivo, nunca altera o multijogador local. Plano: `docs/plano-online.md`.
 - `admin-console-dev`: interface de gerenciamento do online (`online/admin-api` e `online/admin-web`).
+- `k8s-ops`: dono do ambiente Kubernetes; **único** que cria e edita `online/deploy/` (charts Helm, manifestos, NetworkPolicy, backup e o README de implantação), com revisão de segurança e disponibilidade. Os demais pedem as mudanças a ele; Secrets são sempre criados pelo usuário.
