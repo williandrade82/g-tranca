@@ -1,0 +1,21 @@
+# NUVEM (nao testado aqui): mesmos nomes de PVC do local, com a StorageClass dinamica do provedor.
+# Troque STORAGE_CLASS pela classe do provedor (de preferencia com reclaimPolicy Retain). Nada nos manifestos comuns muda.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: gtranca
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: STORAGE_CLASS
+  resources: { requests: { storage: 10Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: gtranca
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: STORAGE_CLASS
+  resources: { requests: { storage: 10Gi } }

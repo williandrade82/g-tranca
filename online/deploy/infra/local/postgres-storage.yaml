@@ -1,0 +1,59 @@
+# SO PARA O CLUSTER LOCAL (Docker Desktop no modo kind, no desktop-control-plane).
+# O no e um conteiner sem acesso as pastas do Windows: os dados ficam em /var/lib/gtranca/ do NO (volume do Docker,
+# sobrevive a reiniciar pod, StatefulSet e o Docker Desktop; NAO sobrevive a "Reset Kubernetes cluster").
+# A copia no Windows (C:\Users\willi\gtranca-data\backups) e feita pelos dumps; ver README "Backup e restauracao".
+# Antes do primeiro apply, crie as pastas no no com dono 999 (hostPath ignora fsGroup):
+#   MSYS_NO_PATHCONV=1 docker exec desktop-control-plane sh -c 'mkdir -p /var/lib/gtranca/postgres /var/lib/gtranca/backups && chown 999:999 /var/lib/gtranca/postgres /var/lib/gtranca/backups && chmod 700 /var/lib/gtranca/postgres'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gtranca-local
+provisioner: kubernetes.io/no-provisioner   # so PVs estaticos
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gtranca-postgres-data
+spec:
+  capacity: { storage: 2Gi }
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain      # apagar o PVC NUNCA apaga os dados
+  storageClassName: gtranca-local
+  claimRef: { namespace: gtranca, name: postgres-data }
+  hostPath: { path: /var/lib/gtranca/postgres, type: Directory }
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gtranca-postgres-backups
+spec:
+  capacity: { storage: 2Gi }
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: gtranca-local
+  claimRef: { namespace: gtranca, name: postgres-backups }
+  hostPath: { path: /var/lib/gtranca/backups, type: Directory }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: gtranca
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gtranca-local
+  volumeName: gtranca-postgres-data
+  resources: { requests: { storage: 2Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: gtranca
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gtranca-local
+  volumeName: gtranca-postgres-backups
+  resources: { requests: { storage: 2Gi } }
