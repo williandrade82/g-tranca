@@ -72,7 +72,7 @@ spec:
       ports:
         - { protocol: TCP, port: 8080 }
 ---
-# Postgres: entrada so do economy-service e do backup.
+# Postgres: entrada so do economy-service, do lobby-service (2.4) e do backup.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: { name: allow-postgres-clients, namespace: gtranca }
@@ -82,6 +82,7 @@ spec:
   ingress:
     - from:
         - podSelector: { matchLabels: { app: economy-service } }
+        - podSelector: { matchLabels: { app: lobby-service } }
         - podSelector: { matchLabels: { app: postgres-backup } }
       ports:
         - { protocol: TCP, port: 5432 }
@@ -93,7 +94,7 @@ metadata: { name: allow-egress-to-postgres, namespace: gtranca }
 spec:
   podSelector:
     matchExpressions:
-      - { key: app, operator: In, values: [economy-service, postgres-backup] }
+      - { key: app, operator: In, values: [economy-service, lobby-service, postgres-backup] }
   policyTypes: [Egress]
   egress:
     - to:

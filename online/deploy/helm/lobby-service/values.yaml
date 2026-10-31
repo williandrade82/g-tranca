@@ -1,6 +1,6 @@
 image:
   repository: gtranca/lobby-service
-  tag: "2218e8d"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
+  tag: "39be4e9"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
   pullPolicy: IfNotPresent   # imagem local, sem registro externo
 
 replicaCount: 1
@@ -24,6 +24,16 @@ env:
 internalSecret:
   name: gtranca-internal
   key: INTERNAL_SECRET
+
+# Postgres (etapa 2.4): host/porta aqui; usuario, senha e banco vem do Secret postgres-credentials (o mesmo do economy).
+# O lobby usa o schema `lobby` (criado pelo Flyway dele; o usuario do banco e dono do banco, entao pode criar schema).
+database:
+  host: postgres
+  port: 5432
+  secret: postgres-credentials   # chaves POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+
+waitForPostgres:
+  image: postgres:17.11   # mesma imagem do StatefulSet (ja local); so usa pg_isready
 
 service:
   type: ClusterIP

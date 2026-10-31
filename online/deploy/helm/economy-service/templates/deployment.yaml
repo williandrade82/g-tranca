@@ -68,10 +68,10 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ .Values.internalSecret.name }}, key: {{ .Values.internalSecret.key }} } }
             - name: APP_SIGNING_KEY
               valueFrom: { secretKeyRef: { name: {{ .Values.appKey.name }}, key: {{ .Values.appKey.key }} } }
-          startupProbe:          # JVM: ate 2 min para subir antes das outras probes valerem
+          startupProbe:          # JVM + retentativa do banco + Flyway: ate 5 min antes das outras probes valerem
             httpGet: { path: /health, port: http }
-            periodSeconds: 2
-            failureThreshold: 60
+            periodSeconds: 3
+            failureThreshold: 100
           livenessProbe:
             httpGet: { path: /health, port: http }
             periodSeconds: 10

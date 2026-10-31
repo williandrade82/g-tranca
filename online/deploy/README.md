@@ -34,8 +34,9 @@ Desenvolvimento local sem cluster: `.\gradlew.bat :game-service:run` e `http://l
 
 ## lobby-service (mesas e convites)
 
-**Persistencia: SOMENTE EM MEMORIA nesta fase.** Reiniciar o pod apaga convidados e mesas (a interface `TableStore` permite trocar por Postgres depois). Por isso `replicaCount: 1`; nao escale.
-Sem economy-service: a aposta da mesa NAO tem o saldo verificado ao entrar (`SALDO_INSUFICIENTE` esta declarado mas nunca e devolvido).
+**Persistencia (etapa 2.4): Postgres, schema `lobby`** (convidados com hash do token, fotos e mesas; historico Flyway proprio `lobby.flyway_lobby_history`). O Flyway do lobby cria o schema ao iniciar com o usuario `POSTGRES_USER` (dono do banco). Usa o mesmo Secret `postgres-credentials` do economy (`DB_URL`=`jdbc:postgresql://postgres:5432/$(POSTGRES_DB)`, `DB_USER`/`DB_PASSWORD`) e o mesmo initContainer `wait-for-postgres`. O rotulo `app: lobby-service` libera a NetworkPolicy do Postgres. Conferido: apagar o pod do lobby mantem os convidados no banco e um novo probe roda. Continua com `replicaCount: 1` (sessoes/presenca ainda em memoria).
+startupProbe do lobby e do economy: ate 5 min (3 s x 100), porque o servico retenta o banco e migra antes de abrir o HTTP.
+Ao aplicar valores novos do chart nao use `--reuse-values` (ignora defaults novos, ex. `waitForPostgres`); use `--reset-then-reuse-values` ou repita os `--set`.
 
 ```bash
 # (a partir da raiz do repositorio)  docker build -f online/lobby-service/Dockerfile -t gtranca/lobby-service:$TAG .
@@ -232,7 +233,7 @@ Teste feito: tabela `restore_test` com uma linha -> job manual -> copia para o W
 Todos os pods: `runAsNonRoot` com uid fixo (servicos 10001, Postgres/backup 999), `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `readOnlyRootFilesystem` (emptyDir em `/tmp`; no Postgres tambem `/var/run/postgresql`), `automountServiceAccountToken: false`, requests e limite de memoria, startupProbe. Imagens com tag fixa em `values.yaml` (`image.tag`, hash do commit; Postgres `17.11`): troque com `--set image.tag=$TAG` a cada build.
 
 ### NetworkPolicy (`infra/networkpolicies.yaml`)
-Nega tudo no namespace `gtranca` e libera: DNS (kube-system, 53 UDP/TCP) para todos; Traefik (namespace `traefik`) -> lobby e game (8080); lobby <-> game (8080); Postgres (5432) so a partir de pods `app: economy-service` e `app: postgres-backup`; Traefik e game-service -> economy-service (8080). Etapa 2.3: tambem lobby -> economy e economy -> lobby (8080). Nenhum servico sai para a internet.
+Nega tudo no namespace `gtranca` e libera: DNS (kube-system, 53 UDP/TCP) para todos; Traefik (namespace `traefik`) -> lobby e game (8080); lobby <-> game (8080); Postgres (5432) so a partir de pods `app: economy-service`, `app: lobby-service` (2.4) e `app: postgres-backup`; Traefik e game-service -> economy-service (8080). Etapa 2.3: tambem lobby -> economy e economy -> lobby (8080). Nenhum servico sai para a internet.
 **O kindnet do Docker Desktop APLICA as politicas** (conferido: um pod qualquer nao alcanca o lobby nem o Postgres; ingress, lobby<->game, backup->Postgres e a prova ponta a ponta seguem funcionando). Servico novo no namespace precisa da sua liberacao aqui, senao fica mudo.
 
 ## economy-service (saldo, ganho diario, compras; etapa 2.2)
