@@ -2,6 +2,11 @@ package com.gtranca.online.client
 
 import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.BuyRequest
+import com.gtranca.online.contracts.DailyClaimRequest
+import com.gtranca.online.contracts.EconomyError
+import com.gtranca.online.contracts.EconomyLimits
+import com.gtranca.online.contracts.EconomyStateDto
 import com.gtranca.online.contracts.GoogleLoginRequest
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
@@ -47,7 +52,7 @@ class OnlineClient(
     /** Chave do aplicativo (§18.2): assina cada pedido. `null` = sem assinatura (servidor de desenvolvimento). */
     private val appKey: String? = null,
     private val clock: () -> Long = System::currentTimeMillis,
-) : LobbyApi {
+) : LobbyApi, EconomyApi {
 
     override suspend fun createGuest(name: String): GuestIdentity = call(
         GuestIdentity.serializer(), null, HttpMethod.Post, "guests",
@@ -116,6 +121,30 @@ class OnlineClient(
     override suspend fun close(token: String, tableId: String): TableView =
         call(TableView.serializer(), token, HttpMethod.Delete, "tables/${idOf(tableId)}")
 
+    // ---------------------------------------------------------------------------------------------- EconomyApi
+
+    override suspend fun economyState(token: String, accountId: String): EconomyStateDto =
+        economyCall(EconomyStateDto.serializer(), token, HttpMethod.Get, "economy/${accountIdOf(accountId)}")
+
+    override suspend fun claimDaily(token: String, accountId: String, today: Long): EconomyStateDto = economyCall(
+        EconomyStateDto.serializer(), token, HttpMethod.Post, "economy/${accountIdOf(accountId)}/daily",
+        OnlineJson.encodeToString(DailyClaimRequest.serializer(), DailyClaimRequest(today)),
+    )
+
+    override suspend fun buyOffer(token: String, accountId: String, offerIndex: Int, key: String): EconomyStateDto {
+        require(key.isNotBlank() && key.length <= EconomyLimits.MAX_KEY) { "chave de compra invalida" }
+        return economyCall(
+            EconomyStateDto.serializer(), token, HttpMethod.Post, "economy/${accountIdOf(accountId)}/buy",
+            OnlineJson.encodeToString(BuyRequest.serializer(), BuyRequest(offerIndex, key)),
+        )
+    }
+
+    /** Confere o formato antes de montar o caminho (o mesmo que o economy-service aceita): nunca uma URL. */
+    private fun accountIdOf(accountId: String): String {
+        require(ACCOUNT_ID.matches(accountId)) { "id de conta invalido" }
+        return accountId
+    }
+
     /** Conexão reconectável à partida da mesa [tableId] (`/ws/match/{id}`), com o token do convidado. */
     fun matchSession(token: String, tableId: String, policy: ReconnectPolicy = ReconnectPolicy()): MatchSession =
         MatchSession(this, token, idOf(tableId), policy)
@@ -140,12 +169,30 @@ class OnlineClient(
         method: HttpMethod,
         path: String,
         body: String? = null,
+    ): T = request(serializer, token, method, "api/lobby/$path", body, ::failure)
+
+    /** [path] já sem o prefixo (ex.: `"economy/g1/buy"`): a economia (§18.5) fica atrás do mesmo host, sem `/api/lobby`. */
+    private suspend fun <T> economyCall(
+        serializer: KSerializer<T>,
+        token: String,
+        method: HttpMethod,
+        path: String,
+        body: String? = null,
+    ): T = request(serializer, token, method, path, body, ::economyFailure)
+
+    private suspend fun <T> request(
+        serializer: KSerializer<T>,
+        token: String?,
+        method: HttpMethod,
+        fullPath: String,
+        body: String?,
+        decodeFailure: (Int, String) -> OnlineException,
     ): T {
         val response = try {
             withTimeout(requestTimeoutMs) {
-                http.request("${endpoint.httpBase}/api/lobby/$path") {
+                http.request("${endpoint.httpBase}/$fullPath") {
                     this.method = method
-                    protocol(token, method, "/api/lobby/$path")
+                    protocol(token, method, "/$fullPath")
                     if (body != null) {
                         contentType(ContentType.Application.Json)
                         setBody(body)
@@ -166,7 +213,7 @@ class OnlineClient(
         } catch (e: Exception) {
             throw OnlineException(OnlineErrorKind.NETWORK, cause = e)
         }
-        if (response.status.value !in 200..299) throw failure(response.status.value, text)
+        if (response.status.value !in 200..299) throw decodeFailure(response.status.value, text)
         return try {
             OnlineJson.decodeFromString(serializer, text)
         } catch (e: SerializationException) {
@@ -180,7 +227,15 @@ class OnlineClient(
         return OnlineException.fromResponse(status, api)
     }
 
+    /** Corpo das rotas `/economy/...` (§18.5): `EconomyError`, nunca `ApiError` (são serviços diferentes). */
+    internal fun economyFailure(status: Int, body: String): OnlineException {
+        val error = runCatching { OnlineJson.decodeFromString(EconomyError.serializer(), body) }.getOrNull()
+        return OnlineException.fromEconomyResponse(status, error)
+    }
+
     companion object {
+        private val ACCOUNT_ID = Regex("[A-Za-z0-9_-]{1,${EconomyLimits.MAX_GUEST_ID}}")
+
         /** HttpClient de produção (OkHttp: respeita a política de tráfego em texto puro do Android) com WebSocket. */
         fun newHttpClient(engine: HttpClientEngine? = null): HttpClient =
             if (engine == null) {
