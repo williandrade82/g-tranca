@@ -1,6 +1,8 @@
 package com.gtranca.online.client
 
+import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.GoogleLoginRequest
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
 import com.gtranca.online.contracts.GuestIdentity
@@ -50,6 +52,11 @@ class OnlineClient(
     override suspend fun createGuest(name: String): GuestIdentity = call(
         GuestIdentity.serializer(), null, HttpMethod.Post, "guests",
         OnlineJson.encodeToString(CreateGuestRequest.serializer(), CreateGuestRequest(name)),
+    )
+
+    override suspend fun loginGoogle(idToken: String, guestToken: String?): AccountLogin = call(
+        AccountLogin.serializer(), null, HttpMethod.Post, "accounts/google",
+        OnlineJson.encodeToString(GoogleLoginRequest.serializer(), GoogleLoginRequest(idToken, guestToken)),
     )
 
     override suspend fun createTable(token: String, rules: TableRules): TableView = call(

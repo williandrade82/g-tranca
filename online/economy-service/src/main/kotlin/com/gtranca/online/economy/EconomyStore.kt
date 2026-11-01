@@ -4,6 +4,7 @@ import com.gtranca.engine.BoosterCatalog
 import com.gtranca.engine.Coins
 import com.gtranca.engine.Inventory
 import com.gtranca.engine.Shop
+import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.BetPayout
 import com.gtranca.online.contracts.PayoutKind
 import java.sql.Connection
@@ -28,21 +29,73 @@ class EconomyStore(private val db: DataSource) {
      * Garante a conta (convidado, por ora) com a carteira inicial de §14.6 e os boosters iniciais de §17.1. Idempotente:
      * chamar de novo não muda nada.
      */
-    fun ensureAccount(accountId: String, kind: String = "CONVIDADO"): EconomyState = tx { c ->
+    fun ensureAccount(accountId: String, kind: String = kindOf(accountId)): EconomyState = tx { c ->
+        if (insertAccount(c, accountId, kind)) seedInitial(c, accountId)
+        read(c, accountId)
+    }
+
+    /**
+     * §18.5 "Do convidado para a conta": no login Google, se a conta [accountId] **ainda nao tem** carteira, ela nasce com a
+     * carteira e o inventario do convidado [guestId] (uma vez so por convidado; o convidado fica zerado e marcado). Se a
+     * conta ja tem carteira, nada muda (a do convidado fica com ele). Sem convidado (ou ja migrado), a conta nasce com o
+     * saldo e os boosters iniciais. Idempotente: repetir nao muda nada.
+     * @return (a carteira do convidado passou agora, estado da conta).
+     */
+    fun adoptGuestWallet(accountId: String, guestId: String?): Pair<Boolean, EconomyState> {
+        // A carteira do convidado precisa existir para ser travada (convidado que nunca abriu a carteira ganha a inicial).
+        guestId?.takeIf { it != accountId && kindOf(it) == "CONVIDADO" }?.let { ensureAccount(it) }
+        return tx { c ->
+            if (!insertAccount(c, accountId, "GOOGLE")) return@tx false to read(c, accountId)
+            val guest = guestId?.takeIf { it != accountId && kindOf(it) == "CONVIDADO" }
+            val (balance, lastDaily) = guest?.let { lockWallet(c, it) } ?: (0L to null)
+            val free = guest != null && c.prepareStatement("SELECT tipo = 'CONVIDADO' AND migrada_para IS NULL FROM conta WHERE id = ? FOR UPDATE").use { st ->
+                st.setString(1, guest)
+                st.executeQuery().use { rs -> rs.next() && rs.getBoolean(1) }
+            }
+            if (!free) {
+                seedInitial(c, accountId)
+                return@tx false to read(c, accountId)
+            }
+            guest!!
+            val inventory = read(c, guest).inventory
+            apply(c, guest, "MIGRACAO_PARA_CONTA", "migracao-para-conta", coins = -balance, reference = accountId)
+            apply(c, accountId, "MIGRACAO_DO_CONVIDADO", "migracao-do-convidado", coins = balance, reference = guest)
+            inventory.filterValues { it > 0 }.forEach { (id, qty) ->
+                apply(c, guest, "MIGRACAO_PARA_CONTA", "migracao-para-conta-$id", boosterId = id, quantity = -qty, reference = accountId)
+                apply(c, accountId, "MIGRACAO_DO_CONVIDADO", "migracao-do-convidado-$id", boosterId = id, quantity = qty, reference = guest)
+            }
+            // O ganho diario ja resgatado pelo convidado hoje vale para a conta (sem resgatar duas vezes no mesmo dia).
+            c.prepareStatement("UPDATE carteira SET ultimo_resgate = ? WHERE conta_id = ?").use {
+                if (lastDaily == null) it.setNull(1, java.sql.Types.BIGINT) else it.setLong(1, lastDaily)
+                it.setString(2, accountId)
+                it.executeUpdate()
+            }
+            c.prepareStatement("UPDATE conta SET migrada_para = ? WHERE id = ?").use { it.setString(1, accountId); it.setString(2, guest); it.executeUpdate() }
+            c.prepareStatement("UPDATE conta SET origem_convidado = ? WHERE id = ?").use { it.setString(1, guest); it.setString(2, accountId); it.executeUpdate() }
+            true to read(c, accountId)
+        }
+    }
+
+    private fun insertAccount(c: Connection, accountId: String, kind: String): Boolean {
         val created = c.prepareStatement("INSERT INTO conta (id, tipo) VALUES (?, ?) ON CONFLICT (id) DO NOTHING").use {
             it.setString(1, accountId)
             it.setString(2, kind)
             it.executeUpdate() == 1
         }
-        if (created) {
-            c.prepareStatement("INSERT INTO carteira (conta_id, saldo) VALUES (?, 0)").use { it.setString(1, accountId); it.executeUpdate() }
-            apply(c, accountId, "SALDO_INICIAL", "saldo-inicial", coins = Coins.INITIAL_BALANCE.toLong())
-            Inventory.initial(BoosterCatalog.DEFAULT).quantities.forEach { (id, qty) ->
-                apply(c, accountId, "INVENTARIO_INICIAL", "inventario-inicial-$id", boosterId = id, quantity = qty)
-            }
-        }
-        read(c, accountId)
+        if (created) c.prepareStatement("INSERT INTO carteira (conta_id, saldo) VALUES (?, 0)").use { it.setString(1, accountId); it.executeUpdate() }
+        return created
     }
+
+    /** §14.6 saldo inicial e §17.1 boosters iniciais. */
+    private fun seedInitial(c: Connection, accountId: String) {
+        apply(c, accountId, "SALDO_INICIAL", "saldo-inicial", coins = Coins.INITIAL_BALANCE.toLong())
+        Inventory.initial(BoosterCatalog.DEFAULT).quantities.forEach { (id, qty) ->
+            apply(c, accountId, "INVENTARIO_INICIAL", "inventario-inicial-$id", boosterId = id, quantity = qty)
+        }
+    }
+
+    /** Tipo pela forma do id: as contas Google tem o prefixo `G_` (plano 2.6). */
+    fun kindOf(accountId: String): String = if (accountId.startsWith(AccountLimits.GOOGLE_ID_PREFIX)) "GOOGLE" else "CONVIDADO"
 
     fun state(accountId: String): EconomyState = tx { c -> read(c, accountId) }
 
@@ -209,7 +262,15 @@ class EconomyStore(private val db: DataSource) {
                 it.executeUpdate()
             }
         }
-        if (boosterId != null && quantity != 0) {
+        // Debito vira UPDATE: o CHECK (quantidade >= 0) vale para a linha proposta do INSERT antes do ON CONFLICT.
+        if (boosterId != null && quantity < 0) {
+            c.prepareStatement("UPDATE inventario SET quantidade = quantidade + ? WHERE conta_id = ? AND booster_id = ?").use {
+                it.setInt(1, quantity)
+                it.setString(2, accountId)
+                it.setString(3, boosterId)
+                it.executeUpdate()
+            }
+        } else if (boosterId != null && quantity > 0) {
             c.prepareStatement(
                 "INSERT INTO inventario (conta_id, booster_id, quantidade) VALUES (?, ?, ?) " +
                     "ON CONFLICT (conta_id, booster_id) DO UPDATE SET quantidade = inventario.quantidade + EXCLUDED.quantidade",

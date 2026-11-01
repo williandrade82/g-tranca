@@ -1,5 +1,6 @@
 package com.gtranca.online.client
 
+import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.TableRules
 import com.gtranca.online.contracts.TableListView
@@ -12,6 +13,13 @@ import com.gtranca.online.contracts.TableView
 interface LobbyApi {
     /** Identidade provisória de convidado (a fase 2 troca por login Google). O token só aparece nesta resposta. */
     suspend fun createGuest(name: String): GuestIdentity
+
+    /**
+     * §18.1 / plano 2.6: entra com o Google. [idToken] vem do Credential Manager; [guestToken] é o do convidado deste
+     * aparelho (a carteira dele passa para a conta se ela ainda não tem, §18.5). O token devolvido substitui o do convidado.
+     */
+    suspend fun loginGoogle(idToken: String, guestToken: String?): AccountLogin =
+        throw UnsupportedOperationException("loginGoogle")
 
     suspend fun createTable(token: String, rules: TableRules): TableView
 

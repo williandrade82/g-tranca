@@ -1,5 +1,8 @@
 package com.gtranca.online.economy
 
+import com.gtranca.online.contracts.AccountLimits
+import com.gtranca.online.contracts.AdoptWalletRequest
+import com.gtranca.online.contracts.AdoptWalletResponse
 import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.BetHoldRequest
 import com.gtranca.online.contracts.BetHoldResponse
@@ -213,6 +216,18 @@ private fun io.ktor.server.routing.Routing.internalEconomyRoutes(deps: EconomyDe
             val id = call.parameters["guestId"].orEmpty()
             checkAccounts(listOf(id))
             call.respondJson(withContext(Dispatchers.IO) { store.ensureAccount(id) }.toDto())
+        }
+    }
+    // Plano 2.6 / §18.5: login Google (pelo lobby). Garante a carteira da conta, adotando a do convidado se ela nao tinha.
+    post("/internal/economy/accounts/{accountId}/adopt") {
+        call.internal {
+            val id = call.parameters["accountId"].orEmpty()
+            checkAccounts(listOf(id))
+            if (!id.startsWith(AccountLimits.GOOGLE_ID_PREFIX)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Conta inválida.")
+            val req = call.receiveLimited<AdoptWalletRequest>()
+            req.guestId?.let { checkAccounts(listOf(it)) }
+            val (migrated, state) = withContext(Dispatchers.IO) { store.adoptGuestWallet(id, req.guestId) }
+            call.respondJson(AdoptWalletResponse(migrated, state.toDto()))
         }
     }
     post("/internal/economy/bets/{betId}/hold") {

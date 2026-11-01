@@ -145,6 +145,9 @@ enum class ErrorCode {
 
     /** Pedido sem assinatura valida do aplicativo (§18.2 "So o aplicativo oficial"). */
     APP_NAO_RECONHECIDO,
+
+    /** Login Google desligado ou sem acesso ao Google/economia agora (so na rota de login, plano 2.6). */
+    LOGIN_INDISPONIVEL,
 }
 
 @Serializable

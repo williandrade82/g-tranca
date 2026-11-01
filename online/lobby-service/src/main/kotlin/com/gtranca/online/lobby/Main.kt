@@ -1,6 +1,9 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.AccountLogin
+import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.GoogleLoginRequest
 import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
@@ -87,6 +90,11 @@ fun main() {
         internalSecret = secret,
         economy = System.getenv("ECONOMY_URL")?.takeIf { it.isNotBlank() }?.let { HttpEconomyGateway(it, secret) }
             ?: null.also { System.err.println("AVISO: ECONOMY_URL ausente; o lobby nao confere o saldo ao sentar") },
+        // Plano 2.6: login Google. Sem GOOGLE_CLIENT_ID a rota responde "indisponivel".
+        google = System.getenv("GOOGLE_CLIENT_ID")?.takeIf { it.isNotBlank() }?.let {
+            GoogleIdTokenVerifier(it, HttpJwksSource(System.getenv("GOOGLE_JWKS_URL")?.takeIf { u -> u.isNotBlank() } ?: "https://www.googleapis.com/oauth2/v3/certs"))
+        } ?: null.also { System.err.println("AVISO: GOOGLE_CLIENT_ID ausente; login Google desligado") },
+        walletLinker = System.getenv("ECONOMY_URL")?.takeIf { it.isNotBlank() }?.let { HttpAccountWalletLinker(it, secret) },
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { lobbyModule(deps) }.start(wait = true)
 }
@@ -111,6 +119,10 @@ class LobbyDeps(
     val economy: EconomyGateway? = null,
     /** Convidados e fotos no banco (plano 2.4). `null` = memoria. */
     val guestPersistence: GuestPersistence? = null,
+    /** Verificador do ID token do Google (plano 2.6). `null` = login Google desligado. */
+    val google: GoogleIdTokenVerifier? = null,
+    /** Carteira da conta no login (§18.5). `null` = sem economia (desenvolvimento): a conta entra sem migrar nada. */
+    val walletLinker: AccountWalletLinker? = null,
 ) {
     val guests = GuestRegistry(clock, persistence = guestPersistence)
     val service = LobbyService(store, clock, config = config, photoVersion = guests::photoVersion)
@@ -183,6 +195,10 @@ private fun ApplicationCall.bearer(): String? =
 private fun ApplicationCall.seatParam(): Int =
     parameters["n"]?.toIntOrNull() ?: lobbyError(ErrorCode.LUGAR_INVALIDO, "Lugar inválido.", 400)
 
+/** Nome da conta a partir do Google: sem controles, ate o limite do nome; vazio vira "Jogador". */
+internal fun accountName(raw: String?): String =
+    raw.orEmpty().filterNot { it.isISOControl() }.trim().take(LobbyLimits.MAX_NAME).trim().ifEmpty { "Jogador" }
+
 fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
     // Log de acesso: metodo, caminho (sem query), status, IP usado no limite de taxa e o X-Forwarded-For bruto. Nunca o token.
     val accessLog = LoggerFactory.getLogger("lobby.access")
@@ -206,7 +222,7 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
             if (path.startsWith("/api/lobby") || path.startsWith("/m/")) {
                 val ip = call.clientIp(deps.trustForwardedFor)
                 var ok = deps.ipLimiter.allow("ip:$ip")
-                if (ok && path.startsWith("/api/lobby/guests")) ok = deps.guestLimiter.allow("guest:$ip")
+                if (ok && (path.startsWith("/api/lobby/guests") || path.startsWith("/api/lobby/accounts"))) ok = deps.guestLimiter.allow("guest:$ip")
                 call.bearer()?.let { if (ok) ok = deps.tokenLimiter.allow("tok:" + GuestRegistry.hash(it)) }
                 if (!ok) {
                     call.response.header(HttpHeaders.RetryAfter, "60")
@@ -265,6 +281,36 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
             call.guarded(authenticated = false) {
                 val req = call.receiveLimited<CreateGuestRequest>()
                 call.respondJson(deps.guests.create(req.name), HttpStatusCode.Created)
+            }
+        }
+        // §18.1 / plano 2.6: entrar com o Google. O ID token e verificado aqui; a carteira do convidado deste aparelho passa
+        // para a conta se ela ainda nao tem carteira (§18.5). A resposta tem o token de sessao, no mesmo esquema do convidado.
+        post("/api/lobby/accounts/google") {
+            call.guarded(authenticated = false) {
+                val req = call.receiveLimited<GoogleLoginRequest>()
+                val verifier = deps.google
+                    ?: lobbyError(ErrorCode.LOGIN_INDISPONIVEL, "Entrar com o Google não está disponível neste servidor.", 503)
+                val user = try {
+                    verifier.verify(req.idToken)
+                } catch (e: InvalidIdTokenException) {
+                    LoggerFactory.getLogger("lobby.login").info("ID token recusado: {}", e.message)
+                    lobbyError(ErrorCode.NAO_AUTENTICADO, "Não foi possível confirmar a sua conta Google. Entre de novo.", 401)
+                } catch (e: JwksUnavailableException) {
+                    lobbyError(ErrorCode.LOGIN_INDISPONIVEL, "Não foi possível falar com o Google agora. Tente de novo.", 503)
+                }
+                val guestId = req.guestToken?.takeIf { it.isNotBlank() }?.let(deps.guests::authenticate)?.id
+                    ?.takeIf { !it.startsWith(AccountLimits.GOOGLE_ID_PREFIX) }
+                val migrated = deps.walletLinker?.let { linker ->
+                    try {
+                        linker.adopt(user.accountId, guestId)
+                    } catch (e: EconomyGatewayException) {
+                        lobbyError(ErrorCode.LOGIN_INDISPONIVEL, "Não foi possível abrir a sua carteira agora. Tente de novo.", 503)
+                    }
+                } ?: false
+                val session = deps.guests.createSession(user.accountId, accountName(user.name))
+                call.respondJson(
+                    AccountLogin(session.id, session.name, session.token, pictureUrl = user.picture, walletFromGuest = migrated),
+                )
             }
         }
         // §18.2: a foto do proprio jogador (reduzida no app) e a foto de outro jogador, so para quem tem token.

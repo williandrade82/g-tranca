@@ -1,5 +1,6 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.LobbyLimits
@@ -40,15 +41,23 @@ class GuestRegistry(
     }
 
     @Synchronized
-    fun create(rawName: String): GuestIdentity {
-        val name = sanitizeName(rawName)
+    fun create(rawName: String): GuestIdentity = issue(UUID.randomUUID().toString(), sanitizeName(rawName))
+
+    /**
+     * Sessao de uma conta (Google, §18.1) no mesmo esquema do convidado: token opaco, so o hash guardado, expira por
+     * inatividade (o app entra de novo com o Google). Cada login gera um token novo; os antigos seguem ate expirar.
+     */
+    @Synchronized
+    fun createSession(accountId: String, name: String): GuestIdentity = issue(accountId, name)
+
+    private fun issue(id: String, name: String): GuestIdentity {
         sweep()
         if (byHash.size >= maxGuests) {
             lobbyError(ErrorCode.LIMITE_DE_TAXA, "Servidor ocupado. Tente de novo em instantes.", 503)
         }
         val bytes = ByteArray(32).also(secure::nextBytes)
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-        val guest = Guest(UUID.randomUUID().toString(), name)
+        val guest = Guest(id, name)
         val now = clock()
         persistence?.saveGuest(GuestPersistence.StoredGuest(hash(token), guest.id, guest.name, now))
         byHash[hash(token)] = Entry(guest, now)
@@ -114,7 +123,8 @@ class GuestRegistry(
         val now = clock()
         val expired = byHash.filterValues { now - it.lastUsedMs > ttlMs }.keys
         val alive = byHash.filterKeys { it !in expired }.values.map { it.guest.id }.toSet()
-        val orphanPhotos = photos.keys.filter { it !in alive }
+        // A foto de uma conta Google e da conta, nao da sessao: fica mesmo sem token vivo.
+        val orphanPhotos = photos.keys.filter { it !in alive && !it.startsWith(AccountLimits.GOOGLE_ID_PREFIX) }
         persistence?.deleteGuests(expired)
         persistence?.deletePhotos(orphanPhotos)
         byHash.keys.removeAll(expired)

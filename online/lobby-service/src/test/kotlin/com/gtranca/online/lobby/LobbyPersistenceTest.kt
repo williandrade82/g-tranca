@@ -102,4 +102,29 @@ class LobbyPersistenceTest {
         t.seats.count { it.kind == SeatKind.ROBO } shouldBe 0
         t.seats[0].kind shouldBe SeatKind.HUMANO
     }
+
+    @Test
+    fun `18_1 conta Google com dois logins tem duas sessoes e a foto da conta sobrevive ao reinicio`() {
+        val (a, b) = registry().let { r ->
+            val a = r.createSession("G_abc", "Ana")
+            val b = r.createSession("G_abc", "Ana")
+            r.setPhoto("G_abc", jpeg)
+            a to b
+        }
+        now += 25 * 3_600_000L // sessoes expiram; a foto da conta fica
+        val r2 = registry()
+        r2.create("Beto") // dispara a limpeza
+        r2.photo("G_abc") shouldBe jpeg
+        val r3 = GuestRegistry({ 1_000_000L }, persistence = PostgresGuestPersistence(db))
+        (a.token != b.token) shouldBe true
+        r3.photo("G_abc") shouldBe jpeg
+    }
+
+    @Test
+    fun `18_1 os dois tokens da mesma conta valem depois do reinicio`() {
+        val (a, b) = registry().let { r -> r.createSession("G_x", "Ana") to r.createSession("G_x", "Ana") }
+        val r2 = registry()
+        r2.authenticate(a.token)?.id shouldBe "G_x"
+        r2.authenticate(b.token)?.id shouldBe "G_x"
+    }
 }
