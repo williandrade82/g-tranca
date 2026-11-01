@@ -1,6 +1,6 @@
 image:
   repository: gtranca/economy-service
-  tag: "39be4e9"   # hash do commit da imagem; nunca latest (troque com --set image.tag=...)
+  tag: "ce7d670"   # hash do commit da imagem; nunca latest (troque com --set image.tag=...)
   pullPolicy: IfNotPresent
 
 replicaCount: 1   # dono do saldo; rollout sem downtime (maxUnavailable 0)

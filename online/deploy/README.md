@@ -56,6 +56,25 @@ curl -H "$H" -H "Authorization: Bearer $TOKEN" -d '{"rules":{"mode":"INDIVIDUAL"
 curl http://192.168.1.5/m/<ID>      # pagina do convite
 ```
 
+### Login Google (etapa 2.6, §18.1/§18.5)
+`POST /api/lobby/accounts/google` verifica o ID token (RS256, emissor e `aud` do Google, JWKS por `kid`) e adota a carteira
+do convidado do aparelho uma vez (`walletFromGuest`). Variaveis em `values.yaml` (configuracao normal, **nao** Secret:
+`GOOGLE_CLIENT_ID` e o client_id OAuth tipo "Web" do projeto Google Cloud do app; ele vai no proprio ID token como `aud`
+e e publico por natureza):
+- `GOOGLE_CLIENT_ID` - sem ele a rota responde `LOGIN_INDISPONIVEL` (503) e o login fica desligado (aviso no log).
+- `GOOGLE_JWKS_URL` (opcional) - padrao `https://www.googleapis.com/oauth2/v3/certs`.
+
+**Egress para o Google (pendente de decisao do usuario).** O namespace nega toda saida para a internet por padrao
+(`infra/networkpolicies.yaml`). Sem uma liberacao, o lobby nunca alcanca o JWKS do Google e toda tentativa de login
+responde `LOGIN_INDISPONIVEL` (503, "Não foi possível falar com o Google agora") mesmo com `GOOGLE_CLIENT_ID` configurado
+e o verificador ativo. A liberacao fica **fora** do `networkpolicies.yaml` padrao, em `infra/networkpolicy-lobby-egress-google.yaml`
+(so o lobby-service, so porta 443, nega as faixas privadas RFC1918). Aplique quando decidir permitir essa saida:
+```bash
+kubectl --context docker-desktop apply -f deploy/infra/networkpolicy-lobby-egress-google.yaml
+```
+O economy-service tambem ganhou uma rota nova nesta etapa (`POST /internal/economy/accounts/{accountId}/adopt`,
+migracao `V3__conta_google.sql`): implante lobby-service **e** economy-service juntos, na mesma tag.
+
 ## game-service: partida so com robos (etapa 1.3a)
 
 `MatchRunner` joga um jogo completo (todas as partidas ate a pontuacao-alvo, §11-§13) com robos do `:ai` em todos os assentos: `legalActions` -> robo decide com o `PlayerView` -> `apply`, igual ao `:sim`. Mesma semente = mesmo jogo; as sementes por jogo/assento sao as do `:sim`, entao os resultados sao identicos (200 jogos, semente 42, facil: 107x93 individual e 97x103 duplas nos dois). Sem boosters, aposta nem economia. Dificil roda sem teto de tempo (reproduzivel) e e lento.
