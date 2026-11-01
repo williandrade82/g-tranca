@@ -120,6 +120,62 @@ class OnlineViewModelsTest {
         vm.viewModelScope.cancel()
     }
 
+    // ---------- 3.21 saldo online e ganho diário (§14.6/§18.5) ----------
+
+    private fun homeWithEconomy(economy: FakeEconomy, today: Long = 100) =
+        OnlineHomeViewModel(settings, pollMs = 3_000, economyFor = { economy }, today = { today }) { account("Ana") }
+
+    // §18.5 a tela mostra o saldo online e o botão de ganho diário quando ele ainda não foi resgatado
+    @Test
+    fun `mostra o saldo online e o botao de ganho diario`() = runTest(dispatcher) {
+        val vm = homeWithEconomy(FakeEconomy(initialBalance = 300))
+        runCurrent()
+        vm.uiState.value.balance shouldBe 300
+        vm.uiState.value.canClaimDaily shouldBe true
+        vm.viewModelScope.cancel()
+    }
+
+    // §14.6 resgatar credita o saldo e o botão some até o dia seguinte
+    @Test
+    fun `resgatar o ganho diario credita o saldo e esconde o botao`() = runTest(dispatcher) {
+        val vm = homeWithEconomy(FakeEconomy(initialBalance = 300))
+        runCurrent()
+        vm.onClaimDaily()
+        runCurrent()
+        vm.uiState.value.balance shouldBe 300 + com.gtranca.engine.Coins.DAILY_GAIN
+        vm.uiState.value.canClaimDaily shouldBe false
+        vm.uiState.value.claimingDaily shouldBe false
+        vm.viewModelScope.cancel()
+    }
+
+    // §14.6 outro aparelho já resgatou hoje: a tela concilia e esconde o botão sem mostrar erro
+    @Test
+    fun `ja resgatado em outro aparelho esconde o botao ao reler`() = runTest(dispatcher) {
+        val economy = FakeEconomy(initialBalance = 300)
+        val vm = homeWithEconomy(economy)
+        runCurrent()
+        // Outro aparelho resgata primeiro, diretamente no servidor.
+        economy.claimDaily("tok", vm.uiState.value.myId, 100)
+        vm.onClaimDaily()
+        runCurrent()
+        vm.uiState.value.canClaimDaily shouldBe false
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.5 saldo não impede a lista de mesas de funcionar quando a economia falha
+    @Test
+    fun `falha da economia nao derruba a lista de mesas`() = runTest(dispatcher) {
+        lobby.serverTable()
+        val economy = FakeEconomy()
+        economy.failNext = OnlineException(OnlineErrorKind.NETWORK)
+        val vm = homeWithEconomy(economy)
+        runCurrent()
+        vm.uiState.value.status shouldBe OnlineHomeStatus.READY
+        vm.uiState.value.balance shouldBe null
+        vm.uiState.value.tables?.size shouldBe 1
+        vm.viewModelScope.cancel()
+    }
+
     // ---------- 3.21 lista de mesas do servidor (§18.2) ----------
 
     private fun home() = OnlineHomeViewModel(settings, pollMs = 3_000) { account("Ana") }

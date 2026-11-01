@@ -3,10 +3,15 @@ package com.gtranca.ui.online
 import com.gtranca.data.OnlineGuest
 import com.gtranca.data.Settings
 import com.gtranca.data.SettingsRepository
+import com.gtranca.engine.Coins
+import com.gtranca.engine.Shop
 import com.gtranca.engine.model.GameMode
+import com.gtranca.online.client.EconomyApi
 import com.gtranca.online.client.LobbyApi
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.EconomyErrorCode
+import com.gtranca.online.contracts.EconomyStateDto
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.SeatKind
@@ -219,5 +224,60 @@ class FakeLobby : LobbyApi {
 
     companion object {
         val rules = TableRules(TableMode.DUPLAS, "{}", targetScore = 1500, bet = 50)
+    }
+}
+
+/**
+ * Economia falsa em memória (§18.5), com as mesmas recusas do servidor real (por [EconomyErrorCode]) e o mesmo
+ * livro-razão idempotente por chave (repetir a MESMA chave não cobra de novo).
+ */
+class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
+    private data class Account(var balance: Long, val inventory: MutableMap<String, Int> = mutableMapOf(), var lastDailyClaim: Long? = null)
+
+    private val accounts = mutableMapOf<String, Account>()
+
+    /** Chaves já aplicadas (por conta): simula o livro-razão do servidor. */
+    private val appliedKeys = mutableSetOf<Pair<String, String>>()
+
+    /** Toda tentativa de compra, mesmo repetida (para o teste de idempotência contar quantas chegaram). */
+    val buyAttempts = mutableListOf<Pair<String, String>>()
+
+    /** Se não for nulo, a próxima chamada falha com isto (e volta a nulo). */
+    var failNext: OnlineException? = null
+
+    private fun account(id: String) = accounts.getOrPut(id) { Account(initialBalance) }
+
+    private fun enter() { failNext?.let { failNext = null; throw it } }
+
+    private fun error(code: EconomyErrorCode, status: Int = 409): Nothing =
+        throw OnlineException(OnlineErrorKind.API, status = status, message = code.name, economyCode = code)
+
+    override suspend fun economyState(token: String, accountId: String): EconomyStateDto {
+        enter()
+        val a = account(accountId)
+        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
+    }
+
+    override suspend fun claimDaily(token: String, accountId: String, today: Long): EconomyStateDto {
+        enter()
+        val a = account(accountId)
+        if (a.lastDailyClaim != null && today <= a.lastDailyClaim!!) error(EconomyErrorCode.JA_RESGATADO)
+        a.balance += Coins.DAILY_GAIN
+        a.lastDailyClaim = today
+        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
+    }
+
+    override suspend fun buyOffer(token: String, accountId: String, offerIndex: Int, key: String): EconomyStateDto {
+        // Conta mesmo quando falha (failNext), para o teste de idempotência ver as duas tentativas com a mesma chave.
+        buyAttempts += accountId to key
+        enter()
+        val a = account(accountId)
+        if (accountId to key in appliedKeys) return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
+        val offer = Shop.OFFERS.getOrNull(offerIndex) ?: error(EconomyErrorCode.OFERTA_INEXISTENTE, 404)
+        if (a.balance < offer.price) error(EconomyErrorCode.SALDO_INSUFICIENTE)
+        appliedKeys += accountId to key
+        a.balance -= offer.price
+        a.inventory[offer.boosterId] = (a.inventory[offer.boosterId] ?: 0) + offer.quantity
+        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
     }
 }

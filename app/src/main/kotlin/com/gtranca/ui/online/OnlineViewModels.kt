@@ -3,7 +3,9 @@ package com.gtranca.ui.online
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gtranca.data.SettingsRepository
+import com.gtranca.online.client.EconomyApi
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.SeatKind
 import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
@@ -18,6 +20,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+/** §14.6 o ganho diário online reinicia à meia-noite UTC (igual ao `economy-service`, nunca o fuso do aparelho). */
+private const val MILLIS_PER_DAY = 86_400_000L
 
 private suspend fun <T> attempt(block: suspend () -> T): Result<T> = try {
     Result.success(block())
@@ -58,6 +63,12 @@ data class OnlineHomeUiState(
     val joining: Pair<String, Int>? = null,
     /** Já entrou: a tela abre a sala e chama [OnlineHomeViewModel.onJoinedHandled]. */
     val joinedId: String? = null,
+    /** §18.5 saldo da carteira online; `null` enquanto não chegou (a lista de mesas funciona do mesmo jeito). */
+    val balance: Long? = null,
+    /** §14.6 o ganho diário de hoje ainda não foi resgatado. */
+    val canClaimDaily: Boolean = false,
+    /** Resgatando o ganho diário agora (evita toque duplo). */
+    val claimingDaily: Boolean = false,
 ) {
     /** Mesa aberta em que eu já estou sentado (voltar à sala em vez de ocupar outro lugar). */
     val myTable: TableView? get() = tables?.firstOrNull { t -> t.state == TableState.ABERTA && t.seats.any { it.guestId == myId } }
@@ -78,12 +89,20 @@ class OnlineHomeViewModel(
     private val pollMs: Long = 3_000,
     /** A foto do Perfil reduzida (JPEG em Base64), enviada ao servidor ao entrar (§18.2); `null` = sem foto. */
     private val myPhoto: suspend () -> String? = { null },
+    /** API da economia do mesmo servidor (§18.5): saldo e ganho diário de 3.21. `null` = sem carteira (testes que não
+     * cobrem economia continuam valendo sem precisar informar isto). */
+    private val economyFor: (String) -> EconomyApi? = { null },
+    /** "Hoje" do ganho diário online: dia UTC desde a época — o MESMO que o economy-service usa para decidir
+     * `JA_RESGATADO` (§14.6: quem decide é o servidor, nunca o fuso/relógio do aparelho); injetável nos testes. */
+    private val today: () -> Long = { Math.floorDiv(System.currentTimeMillis(), MILLIS_PER_DAY) },
+    // accountFor fica por último (sem valor padrão) para continuar podendo vir como lambda à parte dos parênteses.
     private val accountFor: (String) -> OnlineAccount?,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OnlineHomeUiState())
     val uiState: StateFlow<OnlineHomeUiState> = _uiState.asStateFlow()
 
     private var account: OnlineAccount? = null
+    private var economy: EconomyApi? = null
     private var photoCache: OnlinePhotos? = null
 
     private val _photos = MutableStateFlow<Map<String, ByteArray>>(emptyMap())
@@ -109,6 +128,7 @@ class OnlineHomeViewModel(
             val server = settings.settings.catch { emit(com.gtranca.data.Settings()) }.first().onlineServer
             val acc = server.takeIf { it.isNotBlank() }?.let(accountFor)
             account = acc
+            economy = if (acc != null) economyFor(server) else null
             if (acc == null) {
                 _uiState.value = OnlineHomeUiState(OnlineHomeStatus.NO_SERVER)
                 return@launch
@@ -118,6 +138,8 @@ class OnlineHomeViewModel(
                 return@launch
             }
             _uiState.value = OnlineHomeUiState(OnlineHomeStatus.READY, name = guest.name, myId = guest.id)
+            // §18.5: saldo e ganho diário, uma vez (não entra no polling da lista de mesas).
+            economy?.let { eco -> loadEconomy(acc, eco) }
             // §18.2: a foto do Perfil vai ao servidor (melhor esforço: sem ela, os outros veem a inicial).
             attempt { acc.call { api, g -> api.setPhoto(g.token, myPhoto()) } }
             val cache = OnlinePhotos(acc).also { photoCache = it }
@@ -137,6 +159,41 @@ class OnlineHomeViewModel(
             },
             onFailure = { e -> _uiState.update { it.copy(listProblem = e.problem()) } },
         )
+    }
+
+    /** §18.5 lê o saldo e se o ganho diário de hoje já foi resgatado; falha fica em silêncio (a lista de mesas segue
+     * funcionando sem a carteira — quem tentar a Loja online lê de novo lá). */
+    private suspend fun loadEconomy(acc: OnlineAccount, eco: EconomyApi) {
+        attempt { acc.callWith(eco) { api, guest -> api.economyState(guest.token, guest.id) } }.fold(
+            onSuccess = { dto ->
+                val last = dto.lastDailyClaim
+                _uiState.update { it.copy(balance = dto.balance, canClaimDaily = last == null || today() > last) }
+            },
+            onFailure = {},
+        )
+    }
+
+    /** §14.6 resgata o ganho diário online (um por dia, pelo relógio do servidor); o saldo e o botão se atualizam. */
+    fun onClaimDaily() {
+        val acc = account ?: return
+        val eco = economy ?: return
+        if (_uiState.value.claimingDaily) return
+        _uiState.update { it.copy(claimingDaily = true) }
+        viewModelScope.launch {
+            attempt { acc.callWith(eco) { api, guest -> api.claimDaily(guest.token, guest.id, today()) } }.fold(
+                onSuccess = { dto -> _uiState.update { it.copy(claimingDaily = false, balance = dto.balance, canClaimDaily = false) } },
+                onFailure = { e ->
+                    _uiState.update { it.copy(claimingDaily = false) }
+                    if ((e as? OnlineException)?.economyCode == EconomyErrorCode.JA_RESGATADO) {
+                        // Outro aparelho resgatou primeiro: esconde o botão sem esperar outra leitura.
+                        _uiState.update { it.copy(canClaimDaily = false) }
+                    } else {
+                        // Rede ou outra falha: relê para conciliar (o saldo pode já ter mudado).
+                        loadEconomy(acc, eco)
+                    }
+                },
+            )
+        }
     }
 
     /** A minha mesa: reabre a sala ("Voltar à sala"). */

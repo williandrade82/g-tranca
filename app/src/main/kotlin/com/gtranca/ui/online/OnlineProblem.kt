@@ -2,6 +2,7 @@ package com.gtranca.ui.online
 
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.ErrorCode
 
 /**
@@ -31,6 +32,13 @@ enum class OnlineProblem {
     RATE_LIMIT,
     GAME_UNAVAILABLE,
     INSUFFICIENT_BALANCE,
+
+    /** §18.5/§17.10: a carteira do pedido não é a de quem está autenticado (nunca confundir com [NOT_HOST], que é o
+     * mesmo nome de código no lobby mas com outro significado). */
+    WALLET_NOT_YOURS,
+
+    /** §17.10: a loja recusou a oferta ou o pedido de compra (índice inexistente, chave fora do formato). */
+    SHOP_INVALID_REQUEST,
 
     /** §18.2: o servidor não reconheceu a assinatura do aplicativo. */
     APP_NOT_RECOGNIZED,
@@ -66,5 +74,30 @@ fun OnlineException.toProblem(): OnlineProblem = when (kind) {
         ErrorCode.APP_NAO_RECONHECIDO -> OnlineProblem.APP_NOT_RECOGNIZED
         ErrorCode.LOGIN_INDISPONIVEL -> OnlineProblem.MAINTENANCE
         ErrorCode.ASSENTO_ABANDONADO, null -> OnlineProblem.UNEXPECTED
+    }
+}
+
+/**
+ * Traduz a falha da economia (§18.5/§17.10, Loja online 3.20a e o ganho diário de 3.21) para o problema que a tela
+ * mostra. Não reaproveita [toProblem]: o economy-service usa [EconomyErrorCode], não [ErrorCode] do lobby, e alguns
+ * nomes se repetem com outro sentido — `SEM_PERMISSAO` aqui é "esta carteira não é sua" ([WALLET_NOT_YOURS]), nunca
+ * "você não é mais o anfitrião" ([NOT_HOST], que é o `SEM_PERMISSAO` do lobby).
+ */
+fun OnlineException.toEconomyProblem(): OnlineProblem = when (kind) {
+    OnlineErrorKind.NETWORK -> OnlineProblem.NETWORK
+    OnlineErrorKind.UPDATE_APP -> OnlineProblem.UPDATE_APP
+    OnlineErrorKind.MAINTENANCE -> OnlineProblem.MAINTENANCE
+    OnlineErrorKind.UNAUTHENTICATED -> OnlineProblem.UNAUTHENTICATED
+    OnlineErrorKind.UNEXPECTED -> OnlineProblem.UNEXPECTED
+    OnlineErrorKind.API -> when (economyCode) {
+        EconomyErrorCode.SALDO_INSUFICIENTE -> OnlineProblem.INSUFFICIENT_BALANCE
+        EconomyErrorCode.OFERTA_INEXISTENTE, EconomyErrorCode.REQUISICAO_INVALIDA -> OnlineProblem.SHOP_INVALID_REQUEST
+        EconomyErrorCode.APP_NAO_RECONHECIDO -> OnlineProblem.APP_NOT_RECOGNIZED
+        EconomyErrorCode.NAO_AUTENTICADO -> OnlineProblem.UNAUTHENTICATED
+        EconomyErrorCode.SEM_PERMISSAO -> OnlineProblem.WALLET_NOT_YOURS
+        EconomyErrorCode.INDISPONIVEL -> OnlineProblem.MAINTENANCE
+        // JA_RESGATADO é tratado antes de chegar aqui (concilia relendo a carteira, nunca mostra erro); as demais
+        // não deviam acontecer nesta tela (conta sempre existe antes de comprar ou liquidar, §18.5).
+        EconomyErrorCode.JA_RESGATADO, EconomyErrorCode.CONTA_INEXISTENTE, EconomyErrorCode.APOSTA_INEXISTENTE, null -> OnlineProblem.UNEXPECTED
     }
 }

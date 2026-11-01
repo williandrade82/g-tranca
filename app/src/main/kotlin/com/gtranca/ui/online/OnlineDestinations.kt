@@ -35,6 +35,10 @@ data class OnlineRoomRoute(val tableId: String)
 @Serializable
 data class OnlineGameRoute(val tableId: String)
 
+/** §17.10/§18.5 *Loja online* (docs/telas.md 3.20a), aberta de [OnlineHomeRoute]. */
+@Serializable
+object OnlineShopRoute
+
 /** Chave, na entrada de [OnlineHomeRoute], do aviso de volta de uma sala (um [OnlineRoomEnd]). */
 private const val ONLINE_NOTICE = "online-notice"
 
@@ -100,7 +104,10 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
                     val profile = PlayerProfile.decode(data.settings.settings.catch { emit(com.gtranca.data.Settings()) }.first().profileId)
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { com.gtranca.multiplayer.SharedPhoto.encode(context, profile) }
                 },
-            ) { server -> accountFor(data, defaultName, server)?.account }
+                accountFor = { server -> accountFor(data, defaultName, server)?.account },
+                // §18.5: a mesma conexão (OnlineClient) também fala com o economy-service.
+                economyFor = { server -> accountFor(data, defaultName, server)?.client },
+            )
         }
         // Voltando do Perfil (servidor trocado) ou de uma sala: lê de novo.
         LaunchedEffect(Unit) { vm.refresh() }
@@ -113,8 +120,16 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
             },
             onProfile = { navController.navigate(ProfileRoute) { launchSingleTop = true } },
             onBack = { navController.popBackStack() },
+            onShop = { navController.navigate(OnlineShopRoute) { launchSingleTop = true } },
             notice = notice?.let { name -> OnlineRoomEnd.entries.firstOrNull { it.name == name } },
         )
+    }
+    composable<OnlineShopRoute> {
+        val env = rememberOnlineEnv(data)
+        env?.getOrNull()?.let { online ->
+            val vm = viewModel { OnlineShopViewModel(online.account, online.client, data.inventory.catalog) }
+            OnlineShopScreen(vm, onBack = { navController.popBackStack() })
+        } ?: env?.let { LaunchedEffect(Unit) { navController.popBackStack() } }
     }
     composable<OnlineRoomRoute> { entry ->
         val route = entry.toRoute<OnlineRoomRoute>()

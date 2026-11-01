@@ -90,13 +90,36 @@ private object Panel {
 @Composable
 fun ShopScreen(viewModel: ShopViewModel, onBack: () -> Unit) {
     val ui by viewModel.state.collectAsStateWithLifecycle()
-    GBackground(Modifier.fillMaxSize().testTag("shop-screen")) {
+    ShopContent(ui, "shop-screen", "shop", "shop-back", viewModel::onOffer, viewModel::onBuy, viewModel::onCancel, onBack)
+}
+
+/**
+ * O corpo da Loja (3.20) e da Loja online (3.20a, §18.5, [com.gtranca.ui.online.OnlineShopScreen]): o mesmo painel e
+ * o mesmo modal *Comprar booster* — só a origem do saldo/inventário muda (local ou online) por quem chama.
+ * [screenTag]/[offerTagPrefix]/[backTag] distinguem as duas telas nos testes; o modal usa sempre as mesmas tags
+ * (`shop-dialog`, `shop-buy`, `shop-cancel`, `shop-insufficient`, docs/telas.md 4, porque é literalmente o mesmo
+ * modal). [extra] entra entre o título e a dica (a Loja online usa para o saldo online e o aviso de rede).
+ */
+@Composable
+internal fun ShopContent(
+    ui: ShopUi,
+    screenTag: String,
+    offerTagPrefix: String,
+    backTag: String,
+    onOffer: (ShopItem) -> Unit,
+    onBuy: () -> Unit,
+    onCancel: () -> Unit,
+    onBack: () -> Unit,
+    extra: @Composable () -> Unit = {},
+) {
+    GBackground(Modifier.fillMaxSize().testTag(screenTag)) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             GTitle(stringResource(R.string.shop_title), Modifier.semantics { heading() })
+            extra()
             Text(
                 stringResource(R.string.shop_hint),
                 style = MaterialTheme.typography.bodyMedium,
@@ -115,13 +138,13 @@ fun ShopScreen(viewModel: ShopViewModel, onBack: () -> Unit) {
             ShopPanel(Modifier.fillMaxWidth().widthIn(max = 520.dp).weight(1f)) {
                 ui.items.forEachIndexed { index, item ->
                     if (index > 0 && ui.items[index - 1].def.id != item.def.id) androidx.compose.foundation.layout.Spacer(Modifier.size(Spacing.sm))
-                    OfferRow(item, index + 1) { viewModel.onOffer(item) }
+                    OfferRow(item, index + 1, offerTagPrefix) { onOffer(item) }
                 }
             }
-            GButton(onBack, Modifier.heightIn(min = 48.dp).testTag("shop-back"), kind = GButtonKind.Text) { Text(stringResource(R.string.back)) }
+            GButton(onBack, Modifier.heightIn(min = 48.dp).testTag(backTag), kind = GButtonKind.Text) { Text(stringResource(R.string.back)) }
         }
     }
-    ui.selected?.let { PurchaseDialog(ui, it, viewModel::onBuy, viewModel::onCancel) }
+    ui.selected?.let { PurchaseDialog(ui, it, onBuy, onCancel) }
 }
 
 @Composable
@@ -208,7 +231,7 @@ private fun DrawScope.drawBody(scale: Float, center: ImageBitmap, left: ImageBit
 
 /** Uma oferta: a imagem do booster, o nome com a quantidade do pacote e o valor em moedas. */
 @Composable
-private fun OfferRow(item: ShopItem, number: Int, onClick: () -> Unit) {
+private fun OfferRow(item: ShopItem, number: Int, tagPrefix: String = "shop", onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val units = unitsText(item.offer.quantity)
     val description = stringResource(R.string.shop_offer_desc, item.def.name, units, item.offer.price)
@@ -221,7 +244,7 @@ private fun OfferRow(item: ShopItem, number: Int, onClick: () -> Unit) {
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
             .semantics(mergeDescendants = true) { contentDescription = description }
-            .testTag("shop-offer-$number"),
+            .testTag("$tagPrefix-offer-$number"),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -34,7 +34,14 @@ class OnlineAccount(
     suspend fun forget() = mutex.withLock { settings.setOnlineGuest(null) }
 
     /** Executa [block] com o convidado; se o servidor não reconhecer o token, recria o convidado e tenta de novo uma vez. */
-    suspend fun <T> call(block: suspend (LobbyApi, OnlineGuest) -> T): T {
+    suspend fun <T> call(block: suspend (LobbyApi, OnlineGuest) -> T): T = callWith(api, block)
+
+    /**
+     * Igual [call], mas para qualquer API do mesmo servidor além do [LobbyApi] — ex.: [com.gtranca.online.client.EconomyApi]
+     * (§18.5): o convidado (token e id) é sempre o mesmo dos dois. Se o servidor não reconhecer o token, recria o
+     * convidado e tenta de novo uma vez.
+     */
+    suspend fun <API, T> callWith(api: API, block: suspend (API, OnlineGuest) -> T): T {
         val guest = guest()
         return try {
             block(api, guest)

@@ -347,7 +347,7 @@ Botão **Acessar loja** (tag `inventory-shop`) abre a Loja (3.20); ao voltar, o 
 **Objetivo:** trocar moedas da carteira online por boosters do inventário online (§17.10, §18.5). Acesso só pelo botão **Loja online** de *Jogar online* (3.21).
 **Conteúdo:** o mesmo **painel da loja** de 3.20 (`docs/boosters/Loja`), as mesmas 9 ofertas e o mesmo modal **Comprar booster**, mas lendo e gravando a carteira e o inventário **online** (não os do aparelho); o saldo no topo é o **saldo online**. Compra e erro de saldo insuficiente seguem exatamente 3.20. Erro de rede ou servidor fora: mensagem na própria tela, com **Tentar de novo** (não fecha a loja). Botão **Voltar** (tag `online-shop-back`) leva a 3.21.
 **Regras:** §17.10, §18.5.
-**Tags:** `online-shop-screen`, `online-shop-offer-<n>`, `online-shop-back`.
+**Tags:** `online-shop-screen`, `online-shop-offer-<n>`, `online-shop-back`, `online-shop-balance` (saldo online, dentro do painel), `online-shop-loading`, `online-shop-error`, `online-shop-retry` (o aviso de rede/servidor fora e o *Tentar de novo*, tanto ao abrir a loja quanto ao comprar).
 
 ### 3.21 Jogar online (`OnlineHomeScreen`)
 **Objetivo:** porta de entrada do jogo online (§18). Botão **Jogar online** no Início, junto dos demais (tag `online-play`), no mesmo estilo dourado de **Ver mesas - Iniciar** e com um **globo girando** à esquerda do texto (desenhado no código; parado sem animações do sistema; *ícone provisório*).

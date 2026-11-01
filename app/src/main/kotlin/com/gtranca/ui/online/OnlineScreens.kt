@@ -95,11 +95,13 @@ fun OnlineProblem.textRes(): Int = when (this) {
     OnlineProblem.APP_NOT_RECOGNIZED -> R.string.online_problem_app_not_recognized
     OnlineProblem.INVALID_ID -> R.string.online_problem_invalid_id
     OnlineProblem.INVALID_TARGET -> R.string.online_problem_invalid_target
+    OnlineProblem.WALLET_NOT_YOURS -> R.string.online_problem_wallet_not_yours
+    OnlineProblem.SHOP_INVALID_REQUEST -> R.string.online_problem_shop_invalid
     OnlineProblem.UNEXPECTED -> R.string.online_problem_unexpected
 }
 
 @Composable
-private fun ProblemText(problem: OnlineProblem, tag: String, modifier: Modifier = Modifier) {
+internal fun ProblemText(problem: OnlineProblem, tag: String, modifier: Modifier = Modifier) {
     Text(
         stringResource(problem.textRes()),
         modifier.fillMaxWidth().testTag(tag),
@@ -121,6 +123,8 @@ fun OnlineHomeScreen(
     onJoined: (String) -> Unit,
     onProfile: () -> Unit,
     onBack: () -> Unit,
+    /** Abre a Loja online (3.20a, §18.5). */
+    onShop: () -> Unit = {},
     /** Aviso de volta de uma sala (mesa encerrada, removido...). */
     notice: OnlineRoomEnd? = null,
 ) {
@@ -171,6 +175,30 @@ fun OnlineHomeScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = GColors.Champagne,
                     )
+                    // §14.6/§18.5 saldo online e o ganho diário (um resgate por dia), sempre no topo da tela (3.21).
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = Alignment.CenterVertically) {
+                        state.balance?.let {
+                            Text(
+                                stringResource(R.string.coins_balance, it),
+                                Modifier.testTag("online-balance"),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = GColors.Gold,
+                            )
+                        }
+                        if (state.canClaimDaily) {
+                            GButton(
+                                viewModel::onClaimDaily,
+                                Modifier.heightIn(min = 48.dp).testTag("online-daily-claim"),
+                                enabled = !state.claimingDaily,
+                                kind = GButtonKind.Secondary,
+                            ) {
+                                Text(stringResource(R.string.home_daily_claim, com.gtranca.engine.Coins.DAILY_GAIN), style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                    }
+                    GButton(onShop, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-shop"), kind = GButtonKind.Secondary) {
+                        Text(stringResource(R.string.online_shop_button), style = MaterialTheme.typography.titleMedium)
+                    }
                 }
                 state.problem?.let { ProblemText(it, "online-error") }
                 Text(stringResource(R.string.online_seat_tap_hint), Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel, textAlign = TextAlign.Center)
