@@ -64,6 +64,7 @@ fun OnlineException.toProblem(): OnlineProblem = when (kind) {
         ErrorCode.NAO_AUTENTICADO -> OnlineProblem.UNAUTHENTICATED
         ErrorCode.VERSAO_INCOMPATIVEL -> OnlineProblem.UPDATE_APP
         ErrorCode.APP_NAO_RECONHECIDO -> OnlineProblem.APP_NOT_RECOGNIZED
+        ErrorCode.LOGIN_INDISPONIVEL -> OnlineProblem.MAINTENANCE
         ErrorCode.ASSENTO_ABANDONADO, null -> OnlineProblem.UNEXPECTED
     }
 }
