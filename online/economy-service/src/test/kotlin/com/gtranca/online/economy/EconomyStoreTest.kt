@@ -35,12 +35,47 @@ class EconomyStoreTest {
     }
 
     @Test
-    fun `14_6 ganho diario de 200 uma vez por dia e o relogio atrasado nao libera de novo`() {
-        store.ensureAccount("g1")
-        store.claimDaily("g1", today = 100).balance shouldBe 1_200
-        shouldThrow<EconomyException> { store.claimDaily("g1", today = 100) }.code shouldBe EconomyException.Code.JA_RESGATADO
-        shouldThrow<EconomyException> { store.claimDaily("g1", today = 99) }.code shouldBe EconomyException.Code.JA_RESGATADO
-        store.claimDaily("g1", today = 101).balance shouldBe 1_400
+    fun `14_6 ganho diario de 200 uma vez por dia real, decidido pelo relogio do servidor`() {
+        // (a) resgate normal funciona.
+        var now = 1_700_000_000_000L
+        val clockStore = EconomyStore(db, clock = { now })
+        clockStore.ensureAccount("g1")
+        clockStore.claimDaily("g1", today = 1).balance shouldBe 1_200
+
+        // (b) resgatar de novo no MESMO dia real falha, mesmo que o app mande um "today" bem adiantado.
+        shouldThrow<EconomyException> { clockStore.claimDaily("g1", today = 2) }.code shouldBe EconomyException.Code.JA_RESGATADO
+        shouldThrow<EconomyException> { clockStore.claimDaily("g1", today = 999) }.code shouldBe EconomyException.Code.JA_RESGATADO
+        clockStore.state("g1").balance shouldBe 1_200
+
+        // (c) no dia seguinte REAL (relogio do servidor avanca 24h), o resgate funciona, mesmo com "today" atrasado.
+        now += 24 * 60 * 60 * 1_000L
+        clockStore.claimDaily("g1", today = 0).balance shouldBe 1_400
+    }
+
+    @Test
+    fun `14_6 a chave do ganho diario usa o dia do servidor, nao o today do cliente (livro-razao idempotente)`() {
+        // (d) mesmo perdendo o "ultimo_resgate" (corrida, bug), a chave do lancamento - baseada no dia do SERVIDOR -
+        // ainda impede dois creditos para o mesmo dia real, mesmo com "today" bem diferente do cliente.
+        var now = 1_700_000_000_000L
+        val clockStore = EconomyStore(db, clock = { now })
+        clockStore.ensureAccount("g2")
+        clockStore.claimDaily("g2", today = 5).balance shouldBe 1_200
+        db.connection.use { it.createStatement().execute("UPDATE carteira SET ultimo_resgate = NULL WHERE conta_id = 'g2'") }
+        shouldThrow<EconomyException> { clockStore.claimDaily("g2", today = 500) }.code shouldBe EconomyException.Code.JA_RESGATADO
+        clockStore.state("g2").balance shouldBe 1_200
+    }
+
+    @Test
+    fun `14_6 o dia vira na meia-noite UTC do servidor, resgatar pouco depois da virada ja libera de novo`() {
+        // Documenta que a regra e por DIA DE CALENDARIO (UTC), nao por "24 horas corridas": perto da virada, um
+        // resgate pode liberar outro so alguns segundos de relogio real depois.
+        val midnightUtcMs = (1_700_000_000_000L / 86_400_000L) * 86_400_000L + 86_400_000L
+        var now = midnightUtcMs - 1_000 // 23:59:59 UTC
+        val clockStore = EconomyStore(db, clock = { now })
+        clockStore.ensureAccount("g3")
+        clockStore.claimDaily("g3", today = 0).balance shouldBe 1_200
+        now = midnightUtcMs + 2_000 // 00:00:02 UTC do dia seguinte, so 3s de relogio real depois
+        clockStore.claimDaily("g3", today = 0).balance shouldBe 1_400
     }
 
     @Test

@@ -23,7 +23,11 @@ class EconomyException(val code: Code, message: String) : RuntimeException(messa
  * (`FOR UPDATE`): o saldo nunca fica negativo, mesmo com pedidos simultâneos. Cada mudança vira um lançamento com uma
  * **chave de idempotência** única por conta: repetir a operação com a mesma chave devolve o estado atual sem mudar nada.
  */
-class EconomyStore(private val db: DataSource) {
+class EconomyStore(private val db: DataSource, private val clock: () -> Long = System::currentTimeMillis) {
+
+    companion object {
+        private const val MILLIS_PER_DAY = 86_400_000L
+    }
 
     /**
      * Garante a conta (convidado, por ora) com a carteira inicial de §14.6 e os boosters iniciais de §17.1. Idempotente:
@@ -99,18 +103,34 @@ class EconomyStore(private val db: DataSource) {
 
     fun state(accountId: String): EconomyState = tx { c -> read(c, accountId) }
 
-    /** §14.6 ganho diário de 200 moedas, uma vez por dia ([today] em dias desde a época, no fuso do jogador). */
+    /**
+     * §14.6 ganho diário de 200 moedas, uma vez por **dia real**. Quem decide "hoje" é o **servidor**, pelo próprio
+     * relógio (UTC) — nunca o aparelho: [today] (dias desde a época, no fuso do jogador) é só informação
+     * complementar, ignorada aqui, para que adiantar o relógio do celular não libere o resgate de novo. A chave de
+     * idempotência também usa o dia do servidor, não o [today] do cliente, senão a mesma brecha reaparece: um
+     * `today` diferente a cada tentativa geraria uma chave nova e o livro-razão deixaria passar.
+     *
+     * O reinício acontece à meia-noite UTC, igual para todo mundo; ninguém fica bloqueado por mais de um dia real
+     * (nunca "pune" quem está num fuso distante: o pior caso é resgatar perto da meia-noite UTC em vez da meia-noite
+     * local, não deixar de resgatar).
+     */
     fun claimDaily(accountId: String, today: Long): EconomyState = tx { c ->
+        val day = serverDay()
         val last = lockWallet(c, accountId).second
-        if (last != null && today <= last) throw EconomyException(EconomyException.Code.JA_RESGATADO, "O ganho de hoje já foi resgatado.")
-        apply(c, accountId, "GANHO_DIARIO", "ganho-diario-$today", coins = Coins.DAILY_GAIN.toLong())
+        if (last != null && day <= last) throw EconomyException(EconomyException.Code.JA_RESGATADO, "O ganho de hoje já foi resgatado.")
+        if (!apply(c, accountId, "GANHO_DIARIO", "ganho-diario-$day", coins = Coins.DAILY_GAIN.toLong())) {
+            throw EconomyException(EconomyException.Code.JA_RESGATADO, "O ganho de hoje já foi resgatado.")
+        }
         c.prepareStatement("UPDATE carteira SET ultimo_resgate = ? WHERE conta_id = ?").use {
-            it.setLong(1, today)
+            it.setLong(1, day)
             it.setString(2, accountId)
             it.executeUpdate()
         }
         read(c, accountId)
     }
+
+    /** "Hoje" pelo relógio do próprio servidor (dia UTC desde a época); nunca pelo que o cliente informa (§14.6). */
+    private fun serverDay(): Long = Math.floorDiv(clock(), MILLIS_PER_DAY)
 
     /**
      * §17.10 compra na loja: debita o valor e soma os boosters numa transação só (nunca um sem o outro). [key] identifica o

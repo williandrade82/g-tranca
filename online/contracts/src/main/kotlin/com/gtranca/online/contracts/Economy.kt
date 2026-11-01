@@ -8,7 +8,11 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class EconomyStateDto(val balance: Long, val inventory: Map<String, Int>, val lastDailyClaim: Long? = null)
 
-/** POST /economy/{guestId}/daily: o dia de hoje no fuso do jogador, em dias desde a epoca (§14.6). */
+/**
+ * POST /economy/{guestId}/daily: o dia de hoje no fuso do jogador, em dias desde a epoca (§14.6). So informativo: o
+ * SERVIDOR decide pelo proprio relogio (UTC) se o resgate e liberado, nunca por este valor (adiantar o relogio do
+ * aparelho nao libera o resgate de novo).
+ */
 @Serializable
 data class DailyClaimRequest(val today: Long)
 

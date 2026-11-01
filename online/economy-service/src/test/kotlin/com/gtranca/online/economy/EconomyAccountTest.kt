@@ -38,7 +38,9 @@ class EconomyAccountTest {
         migrated shouldBe true
         acc.balance shouldBe guestBefore.balance
         acc.inventory shouldBe guestBefore.inventory
-        acc.lastDailyClaim shouldBe 50
+        // §14.6: o dia gravado e decidido pelo servidor (nao pelo "50" informativo que o teste passou); so precisa
+        // ser o mesmo que ja estava no convidado antes de migrar.
+        acc.lastDailyClaim shouldBe guestBefore.lastDailyClaim
         store.state("conv1").balance shouldBe 0
         store.state("conv1").inventory.values.all { it == 0 } shouldBe true
         tipo("G_a") shouldBe "GOOGLE"

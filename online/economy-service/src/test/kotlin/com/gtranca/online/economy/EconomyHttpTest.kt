@@ -52,7 +52,7 @@ class EconomyHttpTest {
         application {
             economyModule(
                 EconomyDeps(
-                    EconomyStore(db), key, clock = { now }, internalSecret = secret,
+                    EconomyStore(db, clock = { now }), key, clock = { now }, internalSecret = secret,
                     guests = GuestResolver { t -> if (lobbyDown) throw LobbyUnavailableException("fora") else tokens[t] },
                 ),
             )
