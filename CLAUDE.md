@@ -14,6 +14,7 @@ Jogo de Tranca (família Canastra) para Android. Contra os robôs é 100% offlin
 - Toda regra implementada tem teste que cita a seção, ex.: `// §5.3 3 preto no topo trava o lixo`.
 - Se uma regra mudar, atualize `definition.md` **antes** do código.
 - **[docs/telas.md](docs/telas.md)** descreve as telas, os modais e o glossário de componentes (pílula do assento, modal de detalhe do jogador...). Use os nomes dele nos pedidos e, se uma tela mudar, atualize-o **antes** do código.
+- **[docs/seguranca-pendencias.md](docs/seguranca-pendencias.md)** registra falhas de segurança encontradas e **não corrigidas na hora** (aceitas como risco, ou que dependem de decisão do usuário fora do código, como rotacionar uma credencial). Toda vez que uma revisão (própria, de um agente ou do `rules-auditor`) achar uma falha de segurança que não vai ser corrigida já, registre-a lá antes de seguir; um achado corrigido no mesmo commit não precisa de registro.
 
 ## Stack
 
