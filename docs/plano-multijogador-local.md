@@ -1,6 +1,6 @@
 # Plano: multijogador local (até 4 pessoas, cada uma no seu celular, sem internet)
 
-Status: **aprovado em 2026-10-20** (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário). **Etapas 1, 2 e 3 feitas** (N12 e N13 confirmadas). Origem: `docs/archive/plano-teamplay.md`.
+Status: **quase concluído** — aprovado em 2026-10-20 (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário; N12 a N16 decididas depois). **Etapas 1 a 6 feitas** (a etapa 6 tem 4 itens pontuais ainda fora, listados nela: card completo, excluir duas posições sem API na sessão, "Continuar" da sessão sem espaço no `:data`, e a marca "multijogador" nas estatísticas); **etapa 7 pendente** (loja/privacidade com as novas permissões e revisão final do `rules-auditor`). Origem: `docs/archive/plano-teamplay.md`.
 Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código e `rules-auditor`. O jogo individual e o fluxo atual contra
 robôs **não mudam**; o multijogador é uma opção nova na tela de mesas disponíveis.
 

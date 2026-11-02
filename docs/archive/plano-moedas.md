@@ -1,6 +1,6 @@
 # Plano: moedas locais contra os robôs
 
-Status: **aprovado em 2026-10-18** (recomendações M1–M6 aceitas); todas as etapas feitas (PR aberto). Parte do plano de evolução (decidido em 15/10): perfis de regra, perfil com foto e,
+Status: **executado** — aprovado em 2026-10-18 (recomendações M1–M6 aceitas), todas as 7 etapas feitas (ver abaixo) e a branch `feature/moedas-locais` já está mesclada. Parte do plano de evolução (decidido em 15/10): perfis de regra, perfil com foto e,
 agora, moedas locais; o online vem depois. Fluxo de sempre: `definition.md` primeiro, depois testes, código e `rules-auditor`.
 
 ## O que já está decidido (conversa de 15/10)

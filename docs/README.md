@@ -22,13 +22,18 @@ Um plano concluído ou substituído vai para `archive/`; os demais ficam aqui, a
 
 | Arquivo | Assunto | Status | Observação |
 |---|---|---|---|
-| [plano-online.md](plano-online.md) | Jogo online (microsserviços) | Em execução | Backend fase 1 pronto; servidor em ajuste na branch `fix/online-servidor`. O próprio arquivo ainda diz "nada implementado" — está desatualizado. |
-| [plano-moedas.md](plano-moedas.md) | Moedas locais e apostas contra os robôs | Em execução | PR aberto, ainda não integrado. |
-| [plano-boosters.md](plano-boosters.md) | Boosters (catálogo, ícones e sons das reações) | Em execução | O arquivo diz "nada implementado", mas a branch `feature/boosters` já tem os assets em `assets/boosters/` e a Loja (já executada) depende dela — **confirme se o código avançou mais do que o texto registra**. |
-| [plano-multijogador-local.md](plano-multijogador-local.md) | Multijogador local (até 4 celulares, sem internet) | Em execução | Etapas 1 a 3 feitas; restante pendente. |
+| [plano-online.md](plano-online.md) | Jogo online (microsserviços) | Em execução | Backend fase 1 pronto (`online/lobby-service`, `game-service`, `economy-service`); servidor em ajuste na branch atual `fix/online-servidor`. O app ainda não expõe o modo ao jogador. O próprio arquivo diz "nada implementado" — está desatualizado, mas este é o único plano genuinamente incompleto hoje. |
+| [plano-multijogador-local.md](plano-multijogador-local.md) | Multijogador local (até 4 celulares, sem internet) | Quase concluído | Etapas 1 a 6 feitas (confirmado: módulos `:net` e `app/.../multiplayer` completos, protocolo v19); faltam 4 itens pontuais da etapa 6 e a etapa 7 (loja/privacidade + revisão final). |
+
+Os dois planos abaixo **foram verificados como executados** (branch mesclada em `HEAD` + código real) e
+foram arquivados — as linhas de `Status:` que diziam o contrário estavam desatualizadas:
+[plano-moedas.md](archive/plano-moedas.md) e [plano-boosters.md](archive/plano-boosters.md). Ver
+[archive/README.md](archive/README.md).
 
 Nenhum plano está só "no papel" (futuro) neste momento — todos já têm pelo menos uma decisão
-aceita ou código iniciado.
+aceita ou código iniciado. **Lição:** a linha `Status:` de um plano pode ficar desatualizada se
+ninguém a revisa conforme o código avança — ao classificar, confirme contra o código (branch
+mesclada? classe/arquivo existe?), não só contra o texto do próprio plano.
 
 ## Arquivados (`archive/`)
 
@@ -40,7 +45,7 @@ Planos concluídos, substituídos por outro documento, ou que são apenas um ret
 | Pasta | O que tem | Observação |
 |---|---|---|
 | [personagens/](personagens/) | Fichas de arte dos 4 robôs (texto) + as 12 folhas-fonte (`NN - perfil - nivel.png`) e as 2 imagens de conjunto. | **As imagens não foram movidas para `assets/`**: são entrada do pipeline `tools/cortar_personagens.py` / `tools/conferir_personagens.py`, que leem exatamente esta pasta. Mover exigiria atualizar os scripts e os testes (`CharacterAssetsTest`); mantido como está por ser dependência de build, não só documentação. |
-| [loja/](loja/) | Rascunho da ficha da loja (Google Play) e da política de privacidade. | Ainda citam o nome antigo do app, "Mestre da Canastra" — não corrigido aqui por ser conteúdo de produto, fora do escopo desta limpeza. |
+| [loja/](loja/) | Rascunho da ficha da loja (Google Play) e da política de privacidade. | Nome/identificador corrigidos para Tranca-Bot; conteúdo e permissões atualizados para refletir o app atual (multijogador local, moedas, boosters). Ainda marcados para **nova revisão antes de publicar** — a seção de modo online fica incompleta até ele ser lançado. |
 | [assets/](assets/) | Imagens, áudios e pacotes que não são entrada de nenhum script: `boosters/` (ícones, sons das reações, peças do painel da loja em `boosters/loja/`), `telas/` (capturas de tela citadas em `telas-app.md` e no plano arquivado de multijogador), e 4 imagens de divulgação dos robôs soltas na raiz de `assets/` (sem referência em nenhum documento atual). |
 | [google-secrets/](google-secrets/) | Credenciais OAuth do Google. | Nunca versionado (`.gitignore`); não alterado nesta limpeza. |
 

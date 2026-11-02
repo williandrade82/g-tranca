@@ -675,7 +675,7 @@ flowchart TD
 
 # **17. Boosters**
 
-Boosters são itens do **inventário** do jogador que ele escolhe usar **no início do jogo** (valem em todas as partidas dele). Valem só para o jogo contra os jogadores virtuais e a mesa multijogador local; o inventário fica **no aparelho** (adulterável, risco aceito por ora, como a carteira de §14.6). Os robôs **não** usam boosters. Plano: `docs/plano-boosters.md`.
+Boosters são itens do **inventário** do jogador que ele escolhe usar **no início do jogo** (valem em todas as partidas dele). Valem só para o jogo contra os jogadores virtuais e a mesa multijogador local; o inventário fica **no aparelho** (adulterável, risco aceito por ora, como a carteira de §14.6). Os robôs **não** usam boosters. Plano (arquivado, executado): `docs/archive/plano-boosters.md`.
 
 ### **17.1. Inventário e catálogo**
 - O inventário guarda a **quantidade** de cada item. As **moedas** (§14.6) são um item do inventário, mas o saldo continua na carteira e é o **único** item que muda de dono entre jogos (ganha-se ao vencer, perde-se ao perder) e o que se gasta na **loja** (§17.10). Os boosters nunca são ganhos nem perdidos por resultado de jogo; entram no inventário pelo valor inicial, pelo presente diário (§17.5) e pela compra (§17.10).

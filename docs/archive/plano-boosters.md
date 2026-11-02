@@ -1,6 +1,6 @@
 # Plano: Boosters
 
-Status: **decisões aceitas em 2026-10-27**; nada implementado. Branch `feature/boosters`. Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash do commit.
+Status: **executado** — a branch `feature/boosters` está mesclada: `definition.md` tem a seção completa (§17.1 a §17.10), `core-engine` tem `Boosters.kt`/`BoostersTest.kt`, `:data` e `:app` têm o inventário, o seletor e a tela da loja, e o protocolo do multijogador (v19) já leva o `Loadout` por assento (`HostSession.kt`). **Este arquivo nunca foi atualizado conforme o trabalho avançava** — a lista de etapas abaixo ficou sem as marcas "FEITA" (diferente de `plano-moedas.md`/`plano-multijogador-local.md`); tratem o texto abaixo como o pedido original, não como o estado atual. Branch `feature/boosters`. Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash do commit.
 
 ## O que são
 Itens do inventário do jogador que ele escolhe usar **antes de cada partida**. As **moedas** são um item do inventário (o único que muda de dono entre jogos: ganha ao vencer, perde ao perder, como hoje). Custo padrão: **1 unidade por partida** em que o booster é escolhido.
