@@ -46,16 +46,24 @@ recente (conferido aqui: `docker buildx ls` mostra o builder padrao `desktop-lin
 Medido em 02/11/2026 (`economy-service`, maquina local): build limpo (cache do Gradle vazio, baixa o Wrapper, as
 dependencias e compila tudo) **~9 min** (545 s sem o cache mount no Dockerfile; 528 s com o cache mount mas ainda
 vazio — sem regressao); build repetido mudando **uma linha** de comentario em `Main.kt`, com o cache do mount ja
-quente, **53 s** (Gradle: 43 s) — cerca de 10x mais rapido. O cache mount fica no disco do Docker Desktop (nao na
-imagem, nao no Git); `docker builder prune` ou "Reset Kubernetes cluster" o esvaziam, e o primeiro build depois
-disso volta a ser lento (esperado).
+quente, **53 s** (Gradle: 43 s) — cerca de 10x mais rapido. O cache mount (por padrao com `id = target`, compartilhado
+entre os tres Dockerfiles) fica no disco do builder `desktop-linux` do Docker Desktop (nao na imagem, nao no Git);
+`docker builder prune` o esvazia, e o primeiro build depois disso volta a ser lento (esperado). Confirmado tambem (so build, sem deploy, imagens descartadas): com o cache ja
+quente pelo `economy-service`, `lobby-service` e `game-service` cada um buildou em ~1 min (61 s e 69 s) — o cache
+mount e compartilhado entre os tres Dockerfiles (mesmo `target=/root/.gradle`). Um "Reset Kubernetes
+cluster" do Docker Desktop recria o node (kind) mas **nao** deveria afetar esse cache (ele vive no engine do Docker,
+nao no node); nao testado nesta etapa, so por inspecao.
 
-**Ideia anotada, nao implementada:** para iteracao rapida (sem a verificacao final), um "modo rapido" copiaria o JAR
-ja compilado localmente (`./gradlew :servico:installDist` fora do Docker) direto para o pod em execucao
-(`kubectl cp` + reiniciar o processo, ou um volume montado), sem reconstruir a imagem nem fazer rollout — util para
-ciclos de depuracao, mas sem a garantia de reprodutibilidade da imagem com tag fixa; o build completo (Docker +
-Helm) continuaria sendo o caminho para a verificacao final e para o APK. Decisao do usuario se vale a pena montar
-isso; nao entra nesta etapa.
+**Ideia anotada, nao implementada** (discutida com o `advisor`; a primeira versao desta nota tinha um erro: `kubectl cp`
+para dentro do pod nao funciona com `readOnlyRootFilesystem: true`, e reiniciar o processo recria o contêiner a partir
+da imagem, perdendo a copia): para iteracao rapida (sem a verificacao final), um **segundo Dockerfile por servico**
+(ex. `Dockerfile.local`) so com `COPY build/install/<servico> /opt/<servico>` sobre `eclipse-temurin:17-jre` — o
+`./gradlew.bat :servico:installDist` roda no Windows, fora do Docker (daemon do Gradle quente, compilacao
+incremental), e o `docker build -f Dockerfile.local` so empacota o resultado, em segundos, sem rodar Gradle no
+contêiner. Continua com imagem nova, tag nova e `helm upgrade --set image.tag=...` normal (mantem `readOnlyRootFilesystem`,
+tag fixa e rollout); a diferenca e que a imagem passa a depender do build feito no host, entao perde a
+reprodutibilidade do build limpo em contêiner — por isso ficaria so para depuracao, nunca para a verificacao final
+nem para o APK. Decisao do usuario se vale a pena montar isso; nao entra nesta etapa.
 
 ## lobby-service (mesas e convites)
 
@@ -339,8 +347,8 @@ Rota nova, so no `economy-service` (`lobby-service` e `game-service` sem mudanca
 para os dois veio vazio). Publica, dentro do `/economy` ja exposto pelo ingress, mesma assinatura do app e mesmo
 token de conta das outras rotas de `/economy`; nenhuma variavel de ambiente, Secret ou NetworkPolicy nova.
 
-Implantado em 02/11/2026 na tag `68ea01a` (so `economy-service`; `lobby-service` continua `e80cc18` e `game-service`
-continua `49d7282`, sem mudanca de protocolo). Conferido: rollout ok (revisao 9), pod `1/1 Running`, 0 restarts, logs
+Implantado em 02/11/2026 na tag `68ea01a` (so `economy-service`, `values.yaml` atualizado para esta tag como novo
+padrao; `lobby-service` continua `e80cc18` e `game-service` continua `49d7282`, sem mudanca de protocolo). Conferido: rollout ok (revisao 9), pod `1/1 Running`, 0 restarts, logs
 limpos, migracao Flyway em `V4` (nenhuma nova nesta etapa). Teste funcional pelo ingress, com uma conta de e-mail de
 teste criada so para isto (`POST /api/lobby/accounts/email/register`): antes do deploy, `POST
 /economy/{id}/migrate` assinado respondia `404` (rota nao existia na imagem `e80cc18`); depois do deploy, a mesma
