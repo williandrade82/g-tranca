@@ -85,7 +85,10 @@ class BoosterSelectorSessionTest {
         a.selectBoosters(listOf("b1"))
         val after = a.drainUntil { it.any { m -> m is BoostersConfirmed } }
         after.filterIsInstance<BoostersConfirmed>().single().boosters shouldBe listOf("b1")
-        after.filterIsInstance<SeatUpdate>().single().view.hand.isNotEmpty() shouldBe true
+        // §17.3/§17.4: a vista de quando o seletor apareceu (guardada) chega primeiro, depois a vista fresca de agora.
+        val seatUpdates = after.filterIsInstance<SeatUpdate>()
+        seatUpdates.isNotEmpty() shouldBe true
+        seatUpdates.last().view.hand.isNotEmpty() shouldBe true
         eco.calls.single() shouldBe listOf("b1")
         run.stop()
     }
@@ -251,6 +254,64 @@ class BoosterSelectorSessionTest {
         a.selectBoosters(listOf("b1")) // tenta de novo (a selecao nao se perdeu na tela, §17.3/telas.md)
         val ok = a.drainUntil { it.any { m -> m is BoostersConfirmed } }
         ok.filterIsInstance<BoostersConfirmed>().single().boosters shouldBe listOf("b1")
+        run.stop()
+    }
+
+    @Test
+    fun `17_3 depois da 1a tentativa a selecao trava, nunca debita duas listas diferentes`() = runBlocking {
+        val eco = FakeBoosterEconomy(down = true)
+        val run = startSession(TableMode.INDIVIDUAL, humans2(), economy = eco)
+        val a = TestPlayer(run.session, "ga")
+        a.attach()
+        a.drain()
+        a.selectBoosters(listOf("b1")) // 1a tentativa (final): pode ja ter debitado no banco, mas a resposta se perde
+        a.drainUntil { it.any { m -> m is BoosterConfirmFailed } }
+
+        eco.down = false
+        // O jogador muda de ideia na tela e toca Tentar de novo com outra selecao: o servidor IGNORA a troca (a lista
+        // ja esta travada na 1a tentativa) e tenta de novo so o que foi tentado antes.
+        a.selectBoosters(listOf("b2"))
+        val after = a.drainUntil { it.any { m -> m is BoostersConfirmed } }
+        after.filterIsInstance<BoostersConfirmed>().single().boosters shouldBe listOf("b1")
+        eco.calls shouldBe listOf(listOf("b1"), listOf("b1")) // nunca chamou com b2
+        run.stop()
+    }
+
+    @Test
+    fun `17_3 17_4 quem esta no seletor nao perde jogada, recebe a fila em ordem ao confirmar`() = runBlocking {
+        val eco = FakeBoosterEconomy()
+        val run = startSession(TableMode.INDIVIDUAL, humans2(), economy = eco)
+        val p1 = TestPlayer(run.session, "ga")
+        val p2 = TestPlayer(run.session, "gb")
+        p1.attach()
+        p2.attach()
+        val info = run.session.inspect()
+        val attachVersion = info.version
+        // "mover" confirma e joga; "waiter" fica presa no seletor de proposito (nunca confirma agora).
+        val (mover, waiter) = if (info.match.currentRound.currentSeat.index == p1.seat) p1 to p2 else p2 to p1
+        mover.drain()
+        waiter.drain()
+
+        mover.selectBoosters(listOf("b1"))
+        withTimeout(15_000) {
+            val playJob = launch { mover.playToEnd(autoConfirmBoosters = false) }
+            while (run.session.inspect().version <= attachVersion) delay(5)
+            playJob.cancel()
+        }
+        waiter.drain().filterIsInstance<SeatUpdate>().shouldBeEmpty() // nada chegou: ficou guardado no servidor
+
+        waiter.selectBoosters(listOf("b1"))
+        val after = waiter.drainUntil { it.any { m -> m is BoostersConfirmed } }
+        val confirmedAt = after.indexOfFirst { it is BoostersConfirmed }
+        after.subList(0, confirmedAt).filterIsInstance<SeatUpdate>().shouldBeEmpty() // nenhuma mao antes de confirmar
+        val seatUpdates = after.filterIsInstance<SeatUpdate>()
+        // A vista de quando "waiter" entrou + ao menos a 1a jogada de "mover" (guardadas) + a vista fresca de agora.
+        (seatUpdates.size > 1) shouldBe true
+        seatUpdates.first().view.version shouldBe attachVersion
+        // Em ordem, nunca volta (a vista fresca final pode repetir a versao da ultima guardada, se nada mudou entre
+        // a ultima jogada de "mover" e "waiter" confirmar).
+        val versions = seatUpdates.map { it.view.version }
+        versions.zipWithNext().all { (x, y) -> y >= x } shouldBe true
         run.stop()
     }
 

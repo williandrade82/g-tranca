@@ -267,6 +267,23 @@ class MatchSession(
 
     /** §17.3: tentativas de debito feitas pelo PRAZO do servidor (nunca pelo reenvio manual do jogador); limitado por [BOOSTER_MAX_DEADLINE_ATTEMPTS]. */
     private val boosterDeadlineAttempts = IntArray(seatCount)
+
+    /**
+     * §17.3: a selecao TRAVADA na primeira tentativa de confirmar (`final = true`, do jogador ou do prazo); `null` =
+     * ainda nenhuma tentativa. Depois disso o que o cliente manda deixa de importar: so se tenta de novo (manual ou
+     * pelo prazo) a MESMA lista, com a MESMA chave de idempotencia — nunca uma troca de selecao depois de uma
+     * tentativa, que poderia debitar dois boosters diferentes (um "silenciosamente", se a resposta da 1a tentativa se
+     * perdeu mas o debito foi aplicado) e so um deles chegar a valer no jogo.
+     */
+    private val boosterFrozen = arrayOfNulls<List<String>>(seatCount)
+
+    /**
+     * §17.3/§17.4: enquanto o assento esta conectado mas ainda nao confirmou, as vistas que iriam para ele ficam
+     * nesta fila (como no multijogador local) em vez de se perderem; ao confirmar, ele as ve em ordem — "as
+     * animacoes de distribuicao e os descartes ja feitos" — antes da vista fresca de agora.
+     */
+    private val boosterCatchUp: Array<MutableList<SeatUpdate>> = Array(seatCount) { mutableListOf() }
+
     private var version = 1L
     private var stage = TableStage.PLAYING
     private var autoAt: Long? = null
@@ -421,6 +438,10 @@ class MatchSession(
             send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
         } else {
             armBoosterDeadlineIfNeeded(seat)
+            // §17.3/§17.4: a fila recomeca aqui (reconectar perde o que ficou de antes, como o resto da mesa perde ao
+            // cair); a 1a vista guardada e a de AGORA, para as seguintes (enquanto ele escolhe) virem em sequencia
+            // depois do Seguir, como "as animacoes de distribuicao e os descartes ja feitos".
+            boosterCatchUp[seat] = mutableListOf(SeatUpdate(null, viewOf(seat, includeHistory = true)))
             send(seat, link, BoosterPrompt(table.skillBoostersAllowed, maxOf(0L, boosterDeadlineAt[seat]!! - now())))
         }
         broadcastSeats(seat, SeatChange.CONNECTED)
@@ -512,9 +533,17 @@ class MatchSession(
         if (economy == null) return
         if (isBoosterConfirmed(seat)) return
         if (slots[seat] !is Slot.Human) return
+        val frozen = boosterFrozen[seat]
+        if (frozen != null) {
+            // Ja tentou confirmar uma vez (§17.3): a selecao esta travada, nunca troca (o debito pode ja ter sido
+            // aplicado sem a resposta chegar). So vale tentar de novo a MESMA lista, com a MESMA chave.
+            if (msg.final && !boosterPending[seat]) beginBoosterConfirm(seat, frozen)
+            return
+        }
         val sanitized = sanitizeBoosterSelection(msg.boosters)
         boosterDraft[seat] = sanitized
         if (!msg.final || boosterPending[seat]) return
+        boosterFrozen[seat] = sanitized
         beginBoosterConfirm(seat, sanitized)
     }
 
@@ -551,8 +580,13 @@ class MatchSession(
         boosterDeadlineAt[seat] = null
         // O relogio normal da vez (§18.4) comeca do zero agora que a mao foi revelada (nao enquanto esperava o seletor).
         if (turnSeat == seat) turnStartedAt = now()
+        val catchUp = boosterCatchUp[seat]
+        boosterCatchUp[seat] = mutableListOf()
         links[seat]?.let { link ->
             send(seat, link, BoostersConfirmed(applied))
+            // §17.3/§17.4: "as animacoes de distribuicao e os descartes ja feitos" - a fila inteira, em ordem, antes
+            // da vista fresca de agora (a unica com o relogio da vez reiniciado).
+            catchUp.forEach { send(seat, link, it) }
             send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
         }
         broadcastSeats(seat, SeatChange.BOOSTERS_CHOSEN)
@@ -783,15 +817,18 @@ class MatchSession(
     private fun fireBoosterDeadline(seat: Int) {
         val at = boosterDeadlineAt[seat] ?: return
         if (boosterPending[seat] || isBoosterConfirmed(seat) || now() < at) return
-        val draft = boosterDraft[seat]
-        if (draft == null || boosterDeadlineAttempts[seat] >= BOOSTER_MAX_DEADLINE_ATTEMPTS) {
-            if (draft != null) log.warn("Prazo do seletor esgotou as tentativas table={} seat={}: segue sem boosters", tableId, seat)
+        // §17.3: uma vez que o prazo tenta confirmar, a selecao tambem trava (mesma regra do Seguir manual) - nunca
+        // troca por um rascunho novo que chegue depois de uma tentativa (que pode ja ter debitado sem a resposta vir).
+        val toTry = boosterFrozen[seat] ?: boosterDraft[seat]
+        if (toTry == null || boosterDeadlineAttempts[seat] >= BOOSTER_MAX_DEADLINE_ATTEMPTS) {
+            if (toTry != null) log.warn("Prazo do seletor esgotou as tentativas table={} seat={}: segue sem boosters", tableId, seat)
             confirmBoosters(seat, emptyList())
             return
         }
+        if (boosterFrozen[seat] == null) boosterFrozen[seat] = toTry
         boosterDeadlineAttempts[seat]++
         boosterDeadlineAt[seat] = now() + BOOSTER_RETRY_BACKOFF_MS // evita tentativa em loop se este debito tambem falhar
-        beginBoosterConfirm(seat, draft)
+        beginBoosterConfirm(seat, toTry)
     }
 
     // --- relogio da vez (§18.4)
@@ -908,7 +945,16 @@ class MatchSession(
      * confirmou os boosters nao recebe nada aqui — a mao so chega pelo [SeatUpdate] explicito de [confirmBoosters].
      */
     private fun broadcastUpdate(event: PublicEvent?, includeHistory: Boolean = false) {
-        for (i in 0 until seatCount) if (isBoosterConfirmed(i)) links[i]?.let { send(i, it, SeatUpdate(event, viewOf(i, includeHistory))) }
+        for (i in 0 until seatCount) {
+            if (isBoosterConfirmed(i)) {
+                links[i]?.let { send(i, it, SeatUpdate(event, viewOf(i, includeHistory))) }
+            } else if (links[i] != null) {
+                // §17.3/§17.4: nao perde a jogada, so adia (a fila e entregue inteira ao confirmar, confirmBoosters).
+                val buf = boosterCatchUp[i]
+                buf += SeatUpdate(event, viewOf(i, includeHistory))
+                if (buf.size > BOOSTER_CATCHUP_CAP) buf.removeAt(0)
+            }
+        }
     }
 
     internal fun viewOf(seat: Int, includeHistory: Boolean): OnlineSeatView {
@@ -950,6 +996,9 @@ class MatchSession(
 
         /** §17.3: espera entre uma tentativa do prazo e a proxima, se a anterior falhou (evita martelar a economia). */
         private const val BOOSTER_RETRY_BACKOFF_MS = 5_000L
+
+        /** §17.3/§17.4: tamanho maximo da fila de vistas de quem ainda nao confirmou (a janela e de uns 45 s no maximo). */
+        private const val BOOSTER_CATCHUP_CAP = 500
 
         fun robotName(profile: BotProfile): String = when (profile) {
             BotProfile.JOVEM -> "Bolt"

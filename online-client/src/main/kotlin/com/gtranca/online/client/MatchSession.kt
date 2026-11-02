@@ -96,7 +96,12 @@ class MatchSession internal constructor(
      * [com.gtranca.online.contracts.BoostersConfirmed] (ou [com.gtranca.online.contracts.BoosterConfirmFailed] em
      * caso de erro, sem fechar a conexão: pode repetir). O servidor tem o PRÓPRIO prazo de 30 s e usa o último
      * rascunho recebido se nenhum `final = true` chegar a tempo — mande um rascunho a cada mudança da seleção, não só
-     * no Seguir, para o prazo do servidor nunca descartar o que a tela tinha marcado.
+     * no Seguir, para o prazo do servidor nunca descartar o que a tela tinha marcado. **Importante:** mande um
+     * rascunho também assim que o seletor abrir, com a marcação pré-preenchida (§17.2/§17.3) — se a tela abrir e o
+     * jogador não tocar em nada antes do prazo, o servidor não tem rascunho nenhum e confirma SEM boosters, mesmo que
+     * a tela mostrasse a marcação selecionada. Depois de uma primeira tentativa de Seguir (`final = true`), o
+     * servidor TRAVA a seleção (nunca troca por uma lista diferente, mesmo que a tela mude): um [SelectBoosters]
+     * seguinte só serve para tentar de novo a MESMA lista — desative a edição do seletor depois do primeiro Seguir.
      */
     suspend fun selectBoosters(boosters: List<String>, final: Boolean = true): Boolean = send { SelectBoosters(boosters, final) }
 
