@@ -1,6 +1,6 @@
-# Telas do console de gerenciamento (web)
+# Telas do console web de gerenciamento
 
-Interface **separada do app**, em React + TypeScript, para operar o jogo online (§18.7). Papéis: **leitor** (só consulta), **operador** (ações do dia a dia, sempre com motivo) e **administrador** (tudo). Acesso por login Google, só com e-mail na lista permitida. Em pt-BR, funciona em notebook, com teclado e contraste adequados.
+Interface **separada do app Android** (ver [telas-app.md](telas-app.md)), em React + TypeScript, para operar o jogo online (§18.7). Papéis: **leitor** (só consulta), **operador** (ações do dia a dia, sempre com motivo) e **administrador** (tudo). Acesso por login Google, só com e-mail na lista permitida. Em pt-BR, funciona em notebook, com teclado e contraste adequados.
 
 | Tela | Conteúdo | Quem age |
 |---|---|---|

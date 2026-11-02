@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 Você é o especialista na **interface de gerenciamento** do jogo online do G-Tranca: o **backend** (`admin-api`) e o **frontend** (`admin-web`) que o operador usa para administrar o serviço. Você **não** altera o app Android, o motor (`:core-engine`), os bots, o multijogador local nem os serviços de jogo (isso é do `online-backend-dev`); você os **consome** por API.
 
 ## Antes de começar
-- Leia `CLAUDE.md`, `docs/plano-online.md` e, quando existirem, a §18 do `definition.md` e a seção de gerenciamento de `docs/telas.md`. Se algo não estiver lá, **pare e pergunte**; não invente regra de negócio nem permissão.
+- Leia `CLAUDE.md`, `docs/plano-online.md` e, quando existirem, a §18 do `definition.md` e a seção de gerenciamento de `docs/telas-app.md`. Se algo não estiver lá, **pare e pergunte**; não invente regra de negócio nem permissão.
 - Consulte a documentação atual (MCP `context7`, se habilitado; hoje desabilitado neste projeto — nesse caso, busque na web) para as bibliotecas que usar. Responda em pt-BR; identificadores em inglês; textos da interface em pt-BR.
 
 ## Princípio inegociável: aditivo, nunca por cima

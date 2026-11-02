@@ -15,7 +15,7 @@ Jogo de **Tranca** (família Canastra) para Android. O jogo contra os robôs fun
 
 ## Regras
 
-As regras completas estão em [definition.md](definition.md), a especificação que o código segue. Cada regra implementada tem um teste que cita a sua seção; o mapa entre regras e testes está em [docs/rules-traceability.md](docs/rules-traceability.md). As telas e os componentes estão descritos em [docs/telas.md](docs/telas.md).
+As regras completas estão em [definition.md](definition.md), a especificação que o código segue. Cada regra implementada tem um teste que cita a sua seção; o mapa entre regras e testes está em [docs/rules-traceability.md](docs/rules-traceability.md). As telas e os componentes estão descritos em [docs/telas-app.md](docs/telas-app.md).
 
 ## Módulos
 
@@ -51,7 +51,7 @@ O `online/` tem Gradle próprio e roda em Kubernetes local (Docker Desktop). Par
 ## Documentação
 
 - [definition.md](definition.md): regras (fonte da verdade).
-- [docs/telas.md](docs/telas.md) e [docs/telas-gerenciamento.md](docs/telas-gerenciamento.md): telas, modais e glossário de componentes.
+- [docs/telas-app.md](docs/telas-app.md) e [docs/telas-admin-web.md](docs/telas-admin-web.md): telas, modais e glossário de componentes.
 - [docs/plano-online.md](docs/plano-online.md): decisões e fases do jogo online.
 - Outros planos em [docs/](docs/): loja, moedas, boosters, robôs, multijogador local.
 

@@ -1,6 +1,6 @@
 # Plano: jogar online (pela internet), em microserviços
 
-Status: **versão 2, com as decisões do usuário de 28/10/2026**; nada implementado. Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
+Status: **versão 2, com as decisões do usuário de 28/10/2026**; nada implementado. Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
 
 > **"Ficar online" = jogar com outras pessoas pela internet.** Publicar na Play Store é outra frente (lista em `docs/loja/` e na memória do projeto) e entra só como fase final.
 
@@ -9,7 +9,7 @@ Tudo o que existe para **jogadores próximos** (multijogador local por Nearby, �
 1. **Não se reescrevem rotinas existentes.** Antes de reaproveitar uma peça (`:net`, `GameController`, `HostSession`...), a gente a **lê e entende**; se não servir sem mudança, **cria-se uma nova** ao lado. Nada de "refatorar para servir aos dois".
 2. **Código novo em lugares novos:** `online/` (serviços, build Gradle próprio, fora do `settings.gradle.kts` do app) e um módulo Android novo `:online-client` (só ele conhece a rede online). `:core-engine`, `:ai`, `:net`, `:sim` e `:data` **só são lidos**; mudar algum deles exige pedir ao usuário, com o motivo.
 3. **Pontos de contato com o app, pequenos e aditivos:** o botão **Jogar online** no Início, a rota das telas online, o campo temporário do servidor no Perfil e as strings novas. O resto do app não muda.
-4. **Documentação:** o online ganha a **§18** no `definition.md` e as telas novas em `docs/telas.md`; §14 a §17 não são reescritas (no máximo uma linha de remissão).
+4. **Documentação:** o online ganha a **§18** no `definition.md` e as telas novas em `docs/telas-app.md`; §14 a §17 não são reescritas (no máximo uma linha de remissão).
 5. **Testes de não regressão:** toda fase termina com `./gradlew.bat test` do app verde, sem tocar nos testes existentes.
 
 ## Decisões do usuário (28/10/2026)
@@ -36,7 +36,7 @@ Tudo o que existe para **jogadores próximos** (multijogador local por Nearby, �
 | 8 | Console de gerenciamento em **React + TypeScript**. |
 | 9 | Login do console com **lista de e-mails** e papéis **leitor, operador e administrador**. |
 
-Fase 0 escrita: `definition.md` §18, `docs/telas.md` (3.21 a 3.24, campo no Perfil e mapa) e `docs/telas-gerenciamento.md`.
+Fase 0 escrita: `definition.md` §18, `docs/telas-app.md` (3.21 a 3.24, campo no Perfil e mapa) e `docs/telas-admin-web.md`.
 
 ### Link e QR (como abrir o app pela câmera padrão)
 - O QR e o link são **endereços https** do próprio serviço: `https://<servidor>/m/<id>`. A câmera do celular (ou o toque no link numa mensagem) abre o navegador nessa página, **servida pelo `lobby-service`** atrás do ingress.

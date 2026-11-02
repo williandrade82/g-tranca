@@ -1,6 +1,6 @@
 # Plano: Boosters
 
-Status: **decisões aceitas em 2026-10-27**; nada implementado. Branch `feature/boosters`. Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash do commit.
+Status: **decisões aceitas em 2026-10-27**; nada implementado. Branch `feature/boosters`. Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash do commit.
 
 ## O que são
 Itens do inventário do jogador que ele escolhe usar **antes de cada partida**. As **moedas** são um item do inventário (o único que muda de dono entre jogos: ganha ao vencer, perde ao perder, como hoje). Custo padrão: **1 unidade por partida** em que o booster é escolhido.
@@ -42,7 +42,7 @@ Custo de cada um: 1. Moedas: item do inventário, fora do sorteio e da seleção
 - A reação aparece para a mesa (na pílula de quem enviou); no multijogador viaja pela rede.
 
 ## Etapas
-0. **Especificação:** `definition.md` (seção Boosters, catálogo, b1, b2, b3, herança no assento) e `docs/telas.md` (Inventário, Seletor, Presente do dia, balão de reações, ícone no Início, mudança no destaque da mão).
+0. **Especificação:** `definition.md` (seção Boosters, catálogo, b1, b2, b3, herança no assento) e `docs/telas-app.md` (Inventário, Seletor, Presente do dia, balão de reações, ícone no Início, mudança no destaque da mão).
 1. **`:core-engine` (puro, testes citando a seção):** `BoosterDef`, `Inventory` (consumir, teto 10), sorteio do presente com RNG injetado, `Loadout` (até 3, distintos, sem moeda, sem zero), regra do b2 (carta que se encaixa em jogo do adversário e fecha canastra).
 2. **`:data`:** catálogo JSON (assets), inventário em arquivo JSON próprio, dia do último presente, boosters da partida no jogo salvo. Moeda continua no `WalletRepository` e aparece como item do inventário.
 3. **Inventário** (armário).

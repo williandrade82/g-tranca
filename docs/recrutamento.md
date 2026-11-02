@@ -2,7 +2,7 @@
 
 Fonte da verdade das regras: `definition.md` §14.4, §14.6, §16.2, §16.3 e §16.15. Este documento descreve **como** as duas
 telas (*Iniciar novo jogo* e *Seleção de jogadores*) e a tela do recrutado ficam sincronizadas entre aparelhos. Telas:
-`docs/telas.md` (3.2, 3.3, 3.13). Código: `net/.../TableLayout.kt` (lugares), `Recruitment.kt` (conexões),
+`docs/telas-app.md` (3.2, 3.3, 3.13). Código: `net/.../TableLayout.kt` (lugares), `Recruitment.kt` (conexões),
 `PresencePhotos.kt`, `HostSession.kt` (entrada na mesa e início) e `app/.../NearbyTransport.kt`.
 
 ## Princípios (herdados, continuam valendo)

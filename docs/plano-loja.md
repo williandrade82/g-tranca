@@ -1,6 +1,6 @@
 # Plano: Loja de boosters
 
-Status: **implementada** (branch `feature/loja`, empilhada em `feature/boosters`). Regras em `definition.md` §17.10; tela e modal em `docs/telas.md` (3.20, 3.18 e §4 Modais).
+Status: **implementada** (branch `feature/loja`, empilhada em `feature/boosters`). Regras em `definition.md` §17.10; tela e modal em `docs/telas-app.md` (3.20, 3.18 e §4 Modais).
 
 ## O que é
 O jogador troca as **moedas** ganhas nos jogos (§14.6) por **boosters** (§17.1). O acesso é pelo botão **Acessar loja** do Inventário (3.18). Vale só no aparelho, como a carteira e o inventário.

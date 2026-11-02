@@ -1,6 +1,6 @@
 Quero adicionar ao G-Tranca um modo multijogador local: até 4 pessoas, cada
 uma no seu celular, na mesma mesa, SEM internet. Antes de qualquer código,
-leia CLAUDE.md, definition.md, docs/telas.md e os planos em docs/ para
+leia CLAUDE.md, definition.md, docs/telas-app.md e os planos em docs/ para
 seguir o mesmo padrão. Imagem de referência da tela de posição:
 docs/telas/escolha-posicao-multiplayer.png.
 
@@ -42,7 +42,7 @@ transporte continua atrás da interface, para trocar depois sem mexer no
 resto do código. Documente no plano as permissões (Bluetooth e
 NEARBY_WIFI_DEVICES no Android 13+, localização nas versões antigas).
 
-## Fluxo da mesa (telas; atualize docs/telas.md ANTES do código)
+## Fluxo da mesa (telas; atualize docs/telas-app.md ANTES do código)
 1. Mesas disponíveis: hoje lista 4 mesas aleatórias de 2 ou 4 jogadores.
    Perto do título entra um botão novo, com o símbolo de Wi-Fi. Só quando
    ligado ele pesquisa mesas abertas nas proximidades e as acrescenta à
@@ -173,10 +173,10 @@ perguntas que ainda não estão respondidas acima (dúvidas que encontrar
 ao ler o código e o definition.md). Pare e espere minhas respostas.
 
 Depois das respostas, atualize definition.md (nova seção ou §14, e §13.1 e
-§14.6) e docs/telas.md ANTES do código, com testes citando as seções.
+§14.6) e docs/telas-app.md ANTES do código, com testes citando as seções.
 
 ## Etapas (um commit por etapa; pare para eu revisar ao fim de cada uma)
-1. definition.md e docs/telas.md com as regras e as telas do multijogador.
+1. definition.md e docs/telas-app.md com as regras e as telas do multijogador.
 2. Refatorar o GameController local: vários humanos, fluxo de eventos por
    jogada, snapshot por assento; testes de regressão contra bots.
 3. Protocolo + sessão + LocalTransport em memória + testes JVM: partida

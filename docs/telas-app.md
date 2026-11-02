@@ -1,6 +1,6 @@
-# Telas do Tranca-Bot
+# Telas do app Android (Tranca-Bot)
 
-Especificação das telas e dos modais do app, para pedir mudanças sem ambiguidade. Foi montada em 2026-10-19 a partir do código, do `definition.md` e dos planos em `docs/`.
+Especificação das telas e dos modais do **app Android** (módulo `:app`), para pedir mudanças sem ambiguidade. Foi montada em 2026-10-19 a partir do código, do `definition.md` e dos planos em `docs/`. Para o console web de gerenciamento, ver [telas-admin-web.md](telas-admin-web.md).
 
 **Como usar**
 - **Regras do jogo** ficam no [definition.md](../definition.md) (fonte da verdade). Aqui só se aponta para a seção (`§`).
