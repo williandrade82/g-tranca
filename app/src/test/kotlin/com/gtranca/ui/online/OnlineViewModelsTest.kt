@@ -1,9 +1,17 @@
 package com.gtranca.ui.online
 
 import androidx.lifecycle.viewModelScope
+import com.gtranca.data.InventoryRepository
 import com.gtranca.data.OnlineGuest
 import com.gtranca.data.Settings
+import com.gtranca.data.WalletRepository
+import com.gtranca.engine.BoosterCatalog
+import com.gtranca.engine.BoosterDef
+import com.gtranca.engine.Gift
+import com.gtranca.engine.Inventory
+import com.gtranca.engine.Loadout
 import com.gtranca.engine.RuleSet
+import com.gtranca.engine.Wallet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
@@ -19,6 +27,9 @@ import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -31,6 +42,7 @@ import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import kotlin.random.Random
 
 /** Telas online (docs/telas.md 3.21 e 3.23): conta de convidado, lista de mesas do servidor e a sala (§18.2). */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -174,6 +186,156 @@ class OnlineViewModelsTest {
         vm.uiState.value.status shouldBe OnlineHomeStatus.READY
         vm.uiState.value.balance shouldBe null
         vm.uiState.value.tables?.size shouldBe 1
+        vm.viewModelScope.cancel()
+    }
+
+    // ---------- 3.21 "Trazer minha carteira" (§18.6) ----------
+
+    private class FakeWallet(balance: Int) : WalletRepository {
+        val state = MutableStateFlow(Wallet(balance))
+        override val wallet: Flow<Wallet> = state
+        override val lifetimeNet: Flow<Int> = emptyFlow()
+        override suspend fun debit(stake: Int): Boolean = false
+        override suspend fun claimDaily(today: Long): Boolean = false
+    }
+
+    private class FakeInventoryRepo(quantities: Map<String, Int> = emptyMap(), override val catalog: List<BoosterDef> = BoosterCatalog.DEFAULT) : InventoryRepository {
+        val state = MutableStateFlow(Inventory(quantities))
+        override val inventory: Flow<Inventory> = state
+        override val selection: Flow<List<String>> = MutableStateFlow(emptyList())
+        override suspend fun setSelection(ids: List<String>) = Unit
+        override suspend fun confirmLoadout(selection: List<String>) = Loadout.confirm(selection, state.value, catalog)
+        override suspend fun claimGift(today: Long, random: Random): Gift? = null
+    }
+
+    /** Conta por e-mail já logada (id com o prefixo E_), para o botão de migrar poder aparecer. */
+    private suspend fun signedInAccount(name: String = "Ana", email: String = "ana@example.com"): OnlineAccount {
+        val acc = account(name)
+        acc.signIn(lobby.registerEmail(email, "segredo1", name, null))
+        return acc
+    }
+
+    private fun homeWithWallet(acc: OnlineAccount, economy: FakeEconomy, walletBalance: Int, boosters: Map<String, Int> = emptyMap()) =
+        OnlineHomeViewModel(settings, pollMs = 3_000, economyFor = { economy }, wallet = FakeWallet(walletBalance), inventory = FakeInventoryRepo(boosters)) { acc }
+
+    // §18.6 só a conta (nunca o convidado) e só antes da 1ª migração vê o botão
+    @Test
+    fun `so a conta que ainda nao migrou pode trazer a carteira`() = runTest(dispatcher) {
+        val vmGuest = homeWithWallet(account("Beto"), FakeEconomy(), 100)
+        runCurrent()
+        vmGuest.uiState.value.canMigrateWallet shouldBe false // convidado
+        vmGuest.viewModelScope.cancel()
+
+        val vmAccount = homeWithWallet(signedInAccount(), FakeEconomy(), 100)
+        runCurrent()
+        vmAccount.uiState.value.canMigrateWallet shouldBe true
+        vmAccount.viewModelScope.cancel()
+    }
+
+    // §18.6 conta que já migrou (servidor informa migratedLocal) não vê mais o botão
+    @Test
+    fun `conta que ja migrou nao mostra o botao`() = runTest(dispatcher) {
+        val acc = signedInAccount()
+        val economy = FakeEconomy()
+        val vm = homeWithWallet(acc, economy, 100)
+        runCurrent()
+        economy.migrateLocalWallet("tok", vm.uiState.value.myId, 10, emptyMap()) // outro aparelho já migrou
+        vm.refresh()
+        runCurrent()
+        vm.uiState.value.canMigrateWallet shouldBe false
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.6 o toque lê o saldo e só os boosters locais com quantidade > 0
+    @Test
+    fun `o toque abre o modal com o saldo e os boosters locais`() = runTest(dispatcher) {
+        val booster = BoosterCatalog.DEFAULT.first()
+        val vm = homeWithWallet(signedInAccount(), FakeEconomy(), 777, mapOf(booster.id to 3, "zerado" to 0))
+        runCurrent()
+        vm.onMigrateTap()
+        runCurrent()
+        val dialog = vm.uiState.value.migrateDialog!!
+        dialog.coins shouldBe 777
+        dialog.items shouldBe listOf(MigrateWalletItem(booster.id, booster.name, 3))
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.6 um booster que o catálogo LOCAL conhece mas que não está em BoosterCatalog.DEFAULT (o mesmo catálogo
+    // fixo que o economy-service aceita) nunca entra no modal nem no pedido: senão o servidor recusaria com
+    // REQUISICAO_INVALIDA sem chance de "tentar de novo" dar certo.
+    @Test
+    fun `booster fora do catalogo do servidor nunca entra no modal`() = runTest(dispatcher) {
+        val catalogDivergente = BoosterCatalog.DEFAULT + BoosterDef("novo-booster-so-local", "Novo", "x", 1, 5, 1, 3)
+        val acc = signedInAccount()
+        val wallet = FakeWallet(100)
+        val inventory = FakeInventoryRepo(mapOf("novo-booster-so-local" to 2), catalog = catalogDivergente)
+        val vm = OnlineHomeViewModel(settings, pollMs = 3_000, economyFor = { FakeEconomy() }, wallet = wallet, inventory = inventory) { acc }
+        runCurrent()
+        vm.onMigrateTap()
+        runCurrent()
+        vm.uiState.value.migrateDialog!!.items shouldBe emptyList()
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.6 confirmar credita o saldo online, esconde o botão e NUNCA grava no saldo/inventário local
+    @Test
+    fun `confirmar migra e nao toca na carteira local`() = runTest(dispatcher) {
+        val booster = BoosterCatalog.DEFAULT.first()
+        val wallet = FakeWallet(500)
+        val inventory = FakeInventoryRepo(mapOf(booster.id to 2))
+        val economy = FakeEconomy(initialBalance = 1_000)
+        val acc = signedInAccount()
+        val vm = OnlineHomeViewModel(settings, pollMs = 3_000, economyFor = { economy }, wallet = wallet, inventory = inventory) { acc }
+        runCurrent()
+        vm.onMigrateTap()
+        runCurrent()
+        vm.onMigrateConfirm()
+        runCurrent()
+        vm.uiState.value.balance shouldBe 1_000L + 500
+        vm.uiState.value.migrateDialog shouldBe null
+        vm.uiState.value.canMigrateWallet shouldBe false
+        wallet.state.value.balance shouldBe 500 // save local intocado
+        inventory.state.value.quantities[booster.id] shouldBe 2 // save local intocado
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.6 falha de rede mantém o modal aberto com o motivo; repetir usa os MESMOS valores lidos (não relê)
+    @Test
+    fun `falha de rede mantem o modal e repetir usa os mesmos valores`() = runTest(dispatcher) {
+        val booster = BoosterCatalog.DEFAULT.first()
+        val wallet = FakeWallet(500)
+        val inventory = FakeInventoryRepo(mapOf(booster.id to 2))
+        val economy = FakeEconomy()
+        val acc = signedInAccount()
+        val vm = OnlineHomeViewModel(settings, pollMs = 3_000, economyFor = { economy }, wallet = wallet, inventory = inventory) { acc }
+        runCurrent()
+        vm.onMigrateTap()
+        runCurrent()
+        economy.failNext = OnlineException(OnlineErrorKind.NETWORK)
+        vm.onMigrateConfirm()
+        runCurrent()
+        vm.uiState.value.migrateDialog?.problem shouldBe OnlineProblem.NETWORK
+        vm.uiState.value.migrateDialog?.busy shouldBe false
+        // Enquanto isso, o aparelho ganhou mais boosters — a repetição não deve ler isso de novo.
+        inventory.state.value = Inventory(mapOf(booster.id to 99))
+        vm.onMigrateConfirm()
+        runCurrent()
+        vm.uiState.value.migrateDialog shouldBe null
+        vm.uiState.value.balance shouldBe 1_000L + 500
+        vm.viewModelScope.cancel()
+    }
+
+    // §18.6 cancelar fecha o modal sem chamar o servidor
+    @Test
+    fun `cancelar fecha o modal sem migrar`() = runTest(dispatcher) {
+        val economy = FakeEconomy()
+        val vm = homeWithWallet(signedInAccount(), economy, 200)
+        runCurrent()
+        vm.onMigrateTap()
+        runCurrent()
+        vm.onMigrateCancel()
+        vm.uiState.value.migrateDialog shouldBe null
+        vm.uiState.value.canMigrateWallet shouldBe true // ainda não migrou
         vm.viewModelScope.cancel()
     }
 

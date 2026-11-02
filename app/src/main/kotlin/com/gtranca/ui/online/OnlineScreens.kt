@@ -240,6 +240,12 @@ fun OnlineHomeScreen(
                     GButton(onShop, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-shop"), kind = GButtonKind.Secondary) {
                         Text(stringResource(R.string.online_shop_button), style = MaterialTheme.typography.titleMedium)
                     }
+                    // §18.6: só aparece para conta (e-mail/Google) que ainda não trouxe a carteira do aparelho.
+                    if (state.canMigrateWallet) {
+                        GButton(viewModel::onMigrateTap, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-migrate"), kind = GButtonKind.Secondary) {
+                            Text(stringResource(R.string.online_migrate_button), style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
                 }
                 state.problem?.let { ProblemText(it, "online-error") }
                 Text(stringResource(R.string.online_seat_tap_hint), Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = GColors.Steel, textAlign = TextAlign.Center)
@@ -261,6 +267,48 @@ fun OnlineHomeScreen(
                     }
                 }
             }
+        }
+    }
+    state.migrateDialog?.let { dialog -> MigrateWalletDialog(dialog, viewModel::onMigrateConfirm, viewModel::onMigrateCancel) }
+}
+
+/**
+ * Modal "Trazer carteira local" (docs/telas.md, glossário de modais, §18.6): saldo e boosters do aparelho que vão
+ * para a carteira online, uma única vez por conta. Falha de rede/servidor mostra o motivo (`migrate-error`) e troca
+ * o botão para "Tentar de novo", sem fechar o modal nem perder a tentativa.
+ */
+@Composable
+private fun MigrateWalletDialog(dialog: MigrateWalletUi, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    GMessage(
+        modifier = Modifier.testTag("migrate-dialog"),
+        title = stringResource(R.string.online_migrate_title),
+        text = stringResource(R.string.online_migrate_text),
+        illustration = MessageIllustration.Info,
+        tone = MessageTone.Info,
+        confirmText = stringResource(if (dialog.problem != null) R.string.online_retry else R.string.online_migrate_confirm),
+        onConfirm = onConfirm,
+        confirmTag = "migrate-confirm",
+        dismissText = stringResource(R.string.cancel),
+        onDismiss = onCancel,
+        dismissTag = "migrate-cancel",
+        onDismissRequest = onCancel,
+    ) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(
+                stringResource(R.string.online_migrate_coins, dialog.coins),
+                Modifier.testTag("migrate-coins"),
+                style = MaterialTheme.typography.titleMedium,
+                color = GColors.Gold,
+            )
+            dialog.items.forEach { item ->
+                Text(stringResource(R.string.online_migrate_item, item.name, item.quantity), style = MaterialTheme.typography.bodyMedium, color = GColors.White)
+            }
+            if (dialog.busy) {
+                Box(Modifier.fillMaxWidth().padding(Spacing.sm), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = GColors.Gold, modifier = Modifier.testTag("migrate-busy"))
+                }
+            }
+            dialog.problem?.let { ProblemText(it, "migrate-error") }
         }
     }
 }

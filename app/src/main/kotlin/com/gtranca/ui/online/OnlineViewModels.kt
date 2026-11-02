@@ -2,7 +2,10 @@ package com.gtranca.ui.online
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gtranca.data.InventoryRepository
 import com.gtranca.data.SettingsRepository
+import com.gtranca.data.WalletRepository
+import com.gtranca.engine.BoosterCatalog
 import com.gtranca.online.client.EconomyApi
 import com.gtranca.online.client.LobbyApi
 import com.gtranca.online.client.OnlineException
@@ -50,6 +53,22 @@ val DUPLA_ORDER = listOf(0, 2, 1, 3)
 
 enum class OnlineHomeStatus { LOADING, NO_SERVER, READY, ERROR }
 
+/** Um booster local que vai migrar (§18.6): id para a chamada ao servidor, nome para mostrar no modal. */
+data class MigrateWalletItem(val boosterId: String, val name: String, val quantity: Int)
+
+/**
+ * Modal "Trazer carteira local" (docs/telas.md, glossário de modais, §18.6): [coins] e [items] são o saldo e o
+ * inventário LOCAIS do aparelho lidos no momento em que o botão foi tocado — [OnlineHomeViewModel.onMigrateConfirm]
+ * nunca relê o aparelho, nem para repetir depois de um erro (senão uma mudança no meio do caminho mudaria o que foi
+ * prometido no modal).
+ */
+data class MigrateWalletUi(
+    val coins: Int,
+    val items: List<MigrateWalletItem>,
+    val busy: Boolean = false,
+    val problem: OnlineProblem? = null,
+)
+
 data class OnlineHomeUiState(
     val status: OnlineHomeStatus = OnlineHomeStatus.LOADING,
     /** Nome do convidado (Etapa A: o nome do Perfil no momento em que o convidado foi criado). */
@@ -71,9 +90,17 @@ data class OnlineHomeUiState(
     val canClaimDaily: Boolean = false,
     /** Resgatando o ganho diário agora (evita toque duplo). */
     val claimingDaily: Boolean = false,
+    /** §18.6 a conta já trouxe a carteira local (`true` por padrão até a economia carregar, para o botão não pipocar
+     * na tela antes da 1ª leitura). */
+    val migratedLocal: Boolean = true,
+    /** Modal "Trazer carteira local" (§18.6) aberto com o que foi lido do aparelho; `null` = modal fechado. */
+    val migrateDialog: MigrateWalletUi? = null,
 ) {
     /** Mesa aberta em que eu já estou sentado (voltar à sala em vez de ocupar outro lugar). */
     val myTable: TableView? get() = tables?.firstOrNull { t -> t.state == TableState.ABERTA && t.seats.any { it.guestId == myId } }
+
+    /** §18.6 só conta (e-mail/Google) que ainda não migrou vê o botão "Trazer minha carteira". */
+    val canMigrateWallet: Boolean get() = !migratedLocal && AccountLimits.isAccountId(myId)
 }
 
 /** Mesa em que dá para entrar: aberta e com lugar livre, ou aberta e já com o meu lugar. */
@@ -97,6 +124,10 @@ class OnlineHomeViewModel(
     /** "Hoje" do ganho diário online: dia UTC desde a época — o MESMO que o economy-service usa para decidir
      * `JA_RESGATADO` (§14.6: quem decide é o servidor, nunca o fuso/relógio do aparelho); injetável nos testes. */
     private val today: () -> Long = { Math.floorDiv(System.currentTimeMillis(), MILLIS_PER_DAY) },
+    /** Carteira e inventário LOCAIS do aparelho (§18.6, "Trazer minha carteira"): só leitura, nunca grava aqui — a
+     * regra é clara que o saldo/inventário local não muda com a migração. `null` nos testes que não cobrem isto. */
+    private val wallet: WalletRepository? = null,
+    private val inventory: InventoryRepository? = null,
     // accountFor fica por último (sem valor padrão) para continuar podendo vir como lambda à parte dos parênteses.
     private val accountFor: (String) -> OnlineAccount?,
 ) : ViewModel() {
@@ -169,7 +200,7 @@ class OnlineHomeViewModel(
         attempt { acc.callWith(eco) { api, guest -> api.economyState(guest.token, guest.id) } }.fold(
             onSuccess = { dto ->
                 val last = dto.lastDailyClaim
-                _uiState.update { it.copy(balance = dto.balance, canClaimDaily = last == null || today() > last) }
+                _uiState.update { it.copy(balance = dto.balance, canClaimDaily = last == null || today() > last, migratedLocal = dto.migratedLocal) }
             },
             onFailure = {},
         )
@@ -194,6 +225,55 @@ class OnlineHomeViewModel(
                         loadEconomy(acc, eco)
                     }
                 },
+            )
+        }
+    }
+
+    /**
+     * §18.6 toque em "Trazer minha carteira": lê o saldo e o inventário LOCAIS do aparelho (sem gravar nada neles,
+     * a migração não muda o save local) e abre o modal com o que vai migrar. Ignorado se o botão não devia estar
+     * visível (defesa: convidado, ou conta que já migrou).
+     */
+    fun onMigrateTap() {
+        val w = wallet ?: return
+        val inv = inventory ?: return
+        if (!_uiState.value.canMigrateWallet) return
+        viewModelScope.launch {
+            val coins = w.wallet.first().balance
+            val quantities = inv.inventory.first().quantities
+            // §18.6 o economy-service só aceita ids de BoosterCatalog.DEFAULT (o mesmo catálogo fixo do core-engine,
+            // nunca o `assets/boosters.json` local, que pode estar numa versão diferente): filtrar por ele aqui
+            // garante que o que o modal promete é sempre aceito, em vez de um REQUISICAO_INVALIDA sem saída.
+            val items = quantities.filterValues { it > 0 }
+                .mapNotNull { (id, qty) -> BoosterCatalog.DEFAULT.firstOrNull { it.id == id }?.let { MigrateWalletItem(id, it.name, qty) } }
+                .sortedBy { it.name }
+            _uiState.update { it.copy(migrateDialog = MigrateWalletUi(coins, items)) }
+        }
+    }
+
+    /** Fecha o modal sem migrar; ignorado enquanto a migração está em andamento. */
+    fun onMigrateCancel() {
+        val dialog = _uiState.value.migrateDialog ?: return
+        if (dialog.busy) return
+        _uiState.update { it.copy(migrateDialog = null) }
+    }
+
+    /**
+     * Confirma a migração (ou repete depois de um erro, "Tentar de novo"): usa os valores já lidos ao abrir o modal
+     * ([MigrateWalletUi.coins]/[items]), nunca relê o aparelho. Sucesso atualiza o saldo online e esconde o botão
+     * para sempre (a conta já migrou); falha mantém o modal aberto com o motivo, sem perder a tentativa.
+     */
+    fun onMigrateConfirm() {
+        val acc = account ?: return
+        val eco = economy ?: return
+        val dialog = _uiState.value.migrateDialog ?: return
+        if (dialog.busy) return
+        _uiState.update { it.copy(migrateDialog = dialog.copy(busy = true, problem = null)) }
+        viewModelScope.launch {
+            val inventoryMap = dialog.items.associate { it.boosterId to it.quantity }
+            attempt { acc.callWith(eco) { api, guest -> api.migrateLocalWallet(guest.token, guest.id, dialog.coins.toLong(), inventoryMap) } }.fold(
+                onSuccess = { dto -> _uiState.update { it.copy(balance = dto.balance, migratedLocal = dto.migratedLocal, migrateDialog = null) } },
+                onFailure = { e -> _uiState.update { it.copy(migrateDialog = it.migrateDialog?.copy(busy = false, problem = (e as? OnlineException)?.toMigrateProblem() ?: OnlineProblem.UNEXPECTED)) } },
             )
         }
     }

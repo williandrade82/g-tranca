@@ -818,6 +818,12 @@
     <string name="online_retry">Tentar de novo</string>
     <!-- 3.21 saldo online, ganho diário (§14.6) e Loja online (3.20a, §18.5/§17.10) -->
     <string name="online_shop_button">Loja online</string>
+    <string name="online_migrate_button">Trazer minha carteira</string>
+    <string name="online_migrate_title">Trazer carteira local</string>
+    <string name="online_migrate_text">Isto soma o saldo e os boosters deste aparelho à sua carteira online. Só pode ser feito uma vez; o jogo offline continua igual.</string>
+    <string name="online_migrate_coins">Moedas: %1$d</string>
+    <string name="online_migrate_item">%1$s: %2$d</string>
+    <string name="online_migrate_confirm">Trazer</string>
     <!-- 3.20a Loja online: §18.5 -->
     <string name="online_problem_wallet_not_yours">Esta carteira não é sua.</string>
     <string name="online_problem_shop_invalid">Não foi possível completar esta compra. Tente de novo.</string>

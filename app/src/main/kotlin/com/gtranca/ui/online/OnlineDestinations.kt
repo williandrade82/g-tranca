@@ -111,6 +111,9 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
                 accountFor = { server -> accountFor(data, defaultName, server)?.account },
                 // §18.5: a mesma conexão (OnlineClient) também fala com o economy-service.
                 economyFor = { server -> accountFor(data, defaultName, server)?.client },
+                // §18.6 "Trazer minha carteira": só leitura (nunca grava no save local a partir daqui).
+                wallet = data.wallet,
+                inventory = data.inventory,
             )
         }
         // Voltando do Perfil (servidor trocado) ou de uma sala: lê de novo.

@@ -144,3 +144,23 @@ fun OnlineException.toEconomyProblem(): OnlineProblem = when (kind) {
         -> OnlineProblem.UNEXPECTED
     }
 }
+
+/**
+ * Traduz a falha de "Trazer minha carteira" (§18.6, modal "Trazer carteira local") para o problema que o modal
+ * mostra. Separado de [toEconomyProblem] porque ele reaproveita códigos com texto de outra tela: `REQUISICAO_INVALIDA`
+ * ali vira "Não foi possível completar esta compra" (loja), que não faz sentido aqui e nem deveria ser retentável (o
+ * app já filtra o inventário pelo catálogo que o servidor aceita antes de abrir o modal, então esse código só pode
+ * vir de um descompasso de versão); `CONTA_NAO_ELEGIVEL` também não deveria ocorrer (o botão só aparece para conta).
+ * Os dois caem no mesmo [OnlineProblem.UNEXPECTED] genérico, honesto sobre não saber o motivo.
+ */
+fun OnlineException.toMigrateProblem(): OnlineProblem = when (kind) {
+    OnlineErrorKind.NETWORK -> OnlineProblem.NETWORK
+    OnlineErrorKind.UPDATE_APP -> OnlineProblem.UPDATE_APP
+    OnlineErrorKind.MAINTENANCE -> OnlineProblem.MAINTENANCE
+    OnlineErrorKind.UNAUTHENTICATED -> OnlineProblem.UNAUTHENTICATED
+    OnlineErrorKind.UNEXPECTED -> OnlineProblem.UNEXPECTED
+    OnlineErrorKind.API -> when (economyCode) {
+        EconomyErrorCode.INDISPONIVEL -> OnlineProblem.MAINTENANCE
+        else -> OnlineProblem.UNEXPECTED
+    }
+}
