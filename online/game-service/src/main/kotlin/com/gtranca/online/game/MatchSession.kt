@@ -5,8 +5,11 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.ai.PlayStyle
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
+import com.gtranca.engine.BoosterCatalog
+import com.gtranca.engine.Loadout
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.RoundEngine
+import com.gtranca.engine.TableBoosters
 import com.gtranca.engine.finishRound
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
@@ -18,6 +21,9 @@ import com.gtranca.engine.startMatch
 import com.gtranca.engine.startNextRound
 import com.gtranca.engine.viewFor
 import com.gtranca.online.contracts.AbandonReason
+import com.gtranca.online.contracts.BoosterConfirmFailed
+import com.gtranca.online.contracts.BoosterPrompt
+import com.gtranca.online.contracts.BoostersConfirmed
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.ClientMessage
@@ -38,6 +44,7 @@ import com.gtranca.online.contracts.SeatKind
 import com.gtranca.online.contracts.SeatSpec
 import com.gtranca.online.contracts.SeatUpdate
 import com.gtranca.online.contracts.SeatsChanged
+import com.gtranca.online.contracts.SelectBoosters
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableClosed
 import com.gtranca.online.contracts.TableMode
@@ -47,10 +54,14 @@ import com.gtranca.online.contracts.TempoDeJogada
 import com.gtranca.online.contracts.TurnClock
 import com.gtranca.online.contracts.Welcome
 import com.gtranca.online.contracts.YouResigned
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
@@ -182,6 +193,20 @@ class MatchSession(
     private val onEnded: (MatchEnd) -> Unit = {},
     /** Quem esta conectado e quem abandonou, a cada mudanca (§18.2: o lobby faz a sucessao do anfitriao). */
     private val onPresence: (connected: Set<String>, abandoned: Set<String>) -> Unit = { _, _ -> },
+    /** §17.3/§18.3: inventario online dos boosters (§18.5). `null` = sem economia: o seletor nem aparece (boosters desligados). */
+    private val economy: EconomyClient? = null,
+    /** §17.3 prazo do seletor, a partir de quando ele aparece a cada assento (30 s). */
+    private val boosterDeadlineMs: Long = 30_000L,
+    /** Para o debito assincrono do seletor (nunca bloqueia o ator): o resultado volta por [Cmd.BoosterResolved]/[Cmd.BoosterFailed]. */
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /**
+     * §17.3: id usado na chave de idempotencia do debito de boosters na economia. NUNCA o [tableId] puro: a mesma mesa
+     * hospeda jogos sucessivos (§18.2, "mesa que esvazia volta a ser aberta") e reaproveitar o id da mesa faria um jogo
+     * novo encontrar a chave `boosters-<id>-<assento>-<booster>` de um jogo ANTERIOR ja aplicada, pulando o debito de
+     * boosters de novo "de graca". Por padrao usa [tableId] mesmo assim (testes isolados, mesa nunca repetida); quem
+     * cria sessoes de verdade ([MatchRegistry]) passa um id unico por jogo, como ja faz com o [betId] das apostas.
+     */
+    private val boosterMatchId: String = tableId,
 ) {
     private val log = LoggerFactory.getLogger(MatchSession::class.java)
 
@@ -196,6 +221,10 @@ class MatchSession(
         class Incoming(val seat: Int, val link: PlayerLink, val message: ClientMessage) : Cmd
         class Inspect(val reply: CompletableDeferred<Inspection>) : Cmd
         class Close(val hostGuestId: String, val reply: CompletableDeferred<CloseResult>) : Cmd
+        /** §17.3: a economia respondeu ao debito do seletor do [seat] com os boosters [applied] (vazio = nenhum debitado). */
+        class BoosterResolved(val seat: Int, val applied: List<String>) : Cmd
+        /** §17.3: o debito do [seat] falhou (rede/economia fora); nao resolve nada, o cliente pode mandar [SelectBoosters] de novo. */
+        class BoosterFailed(val seat: Int) : Cmd
         data object Shutdown : Cmd
     }
 
@@ -223,6 +252,11 @@ class MatchSession(
     private val refusals = IntArray(seatCount)
     private val turnEvents: Array<List<PublicEvent>> = Array(seatCount) { emptyList() }
     private val abandonments = mutableListOf<AbandonEvent>()
+
+    // --- seletor de boosters online (§17.3/§18.3): so ativo com [economy] configurado.
+    private var tableBoosters = TableBoosters()
+    private val boosterPending = BooleanArray(seatCount)
+    private val boosterDeadlineAt = arrayOfNulls<Long>(seatCount)
     private var version = 1L
     private var stage = TableStage.PLAYING
     private var autoAt: Long? = null
@@ -338,6 +372,11 @@ class MatchSession(
                 ),
             )
             is Cmd.Close -> cmd.reply.complete(onClose(cmd.hostGuestId))
+            is Cmd.BoosterResolved -> { boosterPending[cmd.seat] = false; confirmBoosters(cmd.seat, cmd.applied) }
+            is Cmd.BoosterFailed -> {
+                boosterPending[cmd.seat] = false
+                links[cmd.seat]?.let { send(cmd.seat, it, BoosterConfirmFailed("Não foi possível confirmar os boosters agora. Tente de novo.")) }
+            }
             Cmd.Shutdown -> finished = true
         }
     }
@@ -366,7 +405,14 @@ class MatchSession(
                 ruleSet = rules, seats = seatInfos(), lastSeq = lastSeq[seat],
             ),
         )
-        send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
+        // §17.3 "sem ver a distribuicao das cartas": a mao (SeatUpdate) so vai depois de confirmar os boosters.
+        if (isBoosterConfirmed(seat)) {
+            if (economy != null) send(seat, link, BoostersConfirmed(tableBoosters.of(seat).boosters))
+            send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
+        } else {
+            armBoosterDeadlineIfNeeded(seat)
+            send(seat, link, BoosterPrompt(table.skillBoostersAllowed, maxOf(0L, boosterDeadlineAt[seat]!! - now())))
+        }
         broadcastSeats(seat, SeatChange.CONNECTED)
         return AttachResult.Ok(seat)
     }
@@ -390,6 +436,7 @@ class MatchSession(
                 lastSeq[seat] = message.seq
                 abandon(seat, AbandonReason.DESISTIU)
             }
+            is SelectBoosters -> onSelectBoosters(seat, message)
         }
     }
 
@@ -407,6 +454,9 @@ class MatchSession(
         if (stage != TableStage.PLAYING || match.currentRound.phase == Phase.FINISHED) {
             return reject(RejectReason.NOT_PLAYING, "Não há partida em andamento agora.")
         }
+        // §17.3: nunca aplica uma jogada de quem ainda nao confirmou os boosters (defesa: o cliente nunca tem `legal`
+        // antes de confirmar, mas o servidor nao confia nisso).
+        if (!isBoosterConfirmed(seat)) return reject(RejectReason.BOOSTERS_PENDING, "Confirme os boosters antes de jogar.")
         val round = match.currentRound
         if (round.currentSeat.index != seat) return reject(RejectReason.NOT_YOUR_TURN, "Não é a sua vez.")
         if (msg.stateVersion != version) {
@@ -418,6 +468,72 @@ class MatchSession(
             return reject(RejectReason.ILLEGAL, "Jogada não permitida agora" + (why?.let { " ($it)" } ?: "") + ".", (why as? Enum<*>)?.name)
         }
         applyAction(Seat(seat), msg.action)
+    }
+
+    // ------------------------------------------------------------------------------------------------ boosters (§17.3/§18.3)
+
+    /** Sem economia configurada, o seletor nem existe: todo assento vale como "confirmado" (sem boosters, como antes desta fase). */
+    private fun isBoosterConfirmed(seat: Int): Boolean = economy == null || tableBoosters.of(seat).round != 0
+
+    private fun armBoosterDeadlineIfNeeded(seat: Int) {
+        if (isBoosterConfirmed(seat) || slots[seat] !is Slot.Human) return
+        if (boosterDeadlineAt[seat] == null) boosterDeadlineAt[seat] = now() + boosterDeadlineMs
+    }
+
+    /**
+     * Tira do que o cliente mandou: ids fora do catalogo, b3 (mesas online nao retransmitem reacoes ainda, telas.md
+     * 3.19 Online), boosters de skill se a mesa nao os permite (§17.9) e o excedente de [Loadout.MAX]. Nunca confia no
+     * cliente: a economia confere de novo o estoque antes de debitar.
+     */
+    private fun sanitizeBoosterSelection(ids: List<String>): List<String> {
+        val catalogIds = BoosterCatalog.DEFAULT.map { it.id }.toSet()
+        return ids.filter { it in catalogIds }
+            .filterNot { it == BoosterCatalog.REACTIONS }
+            .filter { table.skillBoostersAllowed || !BoosterCatalog.isSkill(it) }
+            .distinct()
+            .take(Loadout.MAX)
+    }
+
+    private fun onSelectBoosters(seat: Int, msg: SelectBoosters) {
+        if (economy == null) return
+        if (isBoosterConfirmed(seat) || boosterPending[seat]) return
+        val human = slots[seat] as? Slot.Human ?: return
+        val sanitized = sanitizeBoosterSelection(msg.boosters)
+        if (sanitized.isEmpty()) {
+            confirmBoosters(seat, emptyList())
+            return
+        }
+        boosterPending[seat] = true
+        val eco = economy
+        val tid = boosterMatchId
+        val guestId = human.guestId
+        scope.launch {
+            val applied = try {
+                eco.debitBoosters(tid, seat, guestId, sanitized)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("Debito de boosters falhou table={} seat={}: {}", tid, seat, e.toString())
+                commands.trySend(Cmd.BoosterFailed(seat))
+                return@launch
+            }
+            commands.trySend(Cmd.BoosterResolved(seat, applied.toList()))
+        }
+    }
+
+    /** §17.3: confirma (ja debitados) os boosters do assento; so chamada apos a economia responder ou por tempo esgotado. */
+    private fun confirmBoosters(seat: Int, applied: List<String>) {
+        if (isBoosterConfirmed(seat)) return
+        tableBoosters = tableBoosters.confirm(seat, applied, round = 1)
+        boosterPending[seat] = false
+        boosterDeadlineAt[seat] = null
+        // O relogio normal da vez (§18.4) comeca do zero agora que a mao foi revelada (nao enquanto esperava o seletor).
+        if (turnSeat == seat) turnStartedAt = now()
+        links[seat]?.let { link ->
+            send(seat, link, BoostersConfirmed(applied))
+            send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
+        }
+        broadcastSeats(seat, SeatChange.BOOSTERS_CHOSEN)
     }
 
     /** Quanto tempo se passou desde o inicio da 1a partida (a sessao e criada ao iniciar o jogo). */
@@ -602,11 +718,12 @@ class MatchSession(
     }
 
     private fun waitMillis(): Long {
+        val boosterWaits = boosterDeadlineAt.indices.mapNotNull { i -> boosterDeadlineAt[i]?.takeIf { !isBoosterConfirmed(i) }?.let { it - now() } }
         val waits = listOfNotNull(
             autoAt?.let { it - now() },
             turnDeadline()?.let { it - now() },
             emptySince?.let { it + presenceGraceMs() - now() },
-        )
+        ) + boosterWaits
         return maxOf(0L, waits.minOrNull() ?: IDLE_POLL_MS)
     }
 
@@ -619,9 +736,16 @@ class MatchSession(
         }
     }
 
-    /** Prazos que correm sozinhos: fim da vez de um humano (§18.4) e a folga de "todos desconectados" (padrao 0). */
+    /**
+     * Prazos que correm sozinhos: o seletor de boosters (§17.3, antes do relogio normal), fim da vez de um humano
+     * (§18.4) e a folga de "todos desconectados" (padrao 0).
+     */
     private fun fireDueTimers() {
         if (finished) return
+        for (seat in boosterDeadlineAt.indices) {
+            val at = boosterDeadlineAt[seat] ?: continue
+            if (!boosterPending[seat] && !isBoosterConfirmed(seat) && now() >= at) confirmBoosters(seat, emptyList())
+        }
         val deadline = turnDeadline()
         val seat = turnSeat
         if (deadline != null && seat != null && now() >= deadline) abandon(seat, AbandonReason.TEMPO)
@@ -647,14 +771,18 @@ class MatchSession(
         if (turnSeat != current) {
             turnSeat = current
             turnStartedAt = now()
+            // §17.3: se a vez chega a quem ainda nao escolheu os boosters (nunca atacou, por exemplo), o prazo do
+            // seletor passa a limitar a espera, mesmo sem conexao ainda (nunca trava para sempre com tempo definido).
+            armBoosterDeadlineIfNeeded(current)
         }
     }
 
-    /** Fim da vez do humano da vez; `null` sem tempo definido, entre partidas, na vez de robo ou com o jogo acabado. */
+    /** Fim da vez do humano da vez; `null` sem tempo definido, entre partidas, na vez de robo, acabado, ou ainda escolhendo boosters. */
     private fun turnDeadline(): Long? {
         val limit = turnLimitMs() ?: return null
         val seat = turnSeat ?: return null
         if (stage != TableStage.PLAYING || slots[seat] !is Slot.Human) return null
+        if (!isBoosterConfirmed(seat)) return null // §17.3: o relogio normal so conta depois do seletor
         return turnStartedAt + limit
     }
 
@@ -713,7 +841,10 @@ class MatchSession(
 
     private fun seatInfos(): List<SeatInfo> = slots.mapIndexed { i, s ->
         when (s) {
-            is Slot.Human -> SeatInfo(i, SeatKind.HUMANO, s.name, connected = links[i] != null, resigned = i in forfeited, guestId = s.guestId)
+            is Slot.Human -> SeatInfo(
+                i, SeatKind.HUMANO, s.name, connected = links[i] != null, resigned = i in forfeited, guestId = s.guestId,
+                choosingBoosters = !isBoosterConfirmed(i),
+            )
             is Slot.Robot -> SeatInfo(
                 i, SeatKind.ROBO, robotName(s.profile), s.profile, s.level, connected = true,
                 resigned = s.replacedGuestId != null,
@@ -726,9 +857,12 @@ class MatchSession(
         links.forEachIndexed { i, l -> if (l != null && (i != seat || change != SeatChange.RESIGNED)) send(i, l, msg) }
     }
 
-    /** Cada humano recebe a vista do SEU assento (§18.3). Nunca o `Match`/`RoundState`. */
+    /**
+     * Cada humano recebe a vista do SEU assento (§18.3). Nunca o `Match`/`RoundState`. §17.3: quem ainda nao
+     * confirmou os boosters nao recebe nada aqui — a mao so chega pelo [SeatUpdate] explicito de [confirmBoosters].
+     */
     private fun broadcastUpdate(event: PublicEvent?, includeHistory: Boolean = false) {
-        for (i in 0 until seatCount) links[i]?.let { send(i, it, SeatUpdate(event, viewOf(i, includeHistory))) }
+        for (i in 0 until seatCount) if (isBoosterConfirmed(i)) links[i]?.let { send(i, it, SeatUpdate(event, viewOf(i, includeHistory))) }
     }
 
     internal fun viewOf(seat: Int, includeHistory: Boolean): OnlineSeatView {

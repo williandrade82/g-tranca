@@ -3,6 +3,7 @@ package com.gtranca.online.economy
 import com.gtranca.engine.BoosterCatalog
 import com.gtranca.engine.Coins
 import com.gtranca.engine.Inventory
+import com.gtranca.engine.Loadout
 import com.gtranca.engine.Shop
 import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.BetPayout
@@ -226,6 +227,42 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
 
     /** (valor, estado) da aposta, ou `null`. */
     fun bet(betId: String, accountId: String): Pair<Long, String>? = tx { c -> betRow(c, betId, accountId, lock = false) }
+
+    /**
+     * §17.3/§18.3: debita 1 de cada booster de [boosterIds] (ate [Loadout.MAX]) do inventario online de [accountId],
+     * no inicio do jogo [matchId] (assento [seat]). Cada booster e uma checagem/debito independente dentro da mesma
+     * transacao: o que nao tiver estoque fica de FORA, nunca interrompe os demais (como [holdBets], mas por booster em
+     * vez de por conta). Id fora do catalogo e ignorado (nunca confia no chamador). Idempotente por (contaId, matchId,
+     * assento, boosterId): repetir a chamada nao debita de novo (a chave do lancamento ja existe).
+     */
+    fun debitBoosters(matchId: String, seat: Int, accountId: String, boosterIds: List<String>): Set<String> {
+        ensureAccount(accountId)
+        val catalog = BoosterCatalog.DEFAULT.associateBy { it.id }
+        return tx { c ->
+            val applied = mutableSetOf<String>()
+            // Filtra o catalogo ANTES de limitar a Loadout.MAX: um id invalido nunca toma a vaga de um booster valido.
+            for (id in boosterIds.filter { it in catalog }.distinct().take(Loadout.MAX)) {
+                val def = catalog.getValue(id)
+                val key = "boosters-$matchId-$seat-$id"
+                if (alreadyApplied(c, accountId, key)) {
+                    applied += id
+                    continue
+                }
+                if (lockBoosterQuantity(c, accountId, id) < def.cost) continue
+                apply(c, accountId, "BOOSTERS_PARTIDA", key, boosterId = id, quantity = -def.cost, reference = matchId)
+                applied += id
+            }
+            applied
+        }
+    }
+
+    /** Trava a linha do inventario (`FOR UPDATE`); sem linha ainda (nunca debitado) vale 0. */
+    private fun lockBoosterQuantity(c: Connection, accountId: String, boosterId: String): Int =
+        c.prepareStatement("SELECT quantidade FROM inventario WHERE conta_id = ? AND booster_id = ? FOR UPDATE").use { st ->
+            st.setString(1, accountId)
+            st.setString(2, boosterId)
+            st.executeQuery().use { rs -> if (rs.next()) rs.getInt(1) else 0 }
+        }
 
     // ---------------------------------------------------------------------------------------------- apoio
 

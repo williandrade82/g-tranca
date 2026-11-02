@@ -5,6 +5,9 @@ import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.Card
 import com.gtranca.online.contracts.AppSignature
+import com.gtranca.online.contracts.BoosterConfirmFailed
+import com.gtranca.online.contracts.BoosterPrompt
+import com.gtranca.online.contracts.BoostersConfirmed
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.SeatKind
 import com.gtranca.online.contracts.TableListView
@@ -22,6 +25,7 @@ import com.gtranca.online.contracts.PlayAction
 import com.gtranca.online.contracts.Rejected
 import com.gtranca.online.contracts.SeatUpdate
 import com.gtranca.online.contracts.SeatsChanged
+import com.gtranca.online.contracts.SelectBoosters
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
@@ -200,6 +204,10 @@ fun main(args: Array<String>) = runBlocking {
                     }
                     is SeatsChanged -> println("[${b.name}] mesa: assento ${m.seat} ${m.change}")
                     is GameError -> println("[${b.name}] ERRO ${m.code}: ${m.message}")
+                    // §17.3/§18.3: o probe nao testa a escolha em si, so confirma sem boosters para a partida seguir.
+                    is BoosterPrompt -> { println("[${b.name}] seletor de boosters: confirmando sem boosters"); sendMsg(SelectBoosters(emptyList())) }
+                    is BoostersConfirmed -> println("[${b.name}] boosters confirmados: ${m.boosters}")
+                    is BoosterConfirmFailed -> println("[${b.name}] falha ao confirmar boosters: ${m.message}")
                     else -> println("[${b.name}] ${m::class.simpleName}")
                 }
             }

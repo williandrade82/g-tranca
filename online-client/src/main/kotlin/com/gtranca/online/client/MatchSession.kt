@@ -8,6 +8,7 @@ import com.gtranca.online.contracts.PlayAction
 import com.gtranca.online.contracts.Replaced
 import com.gtranca.online.contracts.Resign
 import com.gtranca.online.contracts.SeatUpdate
+import com.gtranca.online.contracts.SelectBoosters
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableClosed
 import com.gtranca.online.contracts.Welcome
@@ -86,6 +87,14 @@ class MatchSession internal constructor(
 
     /** Desistir (§13.1, §18.4): um robô assume o assento. */
     suspend fun resign(): Boolean = send { Resign(nextSeq()) }
+
+    /**
+     * §17.3/§18.3: confirma o seletor de boosters do início do jogo com [boosters] (até 3, vazio = sem boosters). O
+     * servidor sanitiza contra o catálogo, a mesa (§17.9) e as reações (b3, ainda não online) antes de debitar; a
+     * resposta chega em [MatchEvent] como [com.gtranca.online.contracts.BoostersConfirmed] (ou
+     * [com.gtranca.online.contracts.BoosterConfirmFailed] em caso de erro, sem fechar a conexão: pode repetir).
+     */
+    suspend fun selectBoosters(boosters: List<String>): Boolean = send { SelectBoosters(boosters) }
 
     private suspend fun send(build: () -> ClientMessage): Boolean {
         val channel = outbox ?: return false

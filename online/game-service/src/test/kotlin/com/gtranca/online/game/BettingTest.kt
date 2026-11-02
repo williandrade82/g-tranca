@@ -167,6 +167,12 @@ class BettingTest {
             if (down) throw EconomyUnavailableException("fora")
             settles += betId to payouts
         }
+
+        // Boosters (§17.3) nao sao o foco destes testes de aposta: aplica tudo o que for pedido, sem rede.
+        override suspend fun debitBoosters(matchId: String, seat: Int, accountId: String, boosterIds: List<String>): Set<String> {
+            if (down) throw EconomyUnavailableException("fora")
+            return boosterIds.toSet()
+        }
     }
 
     private fun request(seats: List<SeatSpec>, mode: TableMode = TableMode.INDIVIDUAL) =

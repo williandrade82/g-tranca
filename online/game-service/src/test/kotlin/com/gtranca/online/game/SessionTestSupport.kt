@@ -5,6 +5,7 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.RuleSet
+import com.gtranca.online.contracts.BoosterPrompt
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.GameError
@@ -15,6 +16,7 @@ import com.gtranca.online.contracts.Replaced
 import com.gtranca.online.contracts.Resign
 import com.gtranca.online.contracts.SeatSpec
 import com.gtranca.online.contracts.SeatUpdate
+import com.gtranca.online.contracts.SelectBoosters
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
@@ -57,8 +59,10 @@ fun startSession(
     seed: Long = 42,
     config: GameConfig = FAST,
     scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
+    economy: EconomyClient? = null,
+    boosterDeadlineMs: Long = 30_000L,
 ): RunningSession {
-    val s = MatchSession("ABC234", rulesOf(mode, target), seats, seed, config)
+    val s = MatchSession("ABC234", rulesOf(mode, target), seats, seed, config, economy = economy, boosterDeadlineMs = boosterDeadlineMs, scope = scope)
     val job = scope.launch { s.run() }
     return RunningSession(s, scope, job)
 }
@@ -127,6 +131,9 @@ class TestPlayer(val session: MatchSession, guestId: String, seed: Long = guestI
 
     suspend fun resign() = session.submit(seat, link, Resign(++seq))
 
+    /** §17.3: confirma o seletor de boosters do inicio do jogo com [ids] (vazio = sem boosters). */
+    suspend fun selectBoosters(ids: List<String> = emptyList()) = session.submit(seat, link, SelectBoosters(ids))
+
     /** Le o que ja chegou (sem esperar). */
     fun drain(): List<ServerMessage> {
         val out = mutableListOf<ServerMessage>()
@@ -138,10 +145,15 @@ class TestPlayer(val session: MatchSession, guestId: String, seed: Long = guestI
         return out
     }
 
-    /** Joga ate o fim do jogo (ou ate o canal fechar). */
-    suspend fun playToEnd(timeoutMs: Long = 120_000) {
+    /**
+     * Joga ate o fim do jogo (ou ate o canal fechar). [autoConfirmBoosters] = responde o seletor (§17.3) sem boosters
+     * assim que ele chega, para os testes que nao se importam com boosters nao precisarem lidar com ele; `false` para
+     * os testes que querem escolher boosters especificos (chamar [selectBoosters] por fora antes de continuar o laco).
+     */
+    suspend fun playToEnd(timeoutMs: Long = 120_000, autoConfirmBoosters: Boolean = true) {
         withTimeout(timeoutMs) {
             for (m in link.messages) {
+                if (autoConfirmBoosters && m is BoosterPrompt) selectBoosters()
                 val act = absorb(m)
                 if (act != null) {
                     actionsSent++

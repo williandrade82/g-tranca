@@ -4,6 +4,8 @@ import com.gtranca.online.contracts.BetHoldRequest
 import com.gtranca.online.contracts.BetHoldResponse
 import com.gtranca.online.contracts.BetPayout
 import com.gtranca.online.contracts.BetSettleRequest
+import com.gtranca.online.contracts.BoosterDebitRequest
+import com.gtranca.online.contracts.BoosterDebitResponse
 import com.gtranca.online.contracts.GameEndReason
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.OnlineJson
@@ -28,6 +30,14 @@ interface EconomyClient {
     suspend fun hold(betId: String, amount: Long, accounts: List<String>): Set<String>
 
     suspend fun settle(betId: String, payouts: List<BetPayout>)
+
+    /**
+     * §17.3/§18.3: debita do inventario online de [accountId] cada booster de [boosterIds] (ja sanitizados contra o
+     * catalogo, a mesa e b3 por quem chama), no inicio do jogo [matchId] (assento [seat]). Idempotente por (conta,
+     * matchId, assento, booster).
+     * @return os boosters que realmente foram debitados (o que nao tinha estoque fica de fora, §17.3).
+     */
+    suspend fun debitBoosters(matchId: String, seat: Int, accountId: String, boosterIds: List<String>): Set<String>
 }
 
 class HttpEconomyClient(private val baseUrl: String, private val secret: String?) : EconomyClient {
@@ -47,6 +57,14 @@ class HttpEconomyClient(private val baseUrl: String, private val secret: String?
 
     override suspend fun settle(betId: String, payouts: List<BetPayout>) {
         post("/internal/economy/bets/$betId/settle", OnlineJson.encodeToString(BetSettleRequest.serializer(), BetSettleRequest(payouts)))
+    }
+
+    override suspend fun debitBoosters(matchId: String, seat: Int, accountId: String, boosterIds: List<String>): Set<String> {
+        val body = post(
+            "/internal/economy/matches/$matchId/seats/$seat/boosters",
+            OnlineJson.encodeToString(BoosterDebitRequest.serializer(), BoosterDebitRequest(accountId, boosterIds)),
+        )
+        return OnlineJson.decodeFromString(BoosterDebitResponse.serializer(), body).applied.toSet()
     }
 
     private suspend fun post(path: String, body: String): String {

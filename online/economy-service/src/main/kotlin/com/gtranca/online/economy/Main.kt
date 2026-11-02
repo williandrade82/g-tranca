@@ -3,11 +3,14 @@ package com.gtranca.online.economy
 import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.AdoptWalletRequest
 import com.gtranca.online.contracts.AdoptWalletResponse
+import com.gtranca.engine.Loadout
 import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.BetHoldRequest
 import com.gtranca.online.contracts.BetHoldResponse
 import com.gtranca.online.contracts.BetSettleRequest
 import com.gtranca.online.contracts.BetSettleResponse
+import com.gtranca.online.contracts.BoosterDebitRequest
+import com.gtranca.online.contracts.BoosterDebitResponse
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.BuyRequest
 import com.gtranca.online.contracts.DailyClaimRequest
@@ -246,6 +249,21 @@ private fun io.ktor.server.routing.Routing.internalEconomyRoutes(deps: EconomyDe
             checkAccounts(req.payouts.map { it.accountId })
             val (done, before) = withContext(Dispatchers.IO) { store.settleBets(betId, req.payouts) }
             call.respondJson(BetSettleResponse(done, before))
+        }
+    }
+    // §17.3/§18.3: debita do inventario online os boosters escolhidos no inicio do jogo (game-service ja filtrou b3 e
+    // skill-nao-permitido pela mesa; aqui so o catalogo e o estoque valem, nunca o que o cliente afirma ter escolhido).
+    post("/internal/economy/matches/{matchId}/seats/{seat}/boosters") {
+        call.internal {
+            val matchId = call.parameters["matchId"].orEmpty().takeIf { BET_ID.matches(it) }
+                ?: throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Partida inválida.")
+            val seat = call.parameters["seat"]?.toIntOrNull()?.takeIf { it in 0..3 }
+                ?: throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Assento inválido.")
+            val req = call.receiveLimited<BoosterDebitRequest>()
+            checkAccounts(listOf(req.accountId))
+            if (req.boosterIds.size > Loadout.MAX) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Boosters demais.")
+            val applied = withContext(Dispatchers.IO) { store.debitBoosters(matchId, seat, req.accountId, req.boosterIds) }
+            call.respondJson(BoosterDebitResponse(applied.toList()))
         }
     }
 }

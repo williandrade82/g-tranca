@@ -32,6 +32,11 @@ data class GameConfig(
     val firstConnectMs: Long = 60_000L,
     /** Abandono dentro deste tempo desde o inicio do jogo devolve a aposta mesmo com `PERDE_APOSTA` (§18.4: 60 s). */
     val abandonGraceMs: Long = 60_000,
+    /**
+     * §17.3/§18.3: prazo do seletor de boosters do inicio do jogo, a partir de quando ele aparece a cada assento
+     * humano (30 s). So vale com a economia configurada (`economyUrl`); sem ela o seletor nem aparece.
+     */
+    val boosterSelectMs: Long = 30_000L,
     val hardConfig: HardBotConfig = HardBotConfig.DEFAULT,
     /** Limite de mensagens do cliente por conexao: reposicao por segundo e rajada maxima. */
     val wsMessagesPerSecond: Int = 10,
@@ -58,6 +63,7 @@ data class GameConfig(
                 disconnectGraceMs = long("DISCONNECT_GRACE_MS", d.disconnectGraceMs),
                 appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() },
                 firstConnectMs = long("FIRST_CONNECT_MS", d.firstConnectMs),
+                boosterSelectMs = long("BOOSTER_SELECT_MS", d.boosterSelectMs),
                 wsMessagesPerSecond = int("WS_MESSAGES_PER_SECOND", d.wsMessagesPerSecond),
                 wsBurst = int("WS_BURST", d.wsBurst),
                 wsPingMs = long("WS_PING_MS", d.wsPingMs),

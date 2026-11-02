@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test
 /** §18.4 / §18.8: mensagens novas do protocolo 2 (relogio de jogada, mesa encerrada, motivo do abandono). */
 class ClockContractsTest {
     @Test
-    fun `18_8 o protocolo esta em 3 e a versao antiga e recusada com a mensagem em pt-BR`() {
-        ONLINE_PROTOCOL_VERSION shouldBe 3
+    fun `18_8 o protocolo esta em 4 e a versao antiga e recusada com a mensagem em pt-BR`() {
+        ONLINE_PROTOCOL_VERSION shouldBe 4
         checkProtocolVersion(1) shouldBe VersionCheck.Incompatible("Atualize o aplicativo")
     }
 

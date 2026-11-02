@@ -69,3 +69,16 @@ data class BetSettleRequest(val payouts: List<BetPayout>)
 
 @Serializable
 data class BetSettleResponse(val settled: Int, val alreadySettled: Int)
+
+/**
+ * game -> economy, POST /internal/economy/matches/{matchId}/seats/{seat}/boosters: debita 1 de cada booster de
+ * [boosterIds] (ate 3, §17.2) do inventario online de [accountId], no inicio do jogo [matchId] (§17.3/§18.3). Cada
+ * booster e independente: o que nao tiver estoque fica de fora, nunca interrompe os demais. Idempotente por
+ * (contaId, matchId, assento, boosterId): repetir a chamada (rede falhou depois de debitar) nao debita de novo.
+ */
+@Serializable
+data class BoosterDebitRequest(val accountId: String, val boosterIds: List<String>)
+
+/** Os boosters realmente debitados (os demais ficaram de fora por falta de estoque, §17.3). */
+@Serializable
+data class BoosterDebitResponse(val applied: List<String>)

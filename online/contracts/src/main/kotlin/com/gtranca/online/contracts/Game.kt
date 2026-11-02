@@ -151,6 +151,16 @@ data class PlayAction(val seq: Long, val stateVersion: Long, val action: Action)
 @SerialName("resign")
 data class Resign(val seq: Long) : ClientMessage
 
+/**
+ * §17.3/§18.3: confirma o seletor de boosters do inicio do jogo com os ids escolhidos (ate 3, §17.2). O servidor
+ * sanitiza contra o catalogo, o `skillBoostersAllowed` da mesa (§17.9) e as reacoes (b3, ainda nao retransmitidas
+ * online) antes de debitar do inventario online (§18.5); o que nao puder ser debitado fica de fora (§17.3). Ignorada
+ * se o assento ja confirmou, ou se ha uma confirmacao anterior ainda em andamento no servidor.
+ */
+@Serializable
+@SerialName("selectBoosters")
+data class SelectBoosters(val boosters: List<String>) : ClientMessage
+
 // ---------------------------------------------------------------------------------------------------------------
 // Servidor -> cliente
 // ---------------------------------------------------------------------------------------------------------------
@@ -173,6 +183,12 @@ data class SeatInfo(
     val resigned: Boolean = false,
     /** Humano: id do convidado, para o app buscar a foto (§18.2) e mostrar no assento. */
     val guestId: String? = null,
+    /**
+     * §17.3/§18.3: este assento humano ainda nao confirmou o seletor de boosters do jogo (nunca `true` para robo, nem
+     * depois de confirmado uma vez: a escolha vale o jogo todo). Serve para a mesa mostrar "Aguardando <nome> escolher
+     * os boosters" quando chega a vez de quem ainda nao escolheu (§17.3, como no multijogador local).
+     */
+    val choosingBoosters: Boolean = false,
 )
 
 /** Relogio da vez (§18.4): so existe com tempo de jogada definido, durante a vez de um humano. [leftMs] e o que resta no envio. */
@@ -264,7 +280,7 @@ data class OnlineSeatView(
 data class SeatUpdate(val event: PublicEvent? = null, val view: OnlineSeatView) : ServerMessage
 
 @Serializable
-enum class SeatChange { CONNECTED, DISCONNECTED, RESIGNED }
+enum class SeatChange { CONNECTED, DISCONNECTED, RESIGNED, BOOSTERS_CHOSEN }
 
 /** Presenca/assentos mudaram. [seat] e o assento a que [change] se refere; [reason] so em RESIGNED (desistiu ou tempo). */
 @Serializable
@@ -287,6 +303,9 @@ enum class RejectReason {
 
     /** A jogada nao esta em `legalActions` do assento. */
     ILLEGAL,
+
+    /** §17.3/§18.3: o assento ainda nao confirmou (ou teve confirmado por tempo esgotado) o seletor de boosters. */
+    BOOSTERS_PENDING,
 }
 
 /**
@@ -316,3 +335,35 @@ data class TableClosed(val message: String) : ServerMessage
 @Serializable
 @SerialName("error")
 data class GameError(val code: ErrorCode, val message: String) : ServerMessage
+
+/**
+ * §17.3/§18.3: pede ao assento humano a escolha dos boosters do jogo, ANTES de ver a propria mao (nunca enviada a um
+ * robo, nem a um assento ja confirmado). O catalogo (nomes, resumos, tipo) e a quantidade de cada booster no
+ * inventario online ja sao conhecidos do aplicativo (catalogo compartilhado por `:core-engine`; quantidade por
+ * `/economy/{guestId}`, §18.5) — aqui so o que so o servidor sabe: [skillAllowed] = a mesa permite boosters de skill
+ * (§17.9); b3 (Reacoes) nunca e aceito online nesta fase, seja ou nao enviado (§17.4 fase 2). [deadlineMs] e quanto
+ * falta do prazo de 30 s a partir de AGORA: conte a partir do recebimento, como em [TurnClock] (relogios de aparelho
+ * e servidor nao sao comparaveis). Sem confirmar a tempo, o SERVIDOR decide (§17.3): segue com o que foi enviado por
+ * ultimo, ou sem boosters se nada chegou.
+ */
+@Serializable
+@SerialName("boosterPrompt")
+data class BoosterPrompt(val skillAllowed: Boolean, val deadlineMs: Long) : ServerMessage
+
+/**
+ * §17.3/§18.3: os boosters confirmados deste assento no jogo (ja debitados do inventario online, §18.5); valem o jogo
+ * todo e nunca mudam depois. Chega apos um [SelectBoosters] aceito e, de novo, a cada reconexao de um assento ja
+ * confirmado (para repor o estado do aparelho sem reconsultar a economia). Vem sempre seguida do [SeatUpdate] que
+ * revela a mao (nunca antes de confirmar, §17.3 "sem ver a distribuicao das cartas").
+ */
+@Serializable
+@SerialName("boostersConfirmed")
+data class BoostersConfirmed(val boosters: List<String>) : ServerMessage
+
+/**
+ * §17.3/§18.3: a confirmacao dos boosters falhou agora (rede ou economia fora do ar); NAO fecha a conexao e a selecao
+ * enviada nao se perde — o cliente pode mandar [SelectBoosters] de novo (telas.md 3.19 Online: "Tentar de novo").
+ */
+@Serializable
+@SerialName("boosterConfirmFailed")
+data class BoosterConfirmFailed(val message: String) : ServerMessage

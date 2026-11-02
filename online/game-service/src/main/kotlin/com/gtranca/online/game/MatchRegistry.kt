@@ -97,9 +97,13 @@ class MatchRegistry(
         sessions.values.removeIf { it.isFinished }
         if (sessions.size >= config.maxMatches) throw MatchCreateException(503, "Servidor cheio. Tente de novo em instantes.")
         val presence = MutableStateFlow<PresenceNotice?>(null)
+        // §17.3: id unico por JOGO para a chave de idempotencia do debito de boosters — o id da mesa se repete entre
+        // jogos sucessivos (§18.2), igual ao betId das apostas (criado ali do mesmo jeito, so que por essa aposta).
+        val boosterMatchId = "$id-bst-" + java.lang.Long.toUnsignedString(secure.nextLong(), 36)
         val session = try {
             MatchSession(
                 id, req.rules, req.seats, req.seed ?: secure.nextLong(), config,
+                boosterMatchId = boosterMatchId,
                 onEnded = { end ->
                     scope.launch { notifyLobby(id, end.reason) }
                     if (bets != null && bets.second.isNotEmpty()) {
@@ -108,6 +112,9 @@ class MatchRegistry(
                     }
                 },
                 onPresence = { connected, abandoned -> presence.value = PresenceNotice(connected.sorted(), abandoned.sorted()) },
+                economy = economy,
+                boosterDeadlineMs = config.boosterSelectMs,
+                scope = scope,
             )
         } catch (e: IllegalArgumentException) {
             bad(e.message ?: "Regras inválidas.")
