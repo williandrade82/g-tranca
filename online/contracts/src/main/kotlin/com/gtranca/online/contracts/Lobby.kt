@@ -148,6 +148,12 @@ enum class ErrorCode {
 
     /** Login Google desligado ou sem acesso ao Google/economia agora (so na rota de login, plano 2.6). */
     LOGIN_INDISPONIVEL,
+
+    /** §18.1: e-mail ja cadastrado (cadastro por e-mail e senha). */
+    EMAIL_JA_CADASTRADO,
+
+    /** §18.1: muitas tentativas erradas de login com o mesmo e-mail; aguarde antes de tentar de novo. */
+    LOGIN_BLOQUEADO,
 }
 
 @Serializable

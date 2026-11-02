@@ -74,6 +74,20 @@ class EconomyAccountTest {
     }
 
     @Test
+    fun `18_1 conta de e-mail e senha (prefixo E_) tambem adota a carteira do convidado`() {
+        store.ensureAccount("conv5")
+        store.buy("conv5", 0, "k2")
+        val guestBefore = store.state("conv5")
+        val (migrated, acc) = store.adoptGuestWallet("E_a", "conv5")
+        migrated shouldBe true
+        acc.balance shouldBe guestBefore.balance
+        tipo("E_a") shouldBe "EMAIL"
+        store.state("conv5").balance shouldBe 0
+        // vinculo repetido (mesmo login de novo): nada muda
+        store.adoptGuestWallet("E_a", "conv5") shouldBe (false to acc)
+    }
+
+    @Test
     fun `18_5 logins simultaneos migram uma vez so`() {
         store.ensureAccount("conv4")
         val pool = Executors.newFixedThreadPool(8)

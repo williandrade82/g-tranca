@@ -11,6 +11,7 @@ postgresql = "42.7.4"
 hikari = "6.2.1"
 flyway = "10.21.0"
 embeddedPostgres = "2.1.0"
+bcrypt = "0.10.2"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
@@ -41,6 +42,7 @@ hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
 embedded-postgres = { module = "io.zonky.test:embedded-postgres", version.ref = "embeddedPostgres" }
+bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

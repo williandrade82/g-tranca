@@ -1,8 +1,11 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.AccountKind
 import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.EmailLoginRequest
+import com.gtranca.online.contracts.EmailRegisterRequest
 import com.gtranca.online.contracts.GoogleLoginRequest
 import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.CreateGuestRequest
@@ -13,6 +16,8 @@ import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.MatchEndedNotice
 import com.gtranca.online.contracts.PassHostRequest
 import com.gtranca.online.contracts.PresenceNotice
+import com.gtranca.online.contracts.ResetPasswordRequest
+import com.gtranca.online.contracts.ResetPasswordResponse
 import com.gtranca.online.contracts.ResolveGuestRequest
 import com.gtranca.online.contracts.ResolvedGuest
 import com.gtranca.online.contracts.Health
@@ -48,10 +53,13 @@ import io.ktor.server.routing.put
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import java.security.MessageDigest
+import java.util.Locale
 import kotlin.system.exitProcess
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.io.readByteArray
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -95,6 +103,10 @@ fun main() {
             GoogleIdTokenVerifier(it, HttpJwksSource(System.getenv("GOOGLE_JWKS_URL")?.takeIf { u -> u.isNotBlank() } ?: "https://www.googleapis.com/oauth2/v3/certs"))
         } ?: null.also { System.err.println("AVISO: GOOGLE_CLIENT_ID ausente; login Google desligado") },
         walletLinker = System.getenv("ECONOMY_URL")?.takeIf { it.isNotBlank() }?.let { HttpAccountWalletLinker(it, secret) },
+        // §18.1 (mudanca de 02/11/2026): contas por e-mail e senha. Custo do bcrypt fixo em produção (12).
+        emailAccountPersistence = db?.let(::PostgresEmailAccountPersistence),
+        loginAttemptLimit = System.getenv("LOGIN_ATTEMPT_LIMIT")?.toIntOrNull() ?: 5,
+        loginLockoutMinutes = System.getenv("LOGIN_LOCKOUT_MINUTES")?.toLongOrNull() ?: 15L,
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { lobbyModule(deps) }.start(wait = true)
 }
@@ -123,8 +135,17 @@ class LobbyDeps(
     val google: GoogleIdTokenVerifier? = null,
     /** Carteira da conta no login (§18.5). `null` = sem economia (desenvolvimento): a conta entra sem migrar nada. */
     val walletLinker: AccountWalletLinker? = null,
+    /** Contas por e-mail e senha no banco (§18.1). `null` = so memoria (desenvolvimento e testes). */
+    val emailAccountPersistence: EmailAccountPersistence? = null,
+    /** Custo do bcrypt (§18.1). Baixo nos testes (bcrypt e lento de proposito); 12 em produção. */
+    val emailPasswordCost: Int = 12,
+    /** Tentativas erradas de login seguidas, pelo mesmo e-mail, antes de bloquear (§18.1, forca bruta). */
+    val loginAttemptLimit: Int = 5,
+    val loginLockoutMinutes: Long = 15L,
 ) {
     val guests = GuestRegistry(clock, persistence = guestPersistence)
+    val emailAccounts = EmailAccountRegistry(emailAccountPersistence, emailPasswordCost, clock)
+    val loginAttempts = FailedLoginLimiter(loginAttemptLimit, loginLockoutMinutes * 60_000L, clock)
     val service = LobbyService(store, clock, config = config, photoVersion = guests::photoVersion)
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val tokenLimiter = RateLimiter(tokenLimitPerMinute, clock = clock)
@@ -299,7 +320,7 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                     lobbyError(ErrorCode.LOGIN_INDISPONIVEL, "Não foi possível falar com o Google agora. Tente de novo.", 503)
                 }
                 val guestId = req.guestToken?.takeIf { it.isNotBlank() }?.let(deps.guests::authenticate)?.id
-                    ?.takeIf { !it.startsWith(AccountLimits.GOOGLE_ID_PREFIX) }
+                    ?.takeIf { !AccountLimits.isAccountId(it) }
                 val migrated = deps.walletLinker?.let { linker ->
                     try {
                         linker.adopt(user.accountId, guestId)
@@ -310,6 +331,60 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 val session = deps.guests.createSession(user.accountId, accountName(user.name))
                 call.respondJson(
                     AccountLogin(session.id, session.name, session.token, pictureUrl = user.picture, walletFromGuest = migrated),
+                )
+            }
+        }
+        // §18.1 (mudanca de 02/11/2026): cadastro por e-mail e senha. Se a carteira nao puder ser aberta agora
+        // (economia fora do ar), a conta ja existe com a senha escolhida: o jogador entra com "Entrar" depois,
+        // que tenta a mesma adocao da carteira do convidado (idempotente, §18.5).
+        post("/api/lobby/accounts/email/register") {
+            call.guarded(authenticated = false) {
+                val req = call.receiveLimited<EmailRegisterRequest>()
+                val guest = req.guestToken?.takeIf { it.isNotBlank() }?.let(deps.guests::authenticate)
+                    ?.takeIf { !AccountLimits.isAccountId(it.id) }
+                // O bcrypt e CPU pesada de proposito: nao roda na thread que processa a chamada HTTP.
+                val (id, name) = withContext(Dispatchers.Default) { deps.emailAccounts.register(req.email, req.password, req.name ?: guest?.name) }
+                val migrated = deps.walletLinker?.let { linker ->
+                    try {
+                        linker.adopt(id, guest?.id)
+                    } catch (e: EconomyGatewayException) {
+                        lobbyError(ErrorCode.LOGIN_INDISPONIVEL, "Não foi possível abrir a sua carteira agora. Tente de novo entrando com a conta.", 503)
+                    }
+                } ?: false
+                val session = deps.guests.createSession(id, name)
+                call.respondJson(
+                    AccountLogin(session.id, session.name, session.token, kind = AccountKind.EMAIL, walletFromGuest = migrated),
+                    HttpStatusCode.Created,
+                )
+            }
+        }
+        // §18.1: entrar com e-mail e senha ja cadastrados. Forca bruta: tentativas erradas seguidas pelo mesmo
+        // e-mail bloqueiam a chave por um tempo, alem do limite de taxa por IP/token (LobbyRateLimit acima).
+        post("/api/lobby/accounts/email/login") {
+            call.guarded(authenticated = false) {
+                val req = call.receiveLimited<EmailLoginRequest>()
+                val attemptKey = req.email.trim().lowercase(Locale.ROOT)
+                deps.loginAttempts.checkAllowed(attemptKey)
+                val (id, name) = try {
+                    // O bcrypt e CPU pesada de proposito: nao roda na thread que processa a chamada HTTP.
+                    withContext(Dispatchers.Default) { deps.emailAccounts.login(req.email, req.password) }
+                } catch (e: LobbyException) {
+                    if (e.code == ErrorCode.NAO_AUTENTICADO) deps.loginAttempts.recordFailure(attemptKey)
+                    throw e
+                }
+                deps.loginAttempts.recordSuccess(attemptKey)
+                val guestId = req.guestToken?.takeIf { it.isNotBlank() }?.let(deps.guests::authenticate)?.id
+                    ?.takeIf { !AccountLimits.isAccountId(it) }
+                val migrated = deps.walletLinker?.let { linker ->
+                    try {
+                        linker.adopt(id, guestId)
+                    } catch (e: EconomyGatewayException) {
+                        lobbyError(ErrorCode.LOGIN_INDISPONIVEL, "Não foi possível abrir a sua carteira agora. Tente de novo.", 503)
+                    }
+                } ?: false
+                val session = deps.guests.createSession(id, name)
+                call.respondJson(
+                    AccountLogin(session.id, session.name, session.token, kind = AccountKind.EMAIL, walletFromGuest = migrated),
                 )
             }
         }
@@ -457,6 +532,20 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 val notice = call.receiveLimited<PresenceNotice>()
                 service.presence(call.parameters["id"].orEmpty(), notice.connected.toSet(), notice.abandoned.toSet())
                 call.respondJson(Health())
+            } catch (e: LobbyException) {
+                call.respondError(e)
+            }
+        }
+
+        // Suporte, a mao (§18.1): sem recuperacao de senha pelo proprio jogador nesta fase. Gera uma senha
+        // temporaria nova para a conta do [email] informado; a antiga deixa de valer. Sem tela nem API publica.
+        post("/internal/lobby/accounts/reset-password") {
+            if (!call.internalAllowed(deps.internalSecret)) return@post
+            try {
+                val req = call.receiveLimited<ResetPasswordRequest>()
+                val temp = withContext(Dispatchers.Default) { deps.emailAccounts.resetPassword(req.email) }
+                    ?: return@post call.respondError(LobbyException(ErrorCode.REQUISICAO_INVALIDA, "Conta não encontrada.", 404))
+                call.respondJson(ResetPasswordResponse(temp))
             } catch (e: LobbyException) {
                 call.respondError(e)
             }

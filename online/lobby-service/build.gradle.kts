@@ -22,6 +22,7 @@ dependencies {
     implementation(libs.hikari)
     implementation(libs.flyway.core)
     implementation(libs.flyway.postgresql)
+    implementation(libs.bcrypt)
     runtimeOnly(libs.logback.classic)
 
     testImplementation(platform(libs.junit.bom))

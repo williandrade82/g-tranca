@@ -123,8 +123,8 @@ class GuestRegistry(
         val now = clock()
         val expired = byHash.filterValues { now - it.lastUsedMs > ttlMs }.keys
         val alive = byHash.filterKeys { it !in expired }.values.map { it.guest.id }.toSet()
-        // A foto de uma conta Google e da conta, nao da sessao: fica mesmo sem token vivo.
-        val orphanPhotos = photos.keys.filter { it !in alive && !it.startsWith(AccountLimits.GOOGLE_ID_PREFIX) }
+        // A foto de uma conta (Google ou e-mail) e da conta, nao da sessao: fica mesmo sem token vivo.
+        val orphanPhotos = photos.keys.filter { it !in alive && !AccountLimits.isAccountId(it) }
         persistence?.deleteGuests(expired)
         persistence?.deletePhotos(orphanPhotos)
         byHash.keys.removeAll(expired)
@@ -143,6 +143,51 @@ class GuestRegistry(
             }
             return name
         }
+    }
+}
+
+/**
+ * Limite de tentativas erradas de login por e-mail (§18.1, forca bruta), em memoria, alem do limite de taxa por
+ * IP/token (ver [RateLimiter] em Main.kt). Depois de [maxAttempts] erros seguidos para o mesmo e-mail, a chave fica
+ * bloqueada por [lockoutMs]; um acerto zera a contagem.
+ */
+class FailedLoginLimiter(
+    private val maxAttempts: Int = 5,
+    private val lockoutMs: Long = 15 * 60_000L,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
+    private class State(var failures: Int = 0, var lockedUntilMs: Long = 0L, var lastFailureMs: Long = 0L)
+
+    private val states = HashMap<String, State>()
+
+    /** Lanca [ErrorCode.LOGIN_BLOQUEADO] se [key] esta bloqueada agora; nao conta como tentativa. */
+    @Synchronized
+    fun checkAllowed(key: String) {
+        val s = states[key] ?: return
+        if (clock() < s.lockedUntilMs) {
+            lobbyError(ErrorCode.LOGIN_BLOQUEADO, "Muitas tentativas erradas para esse e-mail. Tente de novo em alguns minutos.", 429)
+        }
+    }
+
+    @Synchronized
+    fun recordFailure(key: String) {
+        val now = clock()
+        // So descarta chaves sem erro recente (nao as travadas: lockedUntilMs sozinho e sempre "no passado" ate travar).
+        if (states.size > 20_000) states.entries.removeIf { now - it.value.lastFailureMs > lockoutMs }
+        val s = states.getOrPut(key) { State() }
+        if (s.lockedUntilMs != 0L && now >= s.lockedUntilMs) {
+            // O bloqueio anterior ja passou: comeca a contagem de novo (senao um unico erro a cada janela travaria para sempre).
+            s.failures = 0
+            s.lockedUntilMs = 0L
+        }
+        s.failures++
+        s.lastFailureMs = now
+        if (s.failures >= maxAttempts) s.lockedUntilMs = now + lockoutMs
+    }
+
+    @Synchronized
+    fun recordSuccess(key: String) {
+        states.remove(key)
     }
 }
 

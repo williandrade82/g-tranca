@@ -50,7 +50,8 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
         // A carteira do convidado precisa existir para ser travada (convidado que nunca abriu a carteira ganha a inicial).
         guestId?.takeIf { it != accountId && kindOf(it) == "CONVIDADO" }?.let { ensureAccount(it) }
         return tx { c ->
-            if (!insertAccount(c, accountId, "GOOGLE")) return@tx false to read(c, accountId)
+            // §18.1: a conta pode ser Google ou e-mail; o tipo vem da forma do id (prefixo), nunca de um parametro fixo.
+            if (!insertAccount(c, accountId, kindOf(accountId))) return@tx false to read(c, accountId)
             val guest = guestId?.takeIf { it != accountId && kindOf(it) == "CONVIDADO" }
             val (balance, lastDaily) = guest?.let { lockWallet(c, it) } ?: (0L to null)
             val free = guest != null && c.prepareStatement("SELECT tipo = 'CONVIDADO' AND migrada_para IS NULL FROM conta WHERE id = ? FOR UPDATE").use { st ->
@@ -99,8 +100,12 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
         }
     }
 
-    /** Tipo pela forma do id: as contas Google tem o prefixo `G_` (plano 2.6). */
-    fun kindOf(accountId: String): String = if (accountId.startsWith(AccountLimits.GOOGLE_ID_PREFIX)) "GOOGLE" else "CONVIDADO"
+    /** Tipo pela forma do id: contas Google tem o prefixo `G_` (plano 2.6), contas de e-mail o prefixo `E_` (§18.1). */
+    fun kindOf(accountId: String): String = when {
+        accountId.startsWith(AccountLimits.GOOGLE_ID_PREFIX) -> "GOOGLE"
+        accountId.startsWith(AccountLimits.EMAIL_ID_PREFIX) -> "EMAIL"
+        else -> "CONVIDADO"
+    }
 
     fun state(accountId: String): EconomyState = tx { c -> read(c, accountId) }
 

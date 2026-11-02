@@ -23,7 +23,7 @@ class LobbyPersistenceTest {
 
     @BeforeEach
     fun clean() {
-        db.connection.use { it.createStatement().execute("TRUNCATE lobby.convidado, lobby.foto, lobby.mesa") }
+        db.connection.use { it.createStatement().execute("TRUNCATE lobby.convidado, lobby.foto, lobby.mesa, lobby.conta_email") }
     }
 
     @AfterAll
@@ -126,5 +126,44 @@ class LobbyPersistenceTest {
         val r2 = registry()
         r2.authenticate(a.token)?.id shouldBe "G_x"
         r2.authenticate(b.token)?.id shouldBe "G_x"
+    }
+
+    private fun emailRegistry() = EmailAccountRegistry(PostgresEmailAccountPersistence(db), passwordCost = 4, clock = { now })
+
+    @Test
+    fun `18_1 o banco guarda so o hash bcrypt da senha, nunca a senha`() {
+        emailRegistry().register("ana@exemplo.com", "segredo123", "Ana")
+        val hash = db.connection.use { c ->
+            c.prepareStatement("SELECT senha_hash FROM lobby.conta_email WHERE email = 'ana@exemplo.com'").executeQuery().use {
+                it.next(); it.getString(1)
+            }
+        }
+        hash.startsWith("\$2a\$") shouldBe true
+        hash.contains("segredo123") shouldBe false
+    }
+
+    @Test
+    fun `18_1 a conta de e-mail e a senha sobrevivem ao reinicio`() {
+        emailRegistry().register("ana@exemplo.com", "segredo123", "Ana")
+        emailRegistry().login("ana@exemplo.com", "segredo123").first shouldNotBe null
+    }
+
+    @Test
+    fun `18_1 reset de senha sobrevive ao reinicio e a senha antiga para de valer`() {
+        emailRegistry().register("ana@exemplo.com", "segredo123", "Ana")
+        val temp = emailRegistry().resetPassword("ana@exemplo.com")!!
+        // outra instancia (como se o pod tivesse reiniciado): a nova senha ja vale, a antiga nao.
+        val after = emailRegistry()
+        after.login("ana@exemplo.com", temp).first shouldNotBe null
+        io.kotest.assertions.throwables.shouldThrow<LobbyException> { after.login("ana@exemplo.com", "segredo123") }
+    }
+
+    @Test
+    fun `18_1 duas instancias cadastrando o mesmo e-mail ao mesmo tempo so uma vence (o banco decide)`() {
+        emailRegistry().register("ana@exemplo.com", "segredo123", "Ana")
+        // Uma segunda instancia (outro pod) nao tem "ana@exemplo.com" no cache dela, mas o banco ja tem: o INSERT com
+        // ON CONFLICT (email) DO NOTHING falha, e o registro e recusado mesmo assim (§18.1).
+        val outraInstancia = emailRegistry()
+        io.kotest.assertions.throwables.shouldThrow<LobbyException> { outraInstancia.register("ana@exemplo.com", "outrasenha", "Outra") }
     }
 }
