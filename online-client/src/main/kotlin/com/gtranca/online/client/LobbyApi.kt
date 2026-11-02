@@ -21,6 +21,18 @@ interface LobbyApi {
     suspend fun loginGoogle(idToken: String, guestToken: String?): AccountLogin =
         throw UnsupportedOperationException("loginGoogle")
 
+    /**
+     * §18.1 (mudanca de 02/11/2026): cria a conta com e-mail e senha. [name] e opcional (o nome do Perfil do
+     * aparelho, se houver); [guestToken] como em [loginGoogle], a carteira do convidado deste aparelho passa para a
+     * conta nova (§18.5).
+     */
+    suspend fun registerEmail(email: String, password: String, name: String?, guestToken: String?): AccountLogin =
+        throw UnsupportedOperationException("registerEmail")
+
+    /** §18.1: entra com e-mail e senha ja cadastrados. [guestToken] como em [registerEmail]. */
+    suspend fun loginEmail(email: String, password: String, guestToken: String?): AccountLogin =
+        throw UnsupportedOperationException("loginEmail")
+
     suspend fun createTable(token: String, rules: TableRules): TableView
 
     /** §18.2: todas as mesas do servidor e os jogadores online. */

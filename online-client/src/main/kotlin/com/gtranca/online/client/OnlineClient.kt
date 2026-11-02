@@ -7,6 +7,8 @@ import com.gtranca.online.contracts.DailyClaimRequest
 import com.gtranca.online.contracts.EconomyError
 import com.gtranca.online.contracts.EconomyLimits
 import com.gtranca.online.contracts.EconomyStateDto
+import com.gtranca.online.contracts.EmailLoginRequest
+import com.gtranca.online.contracts.EmailRegisterRequest
 import com.gtranca.online.contracts.GoogleLoginRequest
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
@@ -62,6 +64,16 @@ class OnlineClient(
     override suspend fun loginGoogle(idToken: String, guestToken: String?): AccountLogin = call(
         AccountLogin.serializer(), null, HttpMethod.Post, "accounts/google",
         OnlineJson.encodeToString(GoogleLoginRequest.serializer(), GoogleLoginRequest(idToken, guestToken)),
+    )
+
+    override suspend fun registerEmail(email: String, password: String, name: String?, guestToken: String?): AccountLogin = call(
+        AccountLogin.serializer(), null, HttpMethod.Post, "accounts/email/register",
+        OnlineJson.encodeToString(EmailRegisterRequest.serializer(), EmailRegisterRequest(email, password, name, guestToken)),
+    )
+
+    override suspend fun loginEmail(email: String, password: String, guestToken: String?): AccountLogin = call(
+        AccountLogin.serializer(), null, HttpMethod.Post, "accounts/email/login",
+        OnlineJson.encodeToString(EmailLoginRequest.serializer(), EmailLoginRequest(email, password, guestToken)),
     )
 
     override suspend fun createTable(token: String, rules: TableRules): TableView = call(

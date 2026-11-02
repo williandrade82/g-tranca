@@ -1,9 +1,13 @@
 package com.gtranca.online.client
 
+import com.gtranca.online.contracts.AccountKind
+import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
+import com.gtranca.online.contracts.EmailLoginRequest
+import com.gtranca.online.contracts.EmailRegisterRequest
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.OnlineJson
@@ -63,6 +67,57 @@ class OnlineClientTest {
         seen!!.headers["X-Protocol-Version"] shouldBe ONLINE_PROTOCOL_VERSION.toString()
         seen!!.headers[HttpHeaders.Authorization] shouldBe null
         OnlineJson.decodeFromString(CreateGuestRequest.serializer(), body).name shouldBe "Ana"
+    }
+
+    // §18.1 (mudanca de 02/11/2026)
+    @Test
+    fun `registerEmail manda email, senha, nome e o token do convidado para accounts_email_register`() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        var body = ""
+        val c = client { req ->
+            seen = req
+            body = String(req.body.toByteArray())
+            respond(
+                OnlineJson.encodeToString(AccountLogin.serializer(), AccountLogin("E_1", "Ana", "tok2", kind = AccountKind.EMAIL)),
+                HttpStatusCode.Created, json,
+            )
+        }
+        val acc = c.registerEmail("ana@exemplo.com", "segredo123", "Ana", "guest-tok")
+        acc.kind shouldBe AccountKind.EMAIL
+        acc.token shouldBe "tok2"
+        seen!!.url.encodedPath shouldBe "/api/lobby/accounts/email/register"
+        seen!!.method shouldBe HttpMethod.Post
+        val sent = OnlineJson.decodeFromString(EmailRegisterRequest.serializer(), body)
+        sent.email shouldBe "ana@exemplo.com"
+        sent.password shouldBe "segredo123"
+        sent.name shouldBe "Ana"
+        sent.guestToken shouldBe "guest-tok"
+    }
+
+    // §18.1
+    @Test
+    fun `loginEmail manda email, senha e o token do convidado para accounts_email_login`() = runBlocking<Unit> {
+        var body = ""
+        val c = client { req ->
+            body = String(req.body.toByteArray())
+            respond(
+                OnlineJson.encodeToString(AccountLogin.serializer(), AccountLogin("E_1", "Ana", "tok3", kind = AccountKind.EMAIL)),
+                HttpStatusCode.OK, json,
+            )
+        }
+        c.loginEmail("ana@exemplo.com", "segredo123", null).id shouldBe "E_1"
+        val sent = OnlineJson.decodeFromString(EmailLoginRequest.serializer(), body)
+        sent.email shouldBe "ana@exemplo.com"
+        sent.password shouldBe "segredo123"
+        sent.guestToken shouldBe null
+    }
+
+    // §18.1: e-mail ja cadastrado chega com o codigo, para a tela mostrar o texto certo.
+    @Test
+    fun `registerEmail com e-mail ja cadastrado chega com EMAIL_JA_CADASTRADO`() = runBlocking<Unit> {
+        val c = client { error(HttpStatusCode.Conflict, ErrorCode.EMAIL_JA_CADASTRADO, "Esse e-mail já tem uma conta.") }
+        val e = shouldThrow<OnlineException> { c.registerEmail("ana@exemplo.com", "segredo123", null, null) }
+        e.code shouldBe ErrorCode.EMAIL_JA_CADASTRADO
     }
 
     // §18.2 so o aplicativo oficial
