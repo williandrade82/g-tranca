@@ -148,10 +148,14 @@ fun OnlineException.toEconomyProblem(): OnlineProblem = when (kind) {
 /**
  * Traduz a falha de "Trazer minha carteira" (§18.6, modal "Trazer carteira local") para o problema que o modal
  * mostra. Separado de [toEconomyProblem] porque ele reaproveita códigos com texto de outra tela: `REQUISICAO_INVALIDA`
- * ali vira "Não foi possível completar esta compra" (loja), que não faz sentido aqui e nem deveria ser retentável (o
- * app já filtra o inventário pelo catálogo que o servidor aceita antes de abrir o modal, então esse código só pode
- * vir de um descompasso de versão); `CONTA_NAO_ELEGIVEL` também não deveria ocorrer (o botão só aparece para conta).
- * Os dois caem no mesmo [OnlineProblem.UNEXPECTED] genérico, honesto sobre não saber o motivo.
+ * ali vira "Não foi possível completar esta compra" (loja), que não faz sentido aqui.
+ *
+ * O app nunca filtra o inventário local antes de montar o pedido (de propósito, ver `onMigrateTap`): quem recusa um
+ * booster que o servidor ainda não conhece (descompasso de versão) é o `economy-service`, rejeitando a requisição
+ * INTEIRA com `REQUISICAO_INVALIDA` (`EconomyStore.migrateLocalWallet`, commit d67ce11) — nada migra, o jogador só
+ * consegue de novo depois de o servidor (ou o app) atualizar. `CONTA_NAO_ELEGIVEL` também não deveria ocorrer aqui
+ * (o botão só aparece para conta). Os dois caem no mesmo [OnlineProblem.UNEXPECTED] genérico, honesto sobre não saber
+ * o motivo — "Tentar de novo" continua certo, só que só funciona depois daquela atualização.
  */
 fun OnlineException.toMigrateProblem(): OnlineProblem = when (kind) {
     OnlineErrorKind.NETWORK -> OnlineProblem.NETWORK
