@@ -176,6 +176,10 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
      * nem erro. O saldo e o inventário **locais** não são alterados aqui (o aparelho é quem decide isso, não o
      * servidor). O servidor não tem autoridade sobre o save local: confia inteiramente no que a requisição manda,
      * só com limites defensivos contra overflow (§18.6 não pede teto de produto).
+     *
+     * Um id de booster fora do catálogo é **recusado** (não silenciosamente ignorado como em [debitBoosters]): aqui
+     * a operação é de uma vez só e §18.6 promete que "o inventário migra junto" — perder um booster para sempre por
+     * descompasso de versão entre app e servidor seria pior que o jogador tentar de novo depois de atualizar.
      */
     fun migrateLocalWallet(accountId: String, coins: Long, inventory: Map<String, Int>): EconomyState {
         if (kindOf(accountId) == "CONVIDADO") {
@@ -185,14 +189,15 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
         if (inventory.values.any { it < 0 || it > MAX_MIGRATED_BOOSTER_QTY }) {
             throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Inventário inválido.")
         }
-        ensureAccount(accountId) // a conta normalmente ja existe (criada no login), mas nunca falha por isso aqui
         val catalog = BoosterCatalog.DEFAULT.map { it.id }.toSet()
+        if (inventory.keys.any { it !in catalog }) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Booster inválido.")
+        ensureAccount(accountId) // a conta normalmente ja existe (criada no login), mas nunca falha por isso aqui
         return tx { c ->
             lockWallet(c, accountId) // trava a carteira: serializa tentativas concorrentes da MESMA conta
             val key = migrationKey(accountId)
             if (alreadyApplied(c, accountId, key)) return@tx read(c, accountId)
             apply(c, accountId, "MIGRACAO_CARTEIRA_LOCAL", key, coins = coins)
-            inventory.filterKeys { it in catalog }.filterValues { it > 0 }.forEach { (id, qty) ->
+            inventory.filterValues { it > 0 }.forEach { (id, qty) ->
                 apply(c, accountId, "MIGRACAO_CARTEIRA_LOCAL", "$key-$id", boosterId = id, quantity = qty)
             }
             read(c, accountId)

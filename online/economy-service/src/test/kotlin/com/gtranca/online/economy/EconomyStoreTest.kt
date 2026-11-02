@@ -128,13 +128,20 @@ class EconomyStoreTest {
     fun `18_6 migra o saldo e cada booster informado, somando ao que ja existia na conta`() {
         val before = store.ensureAccount("E_a")
         before.migratedLocal shouldBe false
-        val after = store.migrateLocalWallet("E_a", 500, mapOf("b1" to 3, "b2" to 0, "x9" to 10))
+        val after = store.migrateLocalWallet("E_a", 500, mapOf("b1" to 3, "b2" to 0))
         after.balance shouldBe before.balance + 500
         after.inventory["b1"] shouldBe before.inventory.getValue("b1") + 3
         after.inventory["b2"] shouldBe before.inventory["b2"] // quantidade 0 no pedido: nao soma nada
-        after.inventory.containsKey("x9") shouldBe false // fora do catalogo: nunca confia, ignora
         after.migratedLocal shouldBe true
         store.state("E_a") shouldBe after
+    }
+
+    @Test
+    fun `18_6 booster fora do catalogo e recusado (nunca perdido silenciosamente numa operacao de uma vez so)`() {
+        val before = store.ensureAccount("E_x")
+        shouldThrow<EconomyException> { store.migrateLocalWallet("E_x", 500, mapOf("x9" to 10)) }.code shouldBe
+            EconomyException.Code.REQUISICAO_INVALIDA
+        store.state("E_x") shouldBe before // nada migrou, nem o saldo: a tentativa inteira foi recusada
     }
 
     @Test
