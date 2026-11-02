@@ -832,7 +832,8 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - O operador pode **revisar** migrações e ajustar saldos pela interface de gerenciamento (§18.7).
 
 ### **18.7. Gerenciamento (operação)**
-- Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** (login Google) e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
+- Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
+- **Entra-se com e-mail e senha** (mesmo mecanismo do §18.1, aplicado à equipe do console: hash nunca em texto puro, sem recuperação pela própria pessoa — a redefinição é feita por quem já é administrador). *Login Google fica no backlog, como no app (§18.1).* Cada membro da equipe é cadastrado pelo administrador (e-mail, senha inicial e papel), não há autocadastro.
 - Toda ação do operador é **registrada** (quem, quando, o quê e por quê) e o registro **não se altera**.
 
 ### **18.8. Versões**

@@ -1,9 +1,10 @@
 # Telas do console web de gerenciamento
 
-Interface **separada do app Android** (ver [telas-app.md](telas-app.md)), em React + TypeScript, para operar o jogo online (§18.7). Papéis: **leitor** (só consulta), **operador** (ações do dia a dia, sempre com motivo) e **administrador** (tudo). Acesso por login Google, só com e-mail na lista permitida. Em pt-BR, funciona em notebook, com teclado e contraste adequados.
+Interface **separada do app Android** (ver [telas-app.md](telas-app.md)), em React + TypeScript, para operar o jogo online (§18.7). Papéis: **leitor** (só consulta), **operador** (ações do dia a dia, sempre com motivo) e **administrador** (tudo). Acesso por **e-mail e senha** (mesmo mecanismo do login do app, §18.1; login Google fica no backlog), só com e-mail na lista permitida, cadastrada por um administrador. Em pt-BR, funciona em notebook, com teclado e contraste adequados.
 
 | Tela | Conteúdo | Quem age |
 |---|---|---|
+| **Entrar** | e-mail e senha; erro sem detalhar se o e-mail existe | qualquer membro da equipe |
 | **Painel** | jogadores online, mesas ativas, partidas por hora, saúde de cada serviço (verde/amarelo/vermelho) e links para os painéis de métricas e logs | leitor+ |
 | **Contas** | busca por nome ou e-mail; ficha (nome, métodos de login, datas, carteira, inventário, mesas recentes); **bloquear/desbloquear**, **encerrar sessões**; exportar/apagar dados (LGPD) | leitor vê; operador bloqueia; administrador apaga |
 | **Mesas** | lista (id, anfitrião, estado, modo, aposta, critérios); detalhe com assentos; **encerrar mesa travada** (com motivo) | leitor vê; operador encerra |
