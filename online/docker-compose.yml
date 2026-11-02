@@ -1,0 +1,121 @@
+# Ambiente de desenvolvimento local, sem Kubernetes.
+# Mesmos Dockerfiles do cluster (online/<servico>/Dockerfile); build a partir da raiz do repositorio
+# (:core-engine e :ai entram so leitura, igual ao build de imagem documentado em deploy/README.md).
+#
+# Uso (a partir desta pasta, online/):
+#   cp .env.example .env        # uma vez; edite os segredos
+#   docker compose up --build
+#
+# Sem Traefik, Helm nem NetworkPolicy: isso continua reservado para a homologacao em Kubernetes
+# (ver deploy/README.md). Os servicos aqui se enxergam pelo nome (rede padrao do Compose) e ficam
+# expostos em portas distintas no host, uma por servico.
+
+name: gtranca-dev
+
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gtranca}
+      POSTGRES_DB: ${POSTGRES_DB:-gtranca}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ${GTRANCA_STORAGE:-C:/Projetos/g-tranca-storage}/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-gtranca}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  lobby-service:
+    build:
+      context: ..
+      dockerfile: online/lobby-service/Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gtranca}
+      DB_USER: ${POSTGRES_USER:-gtranca}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
+      GAME_SERVICE_URL: http://game-service:8080
+      ECONOMY_URL: http://economy-service:8080
+      TRUST_FORWARDED_FOR: "false"
+      RATE_LIMIT_PER_MINUTE: "120"
+      GUEST_CREATION_PER_MINUTE: "10"
+      TABLE_OPEN_TTL_MINUTES: "30"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      LOGIN_ATTEMPT_LIMIT: "5"
+      LOGIN_LOCKOUT_MINUTES: "15"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  game-service:
+    build:
+      context: ..
+      dockerfile: online/game-service/Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      PORT: "8080"
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
+      LOBBY_URL: http://lobby-service:8080
+      ECONOMY_URL: http://economy-service:8080
+      TRUST_FORWARDED_FOR: "false"
+      BOT_DELAY_MS: "1200"
+      ROUND_PAUSE_MS: "6000"
+      MAX_MATCHES: "50"
+      WS_MESSAGES_PER_SECOND: "10"
+      WS_BURST: "20"
+      JAVA_OPTS: "-XX:MaxRAMPercentage=65"
+    depends_on:
+      - lobby-service
+
+  economy-service:
+    build:
+      context: ..
+      dockerfile: online/economy-service/Dockerfile
+    ports:
+      - "8083:8080"
+    environment:
+      PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gtranca}
+      DB_USER: ${POSTGRES_USER:-gtranca}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
+      LOBBY_URL: http://lobby-service:8080
+      JAVA_OPTS: "-XX:MaxRAMPercentage=65"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  admin-api:
+    build:
+      context: ..
+      dockerfile: online/admin-api/Dockerfile
+    ports:
+      - "8084:8080"
+    environment:
+      PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gtranca}
+      DB_USER: ${POSTGRES_USER:-gtranca}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      TRUST_FORWARDED_FOR: "false"
+      RATE_LIMIT_PER_MINUTE: "60"
+      LOGIN_ATTEMPT_LIMIT: "5"
+      LOGIN_LOCKOUT_MINUTES: "15"
+      ADMIN_PASSWORD_COST: "12"
+      ADMIN_SESSION_IDLE_MINUTES: "30"
+      ADMIN_SESSION_MAX_HOURS: "8"
+      ADMIN_SEED_EMAIL: ${ADMIN_SEED_EMAIL:-}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
