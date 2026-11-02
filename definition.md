@@ -759,7 +759,10 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 
 ### **18.1. Servidor e conta**
 - O jogador informa o **servidor online** (IP ou nome) num **campo temporário do Perfil**, gravado **só no aparelho**. Sem servidor informado, ou sem conta entrada, as telas online mostram o que falta e o resto do app segue normal.
-- **Conta:** entra-se com o **Google** (o servidor valida a identidade; nenhuma senha é guardada). Uma conta tem **nome** e **foto** opcional de perfil, e pode, no futuro, ganhar **e-mail e senha** como outro jeito de entrar **na mesma conta**.
+- **Conta: entra-se com e-mail e senha** (mudança de 02/11/2026). O servidor **nunca guarda a senha em texto puro**, só o hash. *Login com Google fica no backlog*: o servidor já sabe verificar o ID token, mas o app não tem a tela; revisar depois.
+  - **Cadastro:** e-mail (único no servidor; **sem confirmação por e-mail** nesta fase) e senha (**mínimo de 6 caracteres**, sem outra exigência — baixa complexidade por ora). Uma conta tem **nome** e **foto** opcional de perfil (sem foto própria nesta fase, por não haver Google).
+  - **Esqueci a senha:** **sem recuperação pelo próprio jogador** nesta fase (perder a senha é perder a conta online — a carteira e o inventário **do aparelho** não são afetados). O suporte pode gerar uma **senha temporária nova** por uma rota interna (sem tela própria, até o console de gerenciamento existir, §18.7) e repassá-la ao jogador por fora.
+  - **Força bruta:** limite de tentativas de login erradas por e-mail, além do limite de taxa já existente por IP/token (§18.2).
 - Quem não tem conta, ou não quer entrar, joga offline e por perto como sempre.
 
 ### **18.2. Mesa online**
@@ -820,7 +823,7 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - Valem as mesmas regras de §14.6 (saldo inicial, ganho diário, aposta, rateio e prêmio), §17.5 (presente diário) e §17.10 (loja e suas ofertas); o servidor as aplica e **registra cada lançamento** (ninguém altera o saldo sem registro).
 - Operações são **idempotentes**: repetir uma compra ou uma liquidação por falha de rede não debita nem credita duas vezes. O saldo **nunca fica negativo**.
 - **Convidado (30/10/2026):** antes do login Google, o **convidado** do servidor (§18.1) também tem **carteira e inventário online**, criados junto com ele, com o saldo inicial de §14.6 (1.000 moedas) e a quantidade inicial de cada booster (§17.1), e vale tudo o que vale para a conta (apostas, ganho diário, presente, loja).
-- **Do convidado para a conta:** ao entrar com o Google pela primeira vez **no mesmo aparelho**, a carteira e o inventário do convidado **passam para a conta** se ela **ainda não tem** carteira online; se a conta já tem, a do convidado fica com ele e deixa de ser usada. *(provisório, revisar com produto: evita juntar saldos iniciais de vários convidados numa conta)*
+- **Do convidado para a conta:** ao entrar pela primeira vez **no mesmo aparelho** (por qualquer método de login), a carteira e o inventário do convidado **passam para a conta** se ela **ainda não tem** carteira online; se a conta já tem, a do convidado fica com ele e deixa de ser usada. *(provisório, revisar com produto: evita juntar saldos iniciais de vários convidados numa conta)*
 - Cada reinstalação do app sem login cria um convidado novo com saldo inicial: risco aceito até o login Google (o limite de criação de convidados por endereço continua valendo).
 
 ### **18.6. Migração da carteira local**
