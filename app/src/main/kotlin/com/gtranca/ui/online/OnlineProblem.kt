@@ -48,6 +48,12 @@ enum class OnlineProblem {
 
     /** A pontuação-alvo não é um inteiro positivo dentro do limite. */
     INVALID_TARGET,
+
+    /** §18.1 (mudança de 02/11/2026): esse e-mail já tem uma conta (cadastro por e-mail e senha). */
+    EMAIL_ALREADY_REGISTERED,
+
+    /** §18.1: muitas tentativas erradas de login com o mesmo e-mail; aguarde antes de tentar de novo. */
+    LOGIN_LOCKED,
     UNEXPECTED,
 }
 
@@ -73,6 +79,8 @@ fun OnlineException.toProblem(): OnlineProblem = when (kind) {
         ErrorCode.VERSAO_INCOMPATIVEL -> OnlineProblem.UPDATE_APP
         ErrorCode.APP_NAO_RECONHECIDO -> OnlineProblem.APP_NOT_RECOGNIZED
         ErrorCode.LOGIN_INDISPONIVEL -> OnlineProblem.MAINTENANCE
+        ErrorCode.EMAIL_JA_CADASTRADO -> OnlineProblem.EMAIL_ALREADY_REGISTERED
+        ErrorCode.LOGIN_BLOQUEADO -> OnlineProblem.LOGIN_LOCKED
         ErrorCode.ASSENTO_ABANDONADO, null -> OnlineProblem.UNEXPECTED
     }
 }

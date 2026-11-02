@@ -95,6 +95,8 @@ fun OnlineProblem.textRes(): Int = when (this) {
     OnlineProblem.APP_NOT_RECOGNIZED -> R.string.online_problem_app_not_recognized
     OnlineProblem.INVALID_ID -> R.string.online_problem_invalid_id
     OnlineProblem.INVALID_TARGET -> R.string.online_problem_invalid_target
+    OnlineProblem.EMAIL_ALREADY_REGISTERED -> R.string.online_problem_email_already_registered
+    OnlineProblem.LOGIN_LOCKED -> R.string.online_problem_login_locked
     OnlineProblem.WALLET_NOT_YOURS -> R.string.online_problem_wallet_not_yours
     OnlineProblem.SHOP_INVALID_REQUEST -> R.string.online_problem_shop_invalid
     OnlineProblem.UNEXPECTED -> R.string.online_problem_unexpected

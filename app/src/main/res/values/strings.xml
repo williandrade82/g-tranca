@@ -871,6 +871,8 @@
     <string name="online_problem_insufficient_balance">Saldo menor que a aposta da mesa.</string>
     <string name="online_problem_invalid_id">O id tem 6 letras e números (sem 0, O, 1, I e L).</string>
     <string name="online_problem_invalid_target">Informe uma pontuação-alvo inteira e positiva.</string>
+    <string name="online_problem_email_already_registered">Esse e-mail já tem uma conta.</string>
+    <string name="online_problem_login_locked">Muitas tentativas erradas. Tente de novo em alguns minutos.</string>
     <string name="online_problem_unexpected">Algo deu errado. Tente de novo.</string>
 
     <string name="online_create_title">Criar mesa online</string>
