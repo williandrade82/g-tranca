@@ -23,6 +23,7 @@ include(":contracts")
 include(":game-service")
 include(":lobby-service")
 include(":economy-service")
+include(":admin-api")
 include(":probe")
 
 // Motor e robos do app: usados SOMENTE LEITURA, por caminho (nenhum arquivo do app e alterado).
