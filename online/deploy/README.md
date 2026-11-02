@@ -75,6 +75,38 @@ kubectl --context docker-desktop apply -f deploy/infra/networkpolicy-lobby-egres
 O economy-service tambem ganhou uma rota nova nesta etapa (`POST /internal/economy/accounts/{accountId}/adopt`,
 migracao `V3__conta_google.sql`): implante lobby-service **e** economy-service juntos, na mesma tag.
 
+### Login por e-mail e senha (§18.1, mudanca de 02/11/2026; tag `e80cc18`)
+No lugar do Google por ora (sem tela no app para o Google ainda): `POST /api/lobby/accounts/email/register` e
+`POST /api/lobby/accounts/email/login` (carteira adotada do convidado do aparelho, igual ao Google, `walletFromGuest`).
+Rota interna (segredo servico a servico, **nao sai pelo ingress**) `POST /internal/lobby/accounts/reset-password`
+`{email}` gera uma senha temporaria nova; quem chama repassa ao jogador por fora.
+
+**Implante o economy-service antes ou junto do lobby-service**: a migracao `V4__conta_email.sql` (libera
+`tipo = 'EMAIL'` no CHECK da tabela `conta`) precisa estar no ar antes do primeiro cadastro por e-mail, senao a
+adocao da carteira bate no CHECK do Postgres e responde `LOGIN_INDISPONIVEL` (503) — a conta ja fica criada no lobby,
+so sem carteira, ate o economy subir (nao e perda de dados). A migracao do lobby e `V3__contas_email.sql`.
+
+Variaveis novas no lobby-service, opcionais (`values.yaml`, nao Secret): `LOGIN_ATTEMPT_LIMIT` (padrao 5) e
+`LOGIN_LOCKOUT_MINUTES` (padrao 15), tentativas erradas seguidas pelo mesmo e-mail.
+
+**O lobby-service precisa continuar com `replicaCount: 1`** (ver `docs/seguranca-pendencias.md`, achado de
+02/11/2026): o limitador de tentativas de login e o cache de contas de e-mail vivem em memoria, por pod; mais de
+uma replica quebra a consistencia entre pods (conta cadastrada ou senha redefinida num pod fica desconhecida nos
+demais) e o limite de forca bruta nao soma entre eles. Nao aumente `replicaCount` do lobby-service sem resolver
+isso antes (mover para Postgres/Redis, fora do escopo combinado agora).
+
+Nenhuma NetworkPolicy nova: as rotas sao HTTP dentro dos servicos ja liberados em `infra/networkpolicies.yaml`.
+
+Implantado em 02/11/2026 na tag `e80cc18` (economy-service e lobby-service; `game-service` ficou na tag anterior
+`49d7282` — o codigo dele nao mudou nesta etapa e o `ONLINE_PROTOCOL_VERSION` continua 4; as mudancas nos contratos
+`AccountKind`/`ErrorCode` sao so valores novos no fim do enum, nunca lidos pelo game-service). Conferido: rollout
+ok nos dois (`economy-service` revisao 8, `lobby-service` revisao 18), 0 restarts, logs sem erro, migracoes `V4`
+(economy) e `V3` (lobby) aplicadas. Teste funcional pelo ingress (`curl` com `X-Protocol-Version: 4` e a assinatura
+do app): cadastro por e-mail -> `201`; cadastro repetido -> `409 EMAIL_JA_CADASTRADO`; login com a senha certa ->
+`200`; login com a senha errada -> `401 NAO_AUTENTICADO`; `POST /internal/lobby/accounts/reset-password` pelo
+ingress -> `404` (fora do ingress, como esperado). Confirmado no Postgres: a conta criada ganhou `tipo = 'EMAIL'`
+na tabela `conta` do economy (o caminho que bateria no CHECK antes da migracao V4).
+
 ## game-service: partida so com robos (etapa 1.3a)
 
 `MatchRunner` joga um jogo completo (todas as partidas ate a pontuacao-alvo, §11-§13) com robos do `:ai` em todos os assentos: `legalActions` -> robo decide com o `PlayerView` -> `apply`, igual ao `:sim`. Mesma semente = mesmo jogo; as sementes por jogo/assento sao as do `:sim`, entao os resultados sao identicos (200 jogos, semente 42, facil: 107x93 individual e 97x103 duplas nos dois). Sem boosters, aposta nem economia. Dificil roda sem teto de tempo (reproduzivel) e e lento.
