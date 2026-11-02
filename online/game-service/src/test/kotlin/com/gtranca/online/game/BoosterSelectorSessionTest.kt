@@ -4,6 +4,8 @@ import com.gtranca.engine.Action
 import com.gtranca.online.contracts.AbandonReason
 import com.gtranca.online.contracts.BetPayout
 import com.gtranca.online.contracts.BoosterConfirmFailed
+import com.gtranca.online.contracts.BotLevel
+import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.BoosterPrompt
 import com.gtranca.online.contracts.BoostersConfirmed
 import com.gtranca.online.contracts.CreateMatchRequest
@@ -11,6 +13,7 @@ import com.gtranca.online.contracts.PlayAction
 import com.gtranca.online.contracts.RejectReason
 import com.gtranca.online.contracts.Rejected
 import com.gtranca.online.contracts.SeatChange
+import com.gtranca.online.contracts.SeatSpec
 import com.gtranca.online.contracts.SeatUpdate
 import com.gtranca.online.contracts.SeatsChanged
 import com.gtranca.online.contracts.ServerMessage
@@ -463,6 +466,56 @@ class BoosterSelectorSessionTest {
         clock.advance(60_000)
         withTimeout(5_000) { while (session.inspect().abandonments.isEmpty()) delay(5) }
         session.inspect().abandonments.single().reason shouldBe AbandonReason.TEMPO
+        session.shutdown()
+        job.cancel()
+    }
+
+    @Test
+    fun `17_3 18_4 desistir sem confirmar os boosters nunca debita (1x1 contra robo)`() = runBlocking {
+        val eco = FakeBoosterEconomy()
+        val clock = FakeClock()
+        val seats = listOf(SeatSpec.Human("ga", "Ana"), SeatSpec.Robot(BotProfile.JOVEM, BotLevel.FACIL))
+        val session = MatchSession(
+            "ABC234", rulesOf(TableMode.INDIVIDUAL), seats, 42, FAST, clock.now, clock.wall,
+            economy = eco, boosterDeadlineMs = 30_000,
+        )
+        val job = CoroutineScope(Dispatchers.Default).launch { session.run() }
+        val a = TestPlayer(session, "ga")
+        a.attach()
+        a.drain()
+        a.selectBoosters(listOf("b1"), final = false) // rascunho; nunca toca em Seguir
+        session.inspect()
+        a.resign() // §13.1/§18.4: sem outro humano, o jogo termina na hora (ela perde)
+        session.inspect()
+        clock.advance(60_000) // bem alem do prazo de 30 s do seletor
+        session.inspect()
+        eco.calls.shouldBeEmpty() // nunca debitou por um booster que ela nunca chegou a usar
+        session.shutdown()
+        job.cancel()
+    }
+
+    @Test
+    fun `17_3 18_4 o oponente desistir enquanto voce ainda escolhe os boosters tambem nunca debita`() = runBlocking {
+        val eco = FakeBoosterEconomy()
+        val clock = FakeClock()
+        val session = MatchSession(
+            "ABC234", rulesOf(TableMode.INDIVIDUAL), humans2(), 42, FAST, clock.now, clock.wall,
+            economy = eco, boosterDeadlineMs = 30_000,
+        )
+        val job = CoroutineScope(Dispatchers.Default).launch { session.run() }
+        val a = TestPlayer(session, "ga")
+        val b = TestPlayer(session, "gb")
+        a.attach()
+        b.attach()
+        a.drain()
+        b.drain()
+        a.selectBoosters(listOf("b1"), final = false) // "ga" ainda esta no seletor (rascunho, nunca confirma)
+        session.inspect()
+        b.resign() // 1x1 entre humanos (§13.1/§18.4): "ga" vence na hora, o jogo acaba por ela nao ter feito nada
+        session.inspect()
+        clock.advance(60_000) // o prazo do seletor de "ga" venceria aqui, se o jogo nao tivesse acabado
+        session.inspect()
+        eco.calls.shouldBeEmpty() // o fim do jogo impede qualquer debito novo, mesmo so no assento de quem ficou
         session.shutdown()
         job.cancel()
     }

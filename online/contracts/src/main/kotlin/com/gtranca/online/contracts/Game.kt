@@ -156,12 +156,22 @@ data class Resign(val seq: Long) : ClientMessage
  * catalogo, o `skillBoostersAllowed` da mesa (§17.9) e as reacoes (b3, ainda nao retransmitidas online).
  *
  * [final] `false` = **rascunho**: so GRAVA o que esta marcado na tela agora, sem debitar nada (a tela ainda esta
- * escolhendo); o app manda um a cada toque no seletor. `true` = **Seguir** (ou o auto-envio do app ao chegar aos
- * 30 s, §16.15): debita o rascunho mais recente do inventario online (§18.5); o que nao puder ser debitado fica de
- * fora (§17.3). O servidor tem o SEU PROPRIO prazo de 30 s (contado de quando o [BoosterPrompt] foi enviado); se
- * nenhum [SelectBoosters] com [final] = `true` chegar a tempo, ele mesmo confirma com o ULTIMO rascunho recebido (ou
- * sem boosters, se nenhum chegou) — nunca descarta o que a tela tinha selecionado por uma corrida de rede (§17.3
- * "vale o que estiver selecionado na tela"). Ignorado (o rascunho so e atualizado) se o assento ja confirmou.
+ * escolhendo); o app manda um **assim que o seletor abre** (com a marcacao pre-preenchida, §17.2) e a cada toque
+ * depois — sem isso, quem nao toca em nada antes do prazo confirma SEM boosters, mesmo que a tela mostrasse algo
+ * marcado. `true` = **Seguir** (ou o auto-envio do app ao chegar aos 30 s, §16.15): tenta debitar do inventario
+ * online (§18.5); o que nao puder ser debitado fica de fora (§17.3).
+ *
+ * **A selecao TRAVA na primeira tentativa com `final = true`** (do jogador ou do PRAZO DO SERVIDOR, o que chegar
+ * primeiro): depois disso, [boosters] deste tipo deixa de importar — um [SelectBoosters] seguinte so faz o servidor
+ * TENTAR DE NOVO a mesma lista ja travada (nunca troca por uma lista diferente, mesmo que a tela mude). Isso evita
+ * debitar dois boosters diferentes se a resposta da 1a tentativa se perder sem o debito ter de fato falhado. A UI
+ * deve desativar a edicao do seletor depois do primeiro Seguir; "Tentar de novo" so reenvia `final = true`.
+ *
+ * O servidor tem o SEU PROPRIO prazo de 30 s (contado de quando o [BoosterPrompt] foi enviado); se nenhum
+ * [SelectBoosters] com [final] = `true` chegar a tempo, ele mesmo confirma com o ULTIMO rascunho recebido (ou sem
+ * boosters, se nenhum chegou) — nunca descarta o que a tela tinha selecionado por uma corrida de rede (§17.3 "vale
+ * o que estiver selecionado na tela"). Ignorado se o assento ja confirmou, ou se o jogo ja acabou (§18.4: abandonar
+ * sem ter confirmado nunca debita por isso).
  */
 @Serializable
 @SerialName("selectBoosters")
@@ -359,8 +369,14 @@ data class BoosterPrompt(val skillAllowed: Boolean, val deadlineMs: Long) : Serv
 /**
  * §17.3/§18.3: os boosters confirmados deste assento no jogo (ja debitados do inventario online, §18.5); valem o jogo
  * todo e nunca mudam depois. Chega apos um [SelectBoosters] aceito e, de novo, a cada reconexao de um assento ja
- * confirmado (para repor o estado do aparelho sem reconsultar a economia). Vem sempre seguida do [SeatUpdate] que
- * revela a mao (nunca antes de confirmar, §17.3 "sem ver a distribuicao das cartas").
+ * confirmado (para repor o estado do aparelho sem reconsultar a economia).
+ *
+ * §17.3/§17.4: vem seguida de **uma ou mais** [SeatUpdate], NUNCA antes desta mensagem ("sem ver a distribuicao das
+ * cartas"): a fila de vistas que ficaram esperando enquanto o assento ainda escolhia os boosters (uma por jogada
+ * que aconteceu nesse meio-tempo, podendo ser so uma — a de quando o [BoosterPrompt] apareceu, se nada mais mudou),
+ * em ordem, seguida de uma vista fresca do estado atual (a unica com o relogio da vez, §18.4, reiniciado). A vista
+ * mais antiga da fila pode ter a MESMA `version` da mais recente, se nada mudou nesse meio-tempo; nunca uma `version`
+ * menor que a anterior. Passe a lista inteira pelo `SnapshotPacer` de sempre, na ordem recebida.
  */
 @Serializable
 @SerialName("boostersConfirmed")

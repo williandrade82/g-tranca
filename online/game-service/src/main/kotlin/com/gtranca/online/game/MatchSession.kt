@@ -433,7 +433,12 @@ class MatchSession(
             ),
         )
         // §17.3 "sem ver a distribuicao das cartas": a mao (SeatUpdate) so vai depois de confirmar os boosters.
-        if (isBoosterConfirmed(seat)) {
+        // O jogo ja acabado (§18.4, a sessao fica retida para o placar) nunca mostra o seletor, confirmado ou nao:
+        // nada mais seria debitado de qualquer forma (beginBoosterConfirm recusa), so mostra o resultado direto.
+        if (stage == TableStage.GAME_OVER) {
+            if (economy != null && isBoosterConfirmed(seat)) send(seat, link, BoostersConfirmed(tableBoosters.of(seat).boosters))
+            send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
+        } else if (isBoosterConfirmed(seat)) {
             if (economy != null) send(seat, link, BoostersConfirmed(tableBoosters.of(seat).boosters))
             send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
         } else {
@@ -549,6 +554,11 @@ class MatchSession(
 
     /** Debita [sanitized] (ou confirma direto, se vazio) de forma assincrona; nunca bloqueia o ator. */
     private fun beginBoosterConfirm(seat: Int, sanitized: List<String>) {
+        // §17.3: nunca comeca um debito NOVO depois do jogo acabar (o assento abandonou ou o jogo terminou por
+        // outro motivo enquanto este assento ainda escolhia os boosters). Um debito ja em andamento de uma
+        // confirmacao de verdade (Seguir antes do fim) continua e completa normalmente: desistir nao devolve o
+        // que ja foi debitado (§17.3), mas tambem nunca inicia uma cobranca nova para um jogo que ja acabou.
+        if (stage == TableStage.GAME_OVER || seat in forfeited) return
         if (sanitized.isEmpty()) {
             confirmBoosters(seat, emptyList())
             return
@@ -617,6 +627,12 @@ class MatchSession(
         val human = slots[seat] as? Slot.Human ?: return
         if (stage == TableStage.GAME_OVER) return
         recordAbandon(seat, human.guestId, reason)
+        // §17.3: quem abandona sem ter confirmado os boosters nunca e debitado por isso (nada foi escolhido de
+        // verdade); tambem evita tentativas do prazo nesse assento depois que ele ja saiu (ou virou robo).
+        if (!isBoosterConfirmed(seat)) {
+            boosterDeadlineAt[seat] = null
+            boosterCatchUp[seat] = mutableListOf()
+        }
         val link = links[seat]
         val text = if (reason == AbandonReason.TEMPO) {
             "O tempo da sua vez esgotou; você abandonou a mesa."
