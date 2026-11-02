@@ -3,6 +3,7 @@ package com.gtranca.ui.online
 import com.gtranca.data.OnlineGuest
 import com.gtranca.data.Settings
 import com.gtranca.data.SettingsRepository
+import com.gtranca.engine.BoosterCatalog
 import com.gtranca.engine.Coins
 import com.gtranca.engine.Shop
 import com.gtranca.engine.model.GameMode
@@ -322,10 +323,17 @@ class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
         return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
     }
 
-    /** §18.6: mesma recusa (convidado) e a mesma idempotencia por chave fixa do servidor real. */
+    /**
+     * §18.6: mesma recusa (convidado) e a mesma idempotencia por chave fixa do servidor real. Também recusa a
+     * requisição inteira (nada muda) se algum id não estiver em [BoosterCatalog.DEFAULT] — o mesmo catálogo fixo
+     * que o economy-service real aceita (`EconomyStore.migrateLocalWallet`, commit d67ce11): um descompasso de
+     * versão nunca perde um booster silenciosamente, o jogador tenta de novo depois de atualizar.
+     */
     override suspend fun migrateLocalWallet(token: String, accountId: String, coins: Long, inventory: Map<String, Int>): EconomyStateDto {
         enter()
         if (!(accountId.startsWith("G_") || accountId.startsWith("E_"))) error(EconomyErrorCode.CONTA_NAO_ELEGIVEL, 403)
+        val catalog = BoosterCatalog.DEFAULT.map { it.id }.toSet()
+        if (inventory.keys.any { it !in catalog }) error(EconomyErrorCode.REQUISICAO_INVALIDA, 400)
         val a = account(accountId)
         val key = accountId to "migrar-carteira"
         if (key in appliedKeys) return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)

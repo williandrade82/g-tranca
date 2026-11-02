@@ -260,20 +260,27 @@ class OnlineViewModelsTest {
         vm.viewModelScope.cancel()
     }
 
-    // §18.6 um booster que o catálogo LOCAL conhece mas que não está em BoosterCatalog.DEFAULT (o mesmo catálogo
-    // fixo que o economy-service aceita) nunca entra no modal nem no pedido: senão o servidor recusaria com
-    // REQUISICAO_INVALIDA sem chance de "tentar de novo" dar certo.
+    // §18.6 um booster que o catálogo LOCAL conhece mas que o servidor ainda não (descompasso de versão) VAI no
+    // pedido — nunca é filtrado no aparelho, pois o servidor (EconomyStore.kt, commit d67ce11) recusa o pedido
+    // INTEIRO de propósito nesse caso, para nunca perder um booster silenciosamente numa operação de uma vez só; a
+    // conta continua sem migrar e o saldo online não muda, para o jogador poder tentar de novo depois de atualizar.
     @Test
-    fun `booster fora do catalogo do servidor nunca entra no modal`() = runTest(dispatcher) {
+    fun `booster fora do catalogo do servidor vai no pedido e o servidor recusa tudo`() = runTest(dispatcher) {
         val catalogDivergente = BoosterCatalog.DEFAULT + BoosterDef("novo-booster-so-local", "Novo", "x", 1, 5, 1, 3)
         val acc = signedInAccount()
         val wallet = FakeWallet(100)
         val inventory = FakeInventoryRepo(mapOf("novo-booster-so-local" to 2), catalog = catalogDivergente)
-        val vm = OnlineHomeViewModel(settings, pollMs = 3_000, economyFor = { FakeEconomy() }, wallet = wallet, inventory = inventory) { acc }
+        val economy = FakeEconomy(initialBalance = 50)
+        val vm = OnlineHomeViewModel(settings, pollMs = 3_000, economyFor = { economy }, wallet = wallet, inventory = inventory) { acc }
         runCurrent()
         vm.onMigrateTap()
         runCurrent()
-        vm.uiState.value.migrateDialog!!.items shouldBe emptyList()
+        vm.uiState.value.migrateDialog!!.items shouldBe listOf(MigrateWalletItem("novo-booster-so-local", "Novo", 2))
+        vm.onMigrateConfirm()
+        runCurrent()
+        vm.uiState.value.migrateDialog?.problem shouldBe OnlineProblem.UNEXPECTED
+        vm.uiState.value.migratedLocal shouldBe false
+        vm.uiState.value.balance shouldBe 50L // nada creditado: o pedido inteiro foi recusado
         vm.viewModelScope.cancel()
     }
 

@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.gtranca.data.InventoryRepository
 import com.gtranca.data.SettingsRepository
 import com.gtranca.data.WalletRepository
-import com.gtranca.engine.BoosterCatalog
 import com.gtranca.online.client.EconomyApi
 import com.gtranca.online.client.LobbyApi
 import com.gtranca.online.client.OnlineException
@@ -241,11 +240,12 @@ class OnlineHomeViewModel(
         viewModelScope.launch {
             val coins = w.wallet.first().balance
             val quantities = inv.inventory.first().quantities
-            // §18.6 o economy-service só aceita ids de BoosterCatalog.DEFAULT (o mesmo catálogo fixo do core-engine,
-            // nunca o `assets/boosters.json` local, que pode estar numa versão diferente): filtrar por ele aqui
-            // garante que o que o modal promete é sempre aceito, em vez de um REQUISICAO_INVALIDA sem saída.
+            // §18.6 manda TODO booster com quantidade > 0, sem filtrar pelo catálogo: o servidor (EconomyStore.kt,
+            // commit d67ce11) recusa o pedido inteiro se algum id não existir nele, de propósito — a migração é de
+            // uma vez só, e filtrar aqui repetiria o bug que aquele commit corrigiu (perder um booster para sempre
+            // num descompasso de versão, silenciosamente). O nome vem do catálogo local; sem ele, mostra o id.
             val items = quantities.filterValues { it > 0 }
-                .mapNotNull { (id, qty) -> BoosterCatalog.DEFAULT.firstOrNull { it.id == id }?.let { MigrateWalletItem(id, it.name, qty) } }
+                .map { (id, qty) -> MigrateWalletItem(id, inv.catalog.firstOrNull { it.id == id }?.name ?: id, qty) }
                 .sortedBy { it.name }
             _uiState.update { it.copy(migrateDialog = MigrateWalletUi(coins, items)) }
         }
