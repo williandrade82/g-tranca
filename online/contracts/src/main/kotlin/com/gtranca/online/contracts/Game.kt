@@ -377,6 +377,10 @@ data class BoosterPrompt(val skillAllowed: Boolean, val deadlineMs: Long) : Serv
  * em ordem, seguida de uma vista fresca do estado atual (a unica com o relogio da vez, §18.4, reiniciado). A vista
  * mais antiga da fila pode ter a MESMA `version` da mais recente, se nada mudou nesse meio-tempo; nunca uma `version`
  * menor que a anterior. Passe a lista inteira pelo `SnapshotPacer` de sempre, na ordem recebida.
+ *
+ * **Invariante (com a economia ligada):** o assento NUNCA recebe um [SeatUpdate] antes desta mensagem — nem ao
+ * conectar, nem ao reconectar, nem se o jogo acabar (§18.4) enquanto ele ainda escolhia (nesse caso [boosters] vem
+ * vazio: ninguem fica esperando o prazo de 30 s depois que o jogo ja terminou, e nada e debitado por isso).
  */
 @Serializable
 @SerialName("boostersConfirmed")

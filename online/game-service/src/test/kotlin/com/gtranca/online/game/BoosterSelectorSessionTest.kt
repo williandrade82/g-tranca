@@ -19,6 +19,7 @@ import com.gtranca.online.contracts.SeatsChanged
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.TableStage
 import com.gtranca.online.contracts.TempoDeJogada
 import com.gtranca.online.contracts.Welcome
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -495,7 +496,7 @@ class BoosterSelectorSessionTest {
     }
 
     @Test
-    fun `17_3 18_4 o oponente desistir enquanto voce ainda escolhe os boosters tambem nunca debita`() = runBlocking {
+    fun `17_3 18_4 o oponente desistir enquanto voce ainda escolhe os boosters resolve na hora, sem esperar o prazo`() = runBlocking {
         val eco = FakeBoosterEconomy()
         val clock = FakeClock()
         val session = MatchSession(
@@ -513,9 +514,24 @@ class BoosterSelectorSessionTest {
         session.inspect()
         b.resign() // 1x1 entre humanos (§13.1/§18.4): "ga" vence na hora, o jogo acaba por ela nao ter feito nada
         session.inspect()
-        clock.advance(60_000) // o prazo do seletor de "ga" venceria aqui, se o jogo nao tivesse acabado
+
+        // §17.3: "ga" resolve JA (BoostersConfirmed vazio + o fim de jogo), sem esperar nenhum prazo.
+        val resolved = a.drain()
+        resolved.filterIsInstance<BoostersConfirmed>().single().boosters shouldBe emptyList()
+        val seatUpdates = resolved.filterIsInstance<SeatUpdate>()
+        seatUpdates.isNotEmpty() shouldBe true
+        seatUpdates.last().view.stage shouldBe TableStage.GAME_OVER
+        eco.calls.shouldBeEmpty()
+
+        // Um Seguir atrasado (a tela ainda nao sabia que o jogo acabou) nao debita nem manda nada de novo.
+        a.selectBoosters(listOf("b1"))
         session.inspect()
-        eco.calls.shouldBeEmpty() // o fim do jogo impede qualquer debito novo, mesmo so no assento de quem ficou
+        a.drain().shouldBeEmpty()
+        eco.calls.shouldBeEmpty()
+
+        clock.advance(60_000) // o prazo do seletor venceria aqui, se o jogo nao tivesse acabado
+        session.inspect()
+        eco.calls.shouldBeEmpty()
         session.shutdown()
         job.cancel()
     }

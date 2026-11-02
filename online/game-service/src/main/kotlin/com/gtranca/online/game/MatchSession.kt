@@ -402,7 +402,12 @@ class MatchSession(
             is Cmd.BoosterResolved -> { boosterPending[cmd.seat] = false; confirmBoosters(cmd.seat, cmd.applied) }
             is Cmd.BoosterFailed -> {
                 boosterPending[cmd.seat] = false
-                links[cmd.seat]?.let { send(cmd.seat, it, BoosterConfirmFailed("Não foi possível confirmar os boosters agora. Tente de novo.")) }
+                // §17.3: o jogo acabou enquanto o debito estava em andamento - ninguem espera mais, resolve ja.
+                if (stage == TableStage.GAME_OVER) {
+                    confirmBoosters(cmd.seat, emptyList())
+                } else {
+                    links[cmd.seat]?.let { send(cmd.seat, it, BoosterConfirmFailed("Não foi possível confirmar os boosters agora. Tente de novo.")) }
+                }
             }
             Cmd.Shutdown -> finished = true
         }
@@ -433,11 +438,18 @@ class MatchSession(
             ),
         )
         // §17.3 "sem ver a distribuicao das cartas": a mao (SeatUpdate) so vai depois de confirmar os boosters.
-        // O jogo ja acabado (§18.4, a sessao fica retida para o placar) nunca mostra o seletor, confirmado ou nao:
-        // nada mais seria debitado de qualquer forma (beginBoosterConfirm recusa), so mostra o resultado direto.
+        // O jogo ja acabado (§18.4, a sessao fica retida para o placar) nunca mostra o seletor: `endGame` ja resolveu
+        // todo assento sem debito em andamento (confirma vazio); aqui so sobra um debito de um Seguir de verdade
+        // ainda em voo (resolve sozinho quando a economia responder) ou o raro caso de nunca ter sido resolvido.
         if (stage == TableStage.GAME_OVER) {
-            if (economy != null && isBoosterConfirmed(seat)) send(seat, link, BoostersConfirmed(tableBoosters.of(seat).boosters))
-            send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
+            when {
+                isBoosterConfirmed(seat) -> {
+                    if (economy != null) send(seat, link, BoostersConfirmed(tableBoosters.of(seat).boosters))
+                    send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
+                }
+                boosterPending[seat] -> Unit
+                else -> confirmBoosters(seat, emptyList()) // manda tudo: BoostersConfirmed + fila guardada + vista fresca
+            }
         } else if (isBoosterConfirmed(seat)) {
             if (economy != null) send(seat, link, BoostersConfirmed(tableBoosters.of(seat).boosters))
             send(seat, link, SeatUpdate(null, viewOf(seat, includeHistory = true)))
@@ -555,10 +567,15 @@ class MatchSession(
     /** Debita [sanitized] (ou confirma direto, se vazio) de forma assincrona; nunca bloqueia o ator. */
     private fun beginBoosterConfirm(seat: Int, sanitized: List<String>) {
         // §17.3: nunca comeca um debito NOVO depois do jogo acabar (o assento abandonou ou o jogo terminou por
-        // outro motivo enquanto este assento ainda escolhia os boosters). Um debito ja em andamento de uma
+        // outro motivo enquanto este assento ainda escolhia os boosters) - resolve ja, sem boosters, em vez de
+        // deixar quem chamou (ex.: um Seguir manual) sem resposta nenhuma. Um debito ja em andamento de uma
         // confirmacao de verdade (Seguir antes do fim) continua e completa normalmente: desistir nao devolve o
         // que ja foi debitado (§17.3), mas tambem nunca inicia uma cobranca nova para um jogo que ja acabou.
-        if (stage == TableStage.GAME_OVER || seat in forfeited) return
+        if (seat in forfeited) return
+        if (stage == TableStage.GAME_OVER) {
+            confirmBoosters(seat, emptyList())
+            return
+        }
         if (sanitized.isEmpty()) {
             confirmBoosters(seat, emptyList())
             return
@@ -708,6 +725,12 @@ class MatchSession(
             humanSeats = humanSeats,
         )
         end = e
+        // §17.3: ninguem fica esperando o seletor depois que o jogo acaba — nem o prazo do servidor, nem um debito
+        // novo; resolve ja, sem boosters, mandando BoostersConfirmed + o fim de jogo (quem tem um debito em
+        // andamento de um Seguir de verdade resolve normalmente quando a economia responder).
+        for (i in 0 until seatCount) {
+            if (slots[i] is Slot.Human && !isBoosterConfirmed(i) && !boosterPending[i]) confirmBoosters(i, emptyList())
+        }
         log.info("Jogo encerrado table={} reason={} elapsedMs={}", tableId, reason, e.elapsedMs)
         try {
             onEnded(e)
@@ -833,6 +856,12 @@ class MatchSession(
     private fun fireBoosterDeadline(seat: Int) {
         val at = boosterDeadlineAt[seat] ?: return
         if (boosterPending[seat] || isBoosterConfirmed(seat) || now() < at) return
+        // §17.3: o jogo ja acabou (ex.: o OUTRO lado abandonou enquanto este assento ainda escolhia) - nada a
+        // tentar, nem a avisar: resolve ja, sem o log de "esgotou as tentativas" (nao e uma falha de rede real).
+        if (stage == TableStage.GAME_OVER) {
+            confirmBoosters(seat, emptyList())
+            return
+        }
         // §17.3: uma vez que o prazo tenta confirmar, a selecao tambem trava (mesma regra do Seguir manual) - nunca
         // troca por um rascunho novo que chegue depois de uma tentativa (que pode ja ter debitado sem a resposta vir).
         val toTry = boosterFrozen[seat] ?: boosterDraft[seat]
