@@ -28,10 +28,13 @@ Thumbs.db
 
 # Claude Code: configurações locais do usuário
 .claude/settings.local.json
-apk-out/
 
-# APKs gerados para teste
-Tranca-Bots-*.apk
+# APKs gerados para teste (todos ficam em apks/, nunca na raiz)
+apks/
 
 # credenciais do Google Cloud (nunca no Git)
 docs/google-secrets/
+
+# Python
+__pycache__/
+*.pyc

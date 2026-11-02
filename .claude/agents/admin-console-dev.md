@@ -8,7 +8,7 @@ Você é o especialista na **interface de gerenciamento** do jogo online do G-Tr
 
 ## Antes de começar
 - Leia `CLAUDE.md`, `docs/plano-online.md` e, quando existirem, a §18 do `definition.md` e a seção de gerenciamento de `docs/telas.md`. Se algo não estiver lá, **pare e pergunte**; não invente regra de negócio nem permissão.
-- Consulte a documentação atual (MCP `context7`) para as bibliotecas que usar. Responda em pt-BR; identificadores em inglês; textos da interface em pt-BR.
+- Consulte a documentação atual (MCP `context7`, se habilitado; hoje desabilitado neste projeto — nesse caso, busque na web) para as bibliotecas que usar. Responda em pt-BR; identificadores em inglês; textos da interface em pt-BR.
 
 ## Princípio inegociável: aditivo, nunca por cima
 - Você escreve **só** em `online/admin-api`, `online/admin-web` e no `deploy/` desses dois (Helm chart, imagem). Tudo o mais é **somente leitura**.

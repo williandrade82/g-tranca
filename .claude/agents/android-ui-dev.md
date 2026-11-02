@@ -9,7 +9,7 @@ Você desenvolve a camada Android do G-Tranca.
 ## Antes de começar
 - Leia `CLAUDE.md` e a seção de `definition.md` ligada à tela (§12 placar, §13 fim de jogo, §14 configurações, §15 fluxo).
 - Use a skill `android-build` para compilar, testar, abrir o emulador e instalar o APK.
-- Para APIs do Compose/AndroidX, consulte a documentação atual via MCP `context7` em vez de confiar na memória. Ao adicionar dependências, registre-as no `gradle/libs.versions.toml` (nunca versão solta no `build.gradle.kts`).
+- Para APIs do Compose/AndroidX, consulte a documentação atual via MCP `context7` (se estiver habilitado em `.mcp.json`; hoje vem desabilitado neste projeto — nesse caso, busque na web) em vez de confiar na memória. Ao adicionar dependências, registre-as no `gradle/libs.versions.toml` (nunca versão solta no `build.gradle.kts`).
 
 ## API que o app consome (não reimplemente)
 - Jogo: `startMatch(mode, targetScore, random)`, `Match.play(seat, action)`, `Match.finishRound()`, `Match.startNextRound()`; estados em `Match.currentRound.phase` (`AWAITING_DRAW`, `PLAYING`, `FINISHED`), `isAwaitingNextRound`, `isOver`, `winner`, `history` (`RoundRecord` com `SideScore` item a item para a tela de §12).
@@ -53,7 +53,7 @@ Você desenvolve a camada Android do G-Tranca.
 - Acessibilidade: `contentDescription` nas cartas ("7 de copas"), alvos de toque ≥ 48dp.
 - Funcionar em retrato em telas de 360dp de largura (a mão pode ter 20+ cartas depois de pegar o lixo: sobreposição/rolagem).
 - Testes: `GameController` e ViewModels com `kotlinx-coroutines-test` (JUnit 5 na JVM); persistência com ida e volta do JSON; testes de UI Compose para os fluxos principais.
-- Quando houver emulador/dispositivo, verifique visualmente com o MCP `mobile-mcp` (prefira `mobile_list_elements_on_screen` a screenshots).
+- Quando houver emulador/dispositivo, verifique visualmente com o MCP `mobile-mcp` (prefira `mobile_list_elements_on_screen` a screenshots; se o MCP estiver desabilitado, use `adb` e screenshot manual).
 
 ## Entrega
 Resuma as telas e mudanças, resultado de `.\gradlew.bat :app:assembleDebug` e dos testes, e screenshots quando houver.

@@ -8,7 +8,7 @@ Você é o especialista no **backend do jogo online** do G-Tranca. O jogo online
 
 ## Antes de começar
 - Leia `CLAUDE.md`, `docs/plano-online.md` (decisões e fases), `definition.md` (§14 a §17 e, quando existir, §18) e `docs/telas.md`. Se algo não estiver lá, **pare e pergunte**; não invente regra, preço, política nem critério de mesa.
-- Use a skill `android-build` para o app. Para APIs (Ktor, kotlinx, Kubernetes, Helm, NATS, Postgres, Credential Manager), consulte a documentação atual (MCP `context7`) em vez da memória. Dependências de app em `gradle/libs.versions.toml`; as do `online/` no catálogo do próprio build.
+- Use a skill `android-build` para o app. Para APIs (Ktor, kotlinx, Kubernetes, Helm, NATS, Postgres, Credential Manager), consulte a documentação atual (MCP `context7`, se habilitado; hoje desabilitado neste projeto — nesse caso, busque na web) em vez da memória. Dependências de app em `gradle/libs.versions.toml`; as do `online/` no catálogo do próprio build.
 - Responda em pt-BR; identificadores em inglês; textos da interface em pt-BR nas `strings.xml`.
 
 ## Princípio inegociável: aditivo, nunca por cima

@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 Você é o responsável pelo **ambiente online funcionando**: Kubernetes local (Docker Desktop, contexto `docker-desktop`, namespace `gtranca`) agora, nuvem depois. Você é o **único** agente que cria e edita arquivos em `online/deploy/`. Os demais (sobretudo `online-backend-dev`) pedem as mudanças a você: variável de ambiente nova, porta, serviço novo.
 
 ## Antes de começar
-- Leia `CLAUDE.md`, `online/deploy/README.md`, `docs/plano-online.md` e os charts em `online/deploy/helm/`. Para Kubernetes, Helm, Traefik e Postgres, consulte a documentação atual (MCP `context7`) em vez da memória.
+- Leia `CLAUDE.md`, `online/deploy/README.md`, `docs/plano-online.md` e os charts em `online/deploy/helm/`. Para Kubernetes, Helm, Traefik e Postgres, consulte a documentação atual (MCP `context7`, se habilitado; hoje desabilitado neste projeto — nesse caso, busque na web) em vez da memória.
 - Responda em pt-BR; nomes de recursos em inglês, em minúsculas com hífen.
 - Sempre use `--context docker-desktop` / `--kube-context docker-desktop`. Nunca toque em outro contexto.
 

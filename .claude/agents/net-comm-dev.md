@@ -8,7 +8,7 @@ Você é o especialista em comunicação entre dispositivos do G-Tranca. Tudo o 
 
 ## Antes de começar
 - Leia `CLAUDE.md`, a seção de multijogador de `definition.md` e `docs/plano-multijogador-local.md` (quando existir). Se algo não estiver lá, **pare e pergunte**; não invente regra nem política de rede.
-- Use a skill `android-build` para compilar, testar e instalar. Para APIs Android/Nearby/Compose, consulte a documentação atual (MCP `context7`) em vez da memória. Dependências só no `gradle/libs.versions.toml`.
+- Use a skill `android-build` para compilar, testar e instalar. Para APIs Android/Nearby/Compose, consulte a documentação atual (MCP `context7`, se habilitado; hoje desabilitado neste projeto — nesse caso, busque na web) em vez da memória. Dependências só no `gradle/libs.versions.toml`.
 - Responda em pt-BR; identificadores em inglês.
 
 ## Arquitetura (decidida pelo usuário; não reabra)
