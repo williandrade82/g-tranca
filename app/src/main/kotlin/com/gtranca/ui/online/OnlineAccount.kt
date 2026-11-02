@@ -5,6 +5,7 @@ import com.gtranca.data.SettingsRepository
 import com.gtranca.online.client.LobbyApi
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.LobbyLimits
 import kotlinx.coroutines.flow.first
@@ -32,6 +33,15 @@ class OnlineAccount(
 
     /** Esquece o convidado guardado (ex.: "Sair"). */
     suspend fun forget() = mutex.withLock { settings.setOnlineGuest(null) }
+
+    /**
+     * Entra ou cria a conta por e-mail e senha (3.22, §18.1): troca o que estava guardado (convidado ou outra conta)
+     * pela identidade da conta — o [AccountLogin.token] passa a ser o usado em [guest]/[call]. A migração da carteira
+     * (§18.5) já aconteceu no servidor antes desta resposta; aqui só se grava o resultado.
+     */
+    suspend fun signIn(login: AccountLogin) = mutex.withLock {
+        settings.setOnlineGuest(OnlineGuest(login.id, login.name, login.token))
+    }
 
     /** Executa [block] com o convidado; se o servidor não reconhecer o token, recria o convidado e tenta de novo uma vez. */
     suspend fun <T> call(block: suspend (LobbyApi, OnlineGuest) -> T): T = callWith(api, block)

@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gtranca.data.SettingsRepository
 import com.gtranca.online.client.EconomyApi
+import com.gtranca.online.client.LobbyApi
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.SeatKind
 import com.gtranca.online.contracts.TableState
@@ -231,6 +233,72 @@ class OnlineHomeViewModel(
     fun onJoinedHandled() = _uiState.update { it.copy(joinedId = null) }
 
     fun onProblemShown() = _uiState.update { it.copy(problem = null) }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 3.22 Conta online (entrar ou criar conta por e-mail e senha, §18.1)
+// ---------------------------------------------------------------------------------------------------------------
+
+data class OnlineAccountUiState(
+    val email: String = "",
+    val password: String = "",
+    /** Chamando o servidor agora (bcrypt é lento de propósito): os dois botões ficam desabilitados. */
+    val busy: Boolean = false,
+    val problem: OnlineAccountProblem? = null,
+    /** Entrou ou criou a conta agora: a tela volta a 3.21 (o nome e o saldo recarregam sozinhos lá). */
+    val done: Boolean = false,
+) {
+    val emailValid: Boolean get() = email.isNotBlank() && email.contains('@')
+    val passwordValid: Boolean get() = password.length >= AccountLimits.MIN_PASSWORD
+    val canSubmit: Boolean get() = !busy && emailValid && passwordValid
+
+    // Nunca expõe a senha (ex.: logs de depuração), como [com.gtranca.data.OnlineGuest] já faz com o token.
+    override fun toString() = "OnlineAccountUiState(email=$email, password=***, busy=$busy, problem=$problem, done=$done)"
+}
+
+/**
+ * Conta online por e-mail e senha (3.22, §18.1). Chama [LobbyApi.loginEmail]/[LobbyApi.registerEmail] direto (nunca
+ * por [OnlineAccount.call]/[OnlineAccount.callWith]: aquele caminho trata 401 como "token do convidado venceu" e
+ * criaria um convidado novo a cada senha errada, trocando o guardado e dobrando a contagem do limitador de força
+ * bruta do servidor). Sucesso grava a conta com [OnlineAccount.signIn] (a carteira já migrou no servidor, §18.5).
+ */
+class OnlineAccountViewModel(
+    private val account: OnlineAccount,
+    private val api: LobbyApi,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(OnlineAccountUiState())
+    val uiState: StateFlow<OnlineAccountUiState> = _uiState.asStateFlow()
+
+    fun onEmail(text: String) = _uiState.update { it.copy(email = text, problem = null) }
+    fun onPassword(text: String) = _uiState.update { it.copy(password = text, problem = null) }
+
+    fun onLogin() = submit(signup = false)
+    fun onSignup() = submit(signup = true)
+
+    private fun submit(signup: Boolean) {
+        val s = _uiState.value
+        if (!s.canSubmit) return
+        _uiState.update { it.copy(busy = true, problem = null) }
+        viewModelScope.launch {
+            // Sem convidado (ex.: 1ª chamada ao servidor falhou): entra/cria do mesmo jeito, sem migrar carteira nenhuma.
+            val guestToken = attempt { account.guest() }.getOrNull()?.token
+            val email = s.email.trim()
+            attempt {
+                if (signup) api.registerEmail(email, s.password, null, guestToken) else api.loginEmail(email, s.password, guestToken)
+            }.fold(
+                onSuccess = { login ->
+                    account.signIn(login)
+                    _uiState.update { it.copy(busy = false, done = true) }
+                },
+                onFailure = { e ->
+                    val problem = (e as? OnlineException)?.toAccountProblem(signup) ?: OnlineAccountProblem.UNEXPECTED
+                    _uiState.update { it.copy(busy = false, problem = problem) }
+                },
+            )
+        }
+    }
+
+    fun onDoneHandled() = _uiState.update { it.copy(done = false) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------

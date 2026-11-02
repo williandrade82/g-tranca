@@ -86,6 +86,37 @@ fun OnlineException.toProblem(): OnlineProblem = when (kind) {
 }
 
 /**
+ * O que a tela de Conta online (3.22, §18.1) explica, separado de [OnlineProblem] porque o mesmo código do servidor
+ * tem texto diferente aqui: [ErrorCode.NAO_AUTENTICADO] no login é "e-mail ou senha incorretos" (nunca "sessão
+ * expirou", que é o que [OnlineProblem.UNAUTHENTICATED] diz nas outras telas), e [ErrorCode.LOGIN_INDISPONIVEL] no
+ * cadastro quer dizer que a conta já foi criada (a carteira é que não migrou ainda).
+ */
+enum class OnlineAccountProblem {
+    INVALID_CREDENTIALS,
+    EMAIL_ALREADY_REGISTERED,
+
+    /** §18.5: cadastro feito, mas a carteira não migrou agora (economia fora do ar) — a tela orienta a tentar Entrar. */
+    WALLET_PENDING,
+    LOGIN_LOCKED,
+    INVALID_REQUEST,
+    NETWORK,
+    MAINTENANCE,
+    UNEXPECTED,
+}
+
+/** Traduz a falha de entrar ou criar a conta por e-mail e senha (3.22) num problema que a tela explica. */
+fun OnlineException.toAccountProblem(signup: Boolean): OnlineAccountProblem = when {
+    code == ErrorCode.NAO_AUTENTICADO -> OnlineAccountProblem.INVALID_CREDENTIALS
+    code == ErrorCode.EMAIL_JA_CADASTRADO -> OnlineAccountProblem.EMAIL_ALREADY_REGISTERED
+    code == ErrorCode.LOGIN_BLOQUEADO -> OnlineAccountProblem.LOGIN_LOCKED
+    code == ErrorCode.LOGIN_INDISPONIVEL && signup -> OnlineAccountProblem.WALLET_PENDING
+    code == ErrorCode.REQUISICAO_INVALIDA -> OnlineAccountProblem.INVALID_REQUEST
+    kind == OnlineErrorKind.NETWORK -> OnlineAccountProblem.NETWORK
+    kind == OnlineErrorKind.MAINTENANCE || code == ErrorCode.LOGIN_INDISPONIVEL -> OnlineAccountProblem.MAINTENANCE
+    else -> OnlineAccountProblem.UNEXPECTED
+}
+
+/**
  * Traduz a falha da economia (§18.5/§17.10, Loja online 3.20a e o ganho diário de 3.21) para o problema que a tela
  * mostra. Não reaproveita [toProblem]: o economy-service usa [EconomyErrorCode], não [ErrorCode] do lobby, e alguns
  * nomes se repetem com outro sentido — `SEM_PERMISSAO` aqui é "esta carteira não é sua" ([WALLET_NOT_YOURS]), nunca

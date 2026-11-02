@@ -811,6 +811,8 @@
     <string name="online_go_profile">Abrir o Perfil</string>
     <string name="online_playing_as">Jogando como %1$s</string>
     <string name="online_google_soon">Entrar com o Google (em breve)</string>
+    <!-- 3.21: abre a Conta online (3.22, §18.1) enquanto a conta ainda é convidado -->
+    <string name="online_login_button">Entrar / Criar conta</string>
     <string name="online_create">Criar mesa</string>
     <string name="online_join">Entrar numa mesa</string>
     <string name="online_retry">Tentar de novo</string>
@@ -874,6 +876,20 @@
     <string name="online_problem_email_already_registered">Esse e-mail já tem uma conta.</string>
     <string name="online_problem_login_locked">Muitas tentativas erradas. Tente de novo em alguns minutos.</string>
     <string name="online_problem_unexpected">Algo deu errado. Tente de novo.</string>
+
+    <!-- 3.22 Conta online: entrar ou criar conta por e-mail e senha (§18.1) -->
+    <string name="online_account_title">Conta online</string>
+    <string name="online_account_offline_hint">O jogo offline continua sem conta. A conta é só para o jogo online (§18).</string>
+    <string name="online_account_email">E-mail</string>
+    <string name="online_account_password">Senha</string>
+    <string name="online_account_password_hint">Mínimo de %1$d caracteres.</string>
+    <string name="online_account_login_button">Entrar</string>
+    <string name="online_account_signup_button">Criar conta</string>
+    <string name="online_account_forgot_password">Esqueceu a senha? Fale com o suporte.</string>
+    <string name="online_account_problem_invalid_credentials">E-mail ou senha incorretos.</string>
+    <string name="online_account_problem_email_registered">Esse e-mail já tem uma conta. Toque em Entrar.</string>
+    <string name="online_account_problem_wallet_pending">Sua conta foi criada, mas a carteira não abriu agora. Toque em Entrar para concluir.</string>
+    <string name="online_account_problem_invalid_request">Confira o e-mail e a senha (mínimo de 6 caracteres).</string>
 
     <string name="online_create_title">Criar mesa online</string>
     <string name="online_bet_none">Aposta: nenhuma (por enquanto)</string>

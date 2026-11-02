@@ -7,6 +7,7 @@ import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.Punicao
@@ -310,6 +311,133 @@ class OnlineViewModelsTest {
         runCurrent()
         vm.uiState.value.mySeat shouldBe 3
         vm.viewModelScope.cancel()
+    }
+
+    // ---------- 3.22 Conta online (§18.1) ----------
+
+    // §18.1 cadastro: cria a conta, migra a carteira do convidado deste aparelho (§18.5) e volta "done"
+    @Test
+    fun `cria a conta por e-mail e senha`() = runTest(dispatcher) {
+        val acc = account("Ana")
+        acc.guest() // convidado deste aparelho, para a migração da carteira (§18.5)
+        val vm = OnlineAccountViewModel(acc, lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("segredo1")
+        vm.onSignup()
+        advanceUntilIdle()
+        vm.uiState.value.done shouldBe true
+        AccountLimits.isAccountId(settings.state.value.onlineGuest!!.id) shouldBe true
+        lobby.calls.count { it == "registerEmail" } shouldBe 1
+    }
+
+    // §18.1 trap: senha errada chama loginEmail direto (nunca call/callWith), não cria convidado novo nem troca
+    // o guardado, e mostra "e-mail ou senha incorretos" (não "acesso expirou").
+    @Test
+    fun `senha errada nao cria convidado novo nem troca o guardado`() = runTest(dispatcher) {
+        lobby.registerEmail("ana@example.com", "correta1", "Ana", null)
+        val acc = account("Bob")
+        val guestBefore = acc.guest()
+        lobby.calls.clear()
+        val vm = OnlineAccountViewModel(acc, lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("errada12")
+        vm.onLogin()
+        advanceUntilIdle()
+        vm.uiState.value.problem shouldBe OnlineAccountProblem.INVALID_CREDENTIALS
+        vm.uiState.value.busy shouldBe false
+        vm.uiState.value.done shouldBe false
+        settings.state.value.onlineGuest shouldBe guestBefore
+        lobby.calls shouldBe listOf("loginEmail")
+    }
+
+    // §18.1 entra com e-mail e senha certos: guarda a conta (troca o convidado) e some o problema anterior
+    @Test
+    fun `login certo entra na conta`() = runTest(dispatcher) {
+        lobby.registerEmail("ana@example.com", "correta1", "Ana", null)
+        val vm = OnlineAccountViewModel(account("Bob"), lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("correta1")
+        vm.onLogin()
+        advanceUntilIdle()
+        vm.uiState.value.done shouldBe true
+        AccountLimits.isAccountId(settings.state.value.onlineGuest!!.id) shouldBe true
+    }
+
+    // §18.1 cadastro com e-mail já existente: orienta a entrar, em vez de tentar criar de novo
+    @Test
+    fun `cadastro com e-mail existente orienta a entrar`() = runTest(dispatcher) {
+        lobby.registerEmail("ana@example.com", "correta1", "Ana", null)
+        val vm = OnlineAccountViewModel(account("Bob"), lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("outraSenha1")
+        vm.onSignup()
+        advanceUntilIdle()
+        vm.uiState.value.problem shouldBe OnlineAccountProblem.EMAIL_ALREADY_REGISTERED
+    }
+
+    // §18.5 cadastro com a carteira indisponível: a conta já foi criada no lobby, então orienta Entrar (não repetir
+    // Criar conta, que daria "e-mail já cadastrado").
+    @Test
+    fun `cadastro com carteira indisponivel orienta Entrar`() = runTest(dispatcher) {
+        val acc = account("Ana")
+        acc.guest() // materializa o convidado antes de falhar a próxima chamada (registerEmail)
+        lobby.failNext = OnlineException(OnlineErrorKind.API, ErrorCode.LOGIN_INDISPONIVEL, 503)
+        val vm = OnlineAccountViewModel(acc, lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("segredo1")
+        vm.onSignup()
+        advanceUntilIdle()
+        vm.uiState.value.problem shouldBe OnlineAccountProblem.WALLET_PENDING
+    }
+
+    // §18.5 o mesmo código (LOGIN_INDISPONIVEL) ao entrar não é "conta já criada": é só "tente de novo"
+    @Test
+    fun `login com carteira indisponivel mostra manutencao`() = runTest(dispatcher) {
+        val acc = account("Ana")
+        acc.guest() // materializa o convidado antes de falhar a próxima chamada (loginEmail)
+        lobby.failNext = OnlineException(OnlineErrorKind.API, ErrorCode.LOGIN_INDISPONIVEL, 503)
+        val vm = OnlineAccountViewModel(acc, lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("segredo1")
+        vm.onLogin()
+        advanceUntilIdle()
+        vm.uiState.value.problem shouldBe OnlineAccountProblem.MAINTENANCE
+    }
+
+    // §18.1 muitas tentativas erradas: o texto avisa para tentar depois
+    @Test
+    fun `login bloqueado avisa para tentar depois`() = runTest(dispatcher) {
+        val acc = account("Ana")
+        acc.guest() // materializa o convidado antes de falhar a próxima chamada (loginEmail)
+        lobby.failNext = OnlineException(OnlineErrorKind.API, ErrorCode.LOGIN_BLOQUEADO, 429)
+        val vm = OnlineAccountViewModel(acc, lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("segredo1")
+        vm.onLogin()
+        advanceUntilIdle()
+        vm.uiState.value.problem shouldBe OnlineAccountProblem.LOGIN_LOCKED
+    }
+
+    // §18.1 senha curta nem chama o servidor (evita gastar uma chamada de rede à toa, como no Perfil)
+    @Test
+    fun `senha curta nao chama o servidor`() = runTest(dispatcher) {
+        val vm = OnlineAccountViewModel(account("Ana"), lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("123")
+        vm.onLogin()
+        advanceUntilIdle()
+        lobby.calls shouldBe emptyList()
+        vm.uiState.value.busy shouldBe false
+    }
+
+    // §18.1 e-mail em branco nem chama o servidor
+    @Test
+    fun `e-mail em branco nao chama o servidor`() = runTest(dispatcher) {
+        val vm = OnlineAccountViewModel(account("Ana"), lobby)
+        vm.onPassword("segredo1")
+        vm.onSignup()
+        advanceUntilIdle()
+        lobby.calls shouldBe emptyList()
     }
 
     // ---------- 3.23 sala ----------

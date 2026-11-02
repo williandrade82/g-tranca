@@ -39,6 +39,10 @@ data class OnlineGameRoute(val tableId: String)
 @Serializable
 object OnlineShopRoute
 
+/** §18.1 *Conta online* (docs/telas.md 3.22), aberta de [OnlineHomeRoute] enquanto a conta ainda é convidado. */
+@Serializable
+object OnlineAccountRoute
+
 /** Chave, na entrada de [OnlineHomeRoute], do aviso de volta de uma sala (um [OnlineRoomEnd]). */
 private const val ONLINE_NOTICE = "online-notice"
 
@@ -121,6 +125,7 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
             onProfile = { navController.navigate(ProfileRoute) { launchSingleTop = true } },
             onBack = { navController.popBackStack() },
             onShop = { navController.navigate(OnlineShopRoute) { launchSingleTop = true } },
+            onLogin = { navController.navigate(OnlineAccountRoute) { launchSingleTop = true } },
             notice = notice?.let { name -> OnlineRoomEnd.entries.firstOrNull { it.name == name } },
         )
     }
@@ -129,6 +134,13 @@ fun NavGraphBuilder.onlineGraph(navController: NavHostController, data: GameData
         env?.getOrNull()?.let { online ->
             val vm = viewModel { OnlineShopViewModel(online.account, online.client, data.inventory.catalog) }
             OnlineShopScreen(vm, onBack = { navController.popBackStack() })
+        } ?: env?.let { LaunchedEffect(Unit) { navController.popBackStack() } }
+    }
+    composable<OnlineAccountRoute> {
+        val env = rememberOnlineEnv(data)
+        env?.getOrNull()?.let { online ->
+            val vm = viewModel { OnlineAccountViewModel(online.account, online.client) }
+            OnlineAccountScreen(vm, onDone = { navController.popBackStack() }, onBack = { navController.popBackStack() })
         } ?: env?.let { LaunchedEffect(Unit) { navController.popBackStack() } }
     }
     composable<OnlineRoomRoute> { entry ->

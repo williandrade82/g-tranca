@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +33,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,6 +57,7 @@ import com.gtranca.ui.selection.RobotPhoto
 import com.gtranca.ui.selection.Wood
 import com.gtranca.R
 import com.gtranca.game.BotCharacter
+import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.Punicao
@@ -114,6 +119,31 @@ internal fun ProblemText(problem: OnlineProblem, tag: String, modifier: Modifier
     )
 }
 
+/** 3.22 Conta online: texto do que deu errado ao entrar ou criar a conta (§18.1). */
+@StringRes
+private fun OnlineAccountProblem.textRes(): Int = when (this) {
+    OnlineAccountProblem.INVALID_CREDENTIALS -> R.string.online_account_problem_invalid_credentials
+    OnlineAccountProblem.EMAIL_ALREADY_REGISTERED -> R.string.online_account_problem_email_registered
+    OnlineAccountProblem.WALLET_PENDING -> R.string.online_account_problem_wallet_pending
+    OnlineAccountProblem.LOGIN_LOCKED -> R.string.online_problem_login_locked
+    OnlineAccountProblem.INVALID_REQUEST -> R.string.online_account_problem_invalid_request
+    OnlineAccountProblem.NETWORK -> R.string.online_problem_network
+    OnlineAccountProblem.MAINTENANCE -> R.string.online_problem_maintenance
+    OnlineAccountProblem.UNEXPECTED -> R.string.online_problem_unexpected
+}
+
+@Composable
+private fun AccountProblemText(problem: OnlineAccountProblem, modifier: Modifier = Modifier) {
+    Text(
+        stringResource(problem.textRes()),
+        modifier.fillMaxWidth().testTag("online-account-error"),
+        style = MaterialTheme.typography.bodyLarge,
+        fontWeight = FontWeight.Bold,
+        color = GColors.Ruby,
+        textAlign = TextAlign.Center,
+    )
+}
+
 // ---------- 3.21 Jogar online ----------
 
 /** Porta do online (docs/telas.md 3.21): jogadores online e a lista de mesas do servidor (§18.2). */
@@ -127,6 +157,8 @@ fun OnlineHomeScreen(
     onBack: () -> Unit,
     /** Abre a Loja online (3.20a, §18.5). */
     onShop: () -> Unit = {},
+    /** Abre "Entrar / Criar conta" (3.22, §18.1); some quando a conta já não é mais convidado. */
+    onLogin: () -> Unit = {},
     /** Aviso de volta de uma sala (mesa encerrada, removido...). */
     notice: OnlineRoomEnd? = null,
 ) {
@@ -164,6 +196,13 @@ fun OnlineHomeScreen(
                 }
             }
             OnlineHomeStatus.READY -> {
+                // §18.1: enquanto a conta é só o convidado deste aparelho, o botão para entrar ou criar conta (3.22)
+                // aparece acima do nome; a conta tem id com o prefixo E_ (e-mail) ou G_ (Google, backlog).
+                if (!AccountLimits.isAccountId(state.myId)) {
+                    GButton(onLogin, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-login"), kind = GButtonKind.Secondary) {
+                        Text(stringResource(R.string.online_login_button), style = MaterialTheme.typography.titleMedium)
+                    }
+                }
                 GPanel(Modifier.fillMaxWidth()) {
                     Text(
                         stringResource(R.string.online_playing_as, state.name),
@@ -220,10 +259,6 @@ fun OnlineHomeScreen(
                                 onSeatTap = { seat -> viewModel.onSeatTap(table, seat) }, onBackToRoom = { viewModel.onBackToRoom(table) })
                         }
                     }
-                }
-                // O login Google entra na fase 2 (identity-service): por ora o botão aparece desabilitado.
-                GButton({}, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-login"), enabled = false, kind = GButtonKind.Quiet) {
-                    Text(stringResource(R.string.online_google_soon))
                 }
             }
         }
@@ -427,6 +462,74 @@ private fun SummaryLines(table: TableView) {
         Text(
             stringResource(if (rules.skillBoostersAllowed) R.string.online_summary_skill_on else R.string.online_summary_skill_off),
             style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne,
+        )
+    }
+}
+
+// ---------- 3.22 Conta online ----------
+
+/** Conta online por e-mail e senha (docs/telas.md 3.22, §18.1): mesma tela para entrar e para criar conta. */
+@Composable
+fun OnlineAccountScreen(
+    viewModel: OnlineAccountViewModel,
+    onDone: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(state.done) {
+        if (state.done) {
+            viewModel.onDoneHandled()
+            onDone()
+        }
+    }
+    TableFrame(
+        stringResource(R.string.online_account_title),
+        "online-account",
+        bottom = { BottomButton(stringResource(R.string.back), "online-account-back", GButtonKind.Secondary, enabled = !state.busy, onClick = onBack) },
+    ) {
+        GPanel(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.online_account_offline_hint), style = MaterialTheme.typography.bodyMedium, color = GColors.Champagne)
+            OutlinedTextField(
+                value = state.email,
+                onValueChange = viewModel::onEmail,
+                label = { Text(stringResource(R.string.online_account_email)) },
+                singleLine = true,
+                enabled = !state.busy,
+                shape = MaterialTheme.shapes.medium,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                modifier = Modifier.fillMaxWidth().testTag("online-account-email"),
+            )
+            OutlinedTextField(
+                value = state.password,
+                onValueChange = viewModel::onPassword,
+                label = { Text(stringResource(R.string.online_account_password)) },
+                supportingText = { Text(stringResource(R.string.online_account_password_hint, AccountLimits.MIN_PASSWORD)) },
+                singleLine = true,
+                enabled = !state.busy,
+                shape = MaterialTheme.shapes.medium,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth().testTag("online-account-password"),
+            )
+            GButton(viewModel::onLogin, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("online-account-login"), enabled = state.canSubmit) {
+                Text(stringResource(R.string.online_account_login_button), style = MaterialTheme.typography.titleMedium)
+            }
+            GButton(viewModel::onSignup, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("online-account-signup"), enabled = state.canSubmit, kind = GButtonKind.Secondary) {
+                Text(stringResource(R.string.online_account_signup_button), style = MaterialTheme.typography.titleMedium)
+            }
+        }
+        if (state.busy) {
+            Box(Modifier.fillMaxWidth().padding(Spacing.md), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = GColors.Gold)
+            }
+        }
+        state.problem?.let { AccountProblemText(it) }
+        Text(
+            stringResource(R.string.online_account_forgot_password),
+            Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.bodySmall,
+            color = GColors.Steel,
+            textAlign = TextAlign.Center,
         )
     }
 }

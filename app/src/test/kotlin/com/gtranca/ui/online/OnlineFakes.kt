@@ -10,6 +10,8 @@ import com.gtranca.online.client.EconomyApi
 import com.gtranca.online.client.LobbyApi
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.AccountKind
+import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.EconomyStateDto
 import com.gtranca.online.contracts.ErrorCode
@@ -75,6 +77,40 @@ class FakeLobby : LobbyApi {
         enter("createGuest")
         val id = "g${++counter}"
         return GuestIdentity(id, name, "tok-$id").also { guests[id] = it }
+    }
+
+    /** Contas por e-mail e senha (§18.1), por e-mail normalizado (minúsculas, sem espaços nas pontas). */
+    private data class EmailAccount(val id: String, val password: String, val name: String)
+    private val emailAccounts = mutableMapOf<String, EmailAccount>()
+
+    private fun normalizeEmail(raw: String) = raw.trim().lowercase()
+
+    override suspend fun registerEmail(email: String, password: String, name: String?, guestToken: String?): AccountLogin {
+        enter("registerEmail")
+        val normalized = normalizeEmail(email)
+        if (normalized.isBlank() || !normalized.contains('@')) error(ErrorCode.REQUISICAO_INVALIDA, 400)
+        if (password.length < 6) error(ErrorCode.REQUISICAO_INVALIDA, 400)
+        if (emailAccounts.containsKey(normalized)) error(ErrorCode.EMAIL_JA_CADASTRADO, 409)
+        val guest = guestToken?.let { tok -> guests.values.firstOrNull { it.token == tok } }
+        val id = "E_${++counter}"
+        val accountName = name ?: guest?.name ?: "Jogador"
+        emailAccounts[normalized] = EmailAccount(id, password, accountName)
+        val token = "tok-$id"
+        guests[id] = GuestIdentity(id, accountName, token)
+        return AccountLogin(id, accountName, token, kind = AccountKind.EMAIL, walletFromGuest = guest != null)
+    }
+
+    override suspend fun loginEmail(email: String, password: String, guestToken: String?): AccountLogin {
+        enter("loginEmail")
+        val normalized = normalizeEmail(email)
+        val account = emailAccounts[normalized]
+        if (account == null || account.password != password) {
+            throw OnlineException(OnlineErrorKind.UNAUTHENTICATED, ErrorCode.NAO_AUTENTICADO, 401)
+        }
+        val guest = guestToken?.let { tok -> guests.values.firstOrNull { it.token == tok } }
+        val token = "tok-${account.id}"
+        guests[account.id] = GuestIdentity(account.id, account.name, token)
+        return AccountLogin(account.id, account.name, token, kind = AccountKind.EMAIL, walletFromGuest = guest != null)
     }
 
     /** §18.2: o jogador nao cria mesa. */
