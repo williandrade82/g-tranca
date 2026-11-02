@@ -1,6 +1,7 @@
 package com.gtranca.online.game
 
 import com.gtranca.engine.Action
+import com.gtranca.online.contracts.AbandonReason
 import com.gtranca.online.contracts.BetPayout
 import com.gtranca.online.contracts.BoosterConfirmFailed
 import com.gtranca.online.contracts.BoosterPrompt
@@ -15,6 +16,7 @@ import com.gtranca.online.contracts.SeatsChanged
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.TempoDeJogada
 import com.gtranca.online.contracts.Welcome
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.longs.shouldBeGreaterThan
@@ -148,6 +150,92 @@ class BoosterSelectorSessionTest {
     }
 
     @Test
+    fun `17_3 o prazo do servidor usa o ULTIMO RASCUNHO, nunca descarta a selecao por o Seguir nao ter chegado a tempo`() = runBlocking {
+        val eco = FakeBoosterEconomy()
+        val clock = FakeClock()
+        val session = MatchSession(
+            "ABC234", rulesOf(TableMode.INDIVIDUAL), humans2(), 42, FAST, clock.now, clock.wall,
+            economy = eco, boosterDeadlineMs = 30_000,
+        )
+        val job = CoroutineScope(Dispatchers.Default).launch { session.run() }
+        val a = TestPlayer(session, "ga")
+        a.attach()
+        a.drain()
+        // Rascunhos (nunca confirma com Seguir): o jogador mudou de ideia uma vez, sem nunca tocar em Seguir.
+        a.selectBoosters(listOf("b1"), final = false)
+        a.selectBoosters(listOf("b1", "b2"), final = false)
+        session.inspect() // sincroniza: os dois rascunhos acima ja foram processados (mesma fila, em ordem)
+        eco.calls.shouldBeEmpty() // rascunho nunca debita
+
+        clock.advance(30_000)
+        session.inspect()
+        val after = a.drainUntil { it.any { m -> m is BoostersConfirmed } }
+        after.filterIsInstance<BoostersConfirmed>().single().boosters shouldBe listOf("b1", "b2")
+        eco.calls.single() shouldBe listOf("b1", "b2")
+        session.shutdown()
+        job.cancel()
+    }
+
+    @Test
+    fun `17_3 o prazo do servidor tenta de novo se o debito falhar, sem perder o rascunho`() = runBlocking {
+        val eco = FakeBoosterEconomy(down = true)
+        val clock = FakeClock()
+        val session = MatchSession(
+            "ABC234", rulesOf(TableMode.INDIVIDUAL), humans2(), 42, FAST, clock.now, clock.wall,
+            economy = eco, boosterDeadlineMs = 30_000,
+        )
+        val job = CoroutineScope(Dispatchers.Default).launch { session.run() }
+        val a = TestPlayer(session, "ga")
+        a.attach()
+        a.drain()
+        a.selectBoosters(listOf("b1"), final = false) // rascunho gravado; nunca confirma explicitamente
+        session.inspect() // sincroniza: o rascunho acima ja foi processado antes do relogio avancar
+
+        clock.advance(30_000)
+        session.inspect() // 1a tentativa do prazo: a economia esta fora do ar
+        val failed = a.drainUntil { it.any { m -> m is BoosterConfirmFailed } }
+        failed.filterIsInstance<SeatUpdate>().shouldBeEmpty() // ainda nao revelou a mao
+
+        eco.down = false
+        clock.advance(5_000) // recuo entre tentativas
+        session.inspect() // 2a tentativa: a economia ja voltou
+        val after = a.drainUntil { it.any { m -> m is BoostersConfirmed } }
+        after.filterIsInstance<BoostersConfirmed>().single().boosters shouldBe listOf("b1") // o rascunho nao se perdeu
+        eco.calls.size shouldBe 2 // a 1a tentativa (que falhou) tambem chamou a economia
+        session.shutdown()
+        job.cancel()
+    }
+
+    @Test
+    fun `17_3 esgotadas as tentativas do prazo (economia fora do ar o tempo todo), o servidor desiste e segue sem boosters`() = runBlocking {
+        val eco = FakeBoosterEconomy(down = true)
+        val clock = FakeClock()
+        val session = MatchSession(
+            "ABC234", rulesOf(TableMode.INDIVIDUAL), humans2(), 42, FAST, clock.now, clock.wall,
+            economy = eco, boosterDeadlineMs = 30_000,
+        )
+        val job = CoroutineScope(Dispatchers.Default).launch { session.run() }
+        val a = TestPlayer(session, "ga")
+        a.attach()
+        a.drain()
+        a.selectBoosters(listOf("b1"), final = false)
+        session.inspect() // sincroniza: o rascunho acima ja foi processado antes do relogio avancar
+
+        clock.advance(30_000)
+        repeat(3) { // as 3 tentativas do prazo (BOOSTER_MAX_DEADLINE_ATTEMPTS), todas com a economia fora do ar
+            session.inspect()
+            a.drainUntil { it.any { m -> m is BoosterConfirmFailed } }
+            clock.advance(5_000)
+        }
+        session.inspect() // esgotou: desiste sem tentar de novo
+        val after = a.drainUntil { it.any { m -> m is BoostersConfirmed } }
+        after.filterIsInstance<BoostersConfirmed>().single().boosters shouldBe emptyList() // risco residual aceito (docs/seguranca-pendencias.md)
+        eco.calls.size shouldBe 3 // nenhuma 4a tentativa
+        session.shutdown()
+        job.cancel()
+    }
+
+    @Test
     fun `17_3 erro de rede ao confirmar nao fecha a conexao, e o cliente pode tentar de novo`() = runBlocking {
         val eco = FakeBoosterEconomy(down = true)
         val run = startSession(TableMode.INDIVIDUAL, humans2(), economy = eco)
@@ -197,16 +285,17 @@ class BoosterSelectorSessionTest {
         a.drain()
         b.drain()
         val before = run.session.inspect()
-        val current = before.match.currentRound.currentSeat.index
-        val confirmedSeat = when (current) {
-            a.seat -> { a.selectBoosters(listOf("b1")); a.drainUntil { it.any { m -> m is BoostersConfirmed } }; a.seat }
-            b.seat -> { b.selectBoosters(listOf("b1")); b.drainUntil { it.any { m -> m is BoostersConfirmed } }; b.seat }
-            else -> null // vez de um robo: nenhum humano precisa confirmar para o jogo seguir
+        // "ga" confirma e, se for a vez dela (ou chegar a ser), joga sozinha pelas `legal` recebidas (como um robo
+        // faria); se a vez e de um robo, o jogo avanca pelo robo mesmo assim. "gb" nunca responde ao seletor: o teste
+        // nao deve depender de qual assento comeca a partida.
+        a.selectBoosters(listOf("b1"))
+        withTimeout(15_000) {
+            val job = launch { a.playToEnd(autoConfirmBoosters = false) }
+            while (run.session.inspect().version <= before.version) delay(5)
+            job.cancel()
         }
-        val stillWaiting = if (confirmedSeat == a.seat) b else a
-        withTimeout(15_000) { while (run.session.inspect().version <= before.version) delay(5) }
         run.session.inspect().version shouldBeGreaterThan before.version
-        stillWaiting.drain().filterIsInstance<SeatUpdate>().shouldBeEmpty() // continua sem ver a propria mao
+        b.drain().filterIsInstance<SeatUpdate>().shouldBeEmpty() // "gb" continua sem ver a propria mao
         run.stop()
     }
 
@@ -284,5 +373,36 @@ class BoosterSelectorSessionTest {
         msgs2.filterIsInstance<SeatUpdate>().isNotEmpty() shouldBe true
         eco.calls.size shouldBe 1 // nao debitou de novo
         run.stop()
+    }
+
+    @Test
+    fun `18_4 assento que nunca conectou nao trava a mesa (o relogio normal da vez conta mesmo sem o seletor aparecer)`() = runBlocking {
+        val eco = FakeBoosterEconomy()
+        val clock = FakeClock()
+        val rules = rulesOf(TableMode.INDIVIDUAL).copy(tempoDeJogada = TempoDeJogada.UM_MINUTO)
+        val session = MatchSession("ABC234", rules, humans2(), 42, FAST, clock.now, clock.wall, economy = eco)
+        val job = CoroutineScope(Dispatchers.Default).launch { session.run() }
+        val a = TestPlayer(session, "ga")
+        a.attach()
+        a.drain()
+        val before = session.inspect()
+        if (before.match.currentRound.currentSeat.index == a.seat) {
+            // "ga" precisa jogar e passar a vez para "gb" (que nunca vai conectar) antes do teste continuar.
+            a.selectBoosters(listOf("b1"))
+            a.drainUntil { it.any { m -> m is BoostersConfirmed } }
+            withTimeout(15_000) {
+                val playJob = launch { a.playToEnd(autoConfirmBoosters = false) }
+                while (session.inspect().match.currentRound.currentSeat.index == a.seat) delay(5)
+                playJob.cancel()
+            }
+        }
+        // Agora e a vez de "gb", que nunca conectou: o seletor nunca apareceu a ele (nenhum prazo de 30s foi armado).
+        session.inspect().match.currentRound.currentSeat.index shouldNotBe a.seat
+        session.inspect().turnLeftMs shouldNotBe null // o relogio NORMAL da mesa (1 min) ja conta mesmo assim
+        clock.advance(60_000)
+        withTimeout(5_000) { while (session.inspect().abandonments.isEmpty()) delay(5) }
+        session.inspect().abandonments.single().reason shouldBe AbandonReason.TEMPO
+        session.shutdown()
+        job.cancel()
     }
 }

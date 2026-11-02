@@ -257,6 +257,16 @@ class MatchSession(
     private var tableBoosters = TableBoosters()
     private val boosterPending = BooleanArray(seatCount)
     private val boosterDeadlineAt = arrayOfNulls<Long>(seatCount)
+
+    /**
+     * §17.3: o ultimo rascunho SANITIZADO recebido do assento (rascunho ou tentativa de confirmar, mesmo que o debito
+     * falhe); `null` = nunca mandou nada. "Vale o que estiver selecionado na tela": o prazo do servidor usa isto, nunca
+     * confirma vazio so porque a mensagem final nao chegou a tempo.
+     */
+    private val boosterDraft = arrayOfNulls<List<String>>(seatCount)
+
+    /** §17.3: tentativas de debito feitas pelo PRAZO do servidor (nunca pelo reenvio manual do jogador); limitado por [BOOSTER_MAX_DEADLINE_ATTEMPTS]. */
+    private val boosterDeadlineAttempts = IntArray(seatCount)
     private var version = 1L
     private var stage = TableStage.PLAYING
     private var autoAt: Long? = null
@@ -494,17 +504,29 @@ class MatchSession(
             .take(Loadout.MAX)
     }
 
+    /**
+     * §17.3: rascunho (so grava, §17.3 "vale o que estiver selecionado na tela") ou Seguir (debita). Nunca confia no
+     * cliente: sanitiza de novo antes de gravar ou debitar, mesmo que o rascunho ja tivesse vindo filtrado.
+     */
     private fun onSelectBoosters(seat: Int, msg: SelectBoosters) {
         if (economy == null) return
-        if (isBoosterConfirmed(seat) || boosterPending[seat]) return
-        val human = slots[seat] as? Slot.Human ?: return
+        if (isBoosterConfirmed(seat)) return
+        if (slots[seat] !is Slot.Human) return
         val sanitized = sanitizeBoosterSelection(msg.boosters)
+        boosterDraft[seat] = sanitized
+        if (!msg.final || boosterPending[seat]) return
+        beginBoosterConfirm(seat, sanitized)
+    }
+
+    /** Debita [sanitized] (ou confirma direto, se vazio) de forma assincrona; nunca bloqueia o ator. */
+    private fun beginBoosterConfirm(seat: Int, sanitized: List<String>) {
         if (sanitized.isEmpty()) {
             confirmBoosters(seat, emptyList())
             return
         }
+        val human = slots[seat] as? Slot.Human ?: return
+        val eco = economy ?: return
         boosterPending[seat] = true
-        val eco = economy
         val tid = boosterMatchId
         val guestId = human.guestId
         scope.launch {
@@ -742,14 +764,34 @@ class MatchSession(
      */
     private fun fireDueTimers() {
         if (finished) return
-        for (seat in boosterDeadlineAt.indices) {
-            val at = boosterDeadlineAt[seat] ?: continue
-            if (!boosterPending[seat] && !isBoosterConfirmed(seat) && now() >= at) confirmBoosters(seat, emptyList())
-        }
+        for (seat in boosterDeadlineAt.indices) fireBoosterDeadline(seat)
         val deadline = turnDeadline()
         val seat = turnSeat
         if (deadline != null && seat != null && now() >= deadline) abandon(seat, AbandonReason.TEMPO)
         destroyIfNobodyConnected()
+    }
+
+    /**
+     * §17.3: o prazo do SERVIDOR (nunca o do aparelho) decide quando o assento ainda nao confirmou. "Vale o que
+     * estiver selecionado na tela": usa o ULTIMO [boosterDraft] recebido (rascunho ou tentativa), nunca confirma vazio
+     * so porque o `final = true` nao chegou a tempo. Se o debito falhar (rede, economia fora do ar), tenta de novo com
+     * recuo, ate [BOOSTER_MAX_DEADLINE_ATTEMPTS]; esgotadas as tentativas, confirma vazio (risco residual registrado
+     * em `docs/seguranca-pendencias.md`: se a economia tiver aplicado o debito mas a resposta se perdeu em TODAS as
+     * tentativas, o jogador fica sem os boosters que pagou). O reenvio MANUAL do jogador (`SelectBoosters` de novo
+     * depois de um [BoosterConfirmFailed]) nao passa por este limite.
+     */
+    private fun fireBoosterDeadline(seat: Int) {
+        val at = boosterDeadlineAt[seat] ?: return
+        if (boosterPending[seat] || isBoosterConfirmed(seat) || now() < at) return
+        val draft = boosterDraft[seat]
+        if (draft == null || boosterDeadlineAttempts[seat] >= BOOSTER_MAX_DEADLINE_ATTEMPTS) {
+            if (draft != null) log.warn("Prazo do seletor esgotou as tentativas table={} seat={}: segue sem boosters", tableId, seat)
+            confirmBoosters(seat, emptyList())
+            return
+        }
+        boosterDeadlineAttempts[seat]++
+        boosterDeadlineAt[seat] = now() + BOOSTER_RETRY_BACKOFF_MS // evita tentativa em loop se este debito tambem falhar
+        beginBoosterConfirm(seat, draft)
     }
 
     // --- relogio da vez (§18.4)
@@ -771,18 +813,22 @@ class MatchSession(
         if (turnSeat != current) {
             turnSeat = current
             turnStartedAt = now()
-            // §17.3: se a vez chega a quem ainda nao escolheu os boosters (nunca atacou, por exemplo), o prazo do
-            // seletor passa a limitar a espera, mesmo sem conexao ainda (nunca trava para sempre com tempo definido).
-            armBoosterDeadlineIfNeeded(current)
         }
     }
 
-    /** Fim da vez do humano da vez; `null` sem tempo definido, entre partidas, na vez de robo, acabado, ou ainda escolhendo boosters. */
+    /**
+     * Fim da vez do humano da vez; `null` sem tempo definido, entre partidas, na vez de robo, acabado, ou ainda
+     * escolhendo boosters. §17.3: enquanto o assento nao confirmou os boosters MAS ja viu o seletor (um prazo foi
+     * armado em [onAttach]), o relogio NORMAL nao conta — o prazo do seletor e quem limita a espera, nao o da mesa.
+     * Um assento que nunca conectou (prazo nunca armado: o seletor nunca apareceu a ele) segue pela regra de sempre
+     * ("a vez continua contando", §18.4): sem isso, um humano que nunca entra travaria a mesa para sempre numa mesa
+     * com tempo definido, sem nenhum prazo correndo para destravar.
+     */
     private fun turnDeadline(): Long? {
         val limit = turnLimitMs() ?: return null
         val seat = turnSeat ?: return null
         if (stage != TableStage.PLAYING || slots[seat] !is Slot.Human) return null
-        if (!isBoosterConfirmed(seat)) return null // §17.3: o relogio normal so conta depois do seletor
+        if (!isBoosterConfirmed(seat) && boosterDeadlineAt[seat] != null) return null
         return turnStartedAt + limit
     }
 
@@ -898,6 +944,12 @@ class MatchSession(
 
         /** Espera maxima do laco quando nada esta agendado (so reavalia; nao ha prazo correndo). */
         private const val IDLE_POLL_MS = 60_000L
+
+        /** §17.3: quantas vezes o PRAZO do servidor tenta debitar o rascunho antes de desistir e confirmar vazio. */
+        private const val BOOSTER_MAX_DEADLINE_ATTEMPTS = 3
+
+        /** §17.3: espera entre uma tentativa do prazo e a proxima, se a anterior falhou (evita martelar a economia). */
+        private const val BOOSTER_RETRY_BACKOFF_MS = 5_000L
 
         fun robotName(profile: BotProfile): String = when (profile) {
             BotProfile.JOVEM -> "Bolt"

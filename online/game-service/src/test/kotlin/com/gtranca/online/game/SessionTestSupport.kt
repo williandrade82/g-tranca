@@ -131,8 +131,8 @@ class TestPlayer(val session: MatchSession, guestId: String, seed: Long = guestI
 
     suspend fun resign() = session.submit(seat, link, Resign(++seq))
 
-    /** §17.3: confirma o seletor de boosters do inicio do jogo com [ids] (vazio = sem boosters). */
-    suspend fun selectBoosters(ids: List<String> = emptyList()) = session.submit(seat, link, SelectBoosters(ids))
+    /** §17.3: confirma (Seguir) ou so grava o rascunho (`final = false`) do seletor com [ids] (vazio = sem boosters). */
+    suspend fun selectBoosters(ids: List<String> = emptyList(), final: Boolean = true) = session.submit(seat, link, SelectBoosters(ids, final))
 
     /** Le o que ja chegou (sem esperar). */
     fun drain(): List<ServerMessage> {

@@ -152,14 +152,20 @@ data class PlayAction(val seq: Long, val stateVersion: Long, val action: Action)
 data class Resign(val seq: Long) : ClientMessage
 
 /**
- * §17.3/§18.3: confirma o seletor de boosters do inicio do jogo com os ids escolhidos (ate 3, §17.2). O servidor
- * sanitiza contra o catalogo, o `skillBoostersAllowed` da mesa (§17.9) e as reacoes (b3, ainda nao retransmitidas
- * online) antes de debitar do inventario online (§18.5); o que nao puder ser debitado fica de fora (§17.3). Ignorada
- * se o assento ja confirmou, ou se ha uma confirmacao anterior ainda em andamento no servidor.
+ * §17.3/§18.3: a escolha do seletor de boosters do inicio do jogo (ate 3, §17.2). O servidor sanitiza contra o
+ * catalogo, o `skillBoostersAllowed` da mesa (§17.9) e as reacoes (b3, ainda nao retransmitidas online).
+ *
+ * [final] `false` = **rascunho**: so GRAVA o que esta marcado na tela agora, sem debitar nada (a tela ainda esta
+ * escolhendo); o app manda um a cada toque no seletor. `true` = **Seguir** (ou o auto-envio do app ao chegar aos
+ * 30 s, §16.15): debita o rascunho mais recente do inventario online (§18.5); o que nao puder ser debitado fica de
+ * fora (§17.3). O servidor tem o SEU PROPRIO prazo de 30 s (contado de quando o [BoosterPrompt] foi enviado); se
+ * nenhum [SelectBoosters] com [final] = `true` chegar a tempo, ele mesmo confirma com o ULTIMO rascunho recebido (ou
+ * sem boosters, se nenhum chegou) — nunca descarta o que a tela tinha selecionado por uma corrida de rede (§17.3
+ * "vale o que estiver selecionado na tela"). Ignorado (o rascunho so e atualizado) se o assento ja confirmou.
  */
 @Serializable
 @SerialName("selectBoosters")
-data class SelectBoosters(val boosters: List<String>) : ClientMessage
+data class SelectBoosters(val boosters: List<String>, val final: Boolean = true) : ClientMessage
 
 // ---------------------------------------------------------------------------------------------------------------
 // Servidor -> cliente

@@ -1,5 +1,6 @@
 package com.gtranca.online.probe
 
+import com.gtranca.online.contracts.BoosterPrompt
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.ClientMessage
 import com.gtranca.online.contracts.CreateGuestRequest
@@ -11,6 +12,7 @@ import com.gtranca.online.contracts.PROTOCOL_HEADER
 import com.gtranca.online.contracts.Resign
 import com.gtranca.online.contracts.SeatUpdate
 import com.gtranca.online.contracts.SeatsChanged
+import com.gtranca.online.contracts.SelectBoosters
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableClosed
 import com.gtranca.online.contracts.TableMode
@@ -95,6 +97,12 @@ class Scenarios(private val server: String, private val http: HttpClient, privat
                             if (v.turn != null || v.stage.name == "GAME_OVER") {
                                 println("[$name] vista v${v.version}: vez do assento ${v.currentSeat.index}, turn=${v.turn}, stage=${v.stage}, winner=${v.winner?.index}, endReason=${v.endReason}")
                             }
+                        }
+                        // §17.3/§18.3: o watcher nao testa o seletor em si, so confirma sem boosters para nao atrasar
+                        // os cenarios ate 30 s por humano (o relogio do servidor, nao o do watcher, decide o prazo).
+                        is BoosterPrompt -> {
+                            println("[$name] seletor de boosters: confirmando sem boosters")
+                            send(Frame.Text(OnlineJson.encodeToString(ClientMessage.serializer(), SelectBoosters(emptyList()))))
                         }
                         else -> Unit
                     }

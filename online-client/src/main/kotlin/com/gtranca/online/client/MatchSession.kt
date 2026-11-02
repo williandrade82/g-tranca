@@ -89,12 +89,16 @@ class MatchSession internal constructor(
     suspend fun resign(): Boolean = send { Resign(nextSeq()) }
 
     /**
-     * §17.3/§18.3: confirma o seletor de boosters do início do jogo com [boosters] (até 3, vazio = sem boosters). O
-     * servidor sanitiza contra o catálogo, a mesa (§17.9) e as reações (b3, ainda não online) antes de debitar; a
-     * resposta chega em [MatchEvent] como [com.gtranca.online.contracts.BoostersConfirmed] (ou
-     * [com.gtranca.online.contracts.BoosterConfirmFailed] em caso de erro, sem fechar a conexão: pode repetir).
+     * §17.3/§18.3: a escolha do seletor de boosters do início do jogo com [boosters] (até 3, vazio = sem boosters).
+     * [final] `false` = só grava o rascunho da tela agora (a cada toque no seletor, sem debitar nada); `true` =
+     * Seguir, confirma e debita. O servidor sanitiza contra o catálogo, a mesa (§17.9) e as reações (b3, ainda não
+     * online) antes de debitar; a resposta chega em [MatchEvent] como
+     * [com.gtranca.online.contracts.BoostersConfirmed] (ou [com.gtranca.online.contracts.BoosterConfirmFailed] em
+     * caso de erro, sem fechar a conexão: pode repetir). O servidor tem o PRÓPRIO prazo de 30 s e usa o último
+     * rascunho recebido se nenhum `final = true` chegar a tempo — mande um rascunho a cada mudança da seleção, não só
+     * no Seguir, para o prazo do servidor nunca descartar o que a tela tinha marcado.
      */
-    suspend fun selectBoosters(boosters: List<String>): Boolean = send { SelectBoosters(boosters) }
+    suspend fun selectBoosters(boosters: List<String>, final: Boolean = true): Boolean = send { SelectBoosters(boosters, final) }
 
     private suspend fun send(build: () -> ClientMessage): Boolean {
         val channel = outbox ?: return false
