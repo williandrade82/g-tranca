@@ -2,6 +2,12 @@
 
 **Objetivo:** documentar as principais regras e opções de variação da Tranca para orientar a implementação de um jogo digital com perfis configuráveis.
 
+> **Status (2026-11-02):** as seções 1 e 2 são um catálogo de referência sobre variações *possíveis* da
+> Tranca — nem todas foram implementadas. As seções 3 a 5 foram reescritas para descrever **o que existe
+> de fato** no motor (`:core-engine`), substituindo uma versão anterior especulativa (que sugeria Flutter/Dart
+> e perfis que nunca chegaram a ser construídos). Fonte normativa dos parâmetros: [`definition.md`](../definition.md)
+> §14; implementação: `RuleSet.kt`.
+
 > **Nota importante:** não existe um único regulamento nacional universalmente oficial para todas as mesas de Tranca. As regras variam entre regiões, famílias, plataformas e torneios. Os valores indicados como padrão neste documento são sugestões para um perfil inicial e devem ser validados com os jogadores da comunidade que o jogo pretende atender.
 
 ## 1. Origem das variações
@@ -31,6 +37,11 @@ Não há um número universal de regulamentos oficiais reconhecidos para toda a 
 ## 2. Matriz de configurações
 
 As opções abaixo são possibilidades para o software, não uma afirmação de que todas sejam regras comuns ou oficiais. O perfil inicial precisa ser validado com jogadores.
+
+**O que virou parâmetro real:** só uma parte desta matriz foi implementada como parâmetro de `RuleSet`
+(§14.2) — `groupRanks`, `mortoBecomesStock`, `goOutRequiresCleanCanasta` e `handBlackThreePoints`. O
+restante das linhas abaixo é regra fixa no motor (vale igual em qualquer perfil) ou ainda não foi
+implementado. Ver a seção 3 para o que está disponível hoje.
 
 ### 2.1 Estrutura e distribuição
 
@@ -136,131 +147,103 @@ Os valores acima são sugestões de configuração, não um regulamento universa
 
 ---
 
-## 3. Perfis pré-configurados sugeridos
+## 3. Perfis implementados (`RuleSet`, §14.3)
 
-### Perfil A — Tranca tradicional
-- Dois baralhos sem curingões.
-- Quatro jogadores em duplas.
-- 11 cartas por jogador e dois mortos de 11 cartas.
-- Lixo fechado.
-- Sequências e trincas permitidas.
-- 3 preto bloqueador e 3 vermelho com pontuação especial.
-- Pontuação e condição de batida definidas por um regulamento documentado.
+Um perfil é uma instância de `RuleSet`: identidade (`id`, `name`, `version`, `baseId`) + um valor para
+cada parâmetro de regra (§14.2) + as regras fixas de pontuação e distribuição (iguais em qualquer
+perfil, mas reunidas na mesma classe por conveniência). Não existem "categorias" de perfil
+(tradicional/competitivo/familiar) — existem **perfis da casa** (prontos, sorteados nas mesas dos
+robôs) e **perfis personalizados** (cópia de qualquer perfil, com nome e parâmetros alterados).
 
-> Este perfil é apenas uma proposta inicial. Valide cada detalhe com os jogadores que representam a variante desejada.
+### Perfis da casa (`RuleSet.HOUSE`)
 
-### Perfil B — Competitivo
-- Regras e pontuação estritamente definidas antes da partida.
-- Controle de tempo e tratamento de jogadas inválidas.
-- Registro das ações e pontuação.
-- Regulamento selecionado por competição, sem presumir que exista um padrão universal.
+| Parâmetro | Clássica (`CLASSICA`, base) | Tranca Paulista (`PAULISTA`) |
+|---|---|---|
+| `groupRanks` — números que formam grupo (§6.1) | qualquer número (4 a A) | só A, K, Q, J |
+| `mortoBecomesStock` — morto vira monte quando o monte acaba (§10) | sim | **não** |
+| `goOutRequiresCleanCanasta` — bater exige canastra limpa (§11.1) | não (qualquer canastra) | **sim** |
+| `handBlackThreePoints` — 3 preto na mão no fim (§12.2) | −5 | **−100** |
+| `maxWildsPerMeld`, `targetScore`, pontuação de canastras etc. | iguais nos dois perfis hoje | iguais nos dois perfis hoje |
 
-### Perfil C — Familiar
-- Meta de pontos, distribuição e regras especiais ajustáveis.
-- Possibilidade de salvar regras usadas por uma família ou grupo de amigos.
-- Interface simples para configurar as opções mais frequentes.
+`RuleSet.DEFAULT` é `CLASSICA`. Um perfil novo é `CLASSICA.copy(...)` ou `PAULISTA.copy(...)` com os
+campos que mudam — não há um perfil "Competitivo" ou "Familiar" prontos; a ideia de categorias largas
+da versão anterior deste documento não foi implementada.
 
-### Perfil D — Personalizado
-- Todos os parâmetros editáveis.
-- Salvar, duplicar, exportar e compartilhar perfis.
-- Validar combinações incompatíveis antes de iniciar uma partida.
+### Perfis personalizados
+
+O jogador duplica qualquer perfil (`RuleSet.duplicate(id, name)`), que copia todos os valores e marca
+`baseId` = o perfil de origem. A tela mostra o que difere da base. A mesa/partida guarda uma cópia
+completa e imutável do `RuleSet` usado (§14.4): alterar um perfil depois não afeta jogos já iniciados.
 
 ---
 
-## 4. Modelo de configuração JSON
+## 4. Estrutura real do perfil (`RuleSet.kt`)
 
-O exemplo abaixo demonstra como persistir um perfil. É um esboço de arquitetura, não um regulamento completo pronto para produção.
+Não existe um esquema JSON de configuração separado do código: `RuleSet` é `@Serializable`
+(kotlinx.serialization) e **é** a representação persistida. Abaixo, os campos reais (não um esboço):
 
-```json
-{
-  "profileId": "tranca_tradicional",
-  "profileName": "Tranca tradicional",
-  "version": 1,
-  "players": {
-    "count": 4,
-    "mode": "teams"
-  },
-  "deck": {
-    "numberOfDecks": 2,
-    "includeJokers": false,
-    "initialHandSize": 11,
-    "deadPileSize": 11,
-    "deadPileCount": 2
-  },
-  "draw": {
-    "discardPileMode": "closed",
-    "requireTopCardToFormMeld": true,
-    "allowPickupToExtendMeld": true
-  },
-  "melds": {
-    "allowSequences": true,
-    "allowSets": true,
-    "minimumSequenceSize": 3,
-    "minimumMeldSize": 3,
-    "minimumCanastaSize": 7,
-    "maxWildcardsPerMeld": 1,
-    "allowDirtyToClean": false
-  },
-  "specialCards": {
-    "blackThreeBlocksDiscardPile": true,
-    "redThreeMode": "conditional_bonus",
-    "redThreeBonus": 100,
-    "redThreePenalty": -100
-  },
-  "ending": {
-    "requireDeadPile": true,
-    "requireCleanCanasta": true,
-    "allowDirtyCanastaToFinish": false,
-    "targetScore": 3000
-  },
-  "scoring": {
-    "cleanCanasta": 200,
-    "dirtyCanasta": 100,
-    "goingOutBonus": 100,
-    "uncollectedDeadPilePenalty": -100,
-    "allowNegativeScore": true
-  }
-}
+```kotlin
+data class RuleSet(
+    val id: String = "classica",
+    val name: String = "Clássica",
+    val version: Int = 1,
+    val baseId: String? = null,          // perfil de origem; null na base
+    val groupRanks: GroupRanks = GroupRanks.ANY,              // §6.1 / §14.2
+    val mortoBecomesStock: Boolean = true,                    // §10 / §14.2
+    val goOutRequiresCleanCanasta: Boolean = false,           // §11.1 / §14.2
+    val cardsPerHand: Int = 11,                               // §3.1
+    val cardsPerMorto: Int = 11,                              // §3.2
+    val mortoCount: Int = 2,                                  // §3.2
+    val minMeldSize: Int = 3,                                 // §6.2
+    val minCanastaSize: Int = 7,                              // §7.1
+    val maxWildsPerMeld: Int = 1,                             // §6.3 / §14.2
+    val redThreePoints: Int = 100,                            // §12.1
+    val redThreeWithoutCanastaPoints: Int = -100,             // §12.1
+    val cleanCanastaPoints: Int = 200,                        // §7.2 / §12.1 / §14.2
+    val dirtyCanastaPoints: Int = 100,                        // §7.2 / §12.1 / §14.2
+    val goOutPoints: Int = 100,                               // §12.1
+    val tableRedThreePoints: Int = 5,                         // §12.1
+    val tableFourToTenPoints: Int = 8,                        // §12.1
+    val tableFaceCardOrAcePoints: Int = 10,                   // §12.1
+    val tableWildPoints: Int = 10,                            // §12.1
+    val mortoNotTakenPoints: Int = -100,                      // §12.2
+    val handRedThreePoints: Int = -5,                         // §12.2
+    val handBlackThreePoints: Int = -5,                       // §12.2 / §14.2
+    val handFourToTenPoints: Int = -8,                        // §12.2
+    val handFaceCardOrAcePoints: Int = -10,                   // §12.2
+    val handWildPoints: Int = -10,                            // §12.2
+    val targetScore: Int = 3000,                              // §13 / §14.2
+)
 ```
 
-Esse modelo precisará de campos adicionais para valores individuais das cartas, condições completas dos três vermelhos, esgotamento do monte e demais exceções identificadas durante a implementação.
+`GroupRanks` é um enum (`ANY`, `FACE_AND_ACE`, `NONE`). `maxWildsPerMeld` só aceita 0 ou 1; validações
+de faixa (`cleanCanastaPoints >= 0`, `targetScore > 0` etc.) ficam no bloco `init` da classe.
 
 ---
 
-## 5. Organização recomendada no Flutter/Dart
+## 5. Organização no motor (Kotlin)
 
-Separe as configurações em objetos de domínio independentes:
+A versão anterior deste documento sugeria separar as configurações em várias classes de domínio
+(`DeckRules`, `DrawRules`, `MeldRules`...) num app Flutter/Dart. Na implementação real (Kotlin,
+`:core-engine`), optou-se por **uma única `data class` imutável** (`RuleSet`, seção 4) em vez de vários
+objetos — mais simples de serializar, copiar (`copy()`) e comparar entre perfis, sem perder a
+rastreabilidade por seção (`§`) em cada campo (ver os comentários no código).
 
-- `GameProfile`: identidade, nome, versão e configuração geral.
-- `DeckRules`: baralhos, curingões e distribuição.
-- `DrawRules`: compra do monte e do lixo.
-- `MeldRules`: sequências, trincas e canastras.
-- `SpecialCardRules`: comportamento dos três e outras cartas especiais.
-- `EndingRules`: morto, batidas e encerramento.
-- `ScoringRules`: valores das cartas, bônus e penalidades.
-- `TurnRules`: ordem, descarte, tempo e ações inválidas.
-
-A lógica do jogo deve consultar esses objetos em vez de espalhar regras fixas pelas telas e funções. Por exemplo, a condição de canastra limpa para bater deve ser validada por um mecanismo central de regras.
-
-### Versionamento
-- Cada perfil deve possuir um identificador estável e um número de versão.
-- Uma partida iniciada deve guardar uma cópia imutável das regras utilizadas.
-- Atualizações futuras não devem alterar retroativamente partidas em andamento.
-- Perfis importados precisam ser validados antes de serem aceitos.
+- A lógica do jogo (`RoundEngine`, `legalActions`) lê os campos de `RuleSet` em vez de ter regras
+  fixas espalhadas; é a única fonte de jogadas válidas (ver `CLAUDE.md`, "Princípios do motor").
+- Versionamento: `id` + `version` identificam o perfil; a partida guarda a cópia do `RuleSet` com que
+  começou (§14.4), então mudar um perfil não afeta jogos já em andamento.
+- Bots leem o mesmo `RuleSet` da mesa (ex.: o bot sabe que o 3 preto pesa −100 na Paulista).
 
 ---
 
-## 6. Prioridades para o MVP
+## 6. Status
 
-1. Número de jogadores e formação das equipes.
-2. Compra do lixo e bloqueio.
-3. Sequências e trincas.
-4. Uso de curingas.
-5. Regras dos três pretos e vermelhos.
-6. Canastras e condições de batida.
-7. Valores das cartas, bônus, penalidades e meta.
-8. Retirada do morto e fim do monte.
-9. Regras online: tempo, reconexão, abandono e jogadas inválidas.
+A lista de prioridades do MVP (número de jogadores, compra do lixo, sequências/trincas, curingas,
+regras dos três, canastras e batida, pontuação, morto e monte) **foi entregue** — é o que está em
+`definition.md` §1 a §13 e os parâmetros variáveis de §14. O que ainda não tem parâmetro de regra
+são as regras online (tempo de turno, reconexão, abandono, jogadas inválidas), tratadas em
+[plano-online.md](plano-online.md) e `definition.md` §18, não aqui.
 
 ## 7. Recomendação final
 

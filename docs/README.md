@@ -11,7 +11,7 @@ trabalho e o que é material de apoio. Para as regras do jogo, a fonte da verdad
 | [telas-app.md](telas-app.md) | Telas, modais e glossário de componentes do **app Android**. |
 | [telas-admin-web.md](telas-admin-web.md) | Telas do **console web** de gerenciamento do jogo online (§18.7). |
 | [rules-traceability.md](rules-traceability.md) | Relação entre cada seção de `definition.md` e os testes que a verificam. |
-| [regrasflexiveis.md](regrasflexiveis.md) | Regras configuráveis por mesa (perfis da casa, parâmetros de `RuleSet`). |
+| [regrasflexiveis.md](regrasflexiveis.md) | Regras configuráveis por mesa: catálogo de variações da Tranca (§1-2) + o que foi implementado de fato, perfis Clássica/Paulista e estrutura do `RuleSet` (§3-5, reescritas em 2026-11-02). |
 | [recrutamento.md](recrutamento.md) | Como as telas do multijogador local ficam sincronizadas entre aparelhos. |
 | [seguranca-pendencias.md](seguranca-pendencias.md) | Falhas de segurança encontradas e aceitas como risco (não corrigidas na hora). |
 
@@ -26,7 +26,6 @@ Um plano concluído ou substituído vai para `archive/`; os demais ficam aqui, a
 | [plano-moedas.md](plano-moedas.md) | Moedas locais e apostas contra os robôs | Em execução | PR aberto, ainda não integrado. |
 | [plano-boosters.md](plano-boosters.md) | Boosters (catálogo, ícones e sons das reações) | Em execução | O arquivo diz "nada implementado", mas a branch `feature/boosters` já tem os assets em `assets/boosters/` e a Loja (já executada) depende dela — **confirme se o código avançou mais do que o texto registra**. |
 | [plano-multijogador-local.md](plano-multijogador-local.md) | Multijogador local (até 4 celulares, sem internet) | Em execução | Etapas 1 a 3 feitas; restante pendente. |
-| [plano-regras-flexiveis.md](plano-regras-flexiveis.md) | Regras por mesa (perfis da casa Clássica/Paulista) | Executado, mas não arquivado | O `RuleSet` com `CLASSICA`/`PAULISTA` já existe em `core-engine`, e o §14 já está em `definition.md`. Mantido fora de `archive/` até decidir a fusão com `regrasflexiveis.md` (ver aviso no final da sessão). |
 
 Nenhum plano está só "no papel" (futuro) neste momento — todos já têm pelo menos uma decisão
 aceita ou código iniciado.
