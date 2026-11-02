@@ -10,7 +10,7 @@ O jogador troca as **moedas** ganhas nos jogos (§14.6) por **boosters** (§17.1
 - A tela mostra a **imagem**, o **nome** e o **valor** de cada item; tocar abre um modal com informações do booster, a quantidade, o valor total, as moedas que o jogador tem e as que terá depois.
 - A compra pode zerar o saldo, **nunca negativá-lo** (nesse caso não é feita).
 - Confirmada, o booster já vale nos próximos jogos e o saldo na tela é atualizado.
-- Imagens do painel em `docs/boosters/Loja` (ver `LEIA-ME.txt`).
+- Imagens do painel em `docs/assets/boosters/loja` (ver `leia-me.txt`).
 
 ## Decisões
 1. **Valor = total do pacote**, não preço por unidade.
@@ -36,7 +36,7 @@ Saldo (arquivo das estatísticas) e inventário são DataStores separados, sem t
 `recoverPending()` termina uma compra interrompida e roda ao abrir a loja e antes de cada compra. Uma `Mutex` serializa as compras e a fila de gravações (`WriteQueue.app`) mantém a ordem com as demais gravações. O ViewModel ignora toque duplo em **Comprar**.
 
 ### Painel
-Peças de `docs/boosters/Loja` convertidas para webp (`drawable-nodpi/shop_*`). Geometria (em pixels da imagem do topo, 653 de largura) no objeto `Panel` de `ShopScreen.kt`: as laterais repetem de 103 em 103, o centro de 69 em 69, a lateral direita é cortada só na moldura e o centro vai por baixo dela. Tudo é desenhado em pixels inteiros, com 1 px de sobreposição, para não aparecerem linhas de costura.
+Peças de `docs/assets/boosters/loja` convertidas para webp (`drawable-nodpi/shop_*`). Geometria (em pixels da imagem do topo, 653 de largura) no objeto `Panel` de `ShopScreen.kt`: as laterais repetem de 103 em 103, o centro de 69 em 69, a lateral direita é cortada só na moldura e o centro vai por baixo dela. Tudo é desenhado em pixels inteiros, com 1 px de sobreposição, para não aparecerem linhas de costura.
 
 ## Testes
 - `ShopTest` (motor, §17.10): ofertas, débito, saldo zerado, saldo insuficiente e propriedade "nunca negativa".

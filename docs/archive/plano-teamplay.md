@@ -2,7 +2,7 @@ Quero adicionar ao G-Tranca um modo multijogador local: até 4 pessoas, cada
 uma no seu celular, na mesma mesa, SEM internet. Antes de qualquer código,
 leia CLAUDE.md, definition.md, docs/telas-app.md e os planos em docs/ para
 seguir o mesmo padrão. Imagem de referência da tela de posição:
-docs/telas/escolha-posicao-multiplayer.png.
+docs/assets/telas/escolha-posicao-multiplayer.png.
 
 ## Arquitetura desejada
 - Um celular HOSPEDA a mesa e é a autoridade: roda o GameController e o

@@ -1,17 +1,17 @@
 Tranca-bots — peças do painel da loja
 
 Arquivos:
-01_titulo_topo.png
+01-titulo-topo.png
   Recorte fixo do topo, incluindo robô, moedas e toldo. Posicione no alto.
 
-02_rodape_base.png
+02-rodape-base.png
   Recorte fixo da base/rodapé. Posicione no final da composição.
 
-03_centro_madeira_repetivel.png
+03-centro-madeira-repetivel.png
   Uma faixa horizontal de madeira retirada de uma tábua. Repita verticalmente para aumentar a altura útil do centro. Mantenha a largura e alinhe as bordas laterais sob as molduras.
 
-04_lateral_esquerda_repetivel.png
-05_lateral_direita_repetivel.png
+04-lateral-esquerda-repetivel.png
+05-lateral-direita-repetivel.png
   Faixas laterais para repetir verticalmente. Foram extraídas de trechos sem os enfeites circulares dos pés nem as luzes ciano, para evitar que esses elementos se repitam a cada segmento.
 
 Notas:

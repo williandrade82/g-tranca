@@ -340,13 +340,13 @@ Botão **Acessar loja** (tag `inventory-shop`) abre a Loja (3.20); ao voltar, o 
 
 ### 3.20 Loja (`ShopScreen`)
 **Objetivo:** trocar moedas por boosters (§17.10). Acesso só pelo botão **Acessar loja** do Inventário (3.18).
-**Conteúdo:** o **painel da loja** (o topo e o rodapé ficam fixos e só o miolo rola) montado com as peças de `docs/boosters/Loja` (título com o robô e o toldo no topo, laterais e centro de madeira repetidos conforme a altura, rodapé embaixo). Dentro dele, **9 ofertas** em grade de 3 colunas, uma linha por booster (B1, B2, B3) e as quantidades 10, 5 e 1 em cada linha. Cada oferta mostra a **imagem** do booster, o **nome** (com a quantidade, ex. "Green-LED ×10") e o **valor** em moedas (ícone do saco de dinheiro); tocar na oferta abre o modal **Comprar booster**. O saldo aparece no topo, como em todas as telas (0). Botão **Voltar** (tag `shop-back`) leva ao Inventário.
+**Conteúdo:** o **painel da loja** (o topo e o rodapé ficam fixos e só o miolo rola) montado com as peças de `docs/assets/boosters/loja` (título com o robô e o toldo no topo, laterais e centro de madeira repetidos conforme a altura, rodapé embaixo). Dentro dele, **9 ofertas** em grade de 3 colunas, uma linha por booster (B1, B2, B3) e as quantidades 10, 5 e 1 em cada linha. Cada oferta mostra a **imagem** do booster, o **nome** (com a quantidade, ex. "Green-LED ×10") e o **valor** em moedas (ícone do saco de dinheiro); tocar na oferta abre o modal **Comprar booster**. O saldo aparece no topo, como em todas as telas (0). Botão **Voltar** (tag `shop-back`) leva ao Inventário.
 **Regras:** §17.10.
 **Tags:** `shop-screen`, `shop-offer-<n>` (n = 1..9, na ordem da lista), `shop-back`.
 
 ### 3.20a Loja online (`OnlineShopScreen`)
 **Objetivo:** trocar moedas da carteira online por boosters do inventário online (§17.10, §18.5). Acesso só pelo botão **Loja online** de *Jogar online* (3.21).
-**Conteúdo:** o mesmo **painel da loja** de 3.20 (`docs/boosters/Loja`), as mesmas 9 ofertas e o mesmo modal **Comprar booster**, mas lendo e gravando a carteira e o inventário **online** (não os do aparelho); o saldo no topo é o **saldo online**. Compra e erro de saldo insuficiente seguem exatamente 3.20. Erro de rede ou servidor fora: mensagem na própria tela, com **Tentar de novo** (não fecha a loja). Botão **Voltar** (tag `online-shop-back`) leva a 3.21.
+**Conteúdo:** o mesmo **painel da loja** de 3.20 (`docs/assets/boosters/loja`), as mesmas 9 ofertas e o mesmo modal **Comprar booster**, mas lendo e gravando a carteira e o inventário **online** (não os do aparelho); o saldo no topo é o **saldo online**. Compra e erro de saldo insuficiente seguem exatamente 3.20. Erro de rede ou servidor fora: mensagem na própria tela, com **Tentar de novo** (não fecha a loja). Botão **Voltar** (tag `online-shop-back`) leva a 3.21.
 **Regras:** §17.10, §18.5.
 **Tags:** `online-shop-screen`, `online-shop-offer-<n>`, `online-shop-back`, `online-shop-balance` (saldo online, dentro do painel), `online-shop-loading`, `online-shop-error`, `online-shop-retry` (o aviso de rede/servidor fora e o *Tentar de novo*, tanto ao abrir a loja quanto ao comprar).
 
@@ -426,7 +426,7 @@ Todos levam o **cabeçalho de marca**.
 
 ## 6. Capturas de tela
 
-Tiradas em 2026-10-19 no emulador Pixel 4 (API 33, 1080×2280), versão 0.85, dados zerados (saldo inicial 1000 moedas). Ficam em [docs/telas/](telas/).
+Tiradas em 2026-10-19 no emulador Pixel 4 (API 33, 1080×2280), versão 0.85, dados zerados (saldo inicial 1000 moedas). Ficam em [docs/assets/telas/](assets/telas/).
 
 | Tela / modal | Arquivo(s) |
 |---|---|
@@ -457,4 +457,4 @@ Tiradas em 2026-10-19 no emulador Pixel 4 (API 33, 1080×2280), versão 0.85, da
 
 - Textos exatos de cada mensagem de erro (ver `strings.xml`).
 - Telas do multijogador: primeira versão na etapa 6 do `docs/plano-multijogador-local.md` (capturas depois do teste nos celulares). Fora dela: card completo da mesa (anúncio maior) e **Continuar** da sessão multijogador (§16.12, falta o espaço da sessão no `:data`).
-- Conferência visual no celular das mudanças de 18–19/10 (ver o status em `docs/plano-nomes-aos-bots.md`).
+- Conferência visual no celular das mudanças de 18–19/10 (ver o status em `docs/archive/plano-nomes-aos-bots.md`).

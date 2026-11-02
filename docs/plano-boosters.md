@@ -15,7 +15,7 @@ Itens do inventário do jogador que ele escolhe usar **antes de cada partida**. 
    - Os demais jogadores já podem começar. Ao chegar a **vez** de quem ainda não escolheu, o jogo **espera**, como parte da jogada dele.
    - Ao tocar **Seguir**, ele vê as animações de distribuição e os descartes já feitos.
 5. **Os boosters valem só para a partida** (nova partida, novo seletor e nova cobrança).
-6. **Ícone do b2:** `docs/boosters/booster2-icon-v1.png` (pronto). **Áudios das reações:** o usuário vai criar novos; os de `reacoes_audio_jogo*.zip` e `1.salva de palmas.mp3` **não serão usados**. Não bloqueia: as reações entram sem som e o som entra quando os arquivos chegarem.
+6. **Ícone do b2:** `docs/assets/boosters/booster2-icon-v1.png` (pronto). **Áudios das reações:** o usuário vai criar novos; os de `reacoes-audio-jogo*.zip` e `booster-salva-de-palmas.mp3` **não serão usados**. Não bloqueia: as reações entram sem som e o som entra quando os arquivos chegarem.
 7. **Red-LED (b2):** círculo vermelho do mesmo tamanho do verde, no **canto inferior esquerdo** da carta.
 
 ## Catálogo inicial (JSON)
