@@ -4,9 +4,18 @@ import kotlinx.serialization.Serializable
 
 /** §18.5 economia online: contratos JSON do economy-service (rotas publicas /economy/...). */
 
-/** Carteira e inventario da conta. [lastDailyClaim] em dias desde a epoca (nulo = nunca resgatou). */
+/**
+ * Carteira e inventario da conta. [lastDailyClaim] em dias desde a epoca (nulo = nunca resgatou). [migratedLocal] =
+ * a conta ja trouxe a carteira do aparelho (§18.6): o app usa para esconder o botao "Trazer minha carteira" para
+ * sempre depois da 1a vez (convidado sempre false, a migracao nao vale para ele).
+ */
 @Serializable
-data class EconomyStateDto(val balance: Long, val inventory: Map<String, Int>, val lastDailyClaim: Long? = null)
+data class EconomyStateDto(
+    val balance: Long,
+    val inventory: Map<String, Int>,
+    val lastDailyClaim: Long? = null,
+    val migratedLocal: Boolean = false,
+)
 
 /**
  * POST /economy/{guestId}/daily: o dia de hoje no fuso do jogador, em dias desde a epoca (§14.6). So informativo: o
@@ -20,6 +29,15 @@ data class DailyClaimRequest(val today: Long)
 @Serializable
 data class BuyRequest(val offerIndex: Int, val key: String)
 
+/**
+ * POST /economy/{guestId}/migrate (§18.6): o saldo e o inventario (so boosters com quantidade > 0) da carteira LOCAL
+ * do aparelho, para somar a carteira online uma unica vez por conta. O servidor nao confia em nada do aparelho alem
+ * do que vem aqui (o save local nao tem autoridade nenhuma): so confere limites defensivos (negativo, absurdo) e
+ * confia no valor informado, como a regra pede ("sem teto").
+ */
+@Serializable
+data class MigrateLocalWalletRequest(val coins: Long, val inventory: Map<String, Int> = emptyMap())
+
 @Serializable
 enum class EconomyErrorCode {
     SALDO_INSUFICIENTE, JA_RESGATADO, OFERTA_INEXISTENTE, CONTA_INEXISTENTE, REQUISICAO_INVALIDA, APP_NAO_RECONHECIDO,
@@ -32,6 +50,9 @@ enum class EconomyErrorCode {
 
     /** Liquidacao de uma aposta que nao foi retida (§14.6: nunca se ganha sem apostar). */
     APOSTA_INEXISTENTE,
+
+    /** §18.6: so conta (e-mail/Google) migra a carteira local; convidado nao e elegivel. */
+    CONTA_NAO_ELEGIVEL,
 }
 
 @Serializable

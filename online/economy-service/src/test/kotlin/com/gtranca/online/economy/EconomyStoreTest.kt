@@ -120,4 +120,65 @@ class EconomyStoreTest {
         store.ensureAccount("g1")
         shouldThrow<EconomyException> { store.buy("g1", 999, "x") }.code shouldBe EconomyException.Code.OFERTA_INEXISTENTE
     }
+
+    // §18.6: a carteira local do aparelho nao tem representacao nenhuma no servidor (nenhuma tabela, nenhum campo) -
+    // os testes abaixo so podem provar que o servidor aceita e aplica exatamente o que a CHAMADA manda, nunca algo
+    // que ele "ja sabia" sobre o aparelho (nao existe como ele saber).
+    @Test
+    fun `18_6 migra o saldo e cada booster informado, somando ao que ja existia na conta`() {
+        val before = store.ensureAccount("E_a")
+        before.migratedLocal shouldBe false
+        val after = store.migrateLocalWallet("E_a", 500, mapOf("b1" to 3, "b2" to 0, "x9" to 10))
+        after.balance shouldBe before.balance + 500
+        after.inventory["b1"] shouldBe before.inventory.getValue("b1") + 3
+        after.inventory["b2"] shouldBe before.inventory["b2"] // quantidade 0 no pedido: nao soma nada
+        after.inventory.containsKey("x9") shouldBe false // fora do catalogo: nunca confia, ignora
+        after.migratedLocal shouldBe true
+        store.state("E_a") shouldBe after
+    }
+
+    @Test
+    fun `18_6 migrar de novo depois de ja ter migrado nao soma outra vez, nem da erro`() {
+        store.ensureAccount("E_b")
+        val after = store.migrateLocalWallet("E_b", 500, mapOf("b1" to 3))
+        store.migrateLocalWallet("E_b", 999_999, mapOf("b1" to 50, "b2" to 50)) shouldBe after
+        store.state("E_b") shouldBe after
+    }
+
+    @Test
+    fun `18_6 convidado nao e elegivel para migrar a carteira local`() {
+        store.ensureAccount("conv1")
+        val before = store.state("conv1")
+        shouldThrow<EconomyException> { store.migrateLocalWallet("conv1", 100, mapOf("b1" to 1)) }.code shouldBe
+            EconomyException.Code.CONTA_NAO_ELEGIVEL
+        store.state("conv1") shouldBe before // nada mudou na tentativa recusada
+    }
+
+    @Test
+    fun `18_6 conta Google tambem e elegivel (so convidado nao e)`() {
+        store.migrateLocalWallet("G_a", 10, emptyMap()).migratedLocal shouldBe true
+    }
+
+    @Test
+    fun `18_6 saldo negativo ou absurdo e quantidade de booster negativa sao recusados, sem mudar nada`() {
+        val before = store.ensureAccount("E_c")
+        shouldThrow<EconomyException> { store.migrateLocalWallet("E_c", -1, emptyMap()) }.code shouldBe EconomyException.Code.REQUISICAO_INVALIDA
+        shouldThrow<EconomyException> { store.migrateLocalWallet("E_c", Long.MAX_VALUE, emptyMap()) }.code shouldBe
+            EconomyException.Code.REQUISICAO_INVALIDA
+        shouldThrow<EconomyException> { store.migrateLocalWallet("E_c", 0, mapOf("b1" to -1)) }.code shouldBe
+            EconomyException.Code.REQUISICAO_INVALIDA
+        store.state("E_c") shouldBe before // nenhuma tentativa recusada mudou a conta nem gravou a chave de migracao
+    }
+
+    @Test
+    fun `18_6 migracoes simultaneas da mesma conta migram uma vez so (sem teto, mas idempotente)`() {
+        store.ensureAccount("E_d")
+        val pool = Executors.newFixedThreadPool(8)
+        val results = (1..8).map { pool.submit<Long> { store.migrateLocalWallet("E_d", 777, mapOf("b1" to 9)).balance } }
+        pool.shutdown()
+        pool.awaitTermination(30, TimeUnit.SECONDS)
+        results.map { it.get() }.distinct().size shouldBe 1 // todas as chamadas veem o mesmo resultado final
+        store.state("E_d").balance shouldBe 1_000L + 777
+        store.state("E_d").inventory.getValue("b1") shouldBe 5 + 9
+    }
 }

@@ -268,7 +268,12 @@ class FakeLobby : LobbyApi {
  * livro-razão idempotente por chave (repetir a MESMA chave não cobra de novo).
  */
 class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
-    private data class Account(var balance: Long, val inventory: MutableMap<String, Int> = mutableMapOf(), var lastDailyClaim: Long? = null)
+    private data class Account(
+        var balance: Long,
+        val inventory: MutableMap<String, Int> = mutableMapOf(),
+        var lastDailyClaim: Long? = null,
+        var migratedLocal: Boolean = false,
+    )
 
     private val accounts = mutableMapOf<String, Account>()
 
@@ -291,7 +296,7 @@ class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
     override suspend fun economyState(token: String, accountId: String): EconomyStateDto {
         enter()
         val a = account(accountId)
-        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
+        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
     }
 
     override suspend fun claimDaily(token: String, accountId: String, today: Long): EconomyStateDto {
@@ -300,7 +305,7 @@ class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
         if (a.lastDailyClaim != null && today <= a.lastDailyClaim!!) error(EconomyErrorCode.JA_RESGATADO)
         a.balance += Coins.DAILY_GAIN
         a.lastDailyClaim = today
-        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
+        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
     }
 
     override suspend fun buyOffer(token: String, accountId: String, offerIndex: Int, key: String): EconomyStateDto {
@@ -308,12 +313,26 @@ class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
         buyAttempts += accountId to key
         enter()
         val a = account(accountId)
-        if (accountId to key in appliedKeys) return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
+        if (accountId to key in appliedKeys) return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
         val offer = Shop.OFFERS.getOrNull(offerIndex) ?: error(EconomyErrorCode.OFERTA_INEXISTENTE, 404)
         if (a.balance < offer.price) error(EconomyErrorCode.SALDO_INSUFICIENTE)
         appliedKeys += accountId to key
         a.balance -= offer.price
         a.inventory[offer.boosterId] = (a.inventory[offer.boosterId] ?: 0) + offer.quantity
-        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim)
+        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
+    }
+
+    /** §18.6: mesma recusa (convidado) e a mesma idempotencia por chave fixa do servidor real. */
+    override suspend fun migrateLocalWallet(token: String, accountId: String, coins: Long, inventory: Map<String, Int>): EconomyStateDto {
+        enter()
+        if (!(accountId.startsWith("G_") || accountId.startsWith("E_"))) error(EconomyErrorCode.CONTA_NAO_ELEGIVEL, 403)
+        val a = account(accountId)
+        val key = accountId to "migrar-carteira"
+        if (key in appliedKeys) return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
+        appliedKeys += key
+        a.balance += coins
+        inventory.filterValues { it > 0 }.forEach { (id, qty) -> a.inventory[id] = (a.inventory[id] ?: 0) + qty }
+        a.migratedLocal = true
+        return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
     }
 }

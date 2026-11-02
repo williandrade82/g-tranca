@@ -32,4 +32,12 @@ interface EconomyApi {
      * nunca cobra duas vezes (livro-razão idempotente); uma chave nova cobraria de novo.
      */
     suspend fun buyOffer(token: String, accountId: String, offerIndex: Int, key: String): EconomyStateDto
+
+    /**
+     * Migra a carteira local do aparelho para a conta online (§18.6): soma [coins] e cada booster de [inventory]
+     * (só com quantidade > 0) à carteira online, **uma única vez por conta**. Só vale para conta (e-mail ou Google;
+     * o servidor recusa convidado com [OnlineException.economyCode] `CONTA_NAO_ELEGIVEL`). Repetir a chamada (retry
+     * de rede) ou chamar de novo depois de já ter migrado nunca soma de novo: devolve o estado atual sem erro.
+     */
+    suspend fun migrateLocalWallet(token: String, accountId: String, coins: Long, inventory: Map<String, Int>): EconomyStateDto
 }

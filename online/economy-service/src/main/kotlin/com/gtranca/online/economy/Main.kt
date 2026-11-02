@@ -13,6 +13,7 @@ import com.gtranca.online.contracts.BoosterDebitResponse
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.BuyRequest
 import com.gtranca.online.contracts.DailyClaimRequest
+import com.gtranca.online.contracts.MigrateLocalWalletRequest
 import com.gtranca.online.contracts.EconomyError
 import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.EconomyLimits
@@ -96,13 +97,14 @@ private suspend inline fun <reified T> ApplicationCall.receiveLimited(): T {
     }
 }
 
-private fun EconomyState.toDto() = EconomyStateDto(balance, inventory, lastDailyClaim)
+private fun EconomyState.toDto() = EconomyStateDto(balance, inventory, lastDailyClaim, migratedLocal)
 
 private fun EconomyException.status(): Int = when (code) {
     EconomyException.Code.SALDO_INSUFICIENTE, EconomyException.Code.JA_RESGATADO -> 409
     EconomyException.Code.CONTA_INEXISTENTE -> 404
     EconomyException.Code.OFERTA_INEXISTENTE, EconomyException.Code.REQUISICAO_INVALIDA -> 400
     EconomyException.Code.APOSTA_INEXISTENTE -> 404
+    EconomyException.Code.CONTA_NAO_ELEGIVEL -> 403
 }
 
 private val GUEST_ID = Regex("[A-Za-z0-9_-]{1,${EconomyLimits.MAX_GUEST_ID}}")
@@ -170,6 +172,13 @@ fun Application.economyModule(deps: EconomyDeps) {
                     throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Pedido inválido.")
                 }
                 withContext(Dispatchers.IO) { store.buy(id, req.offerIndex, req.key) }
+            }
+        }
+        // §18.6: so conta (e-mail/Google) migra a carteira local, uma unica vez (o store recusa convidado e repetir).
+        post("/economy/{guestId}/migrate") {
+            call.guarded { id ->
+                val req = call.receiveLimited<MigrateLocalWalletRequest>()
+                withContext(Dispatchers.IO) { store.migrateLocalWallet(id, req.coins, req.inventory) }
             }
         }
 

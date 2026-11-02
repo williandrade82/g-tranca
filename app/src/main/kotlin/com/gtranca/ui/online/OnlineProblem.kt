@@ -137,6 +137,10 @@ fun OnlineException.toEconomyProblem(): OnlineProblem = when (kind) {
         EconomyErrorCode.INDISPONIVEL -> OnlineProblem.MAINTENANCE
         // JA_RESGATADO é tratado antes de chegar aqui (concilia relendo a carteira, nunca mostra erro); as demais
         // não deviam acontecer nesta tela (conta sempre existe antes de comprar ou liquidar, §18.5).
-        EconomyErrorCode.JA_RESGATADO, EconomyErrorCode.CONTA_INEXISTENTE, EconomyErrorCode.APOSTA_INEXISTENTE, null -> OnlineProblem.UNEXPECTED
+        // CONTA_NAO_ELEGIVEL (§18.6) também não devia acontecer aqui: a tela só mostra o botão de migrar para conta
+        // (nunca para convidado), então o servidor recusando por esse motivo é só defesa, nunca um caminho normal.
+        EconomyErrorCode.JA_RESGATADO, EconomyErrorCode.CONTA_INEXISTENTE, EconomyErrorCode.APOSTA_INEXISTENTE,
+        EconomyErrorCode.CONTA_NAO_ELEGIVEL, null,
+        -> OnlineProblem.UNEXPECTED
     }
 }

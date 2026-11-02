@@ -11,12 +11,15 @@ import com.gtranca.online.contracts.PayoutKind
 import java.sql.Connection
 import javax.sql.DataSource
 
-/** Saldo e inventário de uma conta (§18.5). */
-data class EconomyState(val balance: Long, val inventory: Map<String, Int>, val lastDailyClaim: Long?)
+/** Saldo e inventário de uma conta (§18.5). [migratedLocal]: a conta já trouxe a carteira do aparelho (§18.6). */
+data class EconomyState(val balance: Long, val inventory: Map<String, Int>, val lastDailyClaim: Long?, val migratedLocal: Boolean = false)
 
 /** Recusa de uma operação da economia, com o motivo em pt-BR. */
 class EconomyException(val code: Code, message: String) : RuntimeException(message) {
-    enum class Code { SALDO_INSUFICIENTE, JA_RESGATADO, OFERTA_INEXISTENTE, CONTA_INEXISTENTE, REQUISICAO_INVALIDA, APOSTA_INEXISTENTE }
+    enum class Code {
+        SALDO_INSUFICIENTE, JA_RESGATADO, OFERTA_INEXISTENTE, CONTA_INEXISTENTE, REQUISICAO_INVALIDA, APOSTA_INEXISTENTE,
+        CONTA_NAO_ELEGIVEL,
+    }
 }
 
 /**
@@ -28,6 +31,17 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
 
     companion object {
         private const val MILLIS_PER_DAY = 86_400_000L
+
+        /**
+         * §18.6 não impõe teto de produto ("sem teto"): isto só evita overflow/estouro, no limite do que a carteira
+         * LOCAL consegue guardar (`Wallet.balance`/`Inventory.quantities` são `Int`, core-engine) — nenhum saldo ou
+         * quantidade local genuíno jamais passa disto, então "sem teto" continua literal.
+         */
+        private const val MAX_MIGRATED_COINS = Int.MAX_VALUE.toLong()
+        private const val MAX_MIGRATED_BOOSTER_QTY = Int.MAX_VALUE
+
+        /** Chave de idempotência fixa por conta: existir já significa "esta conta já migrou" (§18.6). */
+        private fun migrationKey(accountId: String) = "migracao-carteira-$accountId"
     }
 
     /**
@@ -151,6 +165,38 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
         apply(c, accountId, "COMPRA", "compra-$key", coins = -offer.price.toLong(), reference = "oferta-$offerIndex")
         apply(c, accountId, "COMPRA", "compra-$key-booster", boosterId = offer.boosterId, quantity = offer.quantity, reference = "oferta-$offerIndex")
         read(c, accountId)
+    }
+
+    /**
+     * §18.6 migração da carteira local: soma [coins] ao saldo online e cada booster de [inventory] (quantidade > 0) ao
+     * inventário online, **uma única vez por conta**. Só vale para conta (e-mail/Google, nunca convidado — a
+     * identidade dele não é duradoura o bastante para uma operação irreversível de uma vez só). A chave de
+     * idempotência é **fixa** por conta ([migrationKey]): repetir a chamada (retry de rede, duplo toque) nunca soma
+     * duas vezes, e tentar migrar de novo depois de já ter migrado só devolve o estado atual, sem creditar nada —
+     * nem erro. O saldo e o inventário **locais** não são alterados aqui (o aparelho é quem decide isso, não o
+     * servidor). O servidor não tem autoridade sobre o save local: confia inteiramente no que a requisição manda,
+     * só com limites defensivos contra overflow (§18.6 não pede teto de produto).
+     */
+    fun migrateLocalWallet(accountId: String, coins: Long, inventory: Map<String, Int>): EconomyState {
+        if (kindOf(accountId) == "CONVIDADO") {
+            throw EconomyException(EconomyException.Code.CONTA_NAO_ELEGIVEL, "Convidado não pode migrar a carteira local.")
+        }
+        if (coins < 0 || coins > MAX_MIGRATED_COINS) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Saldo inválido.")
+        if (inventory.values.any { it < 0 || it > MAX_MIGRATED_BOOSTER_QTY }) {
+            throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Inventário inválido.")
+        }
+        ensureAccount(accountId) // a conta normalmente ja existe (criada no login), mas nunca falha por isso aqui
+        val catalog = BoosterCatalog.DEFAULT.map { it.id }.toSet()
+        return tx { c ->
+            lockWallet(c, accountId) // trava a carteira: serializa tentativas concorrentes da MESMA conta
+            val key = migrationKey(accountId)
+            if (alreadyApplied(c, accountId, key)) return@tx read(c, accountId)
+            apply(c, accountId, "MIGRACAO_CARTEIRA_LOCAL", key, coins = coins)
+            inventory.filterKeys { it in catalog }.filterValues { it > 0 }.forEach { (id, qty) ->
+                apply(c, accountId, "MIGRACAO_CARTEIRA_LOCAL", "$key-$id", boosterId = id, quantity = qty)
+            }
+            read(c, accountId)
+        }
     }
 
     /**
@@ -358,7 +404,8 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
             st.setString(1, accountId)
             st.executeQuery().use { rs -> buildMap { while (rs.next()) put(rs.getString(1), rs.getInt(2)) } }
         }
-        return EconomyState(balance, inventory, last)
+        val migratedLocal = alreadyApplied(c, accountId, migrationKey(accountId))
+        return EconomyState(balance, inventory, last, migratedLocal)
     }
 
     private fun <T> tx(block: (Connection) -> T): T = db.connection.use { c ->

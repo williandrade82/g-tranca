@@ -6,6 +6,7 @@ import com.gtranca.online.contracts.DailyClaimRequest
 import com.gtranca.online.contracts.EconomyError
 import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.EconomyStateDto
+import com.gtranca.online.contracts.MigrateLocalWalletRequest
 import com.gtranca.online.contracts.OnlineJson
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -82,6 +83,34 @@ class EconomyClientTest {
         val req = OnlineJson.decodeFromString(BuyRequest.serializer(), body)
         req.offerIndex shouldBe 2
         req.key shouldBe "compra-1"
+    }
+
+    // §18.6
+    @Test
+    fun `migracao da carteira local envia o saldo e o inventario para a rota migrate`() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        var body = ""
+        val migrated = state.copy(migratedLocal = true)
+        val c = client { req ->
+            seen = req
+            body = String(req.body.toByteArray())
+            respond(OnlineJson.encodeToString(EconomyStateDto.serializer(), migrated), HttpStatusCode.OK, json)
+        }
+        c.migrateLocalWallet("tok", "g1", 500, mapOf("b1" to 3)) shouldBe migrated
+        seen!!.url.encodedPath shouldBe "/economy/g1/migrate"
+        seen!!.method shouldBe HttpMethod.Post
+        val req = OnlineJson.decodeFromString(MigrateLocalWalletRequest.serializer(), body)
+        req.coins shouldBe 500L
+        req.inventory shouldBe mapOf("b1" to 3)
+    }
+
+    // §18.6: convidado nao e elegivel
+    @Test
+    fun `convidado recebe CONTA_NAO_ELEGIVEL ao tentar migrar`() = runBlocking<Unit> {
+        val c = client { error(HttpStatusCode.Forbidden, EconomyErrorCode.CONTA_NAO_ELEGIVEL) }
+        val e = shouldThrow<OnlineException> { c.migrateLocalWallet("tok", "conv1", 100, emptyMap()) }
+        e.kind shouldBe OnlineErrorKind.API
+        e.economyCode shouldBe EconomyErrorCode.CONTA_NAO_ELEGIVEL
     }
 
     // §18.2

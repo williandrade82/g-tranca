@@ -14,6 +14,7 @@ import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.JoinRequest
+import com.gtranca.online.contracts.MigrateLocalWalletRequest
 import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.OnlineJson
 import com.gtranca.online.contracts.PROTOCOL_HEADER
@@ -150,6 +151,12 @@ class OnlineClient(
             OnlineJson.encodeToString(BuyRequest.serializer(), BuyRequest(offerIndex, key)),
         )
     }
+
+    override suspend fun migrateLocalWallet(token: String, accountId: String, coins: Long, inventory: Map<String, Int>): EconomyStateDto =
+        economyCall(
+            EconomyStateDto.serializer(), token, HttpMethod.Post, "economy/${accountIdOf(accountId)}/migrate",
+            OnlineJson.encodeToString(MigrateLocalWalletRequest.serializer(), MigrateLocalWalletRequest(coins, inventory)),
+        )
 
     /** Confere o formato antes de montar o caminho (o mesmo que o economy-service aceita): nunca uma URL. */
     private fun accountIdOf(accountId: String): String {
