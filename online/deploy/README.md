@@ -334,6 +334,23 @@ Rollout `maxUnavailable: 0` (sobe o novo antes de derrubar o antigo; o estado es
 
 Conferido em 31/10/2026: rollout ok, `/health` UP, `GET /economy/probe-k8s-01` assinado pelo ingress -> 200 (conta criada com saldo inicial), sem assinatura -> 401, `/internal/economy` pelo ingress -> 404, tabelas criadas.
 
+### Migracao da carteira local para a conta (§18.6, `POST /economy/{accountId}/migrate`)
+Rota nova, so no `economy-service` (`lobby-service` e `game-service` sem mudanca: `git diff e80cc18..68ea01a --stat`
+para os dois veio vazio). Publica, dentro do `/economy` ja exposto pelo ingress, mesma assinatura do app e mesmo
+token de conta das outras rotas de `/economy`; nenhuma variavel de ambiente, Secret ou NetworkPolicy nova.
+
+Implantado em 02/11/2026 na tag `68ea01a` (so `economy-service`; `lobby-service` continua `e80cc18` e `game-service`
+continua `49d7282`, sem mudanca de protocolo). Conferido: rollout ok (revisao 9), pod `1/1 Running`, 0 restarts, logs
+limpos, migracao Flyway em `V4` (nenhuma nova nesta etapa). Teste funcional pelo ingress, com uma conta de e-mail de
+teste criada so para isto (`POST /api/lobby/accounts/email/register`): antes do deploy, `POST
+/economy/{id}/migrate` assinado respondia `404` (rota nao existia na imagem `e80cc18`); depois do deploy, a mesma
+chamada com `{"coins":777,"inventory":{"b1":4}}` respondeu `200` com o saldo somado (`balance: 1777`,
+`migratedLocal: true`); repetir a chamada com valores bem diferentes devolveu o **mesmo** estado (sem somar de
+novo, §18.6 "uma vez por conta"); sem `X-App-Signature` -> `401 APP_NAO_RECONHECIDO`; `/internal/economy/...` pelo
+ingress -> `404` (continua de fora). O risco de contas-fantasma somando a mesma carteira adulterada varias vezes ja
+estava registrado em `docs/seguranca-pendencias.md` (achado de 02/11/2026 do `online-backend-dev`); nada novo
+encontrado na camada de infraestrutura nesta implantacao.
+
 ## Seletor de boosters online (protocolo 2 -> 4; etapa S17.3/S18.3)
 
 `ONLINE_PROTOCOL_VERSION` subiu de 3 para 4 (fase do seletor de boosters na vista, novo endpoint interno do economy
