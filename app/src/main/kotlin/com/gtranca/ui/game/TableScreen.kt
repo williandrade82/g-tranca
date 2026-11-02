@@ -1223,6 +1223,13 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     val thinking = snapshot.thinkingSeat
         ?: snapshot.view.currentSeat.takeIf { state.remoteTurns && it != snapshot.viewerSeat && snapshot.view.phase != Phase.FINISHED }
     val status = when {
+        // §17.3/§18.3 a vez é de quem ainda não confirmou o próprio seletor de boosters: espera, sem "pensar".
+        state.boostersAwaitingSeat != null -> {
+            val awaiting = state.boostersAwaitingSeat
+            val role = SeatRole.of(snapshot.view.mode, awaiting, snapshot.viewerSeat)
+            val name = state.personas.getOrNull(awaiting.index)?.callName(snapshot.view.mode, role) ?: stringResource(role.nameRes())
+            stringResource(R.string.turn_awaiting_boosters, name)
+        }
         state.awaitingDraw -> stringResource(R.string.turn_draw)
         state.playing -> stringResource(R.string.turn_play)
         thinking != null -> {

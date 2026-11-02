@@ -147,4 +147,96 @@ class BoosterSelectorViewModelTest {
         vm.onSlot(0)
         vm.state.value.slots shouldBe listOf("b1", null, null)
     }
+
+    /** §18.3 fonte do seletor online: nunca é o Inventário do aparelho (ver [BoosterSelectionSource]). */
+    private class FakeSource(
+        val quantities: Map<String, Int> = mapOf("b1" to 5, "b2" to 5, "b3" to 5),
+        val marked: List<String> = emptyList(),
+        override val catalog: List<BoosterDef> = BoosterCatalog.DEFAULT,
+    ) : BoosterSelectionSource {
+        val drafts = mutableListOf<List<String>>()
+        val confirms = mutableListOf<List<String>>()
+        var confirmResult: (List<String>) -> BoosterConfirmResult = { BoosterConfirmResult.Ok(it) }
+        override suspend fun load() = BoosterSourceState(quantities, marked)
+        override suspend fun draft(boosters: List<String>) { drafts += boosters }
+        override suspend fun confirm(boosters: List<String>): BoosterConfirmResult {
+            confirms += boosters
+            return confirmResult(boosters)
+        }
+    }
+
+    @Test
+    fun `§18_3 ao abrir manda um rascunho com a marcacao pre-preenchida, sem o b3 bloqueado`() = runTest(dispatcher) {
+        val source = FakeSource(marked = listOf("b1", "b3"))
+        val vm = BoosterSelectorViewModel(source, blocked = setOf("b3"))
+        advanceUntilIdle()
+        vm.state.value.slots shouldBe listOf("b1", null, null)
+        source.drafts shouldBe listOf(listOf("b1"))
+    }
+
+    @Test
+    fun `§18_3 so manda rascunho de novo quando a selecao muda de verdade`() = runTest(dispatcher) {
+        val source = FakeSource()
+        val vm = BoosterSelectorViewModel(source)
+        advanceUntilIdle()
+        source.drafts.size shouldBe 1 // o rascunho inicial (vazio)
+        vm.onSlot(0) // abre a lista: nada mudou ainda
+        advanceUntilIdle()
+        source.drafts.size shouldBe 1
+        vm.onPick("b1") // agora sim, muda
+        advanceUntilIdle()
+        source.drafts shouldBe listOf(emptyList(), listOf("b1"))
+        vm.onSlot(1) // abre outro nicho vazio: ainda sem mudança
+        advanceUntilIdle()
+        source.drafts.size shouldBe 2
+    }
+
+    @Test
+    fun `§18_3 depois de confirmar nao manda mais rascunho`() = runTest(dispatcher) {
+        val source = FakeSource(marked = listOf("b1"))
+        val vm = BoosterSelectorViewModel(source)
+        advanceUntilIdle()
+        vm.confirm { }
+        advanceUntilIdle()
+        val countAfterConfirm = source.drafts.size
+        vm.onSlot(1)
+        vm.onPick("b2")
+        advanceUntilIdle()
+        source.drafts.size shouldBe countAfterConfirm
+    }
+
+    @Test
+    fun `§18_3 falha ao confirmar mostra o erro, trava os nichos e Tentar de novo manda a mesma lista`() = runTest(dispatcher) {
+        val source = FakeSource(marked = listOf("b1"))
+        source.confirmResult = { BoosterConfirmResult.Failed("Sem conexão com o servidor") }
+        val vm = BoosterSelectorViewModel(source)
+        advanceUntilIdle()
+        var done: List<String>? = null
+        vm.confirm { done = it }
+        advanceUntilIdle()
+        vm.state.value.error shouldBe "Sem conexão com o servidor"
+        vm.state.value.confirmed shouldBe true
+        done shouldBe null
+        // Os nichos continuam travados mesmo com o erro (§18.3): só o "Tentar de novo" reage.
+        vm.onSlot(0)
+        vm.state.value.slots shouldBe listOf("b1", null, null)
+        // Tentar de novo: reenvia a MESMA lista já travada.
+        source.confirmResult = { BoosterConfirmResult.Ok(it) }
+        vm.confirm { done = it }
+        advanceUntilIdle()
+        source.confirms shouldBe listOf(listOf("b1"), listOf("b1"))
+        done shouldBe listOf("b1")
+        vm.state.value.error shouldBe null
+    }
+
+    @Test
+    fun `§18_3 confirmar duas vezes sem erro so manda uma tentativa`() = runTest(dispatcher) {
+        val source = FakeSource(marked = listOf("b1"))
+        val vm = BoosterSelectorViewModel(source)
+        advanceUntilIdle()
+        vm.confirm { }
+        vm.confirm { }
+        advanceUntilIdle()
+        source.confirms.size shouldBe 1
+    }
 }

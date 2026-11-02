@@ -12,6 +12,9 @@ import com.gtranca.game.TableDriver
 import com.gtranca.multiplayer.SnapshotPacer
 import com.gtranca.online.client.MatchEvent
 import com.gtranca.online.client.MatchSession
+import com.gtranca.online.contracts.BoosterConfirmFailed
+import com.gtranca.online.contracts.BoosterPrompt
+import com.gtranca.online.contracts.BoostersConfirmed
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.GameError
 import com.gtranca.online.contracts.OnlineSeatView
@@ -63,6 +66,11 @@ class OnlineTableDriver private constructor(
     first: OnlineSeatView,
     private val events: kotlinx.coroutines.channels.ReceiveChannel<MatchEvent>,
     paceMillis: () -> Long,
+    /**
+     * §17.3/§18.3 os boosters já confirmados (pelo [BoostersConfirmed] recebido antes do 1º [SeatUpdate], em [connect]):
+     * este aparelho só chega a existir depois de confirmar, então a mão nunca aparece antes da escolha.
+     */
+    initialBoosters: List<String> = emptyList(),
 ) : TableDriver {
     val config: GameConfig = configOf(welcome.table, welcome.ruleSet)
 
@@ -70,6 +78,13 @@ class OnlineTableDriver private constructor(
 
     /** Os assentos como o servidor os mostra (nomes, robôs, conexão, desistência). */
     val seats: StateFlow<List<SeatInfo>> = _seats.asStateFlow()
+
+    private val _choosingBoosters = MutableStateFlow(choosingSeatsOf(welcome.seats))
+    override val choosingBoosters: StateFlow<Set<Int>> = _choosingBoosters.asStateFlow()
+
+    /** §17.3/§18.3 os boosters confirmados do assento deste aparelho; vale o jogo todo (`round` = 1, sempre confirmado). */
+    private val _seatBoosters = MutableStateFlow(com.gtranca.engine.SeatBoosters(initialBoosters, 0, round = 1))
+    override val seatBoosters: StateFlow<com.gtranca.engine.SeatBoosters> = _seatBoosters.asStateFlow()
 
     private val _ended = MutableStateFlow<OnlineGameEnd?>(null)
     val ended: StateFlow<OnlineGameEnd?> = _ended.asStateFlow()
@@ -164,12 +179,14 @@ class OnlineTableDriver private constructor(
                 _reconnecting.value = false
                 when (val m = event.message) {
                     // Reconexão: a vista atual chega logo depois; o pedido respondido antes da queda vale de novo.
-                    is Welcome -> { _seats.value = m.seats; answered.value = 0 }
+                    is Welcome -> { _seats.value = m.seats; _choosingBoosters.value = choosingSeatsOf(m.seats); answered.value = 0 }
                     is SeatUpdate -> {
                         clockFrom(m.view)
                         offer(m.view.toSnapshot(config, welcome))
                     }
-                    is SeatsChanged -> _seats.value = m.seats
+                    is SeatsChanged -> { _seats.value = m.seats; _choosingBoosters.value = choosingSeatsOf(m.seats) }
+                    // §17.3/§18.3 reconexão de um assento já confirmado: o servidor reenvia os boosters (nunca um prompt de novo).
+                    is BoostersConfirmed -> _seatBoosters.value = com.gtranca.engine.SeatBoosters(m.boosters, 0, round = 1)
                     is Rejected -> {
                         answered.value = 0
                         // ILLEGAL traz o erro do motor: o mesmo texto em pt-BR do jogo local; as demais só devolvem a vez.
@@ -244,14 +261,28 @@ class OnlineTableDriver private constructor(
         private const val WAIT_GRACE_MILLIS: Long = 4_000
         private const val PRESENTATION_WAIT_MILLIS: Long = 20_000
 
+        /** Os assentos (índice) de humanos que ainda não confirmaram o seletor de boosters do jogo (§17.3/§18.3). */
+        private fun choosingSeatsOf(seats: List<SeatInfo>): Set<Int> = seats.filter { it.choosingBoosters }.mapTo(mutableSetOf()) { it.index }
+
         /**
          * Abre a conexão e espera o [Welcome] e a primeira vista. `null` se a conexão acabou antes (o motivo vai em
          * [onFailure]). A coleta dos eventos segue no [scope] enquanto a tela existir.
+         *
+         * §17.3/§18.3: antes da 1ª vista, um assento humano que ainda não confirmou o seletor de boosters do jogo recebe
+         * um [BoosterPrompt] em vez do [SeatUpdate] (nunca a própria mão antes de confirmar) — [onBoosterPrompt] avisa o
+         * chamador para abrir o seletor; cada mudança da seleção e o Seguir vão direto por [MatchSession.selectBoosters]
+         * (o chamador guarda a mesma [session]), nunca por aqui. Uma falha ao confirmar chega a [onBoosterConfirmFailed]
+         * sem encerrar a conexão (o chamador pode tentar de novo a mesma lista). Confirmado, o servidor manda
+         * [BoostersConfirmed] (→ [onBoosterConfirmed], com o que valeu) seguido de uma ou mais vistas: a 1ª constrói o
+         * condutor já com a mão; eventuais seguintes chegam a ele pelo [handle] de sempre.
          */
         suspend fun connect(
             session: MatchSession,
             scope: CoroutineScope,
             onFailure: (OnlineGameEnd) -> Unit,
+            onBoosterPrompt: (BoosterPrompt) -> Unit = {},
+            onBoosterConfirmed: (List<String>) -> Unit = {},
+            onBoosterConfirmFailed: (String) -> Unit = {},
             paceMillis: () -> Long = { GameController.DEFAULT_BOT_DELAY_MILLIS },
         ): OnlineTableDriver? {
             val channel = kotlinx.coroutines.channels.Channel<MatchEvent>(kotlinx.coroutines.channels.Channel.UNLIMITED)
@@ -260,11 +291,21 @@ class OnlineTableDriver private constructor(
                 channel.close()
             }
             var welcome: Welcome? = null
+            var seats: List<SeatInfo>? = null
+            var confirmedBoosters: List<String>? = null
             for (event in channel) {
                 when (event) {
                     is MatchEvent.Message -> when (val m = event.message) {
-                        is Welcome -> welcome = m
-                        is SeatUpdate -> welcome?.let { w -> return OnlineTableDriver(session, scope, w, m.view, channel, paceMillis) }
+                        is Welcome -> { welcome = m; seats = m.seats }
+                        // §18.4 os assentos podem mudar (outro ainda escolhendo) enquanto este espera o próprio seletor.
+                        is SeatsChanged -> seats = m.seats
+                        is BoosterPrompt -> onBoosterPrompt(m)
+                        is BoosterConfirmFailed -> onBoosterConfirmFailed(m.message)
+                        is BoostersConfirmed -> { confirmedBoosters = m.boosters; onBoosterConfirmed(m.boosters) }
+                        is SeatUpdate -> welcome?.let { w ->
+                            val fresh = seats?.let { s -> w.copy(seats = s) } ?: w
+                            return OnlineTableDriver(session, scope, fresh, m.view, channel, paceMillis, confirmedBoosters.orEmpty())
+                        }
                         is TableClosed -> { onFailure(OnlineGameEnd.Closed(m.message)); return null }
                         is Replaced -> { onFailure(OnlineGameEnd.Replaced(m.message)); return null }
                         is YouResigned -> { onFailure(OnlineGameEnd.Closed(m.message)); return null }

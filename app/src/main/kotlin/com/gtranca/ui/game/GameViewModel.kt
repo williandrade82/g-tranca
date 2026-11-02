@@ -170,6 +170,11 @@ data class GameUiState(
     val lastReaction: ReactionEvent? = null,
     /** §17.3 mesa multijogador: a partida a que o seletor na tela se refere (0 = contra robôs: a da partida atual). */
     val boosterSelectorRound: Int = 0,
+    /**
+     * §17.3/§18.3 a vez é de um assento remoto que ainda não confirmou o próprio seletor de boosters: a mesa mostra
+     * "Aguardando <nome> escolher os boosters" no lugar do texto de vez de sempre (telas.md 3.19 "Online"/"Multijogador").
+     */
+    val boostersAwaitingSeat: Seat? = null,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
     private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
@@ -352,6 +357,8 @@ class GameViewModel(
         val seatReactions: Map<Int, Pair<com.gtranca.engine.Reaction, Long>> = emptyMap(),
         /** Muda quando o anfitrião atualiza os boosters do assento (a tela refaz a conta). */
         val boostersTick: Int = 0,
+        /** §17.3/§18.3 assentos (índice) que ainda não confirmaram o próprio seletor de boosters do jogo. */
+        val choosingBoosters: Set<Int> = emptySet(),
         val ownReaction: com.gtranca.engine.Reaction? = null,
         val ownReactionId: Long = 0,
         val lastReaction: ReactionEvent? = null,
@@ -492,6 +499,8 @@ class GameViewModel(
             }
             externalSeat?.let { flow -> viewModelScope.launch { flow.collect { local.update { it.copy(boostersTick = it.boostersTick + 1) } } } }
             viewModelScope.launch { controller.seatReactions.collect(::showSeatReaction) }
+            // §17.3/§18.3 "Aguardando <nome> escolher os boosters" quando a vez chega a um assento que ainda não confirmou.
+            viewModelScope.launch { controller.choosingBoosters.collect { set -> local.update { it.copy(choosingBoosters = set) } } }
         }
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
@@ -787,6 +796,7 @@ class GameViewModel(
             seatReactions = state.seatReactions.mapValues { it.value.first },
             lastReaction = state.lastReaction,
             boosterSelectorRound = state.pendingBoosterRound,
+            boostersAwaitingSeat = snapshot.view.currentSeat.takeIf { it.index in state.choosingBoosters && it != snapshot.viewerSeat },
             ownReaction = state.ownReaction,
             ownReactionId = state.ownReactionId,
             opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),

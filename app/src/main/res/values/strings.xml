@@ -757,6 +757,9 @@
     <string name="boosters_slot_empty">Nicho %1$d vazio, toque para escolher um booster</string>
     <string name="boosters_slot_filled">%1$s, quantidade %2$d, toque para tirar</string>
     <string name="boosters_pick_title">Escolha um booster</string>
+    <!-- Boosters: Seletor online (docs/telas.md 3.19 "Online", §18.3) -->
+    <string name="boosters_reactions_online_blocked">Reações ainda não funcionam nas mesas online</string>
+    <string name="turn_awaiting_boosters">Aguardando %1$s escolher os boosters</string>
     <!-- Boosters: Reações (b3, docs/telas.md 3.8) -->
     <string name="reaction_applause">Aplausos</string>
     <string name="reaction_love">Amei</string>
