@@ -1,6 +1,6 @@
 image:
   repository: gtranca/lobby-service
-  tag: "ce7d670"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
+  tag: "49d7282"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
   pullPolicy: IfNotPresent   # imagem local, sem registro externo
 
 replicaCount: 1

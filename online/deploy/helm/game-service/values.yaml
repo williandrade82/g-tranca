@@ -1,6 +1,6 @@
 image:
   repository: gtranca/game-service
-  tag: "2218e8d"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
+  tag: "49d7282"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
   pullPolicy: IfNotPresent   # imagem local, sem registro externo
 
 replicaCount: 1

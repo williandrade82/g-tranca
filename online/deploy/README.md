@@ -276,3 +276,22 @@ Inicio apos reinicio do Docker Desktop: o Hikari falha rapido se o Postgres (ou 
 Rollout `maxUnavailable: 0` (sobe o novo antes de derrubar o antigo; o estado esta no Postgres).
 
 Conferido em 31/10/2026: rollout ok, `/health` UP, `GET /economy/probe-k8s-01` assinado pelo ingress -> 200 (conta criada com saldo inicial), sem assinatura -> 401, `/internal/economy` pelo ingress -> 404, tabelas criadas.
+
+## Seletor de boosters online (protocolo 2 -> 4; etapa S17.3/S18.3)
+
+`ONLINE_PROTOCOL_VERSION` subiu de 3 para 4 (fase do seletor de boosters na vista, novo endpoint interno do economy
+`/internal/economy/matches/{matchId}/seats/{seat}/boosters`, `EconomyStore.debitBoosters`). Isso muda o que o
+**lobby-service** aceita em `X-Protocol-Version` mesmo sem o codigo-fonte dele ter mudado nesta etapa: a constante vem
+do `:online-contracts`, compilada no jar. **Implante os tres servicos juntos** (lobby-service, game-service,
+economy-service) na mesma tag, senao o app novo (protocolo 4) recebe `426 VERSAO_INCOMPATIVEL` do lobby antigo em
+toda chamada `/api/lobby` (nao so nos boosters). Ordem: economy-service antes ou junto do game-service (a rota nova de
+debito e chamada pelo game-service; sem ela o debito falha com 404 nas 3 tentativas e o jogo segue sem boosters, sem
+perder moeda). Nenhuma variavel de ambiente nova obrigatoria (`BOOSTER_SELECT_MS`, opcional, padrao 30000). Nenhuma
+NetworkPolicy nova (egress game-service -> economy-service ja existia).
+
+Implantado em 02/11/2026 na tag `49d7282` (os tres `values.yaml` atualizados para esta tag como novo padrao):
+rollout ok nos tres, 0 restarts, logs sem erro, sem migracao Flyway nova. Confirmado fim a fim pelo
+`probe` (ver "Prova no cluster" acima): handshake com `X-Protocol-Version: 3` -> `426`; com `4` passa a checagem de
+versao (cai no filtro de assinatura do app a seguir, esperado sem `APP_SIGNING_KEY` no cliente); jogo completo com
+seletor de boosters nos dois assentos (`BoosterPrompt` -> confirmacao vazia -> `BoostersConfirmed`/`BOOSTERS_CHOSEN`),
+queda e reconexao do Beto, placar coerente nas duas vistas, mesa `ENCERRADA` no lobby ao final.
