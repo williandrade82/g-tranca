@@ -32,6 +32,31 @@ Desenvolvimento local sem cluster: `.\gradlew.bat :game-service:run` e `http://l
 
 `:core-engine` e `:ai` entram no build de `online/` por caminho (`include` + `projectDir = ../core-engine` no `online/settings.gradle.kts`): nenhum arquivo do app muda. Em contêiner o layout e `/src/{core-engine,ai,online}`; cada Dockerfile tem um `Dockerfile.dockerignore` que limita o contexto.
 
+### Cache do Gradle no build da imagem (BuildKit)
+Os tres Dockerfiles (`lobby-service`, `game-service`, `economy-service`) tem `# syntax=docker/dockerfile:1` e
+`RUN --mount=type=cache,target=/root/.gradle` na etapa de build: o `$GRADLE_USER_HOME` (dependencias baixadas, o
+pacote do Gradle Wrapper e o build cache local, `org.gradle.caching=true` em `online/gradle.properties`) persiste
+**entre builds**, fora da imagem final (so a etapa `build` enxerga o mount; a imagem `jre` de execucao nunca o ve).
+Sem isso, toda imagem nova baixava tudo de novo e recompilava do zero, mesmo para uma mudanca de uma linha — era o
+motivo mais provavel dos deploys levarem 15-30 min.
+Exige **BuildKit** (sem ele a diretiva de cache mount e ignorada em silencio e nada melhora); no Docker Desktop
+recente (conferido aqui: `docker buildx ls` mostra o builder padrao `desktop-linux` com BuildKit ativo) e o padrao do
+`docker build`, sem variavel de ambiente nem flag extra.
+
+Medido em 02/11/2026 (`economy-service`, maquina local): build limpo (cache do Gradle vazio, baixa o Wrapper, as
+dependencias e compila tudo) **~9 min** (545 s sem o cache mount no Dockerfile; 528 s com o cache mount mas ainda
+vazio — sem regressao); build repetido mudando **uma linha** de comentario em `Main.kt`, com o cache do mount ja
+quente, **53 s** (Gradle: 43 s) — cerca de 10x mais rapido. O cache mount fica no disco do Docker Desktop (nao na
+imagem, nao no Git); `docker builder prune` ou "Reset Kubernetes cluster" o esvaziam, e o primeiro build depois
+disso volta a ser lento (esperado).
+
+**Ideia anotada, nao implementada:** para iteracao rapida (sem a verificacao final), um "modo rapido" copiaria o JAR
+ja compilado localmente (`./gradlew :servico:installDist` fora do Docker) direto para o pod em execucao
+(`kubectl cp` + reiniciar o processo, ou um volume montado), sem reconstruir a imagem nem fazer rollout — util para
+ciclos de depuracao, mas sem a garantia de reprodutibilidade da imagem com tag fixa; o build completo (Docker +
+Helm) continuaria sendo o caminho para a verificacao final e para o APK. Decisao do usuario se vale a pena montar
+isso; nao entra nesta etapa.
+
 ## lobby-service (mesas e convites)
 
 **Persistencia (etapa 2.4): Postgres, schema `lobby`** (convidados com hash do token, fotos e mesas; historico Flyway proprio `lobby.flyway_lobby_history`). O Flyway do lobby cria o schema ao iniciar com o usuario `POSTGRES_USER` (dono do banco). Usa o mesmo Secret `postgres-credentials` do economy (`DB_URL`=`jdbc:postgresql://postgres:5432/$(POSTGRES_DB)`, `DB_USER`/`DB_PASSWORD`) e o mesmo initContainer `wait-for-postgres`. O rotulo `app: lobby-service` libera a NetworkPolicy do Postgres. Conferido: apagar o pod do lobby mantem os convidados no banco e um novo probe roda. Continua com `replicaCount: 1` (sessoes/presenca ainda em memoria).
