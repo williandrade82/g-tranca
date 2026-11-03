@@ -33,8 +33,8 @@ fun classifyHealth(httpStatus: Int, bodyUp: Boolean, latencyMs: Long, yellowAbov
 
 /**
  * Chama o `/health` do servico por HTTP simples (sem segredo servico-a-servico: `/health` e publico em todo
- * servico do online, ver lobby/game-service Main.kt). Limiar de latencia provisorio (`yellowAboveMs`), a
- * confirmar com o usuario (ver relatorio da etapa); devera virar variavel de ambiente se confirmado.
+ * servico do online, ver lobby/game-service Main.kt). `timeoutMs`/`yellowAboveMs` vem de
+ * ADMIN_HEALTH_TIMEOUT_MS/ADMIN_HEALTH_YELLOW_MS em Main.kt (padrao 2000/500 se ausentes).
  */
 class HttpHealthGateway(
     private val timeoutMs: Long = 2_000L,

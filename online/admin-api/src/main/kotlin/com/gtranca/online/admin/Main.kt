@@ -101,6 +101,10 @@ fun main() {
         loginAttemptLimit = System.getenv("LOGIN_ATTEMPT_LIMIT")?.toIntOrNull() ?: 5,
         loginLockoutMinutes = System.getenv("LOGIN_LOCKOUT_MINUTES")?.toLongOrNull() ?: 15L,
         healthTargets = healthTargets,
+        healthGateway = HttpHealthGateway(
+            timeoutMs = System.getenv("ADMIN_HEALTH_TIMEOUT_MS")?.toLongOrNull() ?: 2_000L,
+            yellowAboveMs = System.getenv("ADMIN_HEALTH_YELLOW_MS")?.toLongOrNull() ?: 500L,
+        ),
         grafanaUrl = System.getenv("GRAFANA_URL")?.takeIf { it.isNotBlank() },
         lokiUrl = System.getenv("LOKI_URL")?.takeIf { it.isNotBlank() },
     )
