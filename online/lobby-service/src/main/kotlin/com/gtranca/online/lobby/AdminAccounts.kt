@@ -33,8 +33,14 @@ class AdminAccountDirectory(
                     id = id, kind = AccountKind.EMAIL, name = latestSession?.name ?: email.name,
                     email = email.email, createdMs = email.createdMs, lastSeenMs = lastSeenMs,
                 )
-                AccountLimits.isAccountId(id) -> AdminAccountSummary(
+                // Pelo PREFIXO do id, nunca por isAccountId (que vale para G_ e E_ juntos): uma sessao E_ sem
+                // entrada em conta_email (banco inconsistente, ou emailAccountPersistence ausente apos um
+                // reinicio) continua EMAIL, nunca GOOGLE por exclusao.
+                id.startsWith(AccountLimits.GOOGLE_ID_PREFIX) -> AdminAccountSummary(
                     id = id, kind = AccountKind.GOOGLE, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs,
+                )
+                id.startsWith(AccountLimits.EMAIL_ID_PREFIX) -> AdminAccountSummary(
+                    id = id, kind = AccountKind.EMAIL, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs,
                 )
                 else -> AdminAccountSummary(
                     id = id, kind = AccountKind.CONVIDADO, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs,
