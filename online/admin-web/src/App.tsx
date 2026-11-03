@@ -5,6 +5,8 @@ import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { AccountsList } from './pages/AccountsList'
 import { AccountDetail } from './pages/AccountDetail'
+import { TablesList } from './pages/TablesList'
+import { TableDetail } from './pages/TableDetail'
 
 export function App() {
   return (
@@ -32,6 +34,22 @@ export function App() {
           element={
             <ProtectedRoute>
               <AccountDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mesas"
+          element={
+            <ProtectedRoute>
+              <TablesList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mesas/:id"
+          element={
+            <ProtectedRoute>
+              <TableDetail />
             </ProtectedRoute>
           }
         />

@@ -260,3 +260,18 @@ table.accounts-tabela td {
   content: '● ';
   color: var(--cor-erro);
 }
+
+/* Estado da mesa (tela Mesas): cor so de apoio, o rotulo em texto (TABLE_STATE_LABEL) sempre aparece junto. */
+.estado-mesa-ABERTA {
+  color: #1a7a33;
+  font-weight: 600;
+}
+
+.estado-mesa-EM_JOGO {
+  color: #8a6d00;
+  font-weight: 600;
+}
+
+.estado-mesa-ENCERRADA {
+  color: #555;
+}

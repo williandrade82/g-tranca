@@ -123,3 +123,63 @@ export interface AccountActionRequest {
 export interface RevokeSessionsResponse {
   revoked: number
 }
+
+export type TableMode = 'INDIVIDUAL' | 'DUPLAS'
+export type TempoDeJogada = 'INDETERMINADO' | 'UM_MINUTO' | 'CINCO_MINUTOS' | 'QUINZE_MINUTOS'
+export type Punicao = 'SEM_PUNICAO' | 'PERDE_APOSTA'
+export type Visibilidade = 'PRIVADA' | 'PUBLICA'
+export type BotLevel = 'FACIL' | 'MEDIO' | 'DIFICIL'
+export type BotProfile = 'JOVEM' | 'SOBRIO' | 'ALTERNATIVO' | 'ATLETA'
+export type SeatKind = 'VAGO' | 'HUMANO' | 'ROBO'
+
+/** Espelha `com.gtranca.online.contracts.TableRules`: regras e critérios da mesa, imutáveis depois de iniciar. */
+export interface TableRules {
+  mode: TableMode
+  targetScore: number
+  bet: number
+  skillBoostersAllowed: boolean
+  tempoDeJogada: TempoDeJogada
+  punicao: Punicao
+  visibilidade: Visibilidade
+  robotLevel: BotLevel
+}
+
+export interface SeatView {
+  index: number
+  kind: SeatKind
+  guestId: string | null
+  name: string | null
+  photoUrl: string | null
+  profile: BotProfile | null
+  level: BotLevel | null
+}
+
+/** Espelha `com.gtranca.online.contracts.TableView` (tela Mesas, docs/telas-admin-web.md): mesma forma pra
+ * lista e pra ficha - id, anfitrião, estado, regras, assentos. */
+export interface TableView {
+  id: string
+  hostId: string
+  hostName: string
+  state: TableState
+  rules: TableRules
+  seats: SeatView[]
+  name: string
+}
+
+/** GET /admin/tables: TODO estado (ao contrário da lista pública do app, que nunca mostra ENCERRADA). */
+export interface TablesPageResponse {
+  items: TableView[]
+  total: number
+  limit: number
+  offset: number
+}
+
+/** POST /admin/tables/{id}/close (operador+): motivo sempre obrigatório. Idempotente em qualquer estado;
+ * mesa EM_JOGO devolve a aposta a todos os jogadores (ninguém é punido). */
+export interface CloseTableRequest {
+  reason: string
+  operationId?: string
+  /** O estado que o operador viu ao confirmar o aviso (ver `TableDetail.openConfirm`): se a mesa tiver virado
+   * EM_JOGO entre a ficha abrir e o clique, e este campo nao for EM_JOGO, o admin-api recusa com 409. */
+  expectedState?: TableState
+}
