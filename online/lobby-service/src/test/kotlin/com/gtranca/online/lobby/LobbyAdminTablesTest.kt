@@ -4,9 +4,11 @@ import com.gtranca.online.contracts.ADMIN_API_VERSION
 import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminCloseTableRequest
+import com.gtranca.online.contracts.AdminStatsDto
 import com.gtranca.online.contracts.AdminTablesPage
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.CreateGuestRequest
+import com.gtranca.online.contracts.CreateMatchRequest
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
@@ -31,17 +33,32 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
 
-/** §18.7, tela Mesas: lista/detalhe (qualquer estado) e "Encerrar mesa travada" (idempotente; EM_JOGO fica de fora). */
+/**
+ * §18.7, tela Mesas: lista/detalhe (qualquer estado) e "Encerrar mesa travada" - idempotente; EM_JOGO avisa o
+ * game-service pelo caminho do OPERADOR (§18.4, decisao de 03/11/2026: ninguem e punido, a aposta de todos os
+ * humanos volta, aviso honesto).
+ */
 class LobbyAdminTablesTest {
     private val json = Json { ignoreUnknownKeys = true }
     private val internalSecret = "segredo-interno"
     private val adminSecret = "segredo-admin"
 
-    private fun deps() = LobbyDeps(
+    /** Fake do game-service: so o necessario para a mesa iniciar e para o fechamento do operador. */
+    private class Gateway(var failClose: GameGatewayException? = null) : GameGateway {
+        val closedByOperator = mutableListOf<Pair<String, String?>>()
+        override suspend fun createMatch(request: CreateMatchRequest) = Unit
+        override suspend fun closeByOperator(tableId: String, reason: String?) {
+            failClose?.let { throw it }
+            closedByOperator += tableId to reason
+        }
+    }
+
+    private fun deps(gateway: GameGateway? = null) = LobbyDeps(
         internalSecret = internalSecret,
         adminSecret = adminSecret,
         guestCreationPerMinute = 1_000,
         ipLimitPerMinute = 1_000,
+        gateway = gateway,
     )
 
     private suspend fun HttpClient.call(method: HttpMethod, path: String, token: String? = null, body: String? = null): HttpResponse =
@@ -113,18 +130,63 @@ class LobbyAdminTablesTest {
     }
 
     @Test
-    fun `18_7 encerrar mesa em jogo ainda nao e suportado, a mesa continua em jogo`() = testApplication {
-        application { lobbyModule(deps()) }
+    fun `18_7 encerrar mesa em jogo avisa o game-service pelo caminho do operador e marca ENCERRADA`() = testApplication {
+        val gw = Gateway()
+        application { lobbyModule(deps(gw)) }
         val ana = client.guest("Ana")
         val t = client.serverTable(ana.token)
         client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token)
 
-        val close = client.admin("/internal/admin/tables/${t.id}/close", body = json.encodeToString(AdminCloseTableRequest.serializer(), AdminCloseTableRequest("teste")))
-        close.status shouldBe HttpStatusCode.NotImplemented
+        val before = json.decodeFromString<AdminStatsDto>(client.admin("/internal/admin/stats").bodyAsText())
+        before.matchesEndedLastHour shouldBe 0
+
+        val close = client.admin(
+            "/internal/admin/tables/${t.id}/close",
+            body = json.encodeToString(AdminCloseTableRequest.serializer(), AdminCloseTableRequest("mesa travada ha 2 horas")),
+        )
+        close.status shouldBe HttpStatusCode.OK
+        json.decodeFromString<TableView>(close.bodyAsText()).state shouldBe TableState.ENCERRADA
+        gw.closedByOperator.single() shouldBe (t.id to "mesa travada ha 2 horas")
+
+        // Conta como partida encerrada (igual ao anfitriao encerrando ou o game-service avisando).
+        val after = json.decodeFromString<AdminStatsDto>(client.admin("/internal/admin/stats").bodyAsText())
+        after.matchesEndedLastHour shouldBe 1
+
+        // Idempotente.
+        val again = client.admin("/internal/admin/tables/${t.id}/close", body = "{}")
+        again.status shouldBe HttpStatusCode.OK
+        json.decodeFromString<TableView>(again.bodyAsText()).state shouldBe TableState.ENCERRADA
+        gw.closedByOperator.size shouldBe 1 // mesa ja ENCERRADA no lobby: nem chama o game-service de novo
+    }
+
+    @Test
+    fun `18_7 se o game-service nao responde a mesa em jogo continua em jogo`() = testApplication {
+        val gw = Gateway(failClose = GameGatewayException(null, "fora do ar"))
+        application { lobbyModule(deps(gw)) }
+        val ana = client.guest("Ana")
+        val t = client.serverTable(ana.token)
+        client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token)
+
+        val close = client.admin("/internal/admin/tables/${t.id}/close", body = "{}")
+        close.status shouldBe HttpStatusCode.ServiceUnavailable
         close.error() shouldBe ErrorCode.SERVICO_INDISPONIVEL
 
         val still = json.decodeFromString<TableView>(client.admin("/internal/admin/tables/${t.id}").bodyAsText())
         still.state shouldBe TableState.EM_JOGO
+    }
+
+    @Test
+    fun `18_7 sem game-service configurado encerrar mesa em jogo fica indisponivel, nunca punindo ninguem no lugar`() = testApplication {
+        application { lobbyModule(deps(gateway = null)) }
+        val ana = client.guest("Ana")
+        val t = client.serverTable(ana.token)
+        // Sem gateway o /start tambem nao chama rede: so marca EM_JOGO direto (mesmo caminho de testes antigos).
+        client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token)
+
+        val close = client.admin("/internal/admin/tables/${t.id}/close", body = "{}")
+        close.status shouldBe HttpStatusCode.ServiceUnavailable
+        close.error() shouldBe ErrorCode.SERVICO_INDISPONIVEL
+        json.decodeFromString<TableView>(client.admin("/internal/admin/tables/${t.id}").bodyAsText()).state shouldBe TableState.EM_JOGO
     }
 
     @Test

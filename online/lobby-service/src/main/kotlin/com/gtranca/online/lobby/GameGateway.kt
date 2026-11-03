@@ -1,5 +1,6 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.CloseMatchByOperatorRequest
 import com.gtranca.online.contracts.CloseMatchRequest
 import com.gtranca.online.contracts.CreateMatchRequest
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
@@ -28,6 +29,14 @@ fun interface GameGateway {
      * padrao nao faz nada (so para fakes que nao tratam o encerramento).
      */
     suspend fun closeMatch(tableId: String, hostGuestId: String) {}
+
+    /**
+     * §18.7: o OPERADOR (console de gerenciamento) encerra a mesa travada - ninguem e punido, a aposta de todos
+     * os humanos volta (§18.4, decisao de 03/11/2026). [reason] e so para o game-service registrar no log. Volta
+     * normalmente se encerrou, se o jogo ja tinha acabado ou se o game-service nao conhece a partida (404); lanca
+     * [GameGatewayException] se nao deu para saber. A implementacao padrao nao faz nada (so para fakes).
+     */
+    suspend fun closeByOperator(tableId: String, reason: String?) {}
 }
 
 /** HTTP interno com o segredo compartilhado (variavel de ambiente/Secret; nunca no codigo). */
@@ -62,6 +71,22 @@ class HttpGameGateway(private val baseUrl: String, private val secret: String) :
                 header(INTERNAL_SECRET_HEADER, secret)
                 contentType(ContentType.Application.Json)
                 setBody(OnlineJson.encodeToString(CloseMatchRequest.serializer(), CloseMatchRequest(hostGuestId)))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw GameGatewayException(null, "game-service inacessivel: ${e::class.simpleName}")
+        }
+        val code = response.status.value
+        if (code !in 200..299 && code != 404) throw GameGatewayException(code, "game-service respondeu $code")
+    }
+
+    override suspend fun closeByOperator(tableId: String, reason: String?) {
+        val response = try {
+            client.post("${baseUrl.trimEnd('/')}/internal/matches/$tableId/close-by-operator") {
+                header(INTERNAL_SECRET_HEADER, secret)
+                contentType(ContentType.Application.Json)
+                setBody(OnlineJson.encodeToString(CloseMatchByOperatorRequest.serializer(), CloseMatchByOperatorRequest(reason)))
             }
         } catch (e: CancellationException) {
             throw e

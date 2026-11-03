@@ -469,6 +469,43 @@ class MatchClockTest {
     }
 
     @Test
+    fun `18_7 operador encerra a mesa travada, nenhum abandono e registrado e ninguem e punido`() = runBlocking {
+        val r = rig(TableMode.DUPLAS, duplasSeats(), punicao = Punicao.PERDE_APOSTA, bet = 10)
+        val (a, b) = r.humans()
+        r.clock.advance(90_000) // depois dos 60 s de carencia: mostra que a punicao normal NAO se aplica aqui
+        r.session.closeByOperator("mesa travada") shouldBe CloseResult.Closed
+
+        a.drain()
+        b.drain()
+        a.received.filterIsInstance<TableClosed>().single().message shouldBe "A mesa foi encerrada pelo suporte."
+        b.received.filterIsInstance<TableClosed>().single().message shouldBe "A mesa foi encerrada pelo suporte."
+        // Nunca a mensagem do anfitriao, e nenhum robo assume (nenhuma troca de assento).
+        a.received.none { it is SeatsChanged && it.change == SeatChange.RESIGNED } shouldBe true
+        a.link.closeInfo!!.code shouldBe 1000
+        b.link.closeInfo!!.code shouldBe 1000
+
+        val end = r.ended.single()
+        end.reason shouldBe GameEndReason.ENCERRADO_PELO_OPERADOR
+        end.othersRefunded shouldBe true
+        end.abandonments.shouldBeEmpty() // ninguem e "culpado" - diferente de ANFITRIAO_ENCERROU
+        r.session.isFinished shouldBe true
+        TestPlayer(r.session, "ga").attach() shouldBe AttachResult.Closed
+        r.stop()
+    }
+
+    @Test
+    fun `18_7 encerrar pelo operador uma mesa cujo jogo ja terminou nao faz nada`() = runBlocking {
+        val r = rig(TableMode.INDIVIDUAL, humans2())
+        val (a, _) = r.humans()
+        a.resign() // 1x1: o jogo acaba na hora
+        r.session.inspect().stage shouldBe TableStage.GAME_OVER
+        r.session.closeByOperator() shouldBe CloseResult.AlreadyOver
+        r.ended.size shouldBe 1
+        r.ended.single().reason shouldBe GameEndReason.ABANDONO // o fim de verdade nao e sobrescrito
+        r.stop()
+    }
+
+    @Test
     fun `18_4 jogo terminado pela pontuacao avisa uma vez com o motivo PONTUACAO`() = runBlocking {
         val r = rig(TableMode.DUPLAS, duplasSeats(), target = 150, seed = 7)
         val (a, b) = r.humans()

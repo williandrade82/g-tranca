@@ -30,4 +30,20 @@ class ClockContractsTest {
         val notice = MatchEndedNotice(GameEndReason.ABANDONO)
         OnlineJson.decodeFromString(MatchEndedNotice.serializer(), OnlineJson.encodeToString(MatchEndedNotice.serializer(), notice)) shouldBe notice
     }
+
+    @Test
+    fun `18_7 motivo de fim do operador existe, e distinto do anfitriao, e o pedido de fechamento viaja em JSON`() {
+        GameEndReason.ENCERRADO_PELO_OPERADOR shouldBe GameEndReason.valueOf("ENCERRADO_PELO_OPERADOR")
+        (GameEndReason.ENCERRADO_PELO_OPERADOR == GameEndReason.ANFITRIAO_ENCERROU) shouldBe false
+
+        val req = CloseMatchByOperatorRequest(reason = "mesa travada")
+        OnlineJson.decodeFromString(
+            CloseMatchByOperatorRequest.serializer(),
+            OnlineJson.encodeToString(CloseMatchByOperatorRequest.serializer(), req),
+        ) shouldBe req
+        OnlineJson.decodeFromString(
+            CloseMatchByOperatorRequest.serializer(),
+            OnlineJson.encodeToString(CloseMatchByOperatorRequest.serializer(), CloseMatchByOperatorRequest()),
+        ).reason shouldBe null
+    }
 }

@@ -62,6 +62,13 @@ enum class GameEndReason {
 
     /** §18.4: nenhum humano da partida conectado; a mesa foi destruida na hora. */
     TODOS_DESCONECTADOS,
+
+    /**
+     * §18.4/§18.7 (decisao de 03/11/2026): o OPERADOR do console de gerenciamento encerrou uma mesa travada -
+     * nunca um jogador. Ninguem e punido (todos os humanos recebem a aposta de volta); diferente de
+     * [ANFITRIAO_ENCERROU] (que pune quem fechou), nunca reaproveitado com esse sentido.
+     */
+    ENCERRADO_PELO_OPERADOR,
 }
 
 /** Perfis de robo (§14.5). */
@@ -106,6 +113,16 @@ data class CreateMatchResponse(val tableId: String)
 /** lobby -> game: o anfitriao [hostGuestId] encerra a mesa em jogo (§18.4). O lobby e quem sabe quem e o anfitriao. */
 @Serializable
 data class CloseMatchRequest(val hostGuestId: String)
+
+/**
+ * lobby -> game: o OPERADOR (console de gerenciamento, §18.7) encerra uma mesa travada que esta em jogo -
+ * diferente de [CloseMatchRequest] (o anfitriao encerrando, §18.4): aqui ninguem e punido, a aposta de TODOS os
+ * humanos volta e o aviso aos conectados e honesto ("A mesa foi encerrada pelo suporte."), nunca a mensagem de
+ * "o anfitriao encerrou". Sem `hostGuestId`: quem chama e o lobby-service agindo por ordem do admin-api, nao um
+ * jogador sentado na partida. [reason] e so para o game-service registrar no log.
+ */
+@Serializable
+data class CloseMatchByOperatorRequest(val reason: String? = null)
 
 /** [alreadyOver]: o jogo ja tinha terminado (nada mais a fazer). */
 @Serializable

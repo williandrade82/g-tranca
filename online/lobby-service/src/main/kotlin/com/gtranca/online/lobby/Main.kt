@@ -723,10 +723,10 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 call.respondError(e)
             }
         }
-        // §18.7 "Encerrar mesa travada": idempotente (ENCERRADA fica como esta). EM_JOGO fica de fora por ora -
-        // decisao de produto pendente sobre a aposta retida quando quem fecha nao e um jogador (ver relatorio
-        // da etapa); devolve SERVICO_INDISPONIVEL em vez de usar o caminho do anfitriao (que puniria um jogador
-        // pela decisao do operador).
+        // §18.7 "Encerrar mesa travada": idempotente (ENCERRADA fica como esta). Mesa EM_JOGO: avisa o
+        // game-service pelo caminho do OPERADOR (§18.4, decisao de 03/11/2026 - ninguem e punido, a aposta de
+        // todos os humanos volta, aviso honesto aos conectados) ANTES de marcar ENCERRADA no lobby, como o
+        // DELETE do anfitriao faz com o caminho dele.
         post("/internal/admin/tables/{id}/close") {
             if (!call.adminAllowed(deps.adminSecret)) return@post
             try {
@@ -734,10 +734,16 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 val reason = call.receiveLimited<AdminCloseTableRequest>().reason
                 val current = service.adminTable(id)
                 if (current.state == TableState.EM_JOGO) {
-                    lobbyError(ErrorCode.SERVICO_INDISPONIVEL, "Encerrar mesa em jogo ainda não está disponível nesta versão.", 501)
+                    val gateway = deps.gateway
+                        ?: lobbyError(ErrorCode.SERVICO_INDISPONIVEL, "Encerrar mesa em jogo não está disponível neste servidor.", 503)
+                    try {
+                        gateway.closeByOperator(id, reason)
+                    } catch (e: GameGatewayException) {
+                        lobbyError(ErrorCode.SERVICO_INDISPONIVEL, "Não foi possível encerrar a partida agora. Tente de novo.", 503)
+                    }
                 }
                 LoggerFactory.getLogger("lobby.admin").info("mesa {} encerrada pelo operador (motivo: {})", id, reason ?: "-")
-                call.respondJson(service.adminCloseIfNotInGame(id))
+                call.respondJson(service.adminClose(id))
             } catch (e: LobbyException) {
                 call.respondError(e)
             }

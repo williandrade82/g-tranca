@@ -221,6 +221,8 @@ class MatchSession(
         class Incoming(val seat: Int, val link: PlayerLink, val message: ClientMessage) : Cmd
         class Inspect(val reply: CompletableDeferred<Inspection>) : Cmd
         class Close(val hostGuestId: String, val reply: CompletableDeferred<CloseResult>) : Cmd
+        /** §18.7: o operador (console de gerenciamento) encerra a mesa travada, sem punir ninguem. */
+        class CloseByOperator(val reason: String?, val reply: CompletableDeferred<CloseResult>) : Cmd
         /** §17.3: a economia respondeu ao debito do seletor do [seat] com os boosters [applied] (vazio = nenhum debitado). */
         class BoosterResolved(val seat: Int, val applied: List<String>) : Cmd
         /** §17.3: o debito do [seat] falhou (rede/economia fora); nao resolve nada, o cliente pode mandar [SelectBoosters] de novo. */
@@ -356,6 +358,18 @@ class MatchSession(
         return reply.await()
     }
 
+    /**
+     * §18.4/§18.7: o OPERADOR (console de gerenciamento, via lobby-service) encerra a mesa travada - diferente de
+     * [closeByHost]: ninguem e punido, todos os humanos recebem a aposta de volta, aviso honesto aos conectados.
+     * Nunca exige nem confere quem esta sentado (quem chama nao e um jogador).
+     */
+    suspend fun closeByOperator(reason: String? = null): CloseResult {
+        if (finished) return CloseResult.AlreadyOver
+        val reply = CompletableDeferred<CloseResult>()
+        if (commands.trySend(Cmd.CloseByOperator(reason, reply)).isFailure) return CloseResult.AlreadyOver
+        return reply.await()
+    }
+
     fun shutdown() {
         commands.trySend(Cmd.Shutdown)
     }
@@ -381,6 +395,7 @@ class MatchSession(
             for (c in commands) {
                 if (c is Cmd.Attach) c.reply.complete(AttachResult.Closed)
                 if (c is Cmd.Close) c.reply.complete(CloseResult.AlreadyOver)
+                if (c is Cmd.CloseByOperator) c.reply.complete(CloseResult.AlreadyOver)
             }
         }
     }
@@ -399,6 +414,7 @@ class MatchSession(
                 ),
             )
             is Cmd.Close -> cmd.reply.complete(onClose(cmd.hostGuestId))
+            is Cmd.CloseByOperator -> cmd.reply.complete(onCloseByOperator(cmd.reason))
             is Cmd.BoosterResolved -> { boosterPending[cmd.seat] = false; confirmBoosters(cmd.seat, cmd.applied) }
             is Cmd.BoosterFailed -> {
                 boosterPending[cmd.seat] = false
@@ -714,11 +730,33 @@ class MatchSession(
         return CloseResult.Closed
     }
 
+    /**
+     * §18.4/§18.7 (decisao de 03/11/2026): o OPERADOR encerra a mesa travada - NUNCA registra abandono de
+     * ninguem (diferente de [onClose]: aqui nao ha um jogador "culpado"), a aposta de todos os humanos volta
+     * ([settleBets] cuida disso sozinho: sem [AbandonEvent] e sem [GameEndReason.PONTUACAO]/[GameEndReason.ABANDONO],
+     * o resultado padrao e devolver) e o aviso aos conectados e honesto.
+     */
+    private fun onCloseByOperator(reason: String?): CloseResult {
+        if (stage == TableStage.GAME_OVER) return CloseResult.AlreadyOver
+        links.forEachIndexed { i, l ->
+            if (l != null) {
+                send(i, l, TableClosed("A mesa foi encerrada pelo suporte."))
+                l.close(1000, "Mesa encerrada pelo suporte")
+                links[i] = null
+            }
+        }
+        log.info("Mesa encerrada pelo operador table={} motivo={}", tableId, reason ?: "-")
+        endGame(GameEndReason.ENCERRADO_PELO_OPERADOR)
+        finished = true
+        return CloseResult.Closed
+    }
+
     /** Registra o fim UMA vez e avisa quem cuida disso (lobby), sem bloquear o ator. */
     private fun endGame(reason: GameEndReason) {
         if (end != null) return
         val e = MatchEnd(
-            reason, wallClock(), elapsedMs(), othersRefunded = reason == GameEndReason.ANFITRIAO_ENCERROU,
+            reason, wallClock(), elapsedMs(),
+            othersRefunded = reason == GameEndReason.ANFITRIAO_ENCERROU || reason == GameEndReason.ENCERRADO_PELO_OPERADOR,
             abandonments = abandonments.toList(),
             winnerSide = if (reason == GameEndReason.PONTUACAO || reason == GameEndReason.ABANDONO) (forcedWinner ?: match.winner)?.index else null,
             seatSides = slots.indices.map { match.mode.sideOf(Seat(it)).index },

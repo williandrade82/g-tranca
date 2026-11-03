@@ -318,17 +318,20 @@ class LobbyService(
     }
 
     /**
-     * §18.7 "Encerrar mesa travada": o operador encerra a mesa, idempotente (ENCERRADA fica como esta). So cobre
-     * ABERTA e ENCERRADA aqui — EM_JOGO fica de fora por ora: o unico jeito de hoje encerrar uma partida em
-     * andamento ([GameGateway.closeMatch]) exige um [hostGuestId] que esteja de fato sentado na partida, pune
-     * ESSE jogador especificamente (perde a aposta pela regra da mesa, §18.4 `ANFITRIAO_ENCERROU`) e manda a todos
-     * a mensagem fixa "O anfitrião encerrou a mesa" — nenhuma dessas tres coisas é verdade quando é o OPERADOR
-     * quem fecha. Decisao de produto pendente (ver relatorio da etapa); o chamador confere o estado antes de
-     * chamar isto, e [SERVICO_INDISPONIVEL] e devolvido para EM_JOGO.
+     * §18.7 "Encerrar mesa travada": o operador encerra a mesa, idempotente (ENCERRADA fica como esta), em
+     * qualquer estado. Mesa EM_JOGO: o CHAMADOR ja avisou o game-service ANTES de chamar isto
+     * ([GameGateway.closeByOperator], §18.4 decisao de 03/11/2026 - ninguem e punido, a aposta de todos os
+     * humanos volta); aqui so se reflete o estado no lobby, exatamente como o DELETE do anfitriao faz com
+     * [close] depois de [GameGateway.closeMatch]. Conta para [recordMatchEndedIfJustNow] como as demais.
      */
-    fun adminCloseIfNotInGame(rawId: String): TableView = mutate(rawId) { t ->
-        check(t.state != TableState.EM_JOGO) { "adminCloseIfNotInGame chamado numa mesa EM_JOGO: confira o estado antes" }
-        if (t.state == TableState.ENCERRADA) t else t.copy(state = TableState.ENCERRADA, starting = false)
+    fun adminClose(rawId: String): TableView {
+        var wasInGame = false
+        val view = mutate(rawId) { t ->
+            if (t.state == TableState.EM_JOGO) wasInGame = true
+            if (t.state == TableState.ENCERRADA) t else t.copy(state = TableState.ENCERRADA, starting = false)
+        }
+        recordMatchEndedIfJustNow(wasInGame, view)
+        return view
     }
 
     fun close(guest: Guest, rawId: String): TableView {
