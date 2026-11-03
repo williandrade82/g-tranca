@@ -7,6 +7,8 @@ interface SessionContextValue {
   session: Session | null
   login: (email: string, password: string) => Promise<void>
   logout: () => void
+  /** Sessao caiu do lado do servidor (401 numa chamada autenticada): limpa so o estado local, sem chamar a API de novo. */
+  forceLogout: () => void
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)
@@ -34,7 +36,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [session])
 
-  const value = useMemo(() => ({ session, login, logout }), [session, login, logout])
+  const forceLogout = useCallback(() => {
+    clearSession()
+    setSession(null)
+  }, [])
+
+  const value = useMemo(() => ({ session, login, logout, forceLogout }), [session, login, logout, forceLogout])
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
 }

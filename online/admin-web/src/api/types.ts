@@ -26,3 +26,26 @@ export class ApiRequestError extends Error {
     super(message)
   }
 }
+
+export type ServiceStatusLevel = 'VERDE' | 'AMARELO' | 'VERMELHO'
+
+export interface ServiceHealthInfo {
+  name: string
+  status: ServiceStatusLevel
+  latencyMs: number | null
+}
+
+/**
+ * GET /admin/dashboard (tela Painel, docs/telas-admin-web.md). Os campos de contagem sao `null` quando o
+ * admin-api ainda nao tem de onde buscar o dado (nenhum servico dono expoe essa agregacao): mostrar
+ * "indisponivel" na tela, nunca inventar um numero.
+ */
+export interface DashboardResponse {
+  services: ServiceHealthInfo[]
+  playersOnline: number | null
+  tablesOpen: number | null
+  tablesInGame: number | null
+  matchesEndedLastHour: number | null
+  grafanaUrl: string | null
+  lokiUrl: string | null
+}
