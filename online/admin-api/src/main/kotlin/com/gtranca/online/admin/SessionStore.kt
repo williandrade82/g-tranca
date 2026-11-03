@@ -67,6 +67,16 @@ class SessionStore(
         }
     }
 
+    /** Sec18.7 "Sair": revoga a sessao no servidor. Token inexistente ou ja expirado: nao faz nada (idempotente). */
+    fun revoke(token: String) {
+        db.connection.use { c ->
+            c.prepareStatement("DELETE FROM admin.sessao WHERE token_hash = ?").use {
+                it.setString(1, hash(token))
+                it.executeUpdate()
+            }
+        }
+    }
+
     companion object {
         fun hash(token: String): String =
             MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }

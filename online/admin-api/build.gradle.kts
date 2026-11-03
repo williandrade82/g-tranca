@@ -15,6 +15,10 @@ dependencies {
     implementation(project(":contracts"))
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
+    // Painel (Sec18.7): sondar /health de lobby/game/economy-service (mesma biblioteca que o lobby-service usa
+    // para falar com o economy-service, ver EconomyGateway.kt).
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.postgresql)

@@ -27,6 +27,9 @@ import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import kotlin.system.exitProcess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.io.readByteArray
 import kotlinx.serialization.encodeToString
@@ -81,6 +84,15 @@ fun main() {
         else -> System.err.println("AVISO: ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD ausentes; sem eles o console so funciona se a equipe ja tiver alguem.")
     }
 
+    // Painel (Sec18.7): servicos a sondar, so os configurados (nome -> variavel com o /health dele). Links de
+    // metricas/logs tambem por variavel (nunca VITE_*: o mesmo bundle do admin-web roda no cluster local e na
+    // nuvem depois, so a configuracao do admin-api muda).
+    val healthTargets = listOfNotNull(
+        System.getenv("LOBBY_SERVICE_HEALTH_URL")?.takeIf { it.isNotBlank() }?.let { HealthTarget("lobby-service", it) },
+        System.getenv("GAME_SERVICE_HEALTH_URL")?.takeIf { it.isNotBlank() }?.let { HealthTarget("game-service", it) },
+        System.getenv("ECONOMY_SERVICE_HEALTH_URL")?.takeIf { it.isNotBlank() }?.let { HealthTarget("economy-service", it) },
+    )
+
     val deps = AdminDeps(
         store = store,
         sessions = sessions,
@@ -88,6 +100,9 @@ fun main() {
         ipLimitPerMinute = System.getenv("RATE_LIMIT_PER_MINUTE")?.toIntOrNull() ?: 60,
         loginAttemptLimit = System.getenv("LOGIN_ATTEMPT_LIMIT")?.toIntOrNull() ?: 5,
         loginLockoutMinutes = System.getenv("LOGIN_LOCKOUT_MINUTES")?.toLongOrNull() ?: 15L,
+        healthTargets = healthTargets,
+        grafanaUrl = System.getenv("GRAFANA_URL")?.takeIf { it.isNotBlank() },
+        lokiUrl = System.getenv("LOKI_URL")?.takeIf { it.isNotBlank() },
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { adminModule(deps) }.start(wait = true)
 }
@@ -100,6 +115,11 @@ class AdminDeps(
     val ipLimitPerMinute: Int = 60,
     val loginAttemptLimit: Int = 5,
     val loginLockoutMinutes: Long = 15L,
+    /** Painel (Sec18.7): servicos a sondar. Vazio = a tela so mostra o que nao depende de rede nenhuma. */
+    val healthTargets: List<HealthTarget> = emptyList(),
+    val healthGateway: HealthGateway = HttpHealthGateway(),
+    val grafanaUrl: String? = null,
+    val lokiUrl: String? = null,
 ) {
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val loginAttempts = FailedLoginLimiter(loginAttemptLimit, loginLockoutMinutes * 60_000L, clock)
@@ -218,6 +238,29 @@ fun Application.adminModule(deps: AdminDeps) {
                 call.respondJson(LoginResponse(token, result.id, result.email, result.role))
             } catch (e: AdminException) {
                 call.respondError(e)
+            }
+        }
+
+        // Sec18.7: revoga a sessao no servidor ("Sair"). Sem token ou token ja invalido: mesma resposta (idempotente).
+        post("/admin/logout") {
+            try {
+                val token = call.bearer() ?: adminError(ErrorCode.NAO_AUTENTICADO, "Entre novamente.", 401)
+                withContext(Dispatchers.IO) { deps.sessions.revoke(token) }
+                call.respondJson(Health())
+            } catch (e: AdminException) {
+                call.respondError(e)
+            }
+        }
+
+        // Sec18.7 Painel (docs/telas-admin-web.md): saude de cada servico (verde/amarelo/vermelho) e links de
+        // metricas/logs. Jogadores online, mesas ativas e partidas por hora ficam nulos (ver DashboardResponse):
+        // nenhum servico dono do dado expoe essa agregacao ainda; o admin-web mostra "indisponivel".
+        get("/admin/dashboard") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val services = coroutineScope {
+                    deps.healthTargets.map { target -> async { deps.healthGateway.check(target) } }.awaitAll()
+                }
+                call.respondJson(DashboardResponse(services = services, grafanaUrl = deps.grafanaUrl, lokiUrl = deps.lokiUrl))
             }
         }
 
