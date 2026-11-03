@@ -835,6 +835,8 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
 - **Entra-se com e-mail e senha** (mesmo mecanismo do §18.1, aplicado à equipe do console: hash nunca em texto puro, sem recuperação pela própria pessoa — a redefinição é feita por quem já é administrador). *Login Google fica no backlog, como no app (§18.1).* Cada membro da equipe é cadastrado pelo administrador (e-mail, senha inicial e papel), não há autocadastro.
 - Toda ação do operador é **registrada** (quem, quando, o quê e por quê) e o registro **não se altera**.
+- **Bloquear conta** (decisão de 03/11/2026): impede a conta de **logar de novo** e de **entrar em mesa nova**; não afeta uma partida já em andamento (quem está jogando segue até o fim, mesmo bloqueado durante o jogo — o bloqueio só vale a partir da próxima vez que a conta tentar entrar). Desbloquear reverte, sem efeito retroativo.
+- **Encerrar sessões** é uma ação **independente** do bloqueio: invalida os tokens válidos da conta (força logar de novo), sem impedir logins futuros. Útil, por exemplo, quando se suspeita de um token roubado sem banir o jogador.
 
 ### **18.8. Versões**
 - O protocolo online tem **versão**. App e servidor de versões incompatíveis recusam a conexão com a mensagem "Atualize o aplicativo" (ou "servidor em manutenção"), sem afetar o jogo offline.
