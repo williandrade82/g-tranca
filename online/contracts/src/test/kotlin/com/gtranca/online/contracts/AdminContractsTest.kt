@@ -53,4 +53,22 @@ class AdminContractsTest {
         ErrorCode.SERVICO_INDISPONIVEL shouldBe ErrorCode.valueOf("SERVICO_INDISPONIVEL")
         (ErrorCode.CONTA_BLOQUEADA == ErrorCode.SERVICO_INDISPONIVEL) shouldBe false
     }
+
+    @Test
+    fun `18_7 lista de mesas do console reaproveita TableView, sem DTO de detalhe separado`() {
+        val rules = TableRules(TableMode.DUPLAS, "{}", 1500, 50)
+        val table = TableView(
+            "ABC234", "g1", "Ana", TableState.EM_JOGO, rules,
+            listOf(SeatView(0, SeatKind.HUMANO, "g1", "Ana")),
+        )
+        val page = AdminTablesPage(total = 1, tables = listOf(table))
+        Json.decodeFromString<AdminTablesPage>(Json.encodeToString(page)) shouldBe page
+    }
+
+    @Test
+    fun `18_7 pedido de encerrar mesa vai e volta em JSON, motivo opcional`() {
+        val request = AdminCloseTableRequest(reason = "mesa travada ha 2 horas")
+        Json.decodeFromString<AdminCloseTableRequest>(Json.encodeToString(request)) shouldBe request
+        Json.decodeFromString<AdminCloseTableRequest>(Json.encodeToString(AdminCloseTableRequest())).reason shouldBe null
+    }
 }

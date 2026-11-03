@@ -9,7 +9,9 @@ import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminAccountDetail
 import com.gtranca.online.contracts.AdminAccountsPage
 import com.gtranca.online.contracts.AdminBlockRequest
+import com.gtranca.online.contracts.AdminCloseTableRequest
 import com.gtranca.online.contracts.AdminRevokeSessionsResponse
+import com.gtranca.online.contracts.AdminTablesPage
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.EmailLoginRequest
 import com.gtranca.online.contracts.EmailRegisterRequest
@@ -34,6 +36,7 @@ import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.PROTOCOL_HEADER
 import com.gtranca.online.contracts.ServerInfo
 import com.gtranca.online.contracts.TableId
+import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.VersionCheck
 import com.gtranca.online.contracts.checkProtocolVersion
 import io.ktor.http.ContentType
@@ -698,6 +701,43 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 val revoked = deps.guests.revokeSessions(id)
                 LoggerFactory.getLogger("lobby.admin").info("sessoes da conta {} encerradas ({} token(s))", id, revoked)
                 call.respondJson(AdminRevokeSessionsResponse(revoked))
+            } catch (e: LobbyException) {
+                call.respondError(e)
+            }
+        }
+
+        // Console de gerenciamento (admin-api), tela Mesas (§18.7). Em QUALQUER estado (ao contrario da lista
+        // publica /api/lobby/tables, que nunca mostra ENCERRADA); reaproveita TableView/TableListView.
+        get("/internal/admin/tables") {
+            if (!call.adminAllowed(deps.adminSecret)) return@get
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val (total, page) = service.adminTables(limit, offset)
+            call.respondJson(AdminTablesPage(total, page))
+        }
+        get("/internal/admin/tables/{id}") {
+            if (!call.adminAllowed(deps.adminSecret)) return@get
+            try {
+                call.respondJson(service.adminTable(call.parameters["id"].orEmpty()))
+            } catch (e: LobbyException) {
+                call.respondError(e)
+            }
+        }
+        // §18.7 "Encerrar mesa travada": idempotente (ENCERRADA fica como esta). EM_JOGO fica de fora por ora -
+        // decisao de produto pendente sobre a aposta retida quando quem fecha nao e um jogador (ver relatorio
+        // da etapa); devolve SERVICO_INDISPONIVEL em vez de usar o caminho do anfitriao (que puniria um jogador
+        // pela decisao do operador).
+        post("/internal/admin/tables/{id}/close") {
+            if (!call.adminAllowed(deps.adminSecret)) return@post
+            try {
+                val id = call.parameters["id"].orEmpty()
+                val reason = call.receiveLimited<AdminCloseTableRequest>().reason
+                val current = service.adminTable(id)
+                if (current.state == TableState.EM_JOGO) {
+                    lobbyError(ErrorCode.SERVICO_INDISPONIVEL, "Encerrar mesa em jogo ainda não está disponível nesta versão.", 501)
+                }
+                LoggerFactory.getLogger("lobby.admin").info("mesa {} encerrada pelo operador (motivo: {})", id, reason ?: "-")
+                call.respondJson(service.adminCloseIfNotInGame(id))
             } catch (e: LobbyException) {
                 call.respondError(e)
             }

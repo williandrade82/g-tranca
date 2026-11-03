@@ -292,6 +292,45 @@ class LobbyService(
         store.all().filter { it.seatOf(accountId) >= 0 }.map { AdminTableSummary(it.id, it.name, it.state, it.lastActivityMs) }
     }
 
+    /**
+     * §18.7: mesas para o console de gerenciamento, em QUALQUER estado (ao contrario de [list], que nunca mostra
+     * ENCERRADA — aqui o operador pode ver uma mesa recem-encerrada para investigar). So leitura: nunca chama
+     * [maintainLocked] (uma consulta do console nao pode abrir nem fechar mesa). Mais recente primeiro dentro de
+     * cada estado; ABERTA e EM_JOGO antes de ENCERRADA. @return (total sem paginar, a pagina pedida).
+     */
+    fun adminTables(limit: Int, offset: Int): Pair<Int, List<TableView>> = synchronized(lock) {
+        val all = store.all().sortedWith(
+            compareBy<Table> { stateOrder(it.state) }.thenByDescending { it.lastActivityMs }.thenBy { it.id },
+        )
+        val page = all.drop(offset.coerceAtLeast(0)).take(limit.coerceIn(1, ADMIN_TABLES_MAX_LIMIT)).map { it.toView() }
+        all.size to page
+    }
+
+    private fun stateOrder(state: TableState) = when (state) {
+        TableState.ABERTA -> 0
+        TableState.EM_JOGO -> 1
+        TableState.ENCERRADA -> 2
+    }
+
+    /** §18.7: a mesa, em qualquer estado (404 tipado se nao existe). So leitura. */
+    fun adminTable(rawId: String): TableView = synchronized(lock) {
+        (store.find(idOf(rawId)) ?: missing()).toView()
+    }
+
+    /**
+     * §18.7 "Encerrar mesa travada": o operador encerra a mesa, idempotente (ENCERRADA fica como esta). So cobre
+     * ABERTA e ENCERRADA aqui — EM_JOGO fica de fora por ora: o unico jeito de hoje encerrar uma partida em
+     * andamento ([GameGateway.closeMatch]) exige um [hostGuestId] que esteja de fato sentado na partida, pune
+     * ESSE jogador especificamente (perde a aposta pela regra da mesa, §18.4 `ANFITRIAO_ENCERROU`) e manda a todos
+     * a mensagem fixa "O anfitrião encerrou a mesa" — nenhuma dessas tres coisas é verdade quando é o OPERADOR
+     * quem fecha. Decisao de produto pendente (ver relatorio da etapa); o chamador confere o estado antes de
+     * chamar isto, e [SERVICO_INDISPONIVEL] e devolvido para EM_JOGO.
+     */
+    fun adminCloseIfNotInGame(rawId: String): TableView = mutate(rawId) { t ->
+        check(t.state != TableState.EM_JOGO) { "adminCloseIfNotInGame chamado numa mesa EM_JOGO: confira o estado antes" }
+        if (t.state == TableState.ENCERRADA) t else t.copy(state = TableState.ENCERRADA, starting = false)
+    }
+
     fun close(guest: Guest, rawId: String): TableView {
         var wasInGame = false
         val view = mutate(rawId) { t ->
@@ -433,6 +472,9 @@ class LobbyService(
 
     companion object {
         private const val MAX_ID_ATTEMPTS = 50
+
+        /** §18.7: paginacao de GET /internal/admin/tables (mesmo teto de GET /internal/admin/accounts). */
+        const val ADMIN_TABLES_MAX_LIMIT = 100
 
         /** Praias do Brasil, com as mais conhecidas de Florianópolis (§18.2). */
         val TABLE_NAMES = listOf(

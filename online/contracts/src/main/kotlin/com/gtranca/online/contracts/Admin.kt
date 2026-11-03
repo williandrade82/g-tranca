@@ -105,3 +105,21 @@ data class AdminBlockRequest(val reason: String? = null)
  */
 @Serializable
 data class AdminRevokeSessionsResponse(val revoked: Int)
+
+/**
+ * GET /internal/admin/tables?limit=&offset= (lobby-service, §18.7): lista paginada de mesas, em QUALQUER estado
+ * (ao contrario de `GET /api/lobby/tables`, o endpoint do app, que nunca mostra mesa ENCERRADA). Reaproveita
+ * [TableView] — ja tem id, anfitriao, estado, regras/criterios e assentos; o detalhe (`GET
+ * /internal/admin/tables/{id}`) e o mesmo tipo, sem DTO separado. [total] e o total SEM paginar.
+ */
+@Serializable
+data class AdminTablesPage(val total: Int, val tables: List<TableView>)
+
+/**
+ * POST /internal/admin/tables/{id}/close (lobby-service, §18.7) "Encerrar mesa travada": [reason] e so para o
+ * lobby registrar no log; a auditoria de verdade e do admin-api. Idempotente (ENCERRADA fica como esta); mesa
+ * EM_JOGO devolve [SERVICO_INDISPONIVEL] por ora (decisao de produto pendente sobre a aposta retida, ver relatorio
+ * da etapa — `online-backend-dev`).
+ */
+@Serializable
+data class AdminCloseTableRequest(val reason: String? = null)
