@@ -1,6 +1,8 @@
 # Ambiente de desenvolvimento local, sem Kubernetes.
-# Mesmos Dockerfiles do cluster (online/<servico>/Dockerfile); build a partir da raiz do repositorio
-# (:core-engine e :ai entram so leitura, igual ao build de imagem documentado em deploy/README.md).
+# Mesmos Dockerfiles do cluster (online/<servico>/Dockerfile). Os servicos Kotlin fazem build a partir da
+# raiz do repositorio (:core-engine e :ai entram so leitura, igual ao build de imagem documentado em
+# deploy/README.md); o admin-web e um projeto npm independente, sem nada do monorepo Kotlin, e faz build
+# a partir da propria pasta (online/admin-web).
 #
 # Uso (a partir desta pasta, online/):
 #   cp .env.example .env        # uma vez; edite os segredos
@@ -116,6 +118,17 @@ services:
       ADMIN_SESSION_MAX_HOURS: "8"
       ADMIN_SEED_EMAIL: ${ADMIN_SEED_EMAIL:-}
       ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-}
+      LOBBY_SERVICE_HEALTH_URL: http://lobby-service:8080/health
+      GAME_SERVICE_HEALTH_URL: http://game-service:8080/health
+      ECONOMY_SERVICE_HEALTH_URL: http://economy-service:8080/health
     depends_on:
       postgres:
         condition: service_healthy
+
+  admin-web:
+    build:
+      context: ./admin-web
+    ports:
+      - "8085:8080"
+    depends_on:
+      - admin-api

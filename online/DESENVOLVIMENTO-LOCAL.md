@@ -15,8 +15,8 @@ cp .env.example .env   # uma vez; edite os segredos (gere com openssl rand, ver 
 docker compose up --build
 ```
 
-Sobe Postgres + `lobby-service` + `game-service` + `economy-service` + `admin-api`, cada um numa porta do
-host (sem Traefik/ingress; sem NetworkPolicy — tudo na mesma rede do Compose):
+Sobe Postgres + `lobby-service` + `game-service` + `economy-service` + `admin-api` + `admin-web`, cada um
+numa porta do host (sem Traefik/ingress; sem NetworkPolicy — tudo na mesma rede do Compose):
 
 | Servico | Porta no host | Endereco interno (entre servicos) |
 |---|---|---|
@@ -24,19 +24,30 @@ host (sem Traefik/ingress; sem NetworkPolicy — tudo na mesma rede do Compose):
 | lobby-service | 8081 | `http://lobby-service:8080` |
 | game-service | 8082 | `http://game-service:8080` |
 | economy-service | 8083 | `http://economy-service:8080` |
-| admin-api | 8084 | *(nao chamado pelos outros)* |
+| admin-api | 8084 | `http://admin-api:8080` (admin-web faz proxy pra ca) |
+| admin-web | 8085 | *(nao chamado pelos outros)* |
 
 ```bash
 curl http://localhost:8081/health   # lobby
 curl http://localhost:8082/health   # game
 curl http://localhost:8083/health   # economy
 curl http://localhost:8084/health   # admin-api
+curl http://localhost:8085         # admin-web (tela Entrar); http://localhost:8085/admin/login e o proxy pro admin-api
 ```
 
-Reconstruir so um servico depois de mudar o codigo: `docker compose up --build lobby-service`.
-O cache do Gradle (`--mount=type=cache,target=/root/.gradle` nos Dockerfiles) continua valendo — o
-`docker compose build` usa o BuildKit do Docker Desktop normalmente, mesmo ganho de velocidade medido
-em `deploy/README.md` (build limpo ~9 min, build incremental de uma linha ~1 min).
+Console de gerenciamento: abra `http://localhost:8085` no navegador. Preencha `ADMIN_SEED_EMAIL` e
+`ADMIN_SEED_PASSWORD` no `.env` **antes** do primeiro `docker compose up` (o admin-api so semeia o
+primeiro administrador se a equipe estiver vazia); sem isso ninguem consegue entrar. O Painel mostra a
+saude de lobby/game/economy-service porque o admin-api ja vem configurado, neste Compose, com
+`LOBBY_SERVICE_HEALTH_URL`/`GAME_SERVICE_HEALTH_URL`/`ECONOMY_SERVICE_HEALTH_URL` apontando para o
+`/health` de cada um pela rede interna.
+
+Reconstruir so um servico depois de mudar o codigo: `docker compose up --build lobby-service` (ou
+`admin-web`, `admin-api`...). O cache do Gradle (`--mount=type=cache,target=/root/.gradle` nos
+Dockerfiles dos servicos Kotlin) e do npm (`--mount=type=cache,target=/root/.npm` no Dockerfile do
+admin-web) continuam valendo — o `docker compose build` usa o BuildKit do Docker Desktop normalmente,
+mesmo ganho de velocidade medido em `deploy/README.md` (build limpo ~9 min, build incremental de uma
+linha ~1 min para os servicos Kotlin; o admin-web e bem mais rapido, so npm + Vite).
 
 Apagar tudo, inclusive o volume do Postgres (perde os dados locais): `docker compose down -v`.
 
