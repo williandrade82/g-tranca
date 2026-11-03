@@ -49,7 +49,34 @@ admin-web) continuam valendo — o `docker compose build` usa o BuildKit do Dock
 mesmo ganho de velocidade medido em `deploy/README.md` (build limpo ~9 min, build incremental de uma
 linha ~1 min para os servicos Kotlin; o admin-web e bem mais rapido, so npm + Vite).
 
-Apagar tudo, inclusive o volume do Postgres (perde os dados locais): `docker compose down -v`.
+Apagar os containers (mantem os dados): `docker compose down`. **O Postgres usa bind mount** (pasta
+`${GTRANCA_STORAGE:-C:/Projetos/g-tranca-storage}/postgres-data`, nao um volume nomeado do Docker) —
+`docker compose down -v` **nao apaga esses dados** (confirmado: `docker volume ls` nao lista nada deste
+projeto). Para zerar o banco de verdade: `docker compose down` e depois apagar essa pasta a mao.
+
+**Equipe do console ja tem gente e o seu `ADMIN_SEED_EMAIL`/`ADMIN_SEED_PASSWORD` nao fizeram efeito?**
+O log do admin-api avisa "ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD ignorados: a equipe ja tem gente" quando
+`admin.membro` nao esta vazia (por exemplo, depois de alguem testar com uma conta propria). Duas saidas,
+voce escolhe (as duas apagam algo, por isso nenhum script faz isso sozinho):
+- **Preserva tudo:** entre com a conta que ja existe, cadastre a sua pelo `admin-api` (o admin-web ainda
+  nao tem tela de Equipe) e remova a antiga:
+  ```bash
+  TOKEN=$(curl -s -X POST http://localhost:8085/admin/login -H "Content-Type: application/json" \
+    -d '{"email":"<email-que-ja-existe>","password":"<senha-que-ja-existe>"}' | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+  curl -s -X POST http://localhost:8085/admin/team -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"email":"<seu-email>","password":"<sua-senha>","role":"ADMINISTRADOR","reason":"assumindo a equipe"}'
+  # depois, com o id devolvido pelo cadastro da conta antiga (GET /admin/team lista):
+  curl -s -X DELETE http://localhost:8085/admin/team/<id-da-conta-antiga> -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" -d '{"reason":"conta de teste, nao precisa mais"}'
+  ```
+- **Volta ao seed do zero (so a equipe do console; lobby/economy continuam intactos, e a auditoria
+  dessas acoes some com o schema):**
+  ```bash
+  docker compose up -d postgres
+  docker compose exec postgres psql -U gtranca -d gtranca -c "DROP SCHEMA admin CASCADE"
+  # preencha ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD no .env agora, se ainda nao preencheu
+  docker compose up -d admin-api
+  ```
 
 ## O que fica de fora (por enquanto)
 

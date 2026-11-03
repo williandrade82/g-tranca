@@ -131,4 +131,10 @@ services:
     ports:
       - "8085:8080"
     depends_on:
-      - admin-api
+      admin-api:
+        condition: service_healthy
+        # "restart: true": o nginx so resolve "admin-api" uma vez, no arranque (proxy_pass com nome
+        # literal). Se o admin-api subir de novo sozinho (`docker compose up admin-api`) e trocar de IP,
+        # o admin-web ficaria com o endereco velho e devolveria 502; isto reinicia o admin-web tambem.
+        # No cluster (k8s-ops) isso nao e necessario: o IP do Service e estavel.
+        restart: true
