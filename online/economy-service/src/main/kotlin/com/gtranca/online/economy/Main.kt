@@ -3,6 +3,11 @@ package com.gtranca.online.economy
 import com.gtranca.online.contracts.ADMIN_API_VERSION
 import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
+import com.gtranca.online.contracts.AdminAdjustRequest
+import com.gtranca.online.contracts.AdminLedgerEntryDto
+import com.gtranca.online.contracts.AdminLedgerPage
+import com.gtranca.online.contracts.AdminMigrationDto
+import com.gtranca.online.contracts.AdminMigrationsPage
 import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.AdoptWalletRequest
 import com.gtranca.online.contracts.AdoptWalletResponse
@@ -118,6 +123,9 @@ private suspend inline fun <reified T> ApplicationCall.receiveLimited(): T {
 }
 
 private fun EconomyState.toDto() = EconomyStateDto(balance, inventory, lastDailyClaim, migratedLocal)
+private fun EconomyState.toAdminDto() = AdminWalletDto(balance, inventory, migratedLocal)
+private fun LedgerEntry.toDto() = AdminLedgerEntryDto(reason, coins, boosterId, quantity, reference, detail, key, createdAtMs)
+private fun MigrationEntry.toDto() = AdminMigrationDto(accountId, coins, createdAtMs)
 
 private fun EconomyException.status(): Int = when (code) {
     EconomyException.Code.SALDO_INSUFICIENTE, EconomyException.Code.JA_RESGATADO -> 409
@@ -220,12 +228,69 @@ private fun io.ktor.server.routing.Routing.adminEconomyRoutes(deps: EconomyDeps)
             val id = call.parameters["guestId"].orEmpty()
             if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
             val state = withContext(Dispatchers.IO) { store.state(id) }
-            call.respondJson(AdminWalletDto(state.balance, state.inventory, state.migratedLocal))
+            call.respondJson(state.toAdminDto())
         } catch (e: HttpFail) {
             call.respondError(e.status, e.code, e.message.orEmpty())
         } catch (e: EconomyException) {
             call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
         }
+    }
+
+    // §18.5/§18.7: o livro-razao de uma conta, so leitura (nunca cria a conta - CONTA_INEXISTENTE para quem nao existe).
+    get("/internal/admin/accounts/{guestId}/ledger") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        try {
+            val id = call.parameters["guestId"].orEmpty()
+            if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val (total, entries) = withContext(Dispatchers.IO) { store.ledger(id, limit, offset) }
+            call.respondJson(AdminLedgerPage(total, entries.map { it.toDto() }))
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+
+    // §18.7 "ajustar saldo ou booster": motivo e chave de idempotencia obrigatorios; ao menos um ajuste real
+    // (moedas e/ou booster, nunca os dois vazios); nunca deixa saldo nem quantidade negativos.
+    post("/internal/admin/accounts/{guestId}/adjust") {
+        if (!call.adminAllowed(deps.adminSecret)) return@post
+        try {
+            val id = call.parameters["guestId"].orEmpty()
+            if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+            val req = call.receiveLimited<AdminAdjustRequest>()
+            if (req.reason.isBlank() || req.reason.length > EconomyLimits.MAX_ADJUST_REASON) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe um motivo (até ${EconomyLimits.MAX_ADJUST_REASON} caracteres).")
+            }
+            if (req.operationId.isBlank() || req.operationId.length > EconomyLimits.MAX_OPERATION_ID) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Pedido inválido.")
+            }
+            if ((req.boosterId == null) != (req.quantityDelta == null)) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe o booster e a quantidade juntos.")
+            }
+            val coinsDelta = req.coinsDelta ?: 0L
+            val quantityDelta = req.quantityDelta ?: 0
+            if (coinsDelta == 0L && (req.boosterId == null || quantityDelta == 0)) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe ao menos um ajuste de moedas ou de booster.")
+            }
+            val state = withContext(Dispatchers.IO) { store.adjustWallet(id, req.reason, req.operationId, coinsDelta, req.boosterId, quantityDelta) }
+            call.respondJson(state.toAdminDto())
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+
+    // §18.6/§18.7: migracoes de carteira local JA feitas, de TODAS as contas (ver docs/seguranca-pendencias.md).
+    get("/internal/admin/migrations") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+        val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+        val (total, migrations) = withContext(Dispatchers.IO) { store.migrations(limit, offset) }
+        call.respondJson(AdminMigrationsPage(total, migrations.map { it.toDto() }))
     }
 }
 

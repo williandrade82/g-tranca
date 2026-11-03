@@ -91,6 +91,58 @@ data class AdminAccountDetail(
 data class AdminWalletDto(val coins: Long, val inventory: Map<String, Int>, val migratedLocal: Boolean)
 
 /**
+ * Uma linha do livro-razao (economy-service, §18.5/§18.7): [reason] e o motivo fixo do lancamento (`SALDO_INICIAL`,
+ * `COMPRA`, `APOSTA`, `AJUSTE`...), nunca o texto livre do operador (esse e [detail], so preenchido em `AJUSTE`).
+ * [reference] e a referencia estruturada (mesa, oferta da loja...) quando existe. [key] e a chave de idempotencia
+ * (util para o operador conferir se um ajuste duplicado foi de fato recusado).
+ */
+@Serializable
+data class AdminLedgerEntryDto(
+    val reason: String,
+    val coins: Long,
+    val boosterId: String? = null,
+    val quantity: Int = 0,
+    val reference: String? = null,
+    val detail: String? = null,
+    val key: String,
+    val createdMs: Long,
+)
+
+/** GET /internal/admin/accounts/{id}/ledger?limit=&offset= (economy-service, §18.5/§18.7): mais recente primeiro. */
+@Serializable
+data class AdminLedgerPage(val total: Int, val entries: List<AdminLedgerEntryDto>)
+
+/**
+ * POST /internal/admin/accounts/{id}/adjust (economy-service, §18.7) "ajustar saldo ou booster": [reason] e
+ * OBRIGATORIO (guardado no lancamento, motivo fixo `AJUSTE`). Pelo menos um de [coinsDelta] (pode ser negativo,
+ * para debitar) ou o par [boosterId]/[quantityDelta] (tambem pode ser negativo) precisa vir preenchido e
+ * diferente de zero. [operationId] e a chave de idempotencia: a MESMA chamada repetida (retry de rede do
+ * admin-api) nunca ajusta duas vezes. Nunca deixa saldo nem quantidade negativos, mesmo sendo o operador — a
+ * mesma regra de sempre (§14.6/§17.1).
+ */
+@Serializable
+data class AdminAdjustRequest(
+    val reason: String,
+    val operationId: String,
+    val coinsDelta: Long? = null,
+    val boosterId: String? = null,
+    val quantityDelta: Int? = null,
+)
+
+/**
+ * Uma migracao de carteira local JA feita (economy-service, §18.6/§18.7): so a linha de MOEDAS de cada conta que
+ * migrou (os boosters migrados na mesma operacao tem o mesmo motivo com outra chave; ver pendencia no relatorio
+ * sobre mostra-los juntos ou separados). Para o operador revisar migracoes suspeitas (§18.6 "o operador pode
+ * revisar migracoes").
+ */
+@Serializable
+data class AdminMigrationDto(val accountId: String, val coins: Long, val createdMs: Long)
+
+/** GET /internal/admin/migrations?limit=&offset= (economy-service, §18.6/§18.7): mais recente primeiro, TODAS as contas. */
+@Serializable
+data class AdminMigrationsPage(val total: Int, val migrations: List<AdminMigrationDto>)
+
+/**
  * POST /internal/admin/accounts/{id}/block (lobby-service, §18.7). [reason] e so para o lobby registrar no log
  * (`lobby.admin` logger); a auditoria de verdade (quem, quando, o que, por que, sem se alterar) e do admin-api.
  * Opcional aqui: o admin-api pode exigir o motivo do lado dele antes de chamar esta rota.

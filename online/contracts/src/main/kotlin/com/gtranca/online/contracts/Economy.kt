@@ -62,6 +62,15 @@ object EconomyLimits {
     const val MAX_BODY_BYTES = 4 * 1024
     const val MAX_KEY = 64
     const val MAX_GUEST_ID = 64
+
+    /** §18.7 "ajustar saldo ou booster": o motivo digitado pelo operador. */
+    const val MAX_ADJUST_REASON = 500
+
+    /** §18.7: chave de idempotencia do ajuste, gerada por quem chama (admin-api). */
+    const val MAX_OPERATION_ID = 128
+
+    /** §18.7: paginacao das listas administrativas (livro-razao, migracoes). */
+    const val MAX_ADMIN_PAGE_LIMIT = 100
 }
 
 // ------------------------------------------------------------------------------------------------ interno (2.3)

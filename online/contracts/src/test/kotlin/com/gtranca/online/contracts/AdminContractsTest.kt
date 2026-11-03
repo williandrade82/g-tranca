@@ -71,4 +71,30 @@ class AdminContractsTest {
         Json.decodeFromString<AdminCloseTableRequest>(Json.encodeToString(request)) shouldBe request
         Json.decodeFromString<AdminCloseTableRequest>(Json.encodeToString(AdminCloseTableRequest())).reason shouldBe null
     }
+
+    @Test
+    fun `18_5 e 18_7 uma linha do livro-razao e a pagina vao e voltam em JSON`() {
+        val entry = AdminLedgerEntryDto(
+            reason = "AJUSTE", coins = 500L, boosterId = null, quantity = 0, reference = null,
+            detail = "corrigindo um bug", key = "ajuste-op-1", createdMs = 100L,
+        )
+        val page = AdminLedgerPage(total = 1, entries = listOf(entry))
+        Json.decodeFromString<AdminLedgerPage>(Json.encodeToString(page)) shouldBe page
+    }
+
+    @Test
+    fun `18_7 pedido de ajuste exige motivo e chave de idempotencia, mas o ajuste em si e opcional no tipo`() {
+        val request = AdminAdjustRequest(reason = "deu premio errado", operationId = "op-1", coinsDelta = -50, boosterId = "b1", quantityDelta = 2)
+        Json.decodeFromString<AdminAdjustRequest>(Json.encodeToString(request)) shouldBe request
+        // So os campos de ajuste sao opcionais no TIPO (a rota e quem exige pelo menos um, nao o DTO).
+        val minimal = AdminAdjustRequest(reason = "motivo", operationId = "op-2")
+        Json.decodeFromString<AdminAdjustRequest>(Json.encodeToString(minimal)) shouldBe minimal
+    }
+
+    @Test
+    fun `18_6 e 18_7 uma migracao e a pagina vao e voltam em JSON`() {
+        val migration = AdminMigrationDto(accountId = "E_abc", coins = 1_000L, createdMs = 100L)
+        val page = AdminMigrationsPage(total = 1, migrations = listOf(migration))
+        Json.decodeFromString<AdminMigrationsPage>(Json.encodeToString(page)) shouldBe page
+    }
 }
