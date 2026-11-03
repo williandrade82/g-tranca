@@ -4,6 +4,7 @@ import com.gtranca.online.contracts.AdminRevokeSessionsResponse
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.Health
 import com.gtranca.online.contracts.ServerInfo
+import com.gtranca.online.contracts.TableState
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -162,12 +163,12 @@ class AdminDeps(
 }
 
 /**
- * Grava a auditoria de uma acao sobre conta (Sec18.7), depois que a chamada remota ao lobby-service confirmou.
- * Se o INSERT falhar (banco indisponivel no meio exato entre a mutacao remota e a auditoria local - ver
- * pendencia no relatorio da etapa), a acao JA ACONTECEU no lobby-service sem registro: log ERROR antes de
- * propagar, nunca silencioso.
+ * Grava a auditoria de uma acao de escrita sobre conta ou mesa (Sec18.7), depois que a chamada remota ao
+ * lobby-service confirmou. Se o INSERT falhar (banco indisponivel no meio exato entre a mutacao remota e a
+ * auditoria local - ver pendencia no relatorio da etapa), a acao JA ACONTECEU no lobby-service sem registro:
+ * log ERROR antes de propagar, nunca silencioso.
  */
-private suspend fun AdminDeps.recordAccountAudit(
+private suspend fun AdminDeps.recordAudit(
     operationId: String?, actor: Actor, action: String, targetId: String, reason: String,
     resultado: String? = null, detail: String? = null,
 ) {
@@ -409,7 +410,7 @@ fun Application.adminModule(deps: AdminDeps) {
                         gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/block): {}", e.message)
                         adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
                     }
-                    deps.recordAccountAudit(req.operationId, Actor(actor.id, actor.email), "BLOQUEAR_CONTA", id, req.reason)
+                    deps.recordAudit(req.operationId, Actor(actor.id, actor.email), "BLOQUEAR_CONTA", id, req.reason)
                 }
                 call.respondJson(Health())
             }
@@ -431,7 +432,7 @@ fun Application.adminModule(deps: AdminDeps) {
                         gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/unblock): {}", e.message)
                         adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
                     }
-                    deps.recordAccountAudit(req.operationId, Actor(actor.id, actor.email), "DESBLOQUEAR_CONTA", id, req.reason)
+                    deps.recordAudit(req.operationId, Actor(actor.id, actor.email), "DESBLOQUEAR_CONTA", id, req.reason)
                 }
                 call.respondJson(Health())
             }
@@ -458,7 +459,7 @@ fun Application.adminModule(deps: AdminDeps) {
                         gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/revoke-sessions): {}", e.message)
                         adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
                     }
-                    deps.recordAccountAudit(
+                    deps.recordAudit(
                         req.operationId, Actor(actor.id, actor.email), "ENCERRAR_SESSOES_CONTA", id, req.reason,
                         resultado = json.encodeToString(AdminRevokeSessionsResponse.serializer(), AdminRevokeSessionsResponse(result)),
                         detail = "sessões encerradas: $result",
@@ -466,6 +467,86 @@ fun Application.adminModule(deps: AdminDeps) {
                     result
                 }
                 call.respondJson(AdminRevokeSessionsResponse(revoked))
+            }
+        }
+
+        // Sec18.7 tela Mesas (docs/telas-admin-web.md): lista TODO estado (ao contrario da lista publica do
+        // app, que nunca mostra ENCERRADA), agregada do lobby-service.
+        get("/admin/tables") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { gateway.tables(limit, offset) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/tables): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                }
+                call.respondJson(TablesPageResponse(page.tables, page.total, limit, offset))
+            }
+        }
+        // A ficha da mesa (assentos, regras): mesmo TableView da lista publica do app, so que em QUALQUER
+        // estado (console, Sec18.7).
+        get("/admin/tables/{id}") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val id = call.parameters["id"].orEmpty()
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                val table = try {
+                    withContext(Dispatchers.IO) { gateway.tableDetail(id) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/tables/{{id}}): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.MESA_INEXISTENTE, "Mesa não encontrada.", 404)
+                call.respondJson(table)
+            }
+        }
+        // Sec18.7 "Encerrar mesa travada": operador+, motivo obrigatorio. Idempotente em qualquer estado no
+        // lobby-service (fechar de novo so devolve o mesmo estado, nunca ejeta/penaliza duas vezes) - por isso,
+        // ao contrario de bloquear/desbloquear conta, NAO precisa conferir o operationId antes de chamar o
+        // gateway: nao ha "desfazer" que uma repeticao possa reverter. O operationId so evita duplicar a linha
+        // de auditoria (deps.recordAudit/AuditLog.record ja fazem isso).
+        //
+        // Busca o estado ATUAL antes de fechar, por dois motivos: (1) o 404 sai antes de tentar fechar; (2) o
+        // aviso que o operador confirmou na tela pode estar desatualizado (ele abriu a ficha, a mesa estava
+        // ABERTA, o anfitriao apertou Iniciar, so entao o operador confirma "isso vai encerrar esta mesa" sem
+        // saber que agora e uma partida em andamento). Se [CloseTableRequest.expectedState] vier preenchido E a
+        // mesa estiver EM_JOGO (a UNICA direcao perigosa: mesa ja ENCERRADA continua sem efeito) e diferente do
+        // esperado, recusa com 409 para o operador conferir o aviso de novo (mesmo ErrorCode/status que
+        // TeamStore usa pro ultimo administrador).
+        post("/admin/tables/{id}/close") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<CloseTableRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                val before = try {
+                    withContext(Dispatchers.IO) { gateway.tableDetail(id) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (POST /admin/tables/{{id}}/close, consulta previa): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.MESA_INEXISTENTE, "Mesa não encontrada.", 404)
+                if (req.expectedState != null && before.state == TableState.EM_JOGO && req.expectedState != before.state) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "A mesa mudou de estado; confira o aviso de novo.", 409)
+                }
+                val table = try {
+                    withContext(Dispatchers.IO) { gateway.closeTable(id, req.reason) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (POST /admin/tables/{{id}}/close): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Não foi possível encerrar a mesa agora (ninguém foi penalizado). Tente de novo.", 503)
+                } ?: adminError(ErrorCode.MESA_INEXISTENTE, "Mesa não encontrada.", 404)
+                val detail = when (before.state) {
+                    TableState.EM_JOGO -> "estado anterior: EM_JOGO, partida encerrada, aposta devolvida a todos"
+                    TableState.ABERTA -> "estado anterior: ABERTA"
+                    TableState.ENCERRADA -> "já estava ENCERRADA (sem efeito)"
+                }
+                deps.recordAudit(req.operationId, Actor(actor.id, actor.email), "ENCERRAR_MESA", id, req.reason, detail = detail)
+                call.respondJson(table)
             }
         }
 

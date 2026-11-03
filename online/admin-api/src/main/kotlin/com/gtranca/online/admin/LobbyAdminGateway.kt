@@ -6,8 +6,11 @@ import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminAccountDetail
 import com.gtranca.online.contracts.AdminAccountsPage
 import com.gtranca.online.contracts.AdminBlockRequest
+import com.gtranca.online.contracts.AdminCloseTableRequest
 import com.gtranca.online.contracts.AdminRevokeSessionsResponse
 import com.gtranca.online.contracts.AdminStatsDto
+import com.gtranca.online.contracts.AdminTablesPage
+import com.gtranca.online.contracts.TableView
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -55,6 +58,19 @@ interface LobbyAdminGateway {
      * [block]/[unblock]). @return quantos tokens foram invalidados agora (0 = a conta nao tinha sessao viva).
      */
     suspend fun revokeSessions(id: String): Int
+
+    /** Tela Mesas (Sec18.7): TODO estado (ao contrario da lista publica do app, que nunca mostra ENCERRADA). */
+    suspend fun tables(limit: Int, offset: Int): AdminTablesPage
+
+    /** `null` = mesa nao encontrada (404 tipado MESA_INEXISTENTE do lobby-service). */
+    suspend fun tableDetail(id: String): TableView?
+
+    /**
+     * "Encerrar mesa travada" (Sec18.7, definition.md Sec18.4): idempotente em qualquer estado. Mesa ABERTA ou
+     * ja ENCERRADA e trivial; mesa EM_JOGO devolve a aposta a TODOS os jogadores (ninguem e punido) e avisa os
+     * conectados - isso acontece no lobby-service, aqui so repassa o pedido. `null` = mesa nao encontrada.
+     */
+    suspend fun closeTable(id: String, reason: String?): TableView?
 }
 
 /**
@@ -139,5 +155,26 @@ class HttpLobbyAdminGateway(
         val r = post("/internal/admin/accounts/${encode(id)}/revoke-sessions")
         if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
         return Json.decodeFromString(AdminRevokeSessionsResponse.serializer(), r.bodyAsText()).revoked
+    }
+
+    override suspend fun tables(limit: Int, offset: Int): AdminTablesPage {
+        val r = get("/internal/admin/tables?limit=$limit&offset=$offset")
+        if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminTablesPage.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun tableDetail(id: String): TableView? {
+        val r = get("/internal/admin/tables/${encode(id)}")
+        if (r.status == HttpStatusCode.NotFound) return null
+        if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
+        return Json.decodeFromString(TableView.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun closeTable(id: String, reason: String?): TableView? {
+        val body = Json.encodeToString(AdminCloseTableRequest.serializer(), AdminCloseTableRequest(reason))
+        val r = post("/internal/admin/tables/${encode(id)}/close", body)
+        if (r.status == HttpStatusCode.NotFound) return null
+        if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
+        return Json.decodeFromString(TableView.serializer(), r.bodyAsText())
     }
 }

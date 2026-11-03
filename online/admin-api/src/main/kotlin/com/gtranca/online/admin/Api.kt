@@ -3,6 +3,8 @@ package com.gtranca.online.admin
 import com.gtranca.online.contracts.AdminAccountDetail
 import com.gtranca.online.contracts.AdminAccountSummary
 import com.gtranca.online.contracts.AdminWalletDto
+import com.gtranca.online.contracts.TableState
+import com.gtranca.online.contracts.TableView
 import kotlinx.serialization.Serializable
 
 /** POST /admin/login (Sec18.7, mesmo mecanismo de Sec18.1: e-mail e senha). */
@@ -84,3 +86,26 @@ data class AccountDetailResponse(val account: AdminAccountDetail, val wallet: Ad
  */
 @Serializable
 data class AccountActionRequest(val reason: String, val operationId: String? = null)
+
+/**
+ * GET /admin/tables?limit=&offset= (leitor+): tela Mesas (docs/telas-admin-web.md), TODO estado (ao contrario da
+ * lista publica do app, que nunca mostra ENCERRADA). Mesmo formato de paginacao das outras listas; reusa
+ * [TableView] de `online/contracts` (nao duplica o tipo - ja tem tudo pra lista e pra ficha, id/anfitriao/
+ * estado/regras/assentos).
+ */
+@Serializable
+data class TablesPageResponse(val items: List<TableView>, val total: Int, val limit: Int, val offset: Int)
+
+/**
+ * POST /admin/tables/{id}/close (operador+, docs/telas-admin-web.md "operador encerra"): [reason] OBRIGATORIO
+ * (convencao do projeto). Idempotente em qualquer estado; mesa EM_JOGO devolve a aposta a TODOS os jogadores
+ * (ninguem e punido) e avisa os conectados - isso acontece no lobby-service (definition.md Sec18.4), aqui so
+ * repassa. Devolve a [TableView] atualizada, para a tela mostrar o novo estado sem recarregar.
+ *
+ * [expectedState] e opcional: a tela manda o estado que o operador VIU ao confirmar o aviso (ABERTA ou
+ * EM_JOGO, cada um com um texto diferente). Se a mesa tiver virado EM_JOGO enquanto o dialogo estava aberto e
+ * [expectedState] nao for EM_JOGO, o admin-api recusa com 409 em vez de encerrar uma partida que o operador
+ * nunca viu o aviso certo sobre - a UNICA direcao perigosa (mesa que ja virou ENCERRADA continua sem efeito).
+ */
+@Serializable
+data class CloseTableRequest(val reason: String, val operationId: String? = null, val expectedState: TableState? = null)
