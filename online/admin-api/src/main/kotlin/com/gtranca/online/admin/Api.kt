@@ -74,3 +74,13 @@ data class AccountsPageResponse(val items: List<AdminAccountSummary>, val total:
  */
 @Serializable
 data class AccountDetailResponse(val account: AdminAccountDetail, val wallet: AdminWalletDto? = null, val walletUnavailable: Boolean = false)
+
+/**
+ * POST /admin/accounts/{id}/block|unblock|revoke-sessions (operador+, docs/telas-admin-web.md "operador
+ * bloqueia"). [reason] e OBRIGATORIO nas tres (convencao do projeto: toda acao destrutiva pede motivo), mesmo
+ * em "revoke-sessions" e "unblock" (o lobby-service em si nao exige motivo nelas, ver `AdminBlockRequest`
+ * no contrato - a exigencia e do admin-api, pela auditoria). [operationId] e a chave de idempotencia, como em
+ * [CreateMemberRequest].
+ */
+@Serializable
+data class AccountActionRequest(val reason: String, val operationId: String? = null)

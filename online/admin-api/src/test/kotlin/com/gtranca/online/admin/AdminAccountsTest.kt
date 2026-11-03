@@ -75,13 +75,11 @@ class AdminAccountsTest {
         var receivedQuery: String? = null
         var receivedLimit: Int? = null
         var receivedOffset: Int? = null
-        val lobbyAdmin = object : LobbyAdminGateway {
-            override suspend fun stats() = error("nao usado neste teste")
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun searchAccounts(query: String, limit: Int, offset: Int): AdminAccountsPage {
                 receivedQuery = query; receivedLimit = limit; receivedOffset = offset
                 return AdminAccountsPage(total = 1, accounts = listOf(ana))
             }
-            override suspend fun accountDetail(id: String) = error("nao usado neste teste")
         }
         val d = deps(lobbyAdmin = lobbyAdmin)
         application { adminModule(d) }
@@ -111,10 +109,8 @@ class AdminAccountsTest {
 
     @Test
     fun `18_7 lobby-service fora do ar da 503 em accounts, nao 500`() = testApplication {
-        val lobbyAdmin = object : LobbyAdminGateway {
-            override suspend fun stats() = error("nao usado neste teste")
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = throw LobbyAdminGatewayException("timeout")
-            override suspend fun accountDetail(id: String) = error("nao usado neste teste")
         }
         val d = deps(lobbyAdmin = lobbyAdmin)
         application { adminModule(d) }
@@ -122,7 +118,7 @@ class AdminAccountsTest {
 
         val r = client.get("/admin/accounts") { header("Authorization", "Bearer $token") }
         r.status.value shouldBe 503
-        json.decodeFromString(ApiError.serializer(), r.bodyAsText()).code shouldBe ErrorCode.PARTIDA_INDISPONIVEL
+        json.decodeFromString(ApiError.serializer(), r.bodyAsText()).code shouldBe ErrorCode.SERVICO_INDISPONIVEL
     }
 
     // -------------------------------------------------------------------------------------------- /admin/accounts/{id}
@@ -134,9 +130,7 @@ class AdminAccountsTest {
             currentTables = listOf(AdminTableSummary(id = "T1", name = "Mesa 1", state = TableState.ABERTA, updatedMs = 999L)),
         )
         val wallet = AdminWalletDto(coins = 1_000L, inventory = mapOf("ESPIAR" to 2), migratedLocal = false)
-        val lobbyAdmin = object : LobbyAdminGateway {
-            override suspend fun stats() = error("nao usado neste teste")
-            override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String) = if (id == "G_1") detail else null
         }
         val economyAdmin = EconomyAdminGateway { id -> if (id == "G_1") wallet else null }
@@ -154,9 +148,7 @@ class AdminAccountsTest {
 
     @Test
     fun `18_7 conta inexistente no lobby da 404 tipado`() = testApplication {
-        val lobbyAdmin = object : LobbyAdminGateway {
-            override suspend fun stats() = error("nao usado neste teste")
-            override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String): AdminAccountDetail? = null
         }
         val economyAdmin = EconomyAdminGateway { null }
@@ -172,9 +164,7 @@ class AdminAccountsTest {
     @Test
     fun `18_7 conta sem carteira online ainda (economy devolve null) e diferente de economy fora do ar`() = testApplication {
         val detail = AdminAccountDetail(id = "G_1", kind = AccountKind.CONVIDADO, name = "Ana")
-        val lobbyAdmin = object : LobbyAdminGateway {
-            override suspend fun stats() = error("nao usado neste teste")
-            override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String) = detail
         }
 
@@ -191,9 +181,7 @@ class AdminAccountsTest {
     @Test
     fun `18_7 economy-service fora do ar nao quebra a ficha, carteira fica indisponivel e nao sem carteira`() = testApplication {
         val detail = AdminAccountDetail(id = "G_1", kind = AccountKind.CONVIDADO, name = "Ana")
-        val lobbyAdmin = object : LobbyAdminGateway {
-            override suspend fun stats() = error("nao usado neste teste")
-            override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String) = detail
         }
         val economyAdmin = EconomyAdminGateway { throw EconomyAdminGatewayException("timeout") }
@@ -212,9 +200,7 @@ class AdminAccountsTest {
     @Test
     fun `18_7 sem ECONOMY_SERVICE_URL configurado a carteira fica indisponivel e nao sem carteira`() = testApplication {
         val detail = AdminAccountDetail(id = "G_1", kind = AccountKind.CONVIDADO, name = "Ana")
-        val lobbyAdmin = object : LobbyAdminGateway {
-            override suspend fun stats() = error("nao usado neste teste")
-            override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String) = detail
         }
         val d = deps(lobbyAdmin = lobbyAdmin, economyAdmin = null)

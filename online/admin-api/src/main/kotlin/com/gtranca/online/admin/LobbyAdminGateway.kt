@@ -5,15 +5,21 @@ import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminAccountDetail
 import com.gtranca.online.contracts.AdminAccountsPage
+import com.gtranca.online.contracts.AdminBlockRequest
+import com.gtranca.online.contracts.AdminRevokeSessionsResponse
 import com.gtranca.online.contracts.AdminStatsDto
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -32,6 +38,23 @@ interface LobbyAdminGateway {
 
     /** `null` = conta nao encontrada (404 tipado do lobby-service, Sec18.7: "nunca cria nem inventa"). */
     suspend fun accountDetail(id: String): AdminAccountDetail?
+
+    /**
+     * "Bloquear conta" (Sec18.7, definition.md decisao de 03/11/2026): impede logar de novo e entrar em mesa
+     * nova; NAO ejeta de partida em andamento nem invalida tokens ja emitidos (isso e [revokeSessions], acao
+     * independente). Idempotente: bloquear de novo uma conta ja bloqueada nao e erro. [reason] e so pro log do
+     * lobby-service; a auditoria de verdade e do admin-api (ver [AuditLog]).
+     */
+    suspend fun block(id: String, reason: String?)
+
+    /** Reverte [block], sem efeito retroativo. Idempotente. */
+    suspend fun unblock(id: String)
+
+    /**
+     * "Encerrar sessões": invalida os tokens vivos da conta, SEM bloquear logins futuros (acao independente de
+     * [block]/[unblock]). @return quantos tokens foram invalidados agora (0 = a conta nao tinha sessao viva).
+     */
+    suspend fun revokeSessions(id: String): Int
 }
 
 /**
@@ -65,6 +88,21 @@ class HttpLobbyAdminGateway(
         throw LobbyAdminGatewayException("lobby-service inacessível: ${e::class.simpleName}")
     }
 
+    private suspend fun post(path: String, body: String? = null): HttpResponse = try {
+        client.post("${baseUrl.trimEnd('/')}$path") {
+            header(ADMIN_SECRET_HEADER, secret)
+            header(ADMIN_API_VERSION_HEADER, ADMIN_API_VERSION)
+            if (body != null) {
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw LobbyAdminGatewayException("lobby-service inacessível: ${e::class.simpleName}")
+    }
+
     private fun encode(value: String) = URLEncoder.encode(value, "UTF-8")
 
     override suspend fun stats(): AdminStatsDto {
@@ -84,5 +122,22 @@ class HttpLobbyAdminGateway(
         if (r.status == HttpStatusCode.NotFound) return null
         if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
         return Json.decodeFromString(AdminAccountDetail.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun block(id: String, reason: String?) {
+        val body = Json.encodeToString(AdminBlockRequest.serializer(), AdminBlockRequest(reason))
+        val r = post("/internal/admin/accounts/${encode(id)}/block", body)
+        if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
+    }
+
+    override suspend fun unblock(id: String) {
+        val r = post("/internal/admin/accounts/${encode(id)}/unblock")
+        if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
+    }
+
+    override suspend fun revokeSessions(id: String): Int {
+        val r = post("/internal/admin/accounts/${encode(id)}/revoke-sessions")
+        if (r.status.value != 200) throw LobbyAdminGatewayException("lobby-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminRevokeSessionsResponse.serializer(), r.bodyAsText()).revoked
     }
 }

@@ -129,10 +129,8 @@ class AdminDashboardTest {
 
     @Test
     fun `18_7 lobby-service fora do ar nao quebra o Painel, numeros ficam nulos`() = testApplication {
-        val lobbyAdmin = object : LobbyAdminGateway {
+        val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun stats() = throw LobbyAdminGatewayException("lobby-service inacessível: Timeout")
-            override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
-            override suspend fun accountDetail(id: String) = error("nao usado neste teste")
         }
         val d = deps(healthGateway = HealthGateway { error("sem servico de saude neste teste") }, lobbyAdmin = lobbyAdmin)
         d.store.seedFirstAdmin("ana@exemplo.com", "segredo123")
@@ -149,8 +147,6 @@ class AdminDashboardTest {
 
 /** Fabrica de teste: um [LobbyAdminGateway] que sempre devolve o mesmo [com.gtranca.online.contracts.AdminStatsDto] (sem rede). */
 private fun fakeLobbyAdmin(stats: com.gtranca.online.contracts.AdminStatsDto): LobbyAdminGateway =
-    object : LobbyAdminGateway {
+    object : FakeLobbyAdminGateway() {
         override suspend fun stats() = stats
-        override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
-        override suspend fun accountDetail(id: String) = error("nao usado neste teste")
     }

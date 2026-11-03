@@ -1,5 +1,6 @@
 package com.gtranca.online.admin
 
+import com.gtranca.online.contracts.AdminRevokeSessionsResponse
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.Health
 import com.gtranca.online.contracts.ServerInfo
@@ -153,9 +154,29 @@ class AdminDeps(
     val lobbyAdmin: LobbyAdminGateway? = null,
     /** Carteira na tela Contas (Sec18.7). `null` = wallet sempre nulo na ficha (nunca inventa saldo). */
     val economyAdmin: EconomyAdminGateway? = null,
+    /** Auditoria das acoes sobre conta (bloquear/desbloquear/encerrar sessoes): mesmo banco da Equipe, ver [AuditLog]. */
+    val auditLog: AuditLog = AuditLog(store.db, clock),
 ) {
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val loginAttempts = FailedLoginLimiter(loginAttemptLimit, loginLockoutMinutes * 60_000L, clock)
+}
+
+/**
+ * Grava a auditoria de uma acao sobre conta (Sec18.7), depois que a chamada remota ao lobby-service confirmou.
+ * Se o INSERT falhar (banco indisponivel no meio exato entre a mutacao remota e a auditoria local - ver
+ * pendencia no relatorio da etapa), a acao JA ACONTECEU no lobby-service sem registro: log ERROR antes de
+ * propagar, nunca silencioso.
+ */
+private suspend fun AdminDeps.recordAccountAudit(
+    operationId: String?, actor: Actor, action: String, targetId: String, reason: String,
+    resultado: String? = null, detail: String? = null,
+) {
+    try {
+        withContext(Dispatchers.IO) { auditLog.record(operationId, actor, action, targetId, null, reason, resultado, detail) }
+    } catch (e: Exception) {
+        gatewayLog.error("auditoria NAO gravada (acao={}, alvo={}, ator={}): {}", action, targetId, actor.email, e.message)
+        throw e
+    }
 }
 
 private val StartedAt = io.ktor.util.AttributeKey<Long>("admin.startedAt")
@@ -321,11 +342,8 @@ fun Application.adminModule(deps: AdminDeps) {
         // recusa (503): uma listagem de contas nao tem como degradar para "indisponivel" num campo so.
         get("/admin/accounts") {
             call.authenticated(Role.LEITOR) { _ ->
-                // ErrorCode.PARTIDA_INDISPONIVEL emprestado: o contrato compartilhado nao tem um codigo generico
-                // de "servico indisponivel" (sugestao pro online-backend-dev no relatorio desta etapa). A
-                // mensagem em pt-BR mostrada ao operador e clara de qualquer forma.
                 val gateway = deps.lobbyAdmin
-                    ?: adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
                 val q = call.request.queryParameters["q"].orEmpty()
                 val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
                     ?: AdminLimits.DEFAULT_PAGE_SIZE
@@ -334,7 +352,7 @@ fun Application.adminModule(deps: AdminDeps) {
                     withContext(Dispatchers.IO) { gateway.searchAccounts(q, limit, offset) }
                 } catch (e: LobbyAdminGatewayException) {
                     gatewayLog.warn("lobby-service indisponivel (GET /admin/accounts): {}", e.message)
-                    adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
                 }
                 call.respondJson(AccountsPageResponse(page.accounts, page.total, limit, offset))
             }
@@ -348,9 +366,8 @@ fun Application.adminModule(deps: AdminDeps) {
         get("/admin/accounts/{id}") {
             call.authenticated(Role.LEITOR) { _ ->
                 val id = call.parameters["id"].orEmpty()
-                // ErrorCode.PARTIDA_INDISPONIVEL emprestado, ver comentario em GET /admin/accounts acima.
                 val lobby = deps.lobbyAdmin
-                    ?: adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
                 val economy = deps.economyAdmin
                 val (detailResult, walletOutcome) = coroutineScope {
                     val detailDeferred = async(Dispatchers.IO) { runCatching { lobby.accountDetail(id) } }
@@ -359,7 +376,7 @@ fun Application.adminModule(deps: AdminDeps) {
                 }
                 val account = detailResult.getOrElse {
                     gatewayLog.warn("lobby-service indisponivel (GET /admin/accounts/{{id}}): {}", it.message)
-                    adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
                 } ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Conta não encontrada.", 404)
                 walletOutcome?.exceptionOrNull()?.let {
                     gatewayLog.warn("economy-service indisponivel (GET /admin/accounts/{{id}}/wallet): {}", it.message)
@@ -367,6 +384,88 @@ fun Application.adminModule(deps: AdminDeps) {
                 val wallet = walletOutcome?.getOrNull()
                 val walletUnavailable = economy == null || walletOutcome?.isFailure == true
                 call.respondJson(AccountDetailResponse(account, wallet, walletUnavailable))
+            }
+        }
+
+        // Sec18.7 "Bloquear conta" (definition.md, decisao de 03/11/2026): operador+, motivo obrigatorio (acao
+        // destrutiva). Impede logar de novo e entrar em mesa nova; NAO ejeta de partida em andamento nem
+        // invalida tokens ja emitidos (isso e /revoke-sessions, acao independente, logo abaixo). Idempotente no
+        // lobby-service; aqui so evita duplicar a linha de auditoria quando o mesmo operationId repete.
+        post("/admin/accounts/{id}/block") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AccountActionRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                // Confere ANTES de chamar o lobby-service: repetir o mesmo operationId nao chama de novo (uma
+                // 2a chamada bloquear/desbloquear/bloquear com o mesmo operationId nao pode reverter a 1a).
+                val jaFeito = req.operationId != null && withContext(Dispatchers.IO) { deps.auditLog.hasOperation(req.operationId) }
+                if (!jaFeito) {
+                    val gateway = deps.lobbyAdmin
+                        ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    try {
+                        withContext(Dispatchers.IO) { gateway.block(id, req.reason) }
+                    } catch (e: LobbyAdminGatewayException) {
+                        gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/block): {}", e.message)
+                        adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    }
+                    deps.recordAccountAudit(req.operationId, Actor(actor.id, actor.email), "BLOQUEAR_CONTA", id, req.reason)
+                }
+                call.respondJson(Health())
+            }
+        }
+        // Reverte o bloqueio acima, sem efeito retroativo. Mesmas regras (operador+, motivo obrigatorio).
+        post("/admin/accounts/{id}/unblock") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AccountActionRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                val jaFeito = req.operationId != null && withContext(Dispatchers.IO) { deps.auditLog.hasOperation(req.operationId) }
+                if (!jaFeito) {
+                    val gateway = deps.lobbyAdmin
+                        ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    try {
+                        withContext(Dispatchers.IO) { gateway.unblock(id) }
+                    } catch (e: LobbyAdminGatewayException) {
+                        gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/unblock): {}", e.message)
+                        adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    }
+                    deps.recordAccountAudit(req.operationId, Actor(actor.id, actor.email), "DESBLOQUEAR_CONTA", id, req.reason)
+                }
+                call.respondJson(Health())
+            }
+        }
+        // Sec18.7 "Encerrar sessões": acao INDEPENDENTE do bloqueio - invalida os tokens vivos, sem impedir
+        // logins futuros. Motivo obrigatorio, como as duas de cima. Idempotencia COM resposta (como
+        // TeamStore.findAuditResult): repetir o mesmo operationId devolve o MESMO "revoked" da 1a vez, sem
+        // encerrar sessoes criadas depois da 1a chamada.
+        post("/admin/accounts/{id}/revoke-sessions") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AccountActionRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                val cached = req.operationId?.let { opId -> withContext(Dispatchers.IO) { deps.auditLog.findResult(opId) } }
+                val revoked = if (cached != null) {
+                    json.decodeFromString(AdminRevokeSessionsResponse.serializer(), cached).revoked
+                } else {
+                    val gateway = deps.lobbyAdmin
+                        ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    val result = try {
+                        withContext(Dispatchers.IO) { gateway.revokeSessions(id) }
+                    } catch (e: LobbyAdminGatewayException) {
+                        gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/revoke-sessions): {}", e.message)
+                        adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    }
+                    deps.recordAccountAudit(
+                        req.operationId, Actor(actor.id, actor.email), "ENCERRAR_SESSOES_CONTA", id, req.reason,
+                        resultado = json.encodeToString(AdminRevokeSessionsResponse.serializer(), AdminRevokeSessionsResponse(result)),
+                        detail = "sessões encerradas: $result",
+                    )
+                    result
+                }
+                call.respondJson(AdminRevokeSessionsResponse(revoked))
             }
         }
 
