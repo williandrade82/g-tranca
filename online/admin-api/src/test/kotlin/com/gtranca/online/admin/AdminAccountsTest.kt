@@ -189,7 +189,7 @@ class AdminAccountsTest {
     }
 
     @Test
-    fun `18_7 economy-service fora do ar nao quebra a ficha, carteira fica indisponivel (nao "sem carteira")`() = testApplication {
+    fun `18_7 economy-service fora do ar nao quebra a ficha, carteira fica indisponivel e nao sem carteira`() = testApplication {
         val detail = AdminAccountDetail(id = "G_1", kind = AccountKind.CONVIDADO, name = "Ana")
         val lobbyAdmin = object : LobbyAdminGateway {
             override suspend fun stats() = error("nao usado neste teste")
@@ -210,7 +210,7 @@ class AdminAccountsTest {
     }
 
     @Test
-    fun `18_7 sem ECONOMY_SERVICE_URL configurado a carteira fica indisponivel, nao "sem carteira"`() = testApplication {
+    fun `18_7 sem ECONOMY_SERVICE_URL configurado a carteira fica indisponivel e nao sem carteira`() = testApplication {
         val detail = AdminAccountDetail(id = "G_1", kind = AccountKind.CONVIDADO, name = "Ana")
         val lobbyAdmin = object : LobbyAdminGateway {
             override suspend fun stats() = error("nao usado neste teste")
