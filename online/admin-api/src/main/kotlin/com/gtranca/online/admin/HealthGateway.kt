@@ -1,10 +1,13 @@
 package com.gtranca.online.admin
 
+import com.gtranca.online.contracts.Health
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
 
 /** Um servico a sondar no Painel (Sec18.7): [name] e o rotulo na tela, [url] e o `/health` dele. */
 data class HealthTarget(val name: String, val url: String)
@@ -18,10 +21,20 @@ fun interface HealthGateway {
 }
 
 /**
+ * Classifica o estado de um servico que respondeu (sem exception/timeout, isso e sempre VERMELHO em [HttpHealthGateway]):
+ * vermelho se o HTTP nao foi 200; amarelo se o corpo nao disse "UP" OU a latencia passou do limiar; verde senao.
+ * Funcao pura (sem rede) para poder testar as quatro combinacoes sem HTTP de verdade.
+ */
+fun classifyHealth(httpStatus: Int, bodyUp: Boolean, latencyMs: Long, yellowAboveMs: Long): ServiceStatusLevel = when {
+    httpStatus != 200 -> ServiceStatusLevel.VERMELHO
+    !bodyUp || latencyMs > yellowAboveMs -> ServiceStatusLevel.AMARELO
+    else -> ServiceStatusLevel.VERDE
+}
+
+/**
  * Chama o `/health` do servico por HTTP simples (sem segredo servico-a-servico: `/health` e publico em todo
- * servico do online, ver lobby/game-service Main.kt). Verde = respondeu 200 dentro do limiar; amarelo = respondeu
- * mas lento ou com um corpo inesperado; vermelho = erro ou expirou o tempo. Limiares provisorios, a confirmar com
- * o usuario (ver relatorio da etapa).
+ * servico do online, ver lobby/game-service Main.kt). Limiar de latencia provisorio (`yellowAboveMs`), a
+ * confirmar com o usuario (ver relatorio da etapa); devera virar variavel de ambiente se confirmado.
  */
 class HttpHealthGateway(
     private val timeoutMs: Long = 2_000L,
@@ -41,12 +54,12 @@ class HttpHealthGateway(
         return try {
             val response = client.get(target.url)
             val latencyMs = (System.nanoTime() - startNanos) / 1_000_000
-            val status = when {
-                response.status.value != 200 -> ServiceStatusLevel.VERMELHO
-                latencyMs > yellowAboveMs -> ServiceStatusLevel.AMARELO
-                else -> ServiceStatusLevel.VERDE
+            val bodyUp = try {
+                Json.decodeFromString(Health.serializer(), response.bodyAsText()).status == "UP"
+            } catch (e: Exception) {
+                false
             }
-            ServiceHealthInfo(target.name, status, latencyMs)
+            ServiceHealthInfo(target.name, classifyHealth(response.status.value, bodyUp, latencyMs, yellowAboveMs), latencyMs)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -55,7 +55,7 @@ class AdminDashboardTest {
     }
 
     @Test
-    fun `18_7 leitor ve a saude de cada servico configurado`() = testApplication {
+    fun `18_7 leitor (o menor papel) ve a saude de cada servico configurado`() = testApplication {
         val lobby = HealthTarget("lobby-service", "http://lobby/health")
         val game = HealthTarget("game-service", "http://game/health")
         val gateway = HealthGateway { target ->
@@ -65,10 +65,17 @@ class AdminDashboardTest {
             }
         }
         val d = deps(healthTargets = listOf(lobby, game), healthGateway = gateway, grafanaUrl = "https://grafana.local", lokiUrl = "https://loki.local")
-        d.store.seedFirstAdmin("ana@exemplo.com", "segredo123")
+        d.store.seedFirstAdmin("admin@exemplo.com", "segredo123")
         application { adminModule(d) }
 
-        val token = json.decodeFromString(LoginResponse.serializer(), client.login("ana@exemplo.com", "segredo123").bodyAsText()).token
+        // administrador cadastra um leitor (sem autocadastro, Sec18.7) e e o leitor quem chama o Painel.
+        val adminToken = json.decodeFromString(LoginResponse.serializer(), client.login("admin@exemplo.com", "segredo123").bodyAsText()).token
+        client.post("/admin/team") {
+            header("Authorization", "Bearer $adminToken")
+            setBody(json.encodeToString(CreateMemberRequest.serializer(), CreateMemberRequest("leitor@exemplo.com", "segredo123", Role.LEITOR, "cadastro para o teste do Painel")))
+        }
+        val token = json.decodeFromString(LoginResponse.serializer(), client.login("leitor@exemplo.com", "segredo123").bodyAsText()).token
+
         val r = client.get("/admin/dashboard") { header("Authorization", "Bearer $token") }
         r.status.value shouldBe 200
         val body = json.decodeFromString(DashboardResponse.serializer(), r.bodyAsText())

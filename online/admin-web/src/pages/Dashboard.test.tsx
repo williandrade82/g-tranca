@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Dashboard } from './Dashboard'
@@ -86,6 +87,22 @@ describe('Dashboard (Sec18.7, docs/telas-admin-web.md: Painel)', () => {
     renderDashboard()
 
     await waitFor(() => expect(screen.getByText('tela-entrar')).toBeInTheDocument())
+  })
+
+  it('Sair chama POST /admin/logout com o token e volta para Entrar', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, RESPOSTA_BASE))
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { status: 'UP' }))
+    const user = userEvent.setup()
+    renderDashboard()
+
+    await waitFor(() => expect(screen.getByText(/lobby-service/)).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: 'Sair' }))
+
+    await waitFor(() => expect(screen.getByText('tela-entrar')).toBeInTheDocument())
+    expect(fetch).toHaveBeenCalledWith(
+      '/admin/logout',
+      expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ Authorization: 'Bearer tok-123' }) }),
+    )
   })
 
   it('erro de rede mostra mensagem e nao quebra a tela', async () => {

@@ -19,7 +19,7 @@ function Contagem({ rotulo, valor }: { rotulo: string; valor: number | null }) {
   return (
     <div className="contagem">
       <span className="contagem-rotulo">{rotulo}</span>
-      <strong>{valor === null ? 'indisponível' : valor}</strong>
+      <strong>{valor == null ? 'indisponível' : valor}</strong>
     </div>
   )
 }
@@ -77,8 +77,8 @@ export function Dashboard() {
         <>
           <section aria-label="Contagens">
             <Contagem rotulo="Jogadores online" valor={data.playersOnline} />
-            <Contagem rotulo="Mesas ativas" valor={data.tablesOpen} />
-            <Contagem rotulo="Em jogo" valor={data.tablesInGame} />
+            <Contagem rotulo="Mesas abertas" valor={data.tablesOpen} />
+            <Contagem rotulo="Mesas em jogo" valor={data.tablesInGame} />
             <Contagem rotulo="Partidas na última hora" valor={data.matchesEndedLastHour} />
           </section>
 
@@ -91,7 +91,7 @@ export function Dashboard() {
                 {data.services.map((service) => (
                   <li key={service.name} className={STATUS_CLASS[service.status]}>
                     <strong>{service.name}</strong>: {STATUS_LABEL[service.status]}
-                    {service.latencyMs !== null && ` (${service.latencyMs} ms)`}
+                    {service.latencyMs != null && ` (${service.latencyMs} ms)`}
                   </li>
                 ))}
               </ul>
