@@ -187,6 +187,41 @@ table.accounts-tabela td {
   cursor: not-allowed;
 }
 
+/* Dialogo de confirmacao (bloquear/desbloquear/encerrar sessoes): ocupa a tela inteira por cima do resto,
+   sempre pede o motivo antes de confirmar (docs/telas-admin-web.md: "ação destrutiva pede confirmação e motivo"). */
+.dialogo-confirmacao {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.dialogo-confirmacao form {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  width: min(420px, 90vw);
+}
+
+.dialogo-confirmacao textarea {
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.5rem;
+  border: 1px solid #888;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.dialogo-botoes {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
 .dashboard-page section {
   background: #fff;
   border-radius: 8px;

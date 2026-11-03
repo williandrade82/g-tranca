@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { apiFetch } from '../api/client'
-import { ApiRequestError, type AccountDetailResponse, type AccountKind, type TableState } from '../api/types'
+import {
+  ApiRequestError,
+  type AccountActionRequest,
+  type AccountDetailResponse,
+  type AccountKind,
+  type RevokeSessionsResponse,
+  type TableState,
+} from '../api/types'
 import { useSession } from '../auth/SessionContext'
 import { AppHeader } from '../components/AppHeader'
 
@@ -22,14 +29,39 @@ function formatDate(ms: number | null): string {
   return new Date(ms).toLocaleString('pt-BR')
 }
 
-/** Ficha da conta (docs/telas-admin-web.md, tela Contas): leitor so consulta nesta etapa; as acoes de escrever
- * (bloquear, encerrar sessoes, exportar/apagar dados) ainda nao tem rota no admin-api. */
+type PendingAction = 'block' | 'unblock' | 'revoke'
+
+const ACTION_TITLE: Record<PendingAction, string> = {
+  block: 'Bloquear conta',
+  unblock: 'Desbloquear conta',
+  revoke: 'Encerrar sessões',
+}
+
+const ACTION_PATH: Record<PendingAction, string> = {
+  block: 'block',
+  unblock: 'unblock',
+  revoke: 'revoke-sessions',
+}
+
+/**
+ * Ficha da conta (docs/telas-admin-web.md, tela Contas): leitor so consulta; operador+ bloqueia/desbloqueia e
+ * encerra sessoes, sempre com motivo (docs/telas-admin-web.md: "ação destrutiva pede confirmação e motivo").
+ * Exportar/apagar dados (LGPD) ainda nao tem rota no admin-api - continuam desabilitados, "Em breve".
+ */
 export function AccountDetail() {
   const { id = '' } = useParams<{ id: string }>()
   const { session, forceLogout } = useSession()
   const [data, setData] = useState<AccountDetailResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [reason, setReason] = useState('')
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+
+  const canAct = session?.role === 'OPERADOR' || session?.role === 'ADMINISTRADOR'
 
   useEffect(() => {
     let cancelled = false
@@ -57,6 +89,44 @@ export function AccountDetail() {
       cancelled = true
     }
   }, [id, session?.token, forceLogout])
+
+  function openAction(action: PendingAction) {
+    setPendingAction(action)
+    setReason('')
+    setActionError(null)
+    setActionMessage(null)
+  }
+
+  async function confirmAction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!pendingAction) return
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      const path = `/admin/accounts/${encodeURIComponent(id)}/${ACTION_PATH[pendingAction]}`
+      if (pendingAction === 'revoke') {
+        const response = await apiFetch<RevokeSessionsResponse>(path, {
+          method: 'POST',
+          token: session?.token,
+          body: { reason } satisfies AccountActionRequest,
+        })
+        setActionMessage(`Sessões encerradas: ${response.revoked}.`)
+      } else {
+        await apiFetch(path, { method: 'POST', token: session?.token, body: { reason } satisfies AccountActionRequest })
+        setData((prev) => (prev ? { ...prev, account: { ...prev.account, blocked: pendingAction === 'block' } } : prev))
+        setActionMessage(pendingAction === 'block' ? 'Conta bloqueada.' : 'Conta desbloqueada.')
+      }
+      setPendingAction(null)
+    } catch (e) {
+      if (e instanceof ApiRequestError && e.status === 401) {
+        forceLogout()
+        return
+      }
+      setActionError(e instanceof ApiRequestError ? e.message : 'Algo deu errado. Tente novamente.')
+    } finally {
+      setActionBusy(false)
+    }
+  }
 
   return (
     <main className="account-detail-page">
@@ -128,14 +198,18 @@ export function AccountDetail() {
 
           <section aria-label="Ações">
             <h2>Ações</h2>
-            <p>Ainda não disponíveis nesta etapa do console — em breve.</p>
+            {actionMessage && <p role="status">{actionMessage}</p>}
             <div className="acoes-futuras">
-              <button type="button" disabled title="Em breve">
-                Bloquear conta
-              </button>
-              <button type="button" disabled title="Em breve">
-                Encerrar sessões
-              </button>
+              {canAct && (
+                <>
+                  <button type="button" onClick={() => openAction(data.account.blocked ? 'unblock' : 'block')}>
+                    {data.account.blocked ? 'Desbloquear conta' : 'Bloquear conta'}
+                  </button>
+                  <button type="button" onClick={() => openAction('revoke')}>
+                    Encerrar sessões
+                  </button>
+                </>
+              )}
               <button type="button" disabled title="Em breve">
                 Exportar dados (LGPD)
               </button>
@@ -144,6 +218,46 @@ export function AccountDetail() {
               </button>
             </div>
           </section>
+
+          {pendingAction && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={ACTION_TITLE[pendingAction]}
+              className="dialogo-confirmacao"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' && !actionBusy) setPendingAction(null)
+              }}
+            >
+              <form onSubmit={confirmAction}>
+                <h3>{ACTION_TITLE[pendingAction]}</h3>
+                <div className="campo">
+                  <label htmlFor="motivo-acao">Motivo</label>
+                  <textarea
+                    id="motivo-acao"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    required
+                    // Mesmos limites de AdminLimits.MIN_REASON/MAX_REASON (admin-api/.../Domain.kt): o admin-api
+                    // recusa fora dessa faixa de qualquer jeito, isto so evita a viagem ao servidor pra descobrir.
+                    minLength={3}
+                    maxLength={500}
+                    autoFocus
+                    disabled={actionBusy}
+                  />
+                </div>
+                {actionError && <p role="alert">{actionError}</p>}
+                <div className="dialogo-botoes">
+                  <button type="submit" disabled={actionBusy}>
+                    Confirmar
+                  </button>
+                  <button type="button" onClick={() => setPendingAction(null)} disabled={actionBusy}>
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </>
       )}
     </main>

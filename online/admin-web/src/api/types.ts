@@ -113,3 +113,13 @@ export interface AccountDetailResponse {
   wallet: AdminWalletDto | null
   walletUnavailable: boolean
 }
+
+/** POST /admin/accounts/{id}/block|unblock|revoke-sessions (operador+): motivo sempre obrigatorio. */
+export interface AccountActionRequest {
+  reason: string
+  operationId?: string
+}
+
+export interface RevokeSessionsResponse {
+  revoked: number
+}
