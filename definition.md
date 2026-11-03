@@ -815,6 +815,7 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - **Fim do jogo:** todos veem a **tela final**; a mesa guarda o resultado por **10 minutos** para quem estava fora e então é apagada. Não há "nova partida" na mesma mesa: para jogar de novo, entra-se noutra mesa da lista.
 - **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode **substituí-lo por um robô** (conta como abandono).
 - **Mesa encerrada durante o jogo:** se o anfitrião da mesa a **encerra** com o jogo em andamento, conta como **abandono do anfitrião** (a punição escolhida vale para ele) e os **demais jogadores humanos recebem a aposta de volta**; nenhum robô assume uma mesa encerrada.
+- **Mesa encerrada pelo operador** (console de gerenciamento, §18.7, decisão de 03/11/2026): diferente de um anfitrião encerrando, é o suporte fechando uma mesa **travada**; **ninguém perde a aposta** — **todos os jogadores humanos recebem a aposta de volta**, sem punir nenhum deles. Os conectados veem um aviso honesto (algo como "A mesa foi encerrada pelo suporte."), nunca a mensagem de "o anfitrião encerrou".
 - **Boosters de skill:** a mesa os **permite ou não** (a mesma escolha de §17.9); não há escolha por tipo.
 - Os critérios aparecem na **lista de mesas** (§18.2), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
 
