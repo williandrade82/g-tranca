@@ -3,6 +3,9 @@ package com.gtranca.online.lobby
 import com.gtranca.online.contracts.AccountKind
 import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.AccountLimits
+import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
+import com.gtranca.online.contracts.AdminAccountDetail
+import com.gtranca.online.contracts.AdminAccountsPage
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.EmailLoginRequest
 import com.gtranca.online.contracts.EmailRegisterRequest
@@ -107,6 +110,17 @@ fun main() {
         emailAccountPersistence = db?.let(::PostgresEmailAccountPersistence),
         loginAttemptLimit = System.getenv("LOGIN_ATTEMPT_LIMIT")?.toIntOrNull() ?: 5,
         loginLockoutMinutes = System.getenv("LOGIN_LOCKOUT_MINUTES")?.toLongOrNull() ?: 15L,
+        // §18.7: segredo PROPRIO do console de gerenciamento (admin-api), nunca o INTERNAL_SECRET (servico a
+        // servico entre lobby/game/economy, que tambem abre o reset de senha). Igual ao INTERNAL_SECRET = erro de
+        // configuracao: as rotas /internal/admin ficam desativadas em vez de aceitar o segredo errado.
+        adminSecret = System.getenv("ADMIN_INTERNAL_SECRET")?.takeIf { it.isNotBlank() }?.let { candidate ->
+            if (candidate == secret) {
+                System.err.println("ERRO: ADMIN_INTERNAL_SECRET nao pode ser igual a INTERNAL_SECRET; rotas /internal/admin desativadas.")
+                null
+            } else {
+                candidate
+            }
+        } ?: null.also { System.err.println("AVISO: ADMIN_INTERNAL_SECRET ausente; rotas /internal/admin (console de gerenciamento) desativadas.") },
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { lobbyModule(deps) }.start(wait = true)
 }
@@ -142,6 +156,8 @@ class LobbyDeps(
     /** Tentativas erradas de login seguidas, pelo mesmo e-mail, antes de bloquear (§18.1, forca bruta). */
     val loginAttemptLimit: Int = 5,
     val loginLockoutMinutes: Long = 15L,
+    /** Segredo do console de gerenciamento (§18.7). `null` = rotas `/internal/admin/...` FECHADAS. Nunca igual a [internalSecret]. */
+    val adminSecret: String? = null,
 ) {
     val guests = GuestRegistry(clock, persistence = guestPersistence)
     val emailAccounts = EmailAccountRegistry(emailAccountPersistence, emailPasswordCost, clock)
@@ -150,6 +166,7 @@ class LobbyDeps(
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val tokenLimiter = RateLimiter(tokenLimitPerMinute, clock = clock)
     val guestLimiter = RateLimiter(guestCreationPerMinute, clock = clock)
+    val adminAccounts = AdminAccountDirectory(guests, emailAccounts)
 }
 
 private val StartedAt = io.ktor.util.AttributeKey<Long>("lobby.startedAt")
@@ -167,6 +184,20 @@ private suspend fun ApplicationCall.internalAllowed(expected: String?): Boolean 
     when {
         expected == null -> respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Rotas internas desativadas.", 503))
         !MessageDigest.isEqual(expected.toByteArray(), (request.headers[INTERNAL_SECRET_HEADER] ?: "").toByteArray()) ->
+            respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Não autorizado.", 401))
+        else -> return true
+    }
+    return false
+}
+
+/**
+ * §18.7: confere o segredo do console de gerenciamento (admin-api). Cabecalho e valor PROPRIOS, diferentes de
+ * [internalAllowed]/[INTERNAL_SECRET_HEADER]: nunca aceita o segredo servico a servico aqui, nem o contrario.
+ */
+private suspend fun ApplicationCall.adminAllowed(expected: String?): Boolean {
+    when {
+        expected == null -> respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Rotas administrativas desativadas.", 503))
+        !MessageDigest.isEqual(expected.toByteArray(), (request.headers[ADMIN_SECRET_HEADER] ?: "").toByteArray()) ->
             respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Não autorizado.", 401))
         else -> return true
     }
@@ -571,6 +602,34 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                     }
                 }
             }
+        }
+
+        // Console de gerenciamento (admin-api), so LEITURA (§18.7). Segredo PROPRIO: ver [adminAllowed].
+        get("/internal/admin/stats") {
+            if (!call.adminAllowed(deps.adminSecret)) return@get
+            val online = deps.guests.activeIds(ONLINE_WINDOW_MS) + service.connectedInGame()
+            call.respondJson(service.stats(online.size))
+        }
+        get("/internal/admin/accounts") {
+            if (!call.adminAllowed(deps.adminSecret)) return@get
+            val q = call.request.queryParameters["q"].orEmpty().take(AccountLimits.MAX_EMAIL)
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val (total, page) = deps.adminAccounts.search(q, limit, offset)
+            call.respondJson(AdminAccountsPage(total, page))
+        }
+        get("/internal/admin/accounts/{id}") {
+            if (!call.adminAllowed(deps.adminSecret)) return@get
+            val id = call.parameters["id"].orEmpty()
+            val summary = deps.adminAccounts.detail(id)
+                ?: return@get call.respondError(LobbyException(ErrorCode.CONTA_INEXISTENTE, "Conta não encontrada.", 404))
+            val tables = service.currentTablesOf(id)
+            call.respondJson(
+                AdminAccountDetail(
+                    summary.id, summary.kind, summary.name, summary.email, summary.createdMs, summary.lastSeenMs,
+                    summary.blocked, tables,
+                ),
+            )
         }
     }
 }

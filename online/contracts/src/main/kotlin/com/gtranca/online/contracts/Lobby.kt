@@ -154,6 +154,9 @@ enum class ErrorCode {
 
     /** §18.1: muitas tentativas erradas de login com o mesmo e-mail; aguarde antes de tentar de novo. */
     LOGIN_BLOQUEADO,
+
+    /** §18.7: a ficha de conta pedida pelo console de gerenciamento nao existe (nem como sessao, nem como conta de e-mail). */
+    CONTA_INEXISTENTE,
 }
 
 @Serializable

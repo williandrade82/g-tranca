@@ -119,6 +119,16 @@ class GuestRegistry(
         return byHash.values.filter { now - it.lastUsedMs <= windowMs }.map { it.guest.id }.toSet()
     }
 
+    /** Resumo de uma sessao viva (§18.7, console de gerenciamento): nunca o token. */
+    data class SessionSnapshot(val id: String, val name: String, val lastUsedMs: Long)
+
+    /**
+     * Todas as sessoes vivas (nao expiradas), uma por token (§18.7): uma conta Google/e-mail pode ter varias (uma
+     * por aparelho logado); um convidado anonimo normalmente tem uma so. Quem chama agrupa por [SessionSnapshot.id].
+     */
+    @Synchronized
+    fun snapshot(): List<SessionSnapshot> = byHash.values.map { SessionSnapshot(it.guest.id, it.guest.name, it.lastUsedMs) }
+
     private fun sweep() {
         val now = clock()
         val expired = byHash.filterValues { now - it.lastUsedMs > ttlMs }.keys

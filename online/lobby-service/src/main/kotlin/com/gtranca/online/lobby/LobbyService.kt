@@ -1,5 +1,7 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.AdminStatsDto
+import com.gtranca.online.contracts.AdminTableSummary
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.CreateMatchRequest
@@ -16,6 +18,7 @@ import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
 import com.gtranca.online.contracts.TempoDeJogada
 import com.gtranca.online.contracts.Visibilidade
+import java.util.concurrent.ConcurrentLinkedDeque
 import kotlin.random.Random
 
 /** §18.2: opcoes fixas de toda mesa do servidor. `"{}"` = perfil Classica (RuleSet padrao do motor). */
@@ -63,6 +66,14 @@ class LobbyService(
 
     /** Quando abrir a proxima mesa por tempo (`null` = sem contagem). */
     private var nextOpenAt: Long? = null
+
+    /**
+     * §18.7: o instante (relogio do servidor) de cada partida encerrada, para contar "na ultima hora" no Painel.
+     * So em memoria (zera ao reiniciar o pod; nos primeiros 60 min depois de um reinicio o numero fica menor que o
+     * real) - preferido a inventar uma contagem a partir das mesas ENCERRADA, que somem do [store] poucos minutos
+     * depois (ver [LobbyConfig.closedRetentionMs]) e teriam o id reaproveitado.
+     */
+    private val matchEndedTimestamps = ConcurrentLinkedDeque<Long>()
 
     /** §18.2: nesta fase o jogador nao cria mesa. */
     @Suppress("UNUSED_PARAMETER")
@@ -228,7 +239,41 @@ class LobbyService(
      * ABERTA nao e tocada (um aviso atrasado de outro jogo nao a fecha).
      */
     fun matchEnded(rawId: String): TableView = mutate(rawId) { t ->
-        if (t.state == TableState.EM_JOGO) t.copy(state = TableState.ENCERRADA) else t
+        if (t.state == TableState.EM_JOGO) {
+            matchEndedTimestamps.addLast(clock()) // §18.7: conta de verdade, nunca duas vezes (idempotente como o resto de matchEnded)
+            t.copy(state = TableState.ENCERRADA)
+        } else {
+            t
+        }
+    }
+
+    /** §18.7: numeros do Painel do console de gerenciamento. [onlinePlayers] vem de fora (depende do [GuestRegistry]). */
+    fun stats(onlinePlayers: Int): AdminStatsDto = synchronized(lock) {
+        val all = store.all()
+        AdminStatsDto(
+            playersOnline = onlinePlayers,
+            tablesOpen = all.count { it.state == TableState.ABERTA },
+            tablesInGame = all.count { it.state == TableState.EM_JOGO },
+            matchesEndedLastHour = matchesEndedLastHour(),
+        )
+    }
+
+    private fun matchesEndedLastHour(): Int {
+        val cutoff = clock() - 3_600_000L
+        while (true) {
+            val head = matchEndedTimestamps.peekFirst() ?: break
+            if (head < cutoff) matchEndedTimestamps.pollFirst() else break
+        }
+        return matchEndedTimestamps.size
+    }
+
+    /**
+     * §18.7: mesas onde [accountId] esta sentado AGORA (nao e historico: uma mesa ENCERRADA some do [store] poucos
+     * minutos depois, ver [LobbyConfig.closedRetentionMs]). So leitura: nunca chama [maintainLocked] (que pode
+     * abrir/fechar mesas) para uma consulta do console nao ter efeito colateral nenhum.
+     */
+    fun currentTablesOf(accountId: String): List<AdminTableSummary> = synchronized(lock) {
+        store.all().filter { it.seatOf(accountId) >= 0 }.map { AdminTableSummary(it.id, it.name, it.state, it.lastActivityMs) }
     }
 
     fun close(guest: Guest, rawId: String): TableView = mutate(rawId) { t ->
