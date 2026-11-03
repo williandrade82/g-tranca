@@ -3,6 +3,8 @@ import { SessionProvider } from './auth/SessionContext'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
+import { AccountsList } from './pages/AccountsList'
+import { AccountDetail } from './pages/AccountDetail'
 
 export function App() {
   return (
@@ -14,6 +16,22 @@ export function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/contas"
+          element={
+            <ProtectedRoute>
+              <AccountsList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/contas/:id"
+          element={
+            <ProtectedRoute>
+              <AccountDetail />
             </ProtectedRoute>
           }
         />

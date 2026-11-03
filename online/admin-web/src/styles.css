@@ -94,11 +94,97 @@ button[type='submit']:disabled {
   padding: 1.5rem;
 }
 
-.dashboard-header {
+.app-header {
+  margin-bottom: 1.5rem;
+}
+
+.app-header-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+}
+
+.app-header-session {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 0.5rem;
+}
+
+.app-header nav a {
+  color: var(--cor-texto);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+}
+
+.app-header nav a.active {
+  font-weight: 700;
+  border-bottom: 2px solid var(--cor-destaque);
+}
+
+.accounts-page,
+.account-detail-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.accounts-page section,
+.account-detail-page section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.accounts-busca {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.accounts-busca input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #888;
+  border-radius: 4px;
+}
+
+table.accounts-tabela {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.accounts-tabela th,
+table.accounts-tabela td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.paginacao {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.acoes-futuras {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.acoes-futuras button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .dashboard-page section {

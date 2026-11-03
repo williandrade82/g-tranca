@@ -36,8 +36,8 @@ export interface ServiceHealthInfo {
 }
 
 /**
- * GET /admin/dashboard (tela Painel, docs/telas-admin-web.md). Os campos de contagem sao `null` quando o
- * admin-api ainda nao tem de onde buscar o dado (nenhum servico dono expoe essa agregacao): mostrar
+ * GET /admin/dashboard (tela Painel, docs/telas-admin-web.md). Os campos de contagem vem do lobby-service;
+ * ficam `null` se o admin-api nao estiver configurado pra chamar ou se o lobby-service nao responder: mostrar
  * "indisponivel" na tela, nunca inventar um numero.
  */
 export interface DashboardResponse {
@@ -48,4 +48,68 @@ export interface DashboardResponse {
   matchesEndedLastHour: number | null
   grafanaUrl: string | null
   lokiUrl: string | null
+}
+
+export type AccountKind = 'CONVIDADO' | 'GOOGLE' | 'EMAIL'
+
+/**
+ * Espelha `com.gtranca.online.contracts.AdminAccountSummary`. `email`/`createdMs`: so conta EMAIL tem os dois
+ * de verdade; GOOGLE e CONVIDADO ficam `null` (ver comentario do contrato). `blocked` e sempre `false` nesta
+ * etapa: bloquear conta ainda nao tem rota (so leitura).
+ */
+export interface AdminAccountSummary {
+  id: string
+  kind: AccountKind
+  name: string
+  email: string | null
+  createdMs: number | null
+  lastSeenMs: number | null
+  blocked: boolean
+}
+
+/** GET /admin/accounts: mesmo formato de paginacao das outras listagens (items/total/limit/offset). */
+export interface AccountsPageResponse {
+  items: AdminAccountSummary[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type TableState = 'ABERTA' | 'EM_JOGO' | 'ENCERRADA'
+
+/** Mesa onde a conta esta sentada AGORA (nao e historico de partidas, ver contrato). */
+export interface AdminTableSummary {
+  id: string
+  name: string
+  state: TableState
+  updatedMs: number
+}
+
+export interface AdminAccountDetail {
+  id: string
+  kind: AccountKind
+  name: string
+  email: string | null
+  createdMs: number | null
+  lastSeenMs: number | null
+  blocked: boolean
+  currentTables: AdminTableSummary[]
+}
+
+export interface AdminWalletDto {
+  coins: number
+  inventory: Record<string, number>
+  migratedLocal: boolean
+}
+
+/**
+ * GET /admin/accounts/{id}: ficha (lobby) + carteira (economy). `wallet` e `walletUnavailable` juntos
+ * distinguem dois casos: `wallet` nulo com `walletUnavailable` falso = a conta genuinamente ainda nao tem
+ * carteira online (mostrar "sem carteira online"); `wallet` nulo com `walletUnavailable` true = o
+ * economy-service nao respondeu ou nao esta configurado (mostrar "indisponivel", nunca inventar saldo).
+ */
+export interface AccountDetailResponse {
+  account: AdminAccountDetail
+  wallet: AdminWalletDto | null
+  walletUnavailable: boolean
 }

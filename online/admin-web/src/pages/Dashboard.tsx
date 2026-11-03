@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { ApiRequestError, type DashboardResponse, type ServiceStatusLevel } from '../api/types'
 import { useSession } from '../auth/SessionContext'
+import { AppHeader } from '../components/AppHeader'
 
 const STATUS_LABEL: Record<ServiceStatusLevel, string> = {
   VERDE: 'Operando normalmente',
@@ -26,7 +27,7 @@ function Contagem({ rotulo, valor }: { rotulo: string; valor: number | null }) {
 
 /** Tela Painel (docs/telas-admin-web.md): jogadores online, mesas ativas, partidas por hora e a saude dos servicos. */
 export function Dashboard() {
-  const { session, logout, forceLogout } = useSession()
+  const { session, forceLogout } = useSession()
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -58,17 +59,7 @@ export function Dashboard() {
 
   return (
     <main className="dashboard-page">
-      <header className="dashboard-header">
-        <h1>Painel</h1>
-        <div>
-          <span>
-            {session?.email} ({session?.role})
-          </span>
-          <button type="button" onClick={logout}>
-            Sair
-          </button>
-        </div>
-      </header>
+      <AppHeader title="Painel" />
 
       {loading && <p>Carregando…</p>}
       {error && <p role="alert">{error}</p>}
