@@ -1,5 +1,7 @@
 package com.gtranca.online.economy
 
+import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
+import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.AdoptWalletRequest
 import com.gtranca.online.contracts.AdoptWalletResponse
 import com.gtranca.engine.Loadout
@@ -60,9 +62,23 @@ fun main() {
     val appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() }
         ?: null.also { System.err.println("AVISO: APP_SIGNING_KEY ausente; a economia aceita pedidos sem assinatura do app") }
     val secret = required("INTERNAL_SECRET")
+    // §18.7: segredo PROPRIO do console de gerenciamento, nunca o INTERNAL_SECRET (servico a servico, que tambem
+    // abre rotas sensiveis entre lobby/game/economy). Igual ao INTERNAL_SECRET = erro de configuracao: as rotas
+    // /internal/admin ficam desativadas em vez de aceitar o segredo errado.
+    val adminSecretEnv = System.getenv("ADMIN_INTERNAL_SECRET")?.takeIf { it.isNotBlank() }
+    val adminSecret = when {
+        adminSecretEnv == null -> null.also { System.err.println("AVISO: ADMIN_INTERNAL_SECRET ausente; rotas /internal/admin (console de gerenciamento) desativadas.") }
+        adminSecretEnv == secret -> null.also { System.err.println("ERRO: ADMIN_INTERNAL_SECRET nao pode ser igual a INTERNAL_SECRET; rotas /internal/admin desativadas.") }
+        else -> adminSecretEnv
+    }
     val lobbyUrl = System.getenv("LOBBY_URL")?.takeIf { it.isNotBlank() } ?: "http://lobby-service"
     embeddedServer(Netty, port = port, host = "0.0.0.0") {
-        economyModule(EconomyDeps(EconomyStore(db), appKey, internalSecret = secret, guests = CachedGuestResolver(HttpGuestResolver(lobbyUrl, secret))))
+        economyModule(
+            EconomyDeps(
+                EconomyStore(db), appKey, internalSecret = secret, adminSecret = adminSecret,
+                guests = CachedGuestResolver(HttpGuestResolver(lobbyUrl, secret)),
+            ),
+        )
     }.start(wait = true)
 }
 
@@ -75,6 +91,8 @@ class EconomyDeps(
     val internalSecret: String? = null,
     /** Dono do token do jogador (o lobby). `null` = rotas publicas FECHADAS (falha fechada). */
     val guests: GuestResolver? = null,
+    /** Segredo do console de gerenciamento (§18.7). `null` = rotas `/internal/admin/...` FECHADAS. Nunca igual a [internalSecret]. */
+    val adminSecret: String? = null,
 )
 
 private class HttpFail(val status: Int, val code: EconomyErrorCode, message: String) : RuntimeException(message)
@@ -183,6 +201,29 @@ fun Application.economyModule(deps: EconomyDeps) {
         }
 
         internalEconomyRoutes(deps)
+        adminEconomyRoutes(deps)
+    }
+}
+
+/**
+ * Console de gerenciamento (admin-api), so LEITURA (§18.7): a carteira e o inventario de uma conta, sem criar
+ * nada (nunca [EconomyStore.ensureAccount] aqui: um id de teste/erro do operador nao pode nascer com 1.000 moedas).
+ * Segredo PROPRIO: ver [adminAllowed].
+ */
+private fun io.ktor.server.routing.Routing.adminEconomyRoutes(deps: EconomyDeps) {
+    val store = deps.store
+    get("/internal/admin/accounts/{guestId}/wallet") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        try {
+            val id = call.parameters["guestId"].orEmpty()
+            if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+            val state = withContext(Dispatchers.IO) { store.state(id) }
+            call.respondJson(AdminWalletDto(state.balance, state.inventory, state.migratedLocal))
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
     }
 }
 
@@ -191,6 +232,21 @@ private suspend fun ApplicationCall.internalAllowed(expected: String?): Boolean 
     val given = request.headers[INTERNAL_SECRET_HEADER] ?: ""
     when {
         expected == null -> respondError(503, EconomyErrorCode.INDISPONIVEL, "Rotas internas desativadas.")
+        !MessageDigest.isEqual(expected.toByteArray(), given.toByteArray()) ->
+            respondError(401, EconomyErrorCode.NAO_AUTENTICADO, "Não autorizado.")
+        else -> return true
+    }
+    return false
+}
+
+/**
+ * §18.7: confere o segredo do console de gerenciamento (admin-api). Cabecalho e valor PROPRIOS, diferentes de
+ * [internalAllowed]/[INTERNAL_SECRET_HEADER]: nunca aceita o segredo servico a servico aqui, nem o contrario.
+ */
+private suspend fun ApplicationCall.adminAllowed(expected: String?): Boolean {
+    val given = request.headers[ADMIN_SECRET_HEADER] ?: ""
+    when {
+        expected == null -> respondError(503, EconomyErrorCode.INDISPONIVEL, "Rotas administrativas desativadas.")
         !MessageDigest.isEqual(expected.toByteArray(), given.toByteArray()) ->
             respondError(401, EconomyErrorCode.NAO_AUTENTICADO, "Não autorizado.")
         else -> return true
