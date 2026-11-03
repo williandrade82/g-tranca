@@ -154,6 +154,29 @@ enum class ErrorCode {
 
     /** §18.1: muitas tentativas erradas de login com o mesmo e-mail; aguarde antes de tentar de novo. */
     LOGIN_BLOQUEADO,
+
+    /**
+     * §18.7: a conta foi bloqueada pelo console de gerenciamento (não loga de novo, não entra em mesa nova; não
+     * ejeta de uma partida em andamento). Nunca confundir com [LOGIN_BLOQUEADO] (força bruta, temporário, por
+     * tentativas erradas) nem com [SEM_PERMISSAO] (ação que exige ser outra pessoa, não uma conta banida).
+     *
+     * ATENÇÃO (quem for consumir este valor em `app/src/main/kotlin/com/gtranca/ui/online/OnlineProblem.kt`): o
+     * `when (code)` de `toProblem()` ali é EXHAUSTIVO sobre este enum, sem `else`; qualquer valor novo quebra a
+     * compilação do app até ganhar um `ErrorCode.CONTA_BLOQUEADA -> OnlineProblem.<algo novo>` ali. Fora do
+     * mandato deste agente (`online-backend-dev`) mudar arquivos de `app/`; ver relatório da etapa.
+     */
+    CONTA_BLOQUEADA,
+
+    /**
+     * §18.7: servidor (ou outro serviço que ele depende) indisponível agora, por um motivo genérico que não é
+     * versão (ver [VERSAO_INCOMPATIVEL]) nem autenticação (ver [NAO_AUTENTICADO]/[LOGIN_INDISPONIVEL]). Antes
+     * desta etapa, o admin-api tinha que reaproveitar [PARTIDA_INDISPONIVEL] (do domínio do lobby/jogo) para os
+     * próprios 503 por falta de opção; este valor é o certo para isso a partir de agora.
+     *
+     * Mesmo aviso de [CONTA_BLOQUEADA]: valor novo no enum, quebra o `when` exaustivo de `OnlineProblem.kt` no
+     * app até ganhar um braço lá.
+     */
+    SERVICO_INDISPONIVEL,
 }
 
 @Serializable

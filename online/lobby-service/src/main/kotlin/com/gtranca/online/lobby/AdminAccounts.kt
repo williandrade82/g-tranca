@@ -15,10 +15,15 @@ import java.util.Locale
  * fica `null` para elas (e para convidados) e uma conta Google sem sessao viva simplesmente nao aparece na busca.
  * Isso e uma lacuna conhecida, registrada no relatorio desta etapa (recomendacao: uma tabela `conta_google`
  * durável, como a `conta_email` da §18.1).
+ *
+ * [blocks] e INDEPENDENTE desta juncao (§18.7): guarda por id, nao por "conta conhecida aqui" - por isso uma
+ * conta Google sem sessao viva pode estar bloqueada no banco sem aparecer nesta busca (so volta a aparecer
+ * quando logar de novo, e ai ja chega bloqueada).
  */
 class AdminAccountDirectory(
     private val guests: GuestRegistry,
     private val emailAccounts: EmailAccountRegistry,
+    private val blocks: AccountBlockRegistry,
 ) {
     private fun merged(): List<AdminAccountSummary> {
         val sessionsById = guests.snapshot().groupBy { it.id }
@@ -28,22 +33,23 @@ class AdminAccountDirectory(
             val latestSession = sessions.maxByOrNull { it.lastUsedMs }
             val lastSeenMs = sessions.maxOfOrNull { it.lastUsedMs }
             val email = emailById[id]
+            val blocked = blocks.isBlocked(id)
             when {
                 email != null -> AdminAccountSummary(
                     id = id, kind = AccountKind.EMAIL, name = latestSession?.name ?: email.name,
-                    email = email.email, createdMs = email.createdMs, lastSeenMs = lastSeenMs,
+                    email = email.email, createdMs = email.createdMs, lastSeenMs = lastSeenMs, blocked = blocked,
                 )
                 // Pelo PREFIXO do id, nunca por isAccountId (que vale para G_ e E_ juntos): uma sessao E_ sem
                 // entrada em conta_email (banco inconsistente, ou emailAccountPersistence ausente apos um
                 // reinicio) continua EMAIL, nunca GOOGLE por exclusao.
                 id.startsWith(AccountLimits.GOOGLE_ID_PREFIX) -> AdminAccountSummary(
-                    id = id, kind = AccountKind.GOOGLE, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs,
+                    id = id, kind = AccountKind.GOOGLE, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs, blocked = blocked,
                 )
                 id.startsWith(AccountLimits.EMAIL_ID_PREFIX) -> AdminAccountSummary(
-                    id = id, kind = AccountKind.EMAIL, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs,
+                    id = id, kind = AccountKind.EMAIL, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs, blocked = blocked,
                 )
                 else -> AdminAccountSummary(
-                    id = id, kind = AccountKind.CONVIDADO, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs,
+                    id = id, kind = AccountKind.CONVIDADO, name = latestSession?.name.orEmpty(), lastSeenMs = lastSeenMs, blocked = blocked,
                 )
             }
         }

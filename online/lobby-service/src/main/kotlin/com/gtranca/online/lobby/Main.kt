@@ -8,6 +8,8 @@ import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminAccountDetail
 import com.gtranca.online.contracts.AdminAccountsPage
+import com.gtranca.online.contracts.AdminBlockRequest
+import com.gtranca.online.contracts.AdminRevokeSessionsResponse
 import com.gtranca.online.contracts.ApiError
 import com.gtranca.online.contracts.EmailLoginRequest
 import com.gtranca.online.contracts.EmailRegisterRequest
@@ -110,6 +112,8 @@ fun main() {
         walletLinker = System.getenv("ECONOMY_URL")?.takeIf { it.isNotBlank() }?.let { HttpAccountWalletLinker(it, secret) },
         // §18.1 (mudanca de 02/11/2026): contas por e-mail e senha. Custo do bcrypt fixo em produção (12).
         emailAccountPersistence = db?.let(::PostgresEmailAccountPersistence),
+        // §18.7: bloqueio de conta pelo console de gerenciamento.
+        accountBlockPersistence = db?.let(::PostgresAccountBlockPersistence),
         loginAttemptLimit = System.getenv("LOGIN_ATTEMPT_LIMIT")?.toIntOrNull() ?: 5,
         loginLockoutMinutes = System.getenv("LOGIN_LOCKOUT_MINUTES")?.toLongOrNull() ?: 15L,
         // §18.7: segredo PROPRIO do console de gerenciamento (admin-api), nunca o INTERNAL_SECRET (servico a
@@ -160,6 +164,8 @@ class LobbyDeps(
     val loginLockoutMinutes: Long = 15L,
     /** Segredo do console de gerenciamento (§18.7). `null` = rotas `/internal/admin/...` FECHADAS. Nunca igual a [internalSecret]. */
     val adminSecret: String? = null,
+    /** Bloqueio de conta no banco (§18.7). `null` = so memoria (desenvolvimento e testes). */
+    val accountBlockPersistence: AccountBlockPersistence? = null,
 ) {
     val guests = GuestRegistry(clock, persistence = guestPersistence)
     val emailAccounts = EmailAccountRegistry(emailAccountPersistence, emailPasswordCost, clock)
@@ -168,7 +174,8 @@ class LobbyDeps(
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val tokenLimiter = RateLimiter(tokenLimitPerMinute, clock = clock)
     val guestLimiter = RateLimiter(guestCreationPerMinute, clock = clock)
-    val adminAccounts = AdminAccountDirectory(guests, emailAccounts)
+    val accountBlocks = AccountBlockRegistry(accountBlockPersistence, clock)
+    val adminAccounts = AdminAccountDirectory(guests, emailAccounts, accountBlocks)
 }
 
 private val StartedAt = io.ktor.util.AttributeKey<Long>("lobby.startedAt")
@@ -363,6 +370,10 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 } catch (e: JwksUnavailableException) {
                     lobbyError(ErrorCode.LOGIN_INDISPONIVEL, "Não foi possível falar com o Google agora. Tente de novo.", 503)
                 }
+                // §18.7: conta bloqueada nao loga de novo (so a partir desta tentativa; nao afeta sessoes ja abertas).
+                if (deps.accountBlocks.isBlocked(user.accountId)) {
+                    lobbyError(ErrorCode.CONTA_BLOQUEADA, "Esta conta foi bloqueada. Entre em contato com o suporte.", 403)
+                }
                 val guestId = req.guestToken?.takeIf { it.isNotBlank() }?.let(deps.guests::authenticate)?.id
                     ?.takeIf { !AccountLimits.isAccountId(it) }
                 val migrated = deps.walletLinker?.let { linker ->
@@ -417,6 +428,10 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                     throw e
                 }
                 deps.loginAttempts.recordSuccess(attemptKey)
+                // §18.7: so DEPOIS da senha confirmada (uma senha errada nunca revela se a conta esta bloqueada).
+                if (deps.accountBlocks.isBlocked(id)) {
+                    lobbyError(ErrorCode.CONTA_BLOQUEADA, "Esta conta foi bloqueada. Entre em contato com o suporte.", 403)
+                }
                 val guestId = req.guestToken?.takeIf { it.isNotBlank() }?.let(deps.guests::authenticate)?.id
                     ?.takeIf { !AccountLimits.isAccountId(it) }
                 val migrated = deps.walletLinker?.let { linker ->
@@ -478,6 +493,11 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
         }
         post("/api/lobby/tables/{id}/join") {
             call.guarded { guest ->
+                // §18.7: conta bloqueada nao entra em mesa NOVA (uma partida ja em andamento nao e afetada; esta
+                // rota so cobre entrar num assento, nunca a mesa onde a conta ja esta sentada).
+                if (deps.accountBlocks.isBlocked(guest.id)) {
+                    lobbyError(ErrorCode.CONTA_BLOQUEADA, "Esta conta foi bloqueada. Entre em contato com o suporte.", 403)
+                }
                 val req = call.receiveLimited<JoinRequest>()
                 val id = call.parameters["id"].orEmpty()
                 deps.economy?.let { eco ->
@@ -643,5 +663,51 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
                 ),
             )
         }
+
+        // §18.7 "Bloquear conta": impede logar de novo e entrar em mesa nova; nao ejeta de partida em andamento
+        // nem invalida tokens ja emitidos (isso e /revoke-sessions, acao independente). Idempotente.
+        post("/internal/admin/accounts/{id}/block") {
+            if (!call.adminAllowed(deps.adminSecret)) return@post
+            try {
+                val id = call.accountIdParam()
+                val reason = call.receiveLimited<AdminBlockRequest>().reason
+                deps.accountBlocks.block(id, reason)
+                LoggerFactory.getLogger("lobby.admin").info("conta {} bloqueada (motivo: {})", id, reason ?: "-")
+                call.respondJson(Health())
+            } catch (e: LobbyException) {
+                call.respondError(e)
+            }
+        }
+        post("/internal/admin/accounts/{id}/unblock") {
+            if (!call.adminAllowed(deps.adminSecret)) return@post
+            try {
+                val id = call.accountIdParam()
+                deps.accountBlocks.unblock(id)
+                LoggerFactory.getLogger("lobby.admin").info("conta {} desbloqueada", id)
+                call.respondJson(Health())
+            } catch (e: LobbyException) {
+                call.respondError(e)
+            }
+        }
+        // §18.7 "Encerrar sessões": invalida os tokens vivos da conta, SEM bloquear logins futuros (acao
+        // independente do bloqueio acima).
+        post("/internal/admin/accounts/{id}/revoke-sessions") {
+            if (!call.adminAllowed(deps.adminSecret)) return@post
+            try {
+                val id = call.accountIdParam()
+                val revoked = deps.guests.revokeSessions(id)
+                LoggerFactory.getLogger("lobby.admin").info("sessoes da conta {} encerradas ({} token(s))", id, revoked)
+                call.respondJson(AdminRevokeSessionsResponse(revoked))
+            } catch (e: LobbyException) {
+                call.respondError(e)
+            }
+        }
     }
+}
+
+/** Id de conta nas rotas administrativas (§18.7): nao vazio, dentro de um tamanho razoavel. */
+private fun ApplicationCall.accountIdParam(): String {
+    val id = parameters["id"].orEmpty()
+    if (id.isBlank() || id.length > 128) lobbyError(ErrorCode.REQUISICAO_INVALIDA, "Conta inválida.", 400)
+    return id
 }

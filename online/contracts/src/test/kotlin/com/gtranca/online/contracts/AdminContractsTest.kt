@@ -36,4 +36,21 @@ class AdminContractsTest {
         val wallet = AdminWalletDto(coins = 1_000L, inventory = mapOf("b1" to 2), migratedLocal = true)
         Json.decodeFromString<AdminWalletDto>(Json.encodeToString(wallet)) shouldBe wallet
     }
+
+    @Test
+    fun `18_7 pedido de bloqueio e resposta de encerrar sessoes vao e voltam em JSON`() {
+        val block = AdminBlockRequest(reason = "suspeita de fraude")
+        Json.decodeFromString<AdminBlockRequest>(Json.encodeToString(block)) shouldBe block
+        Json.decodeFromString<AdminBlockRequest>(Json.encodeToString(AdminBlockRequest())).reason shouldBe null
+
+        val revoke = AdminRevokeSessionsResponse(revoked = 3)
+        Json.decodeFromString<AdminRevokeSessionsResponse>(Json.encodeToString(revoke)) shouldBe revoke
+    }
+
+    @Test
+    fun `18_7 os dois ErrorCode novos existem e sao distintos um do outro`() {
+        ErrorCode.CONTA_BLOQUEADA shouldBe ErrorCode.valueOf("CONTA_BLOQUEADA")
+        ErrorCode.SERVICO_INDISPONIVEL shouldBe ErrorCode.valueOf("SERVICO_INDISPONIVEL")
+        (ErrorCode.CONTA_BLOQUEADA == ErrorCode.SERVICO_INDISPONIVEL) shouldBe false
+    }
 }

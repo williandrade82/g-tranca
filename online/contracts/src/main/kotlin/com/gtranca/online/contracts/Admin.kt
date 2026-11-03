@@ -46,7 +46,10 @@ data class AdminStatsDto(
  * CONVIDADO nao tem. [createdMs]: so EMAIL tem data de criacao real hoje; GOOGLE e CONVIDADO ficam `null` (o lobby
  * so conhece sessoes, que expiram por inatividade e nao sao "a conta nasceu em"; ver pendencia no relatorio do
  * `online-backend-dev`). [lastSeenMs]: ultimo uso de alguma sessao viva; `null` se nenhuma sessao esta viva agora.
- * [blocked]: sempre `false` nesta etapa (bloquear conta e uma acao de escrita, fica para a proxima etapa).
+ * [blocked]: §18.7 "Bloquear conta" (`definition.md`, decisao de 03/11/2026) - impede logar de novo e entrar em
+ * mesa nova; nao ejeta de uma partida em andamento nem invalida tokens ja emitidos (isso e "Encerrar sessoes",
+ * acao independente, ver [AdminRevokeSessionsResponse]). Vale para os tres tipos de conta, inclusive CONVIDADO
+ * (protecao fraca para ele: o id nao e duradouro, ver pendencia no relatorio).
  */
 @Serializable
 data class AdminAccountSummary(
@@ -86,3 +89,19 @@ data class AdminAccountDetail(
 /** GET /internal/admin/accounts/{id}/wallet (economy-service, §18.7): carteira e inventario, so leitura. */
 @Serializable
 data class AdminWalletDto(val coins: Long, val inventory: Map<String, Int>, val migratedLocal: Boolean)
+
+/**
+ * POST /internal/admin/accounts/{id}/block (lobby-service, §18.7). [reason] e so para o lobby registrar no log
+ * (`lobby.admin` logger); a auditoria de verdade (quem, quando, o que, por que, sem se alterar) e do admin-api.
+ * Opcional aqui: o admin-api pode exigir o motivo do lado dele antes de chamar esta rota.
+ */
+@Serializable
+data class AdminBlockRequest(val reason: String? = null)
+
+/**
+ * POST /internal/admin/accounts/{id}/revoke-sessions (lobby-service, §18.7): "Encerrar sessões", acao
+ * INDEPENDENTE do bloqueio. [revoked] e quantos tokens validos foram invalidados agora (0 = a conta nao tinha
+ * sessao viva).
+ */
+@Serializable
+data class AdminRevokeSessionsResponse(val revoked: Int)

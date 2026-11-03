@@ -129,6 +129,20 @@ class GuestRegistry(
     @Synchronized
     fun snapshot(): List<SessionSnapshot> = byHash.values.map { SessionSnapshot(it.guest.id, it.guest.name, it.lastUsedMs) }
 
+    /**
+     * §18.7 "Encerrar sessões": invalida AGORA todos os tokens vivos de [accountId] (a conta precisa logar de
+     * novo); acao INDEPENDENTE do bloqueio (nao impede logins futuros, so os tokens atuais). @return quantos
+     * tokens foram invalidados.
+     */
+    @Synchronized
+    fun revokeSessions(accountId: String): Int {
+        val hashes = byHash.filterValues { it.guest.id == accountId }.keys.toList()
+        if (hashes.isEmpty()) return 0
+        byHash.keys.removeAll(hashes.toSet())
+        persistence?.deleteGuests(hashes)
+        return hashes.size
+    }
+
     private fun sweep() {
         val now = clock()
         val expired = byHash.filterValues { now - it.lastUsedMs > ttlMs }.keys
