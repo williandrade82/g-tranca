@@ -13,4 +13,6 @@ Interface **separada do app Android** (ver [telas-app.md](telas-app.md)), em Rea
 | **Equipe** | lista de e-mails permitidos e papel de cada um; adicionar, mudar papel, remover | administrador |
 | **Auditoria** | tudo o que cada operador fez (quem, quando, o quê, por quê); só leitura, com filtros | leitor+ |
 
-Regras de interface: ação destrutiva pede **confirmação e motivo**; toda listagem é paginada; erros dizem o que aconteceu e o que fazer. Regras do negócio: §18.5 a §18.7.
+Regras de interface: ação destrutiva pede **confirmação e motivo**; toda listagem é paginada; erros dizem o que aconteceu e o que fazer. Quem não tem papel para uma ação **não vê o botão** (leitor não vê "Bloquear conta"/"Encerrar sessões" na ficha de Contas; qualquer papel vê "Exportar/Apagar dados" desabilitado com "Em breve", já que ainda não existe). Regras do negócio: §18.5 a §18.7.
+
+**Bloquear/desbloquear conta e encerrar sessões** (03/11/2026, §18.7): bloquear só impede logar de novo e entrar em mesa nova, nunca ejeta de uma partida em andamento; encerrar sessões é ação independente do bloqueio. Uma conta **convidado** sem sessão ativa some da busca/ficha de Contas (ela só existe enquanto há sessão viva) — ao encerrar as sessões de um convidado, a ficha dele deixa de ser encontrável até ele entrar de novo; isso é esperado, não é um erro da tela.
