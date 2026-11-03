@@ -1,5 +1,7 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.ADMIN_API_VERSION
+import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AccountKind
 import com.gtranca.online.contracts.AccountLimits
@@ -40,7 +42,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
 
-/** §18.7: rotas de LEITURA do console de gerenciamento (admin-api -> lobby-service), com segredo proprio. */
+/** §18.7: rotas de LEITURA do console de gerenciamento (admin-api -> lobby-service), com segredo e versao proprios. */
 class LobbyAdminTest {
     private val json = Json { ignoreUnknownKeys = true }
     private var now = 1_800_000_000_000L
@@ -72,10 +74,12 @@ class LobbyAdminTest {
         return json.decodeFromString(call(HttpMethod.Post, "/api/lobby/tables/$id/join", token, "{}").bodyAsText())
     }
 
-    private suspend fun HttpClient.admin(path: String, secretHeader: String? = adminSecret) = request(path) {
-        method = HttpMethod.Get
-        if (secretHeader != null) header(ADMIN_SECRET_HEADER, secretHeader)
-    }
+    private suspend fun HttpClient.admin(path: String, secretHeader: String? = adminSecret, versionHeader: Int? = ADMIN_API_VERSION) =
+        request(path) {
+            method = HttpMethod.Get
+            if (secretHeader != null) header(ADMIN_SECRET_HEADER, secretHeader)
+            if (versionHeader != null) header(ADMIN_API_VERSION_HEADER, versionHeader)
+        }
 
     @Test
     fun `18_7 sem o segredo do admin as rotas internas recusam, e o segredo do admin nao abre as outras rotas internas`() = testApplication {
@@ -91,14 +95,16 @@ class LobbyAdminTest {
         // O segredo certo funciona.
         client.admin("/internal/admin/stats").status shouldBe HttpStatusCode.OK
 
-        // O inverso: o ADMIN_INTERNAL_SECRET nunca abre as rotas internas antigas (reset de senha, resolve).
+        // O inverso, pelo cenario de vazamento de verdade: o VALOR do segredo do admin, enviado no cabecalho das
+        // rotas internas antigas (reset de senha, resolve), tambem nao vale (sao segredos diferentes, nao so
+        // cabecalhos diferentes).
         val resetWithAdminSecret = client.post("/internal/lobby/accounts/reset-password") {
-            header(ADMIN_SECRET_HEADER, adminSecret)
+            header(INTERNAL_SECRET_HEADER, adminSecret)
             setBody(json.encodeToString(ResetPasswordRequest.serializer(), ResetPasswordRequest("ninguem@exemplo.com")))
         }
         resetWithAdminSecret.status shouldBe HttpStatusCode.Unauthorized
         val resolveWithAdminSecret = client.post("/internal/guests/resolve") {
-            header(ADMIN_SECRET_HEADER, adminSecret)
+            header(INTERNAL_SECRET_HEADER, adminSecret)
             setBody(json.encodeToString(ResolveGuestRequest.serializer(), ResolveGuestRequest("qualquer")))
         }
         resolveWithAdminSecret.status shouldBe HttpStatusCode.Unauthorized
@@ -111,7 +117,20 @@ class LobbyAdminTest {
     }
 
     @Test
-    fun `18_7 estatisticas contam mesas abertas, em jogo e partidas encerradas na ultima hora`() = testApplication {
+    fun `18_7 e 18_8 versao dos contratos administrativos ausente ou diferente e recusada com mensagem em pt-BR`() = testApplication {
+        application { lobbyModule(deps()) }
+        val missing = client.admin("/internal/admin/stats", versionHeader = null)
+        missing.status shouldBe HttpStatusCode.UpgradeRequired
+        json.decodeFromString<ApiError>(missing.bodyAsText()).message shouldBe "Atualize o admin-api."
+        val older = client.admin("/internal/admin/stats", versionHeader = ADMIN_API_VERSION - 1)
+        older.status shouldBe HttpStatusCode.UpgradeRequired
+        val newer = client.admin("/internal/admin/stats", versionHeader = ADMIN_API_VERSION + 1)
+        newer.status shouldBe HttpStatusCode.ServiceUnavailable
+        json.decodeFromString<ApiError>(newer.bodyAsText()).message shouldBe "Servidor em manutenção."
+    }
+
+    @Test
+    fun `18_7 estatisticas contam mesas abertas, em jogo e partidas encerradas na ultima hora (fim normal e encerrada pelo anfitriao)`() = testApplication {
         application { lobbyModule(deps()) }
         val ana = client.guest("Ana")
         val t = client.serverTable(ana.token)
@@ -131,11 +150,24 @@ class LobbyAdminTest {
             header(INTERNAL_SECRET_HEADER, internalSecret)
             setBody(json.encodeToString(MatchEndedNotice.serializer(), MatchEndedNotice(GameEndReason.PONTUACAO)))
         }.status shouldBe HttpStatusCode.OK
+        // Repetir o aviso (rede/retry do game-service) nao conta duas vezes.
+        client.post("/internal/tables/${t.id}/ended") {
+            header(INTERNAL_SECRET_HEADER, internalSecret)
+            setBody(json.encodeToString(MatchEndedNotice.serializer(), MatchEndedNotice(GameEndReason.PONTUACAO)))
+        }
         val ended = json.decodeFromString<AdminStatsDto>(client.admin("/internal/admin/stats").bodyAsText())
         ended.tablesInGame shouldBe 0
         ended.matchesEndedLastHour shouldBe 1
 
-        // Passada mais de uma hora, a partida sai da janela.
+        // Uma 2a mesa, agora encerrada pelo anfitriao (DELETE), tambem conta.
+        val beto = client.guest("Beto")
+        val t2 = client.serverTable(beto.token)
+        client.call(HttpMethod.Post, "/api/lobby/tables/${t2.id}/start", beto.token)
+        client.call(HttpMethod.Delete, "/api/lobby/tables/${t2.id}", beto.token)
+        val afterClose = json.decodeFromString<AdminStatsDto>(client.admin("/internal/admin/stats").bodyAsText())
+        afterClose.matchesEndedLastHour shouldBe 2
+
+        // Passada mais de uma hora, as duas partidas saem da janela.
         now += 3_600_001L
         val later = json.decodeFromString<AdminStatsDto>(client.admin("/internal/admin/stats").bodyAsText())
         later.matchesEndedLastHour shouldBe 0
@@ -193,7 +225,7 @@ class LobbyAdminTest {
 
         val missing = client.admin("/internal/admin/accounts/ninguem-existe")
         missing.status shouldBe HttpStatusCode.NotFound
-        json.decodeFromString<ApiError>(missing.bodyAsText()).code shouldBe ErrorCode.CONTA_INEXISTENTE
+        json.decodeFromString<ApiError>(missing.bodyAsText()).code shouldBe ErrorCode.REQUISICAO_INVALIDA
     }
 
     // ---------------------------------------------------------------------------------------------------- apoio

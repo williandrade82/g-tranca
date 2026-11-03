@@ -1,5 +1,7 @@
 package com.gtranca.online.economy
 
+import com.gtranca.online.contracts.ADMIN_API_VERSION
+import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.AdoptWalletRequest
@@ -240,7 +242,8 @@ private suspend fun ApplicationCall.internalAllowed(expected: String?): Boolean 
 }
 
 /**
- * §18.7: confere o segredo do console de gerenciamento (admin-api). Cabecalho e valor PROPRIOS, diferentes de
+ * §18.7: confere o segredo do console de gerenciamento (admin-api) e a versao dos contratos `/internal/admin/...`
+ * ([ADMIN_API_VERSION], §18.8). Cabecalho e valor do segredo PROPRIOS, diferentes de
  * [internalAllowed]/[INTERNAL_SECRET_HEADER]: nunca aceita o segredo servico a servico aqui, nem o contrario.
  */
 private suspend fun ApplicationCall.adminAllowed(expected: String?): Boolean {
@@ -249,7 +252,15 @@ private suspend fun ApplicationCall.adminAllowed(expected: String?): Boolean {
         expected == null -> respondError(503, EconomyErrorCode.INDISPONIVEL, "Rotas administrativas desativadas.")
         !MessageDigest.isEqual(expected.toByteArray(), given.toByteArray()) ->
             respondError(401, EconomyErrorCode.NAO_AUTENTICADO, "Não autorizado.")
-        else -> return true
+        else -> {
+            val remote = request.headers[ADMIN_API_VERSION_HEADER]?.toIntOrNull()
+            if (remote == ADMIN_API_VERSION) return true
+            if (remote == null || remote < ADMIN_API_VERSION) {
+                respondError(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Atualize o admin-api.")
+            } else {
+                respondError(503, EconomyErrorCode.INDISPONIVEL, "Servidor em manutenção.")
+            }
+        }
     }
     return false
 }

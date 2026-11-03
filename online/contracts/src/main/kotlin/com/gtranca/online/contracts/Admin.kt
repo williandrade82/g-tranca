@@ -17,6 +17,15 @@ import kotlinx.serialization.Serializable
 const val ADMIN_SECRET_HEADER = "X-Admin-Secret"
 
 /**
+ * Versao dos contratos `/internal/admin/...` (este arquivo), §18.7. Cabecalho obrigatorio em toda chamada do
+ * admin-api; versao ausente ou diferente e recusada com mensagem clara em pt-BR (como o protocolo app<->servidor,
+ * §18.8), mas e um numero PROPRIO: nunca sobe por um motivo do console, nem [ONLINE_PROTOCOL_VERSION] por um
+ * motivo deste arquivo.
+ */
+const val ADMIN_API_VERSION: Int = 1
+const val ADMIN_API_VERSION_HEADER = "X-Admin-Api-Version"
+
+/**
  * GET /internal/admin/stats (lobby-service). Numeros do Painel (§18.7, docs/telas-admin-web.md).
  * [matchesEndedLastHour] e contado em memoria a partir de agora; zera quando o servico reinicia (sem persistencia
  * ainda) e, por isso, fica menor que o real na primeira hora depois de um reinicio.

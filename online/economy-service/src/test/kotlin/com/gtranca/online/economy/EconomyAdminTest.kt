@@ -1,5 +1,7 @@
 package com.gtranca.online.economy
 
+import com.gtranca.online.contracts.ADMIN_API_VERSION
+import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
@@ -9,6 +11,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -21,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 
-/** §18.7: rota de LEITURA do console de gerenciamento (admin-api -> economy-service), com segredo proprio. */
+/** §18.7: rota de LEITURA do console de gerenciamento (admin-api -> economy-service), com segredo e versao proprios. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EconomyAdminTest {
     private val pg = EmbeddedPostgres.start()
@@ -50,24 +53,39 @@ class EconomyAdminTest {
 
     private fun wallet(id: String) = "/internal/admin/accounts/$id/wallet"
 
+    /** GET com o segredo e a versao certos por padrao; `null` omite o cabecalho, outro valor o substitui. */
+    private suspend fun HttpClient.adminGet(path: String, secret: String? = adminSecret, version: Int? = ADMIN_API_VERSION): HttpResponse =
+        get(path) {
+            if (secret != null) header(ADMIN_SECRET_HEADER, secret)
+            if (version != null) header(ADMIN_API_VERSION_HEADER, version)
+        }
+
     @Test
     fun `18_7 sem o cabecalho, com o segredo errado ou com o INTERNAL_SECRET a rota recusa`() = app {
-        get(wallet("g1")).status shouldBe HttpStatusCode.Unauthorized
-        get(wallet("g1")) { header(ADMIN_SECRET_HEADER, "chave-qualquer-errada") }.status shouldBe HttpStatusCode.Unauthorized
+        adminGet(wallet("g1"), secret = null).status shouldBe HttpStatusCode.Unauthorized
+        adminGet(wallet("g1"), secret = "chave-qualquer-errada").status shouldBe HttpStatusCode.Unauthorized
         // O segredo servico a servico (lobby/game/economy) nao abre a rota do console.
-        get(wallet("g1")) { header(ADMIN_SECRET_HEADER, internalSecret) }.status shouldBe HttpStatusCode.Unauthorized
+        adminGet(wallet("g1"), secret = internalSecret).status shouldBe HttpStatusCode.Unauthorized
     }
 
     @Test
     fun `18_7 sem ADMIN_INTERNAL_SECRET configurado a rota fica desativada (503)`() = app(adminSecretConfigured = null) {
-        get(wallet("g1")) { header(ADMIN_SECRET_HEADER, adminSecret) }.status shouldBe HttpStatusCode.ServiceUnavailable
+        adminGet(wallet("g1")).status shouldBe HttpStatusCode.ServiceUnavailable
     }
 
     @Test
-    fun `18_7 o segredo do console nunca abre as rotas internas servico a servico`() = app {
+    fun `18_7 e 18_8 versao dos contratos administrativos ausente ou diferente e recusada`() = app {
+        adminGet(wallet("g1"), version = null).status shouldBe HttpStatusCode.BadRequest
+        adminGet(wallet("g1"), version = ADMIN_API_VERSION - 1).status shouldBe HttpStatusCode.BadRequest
+        adminGet(wallet("g1"), version = ADMIN_API_VERSION + 1).status shouldBe HttpStatusCode.ServiceUnavailable
+    }
+
+    @Test
+    fun `18_7 o segredo do console nunca abre as rotas internas servico a servico, nem pelo valor no cabecalho certo delas`() = app {
         get("/internal/economy/accounts/g1") { header(ADMIN_SECRET_HEADER, adminSecret) }.status shouldBe HttpStatusCode.Unauthorized
+        // Cenario de vazamento de verdade: o VALOR do segredo do admin, no cabecalho que a rota antiga confere.
         post("/internal/economy/bets/b1/hold") {
-            header(ADMIN_SECRET_HEADER, adminSecret)
+            header(INTERNAL_SECRET_HEADER, adminSecret)
             contentType(ContentType.Application.Json)
             setBody("""{"amount":50,"accounts":["g1"]}""")
         }.status shouldBe HttpStatusCode.Unauthorized
@@ -75,7 +93,7 @@ class EconomyAdminTest {
 
     @Test
     fun `18_7 conta inexistente da 404 e nao a cria (sem efeito colateral)`() = app {
-        val r = get(wallet("ninguem")) { header(ADMIN_SECRET_HEADER, adminSecret) }
+        val r = adminGet(wallet("ninguem"))
         r.status shouldBe HttpStatusCode.NotFound
         // Confirma que a consulta do console nao criou a conta (como EconomyStore.ensureAccount faria).
         val store = EconomyStore(db, clock = { now })
@@ -87,7 +105,7 @@ class EconomyAdminTest {
         // A conta nasce por uma operacao normal (nunca pela consulta do console).
         EconomyStore(db, clock = { now }).ensureAccount("g1")
 
-        val r = get(wallet("g1")) { header(ADMIN_SECRET_HEADER, adminSecret) }
+        val r = adminGet(wallet("g1"))
         r.status shouldBe HttpStatusCode.OK
         val dto = json.decodeFromString<AdminWalletDto>(r.bodyAsText())
         dto.coins shouldBe 1_000L
@@ -99,6 +117,6 @@ class EconomyAdminTest {
 
     @Test
     fun `18_7 id invalido (maior que o limite) da 400, nao 500`() = app {
-        get(wallet("g".repeat(65))) { header(ADMIN_SECRET_HEADER, adminSecret) }.status shouldBe HttpStatusCode.BadRequest
+        adminGet(wallet("g".repeat(65))).status shouldBe HttpStatusCode.BadRequest
     }
 }

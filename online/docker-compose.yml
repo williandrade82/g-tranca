@@ -43,6 +43,7 @@ services:
       DB_USER: ${POSTGRES_USER:-gtranca}
       DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
       INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      ADMIN_INTERNAL_SECRET: ${ADMIN_INTERNAL_SECRET:-}
       APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
       GAME_SERVICE_URL: http://game-service:8080
       ECONOMY_URL: http://economy-service:8080
@@ -91,6 +92,7 @@ services:
       DB_USER: ${POSTGRES_USER:-gtranca}
       DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
       INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      ADMIN_INTERNAL_SECRET: ${ADMIN_INTERNAL_SECRET:-}
       APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
       LOBBY_URL: http://lobby-service:8080
       JAVA_OPTS: "-XX:MaxRAMPercentage=65"

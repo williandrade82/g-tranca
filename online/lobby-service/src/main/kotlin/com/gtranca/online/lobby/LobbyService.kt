@@ -238,13 +238,29 @@ class LobbyService(
      * O game-service avisa que o jogo terminou ou foi encerrado (§18.4): a mesa EM_JOGO vira ENCERRADA. Idempotente; mesa
      * ABERTA nao e tocada (um aviso atrasado de outro jogo nao a fecha).
      */
-    fun matchEnded(rawId: String): TableView = mutate(rawId) { t ->
-        if (t.state == TableState.EM_JOGO) {
-            matchEndedTimestamps.addLast(clock()) // §18.7: conta de verdade, nunca duas vezes (idempotente como o resto de matchEnded)
-            t.copy(state = TableState.ENCERRADA)
-        } else {
-            t
+    fun matchEnded(rawId: String): TableView {
+        var wasInGame = false
+        val view = mutate(rawId) { t ->
+            if (t.state == TableState.EM_JOGO) {
+                wasInGame = true
+                t.copy(state = TableState.ENCERRADA)
+            } else {
+                t
+            }
         }
+        recordMatchEndedIfJustNow(wasInGame, view)
+        return view
+    }
+
+    /**
+     * §18.7: registra o fim de UMA partida, so quando [mutate] de fato terminou (nunca dentro da transformacao
+     * que o [TableStore] pode tentar de novo/perder no meio, ver [PersistentTableStore.update]): gravar o
+     * instante ANTES de [persistence] confirmar criaria uma conta dupla se o game-service reenviar o aviso
+     * depois de um erro de rede/banco (o estado em memoria so muda se a gravacao deu certo, entao o proximo
+     * [wasInGame] so fica `true` de novo se esta chamada nao tiver realmente concluido a transicao).
+     */
+    private fun recordMatchEndedIfJustNow(wasInGame: Boolean, view: TableView) {
+        if (wasInGame && view.state == TableState.ENCERRADA) matchEndedTimestamps.addLast(clock())
     }
 
     /** §18.7: numeros do Painel do console de gerenciamento. [onlinePlayers] vem de fora (depende do [GuestRegistry]). */
@@ -276,11 +292,17 @@ class LobbyService(
         store.all().filter { it.seatOf(accountId) >= 0 }.map { AdminTableSummary(it.id, it.name, it.state, it.lastActivityMs) }
     }
 
-    fun close(guest: Guest, rawId: String): TableView = mutate(rawId) { t ->
-        requireHost(t, guest)
-        if (t.state == TableState.ENCERRADA) return@mutate t
-        requireCanClose(t)
-        t.copy(state = TableState.ENCERRADA)
+    fun close(guest: Guest, rawId: String): TableView {
+        var wasInGame = false
+        val view = mutate(rawId) { t ->
+            requireHost(t, guest)
+            if (t.state == TableState.ENCERRADA) return@mutate t
+            requireCanClose(t)
+            wasInGame = true // so chega aqui com EM_JOGO (ABERTA cai em requireCanClose, ENCERRADA no return@mutate acima)
+            t.copy(state = TableState.ENCERRADA)
+        }
+        recordMatchEndedIfJustNow(wasInGame, view)
+        return view
     }
 
     // ------------------------------------------------------------------------------------------ conjunto de mesas

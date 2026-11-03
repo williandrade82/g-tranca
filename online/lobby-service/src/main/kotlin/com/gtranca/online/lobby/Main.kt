@@ -3,6 +3,8 @@ package com.gtranca.online.lobby
 import com.gtranca.online.contracts.AccountKind
 import com.gtranca.online.contracts.AccountLogin
 import com.gtranca.online.contracts.AccountLimits
+import com.gtranca.online.contracts.ADMIN_API_VERSION
+import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminAccountDetail
 import com.gtranca.online.contracts.AdminAccountsPage
@@ -113,14 +115,14 @@ fun main() {
         // §18.7: segredo PROPRIO do console de gerenciamento (admin-api), nunca o INTERNAL_SECRET (servico a
         // servico entre lobby/game/economy, que tambem abre o reset de senha). Igual ao INTERNAL_SECRET = erro de
         // configuracao: as rotas /internal/admin ficam desativadas em vez de aceitar o segredo errado.
-        adminSecret = System.getenv("ADMIN_INTERNAL_SECRET")?.takeIf { it.isNotBlank() }?.let { candidate ->
-            if (candidate == secret) {
-                System.err.println("ERRO: ADMIN_INTERNAL_SECRET nao pode ser igual a INTERNAL_SECRET; rotas /internal/admin desativadas.")
-                null
-            } else {
-                candidate
+        adminSecret = run {
+            val candidate = System.getenv("ADMIN_INTERNAL_SECRET")?.takeIf { it.isNotBlank() }
+            when {
+                candidate == null -> null.also { System.err.println("AVISO: ADMIN_INTERNAL_SECRET ausente; rotas /internal/admin (console de gerenciamento) desativadas.") }
+                candidate == secret -> null.also { System.err.println("ERRO: ADMIN_INTERNAL_SECRET nao pode ser igual a INTERNAL_SECRET; rotas /internal/admin desativadas.") }
+                else -> candidate
             }
-        } ?: null.also { System.err.println("AVISO: ADMIN_INTERNAL_SECRET ausente; rotas /internal/admin (console de gerenciamento) desativadas.") },
+        },
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { lobbyModule(deps) }.start(wait = true)
 }
@@ -191,7 +193,8 @@ private suspend fun ApplicationCall.internalAllowed(expected: String?): Boolean 
 }
 
 /**
- * §18.7: confere o segredo do console de gerenciamento (admin-api). Cabecalho e valor PROPRIOS, diferentes de
+ * §18.7: confere o segredo do console de gerenciamento (admin-api) e a versao dos contratos `/internal/admin/...`
+ * ([ADMIN_API_VERSION], §18.8). Cabecalho e valor do segredo PROPRIOS, diferentes de
  * [internalAllowed]/[INTERNAL_SECRET_HEADER]: nunca aceita o segredo servico a servico aqui, nem o contrario.
  */
 private suspend fun ApplicationCall.adminAllowed(expected: String?): Boolean {
@@ -199,10 +202,20 @@ private suspend fun ApplicationCall.adminAllowed(expected: String?): Boolean {
         expected == null -> respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Rotas administrativas desativadas.", 503))
         !MessageDigest.isEqual(expected.toByteArray(), (request.headers[ADMIN_SECRET_HEADER] ?: "").toByteArray()) ->
             respondError(LobbyException(ErrorCode.NAO_AUTENTICADO, "Não autorizado.", 401))
-        else -> return true
+        else -> {
+            val remote = request.headers[ADMIN_API_VERSION_HEADER]?.toIntOrNull()
+            if (remote == ADMIN_API_VERSION) return true
+            val older = remote == null || remote < ADMIN_API_VERSION
+            respondError(
+                LobbyException(ErrorCode.VERSAO_INCOMPATIVEL, if (older) "Atualize o admin-api." else "Servidor em manutenção.", if (older) 426 else 503),
+            )
+        }
     }
     return false
 }
+
+/** §18.2/§18.7: jogadores online, a mesma conta usada pela lista de mesas e pelo Painel (nao duplicar a logica). */
+private fun LobbyDeps.onlinePlayerIds(): Set<String> = guests.activeIds(ONLINE_WINDOW_MS) + service.connectedInGame()
 
 /** Jogador "online" (§18.2): usou o token neste intervalo (a lista e a sala consultam a cada poucos segundos). */
 private const val ONLINE_WINDOW_MS = 60_000L
@@ -442,10 +455,7 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
         }
         // §18.2: todas as mesas do servidor e quantos jogadores estao online.
         get("/api/lobby/tables") {
-            call.guarded { _ ->
-                val online = deps.guests.activeIds(ONLINE_WINDOW_MS) + service.connectedInGame()
-                call.respondJson(service.list(online.size))
-            }
+            call.guarded { _ -> call.respondJson(service.list(deps.onlinePlayerIds().size)) }
         }
         get("/api/lobby/tables/{id}") {
             call.guarded { guest -> call.respondJson(service.get(guest, call.parameters["id"].orEmpty())) }
@@ -607,8 +617,7 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
         // Console de gerenciamento (admin-api), so LEITURA (§18.7). Segredo PROPRIO: ver [adminAllowed].
         get("/internal/admin/stats") {
             if (!call.adminAllowed(deps.adminSecret)) return@get
-            val online = deps.guests.activeIds(ONLINE_WINDOW_MS) + service.connectedInGame()
-            call.respondJson(service.stats(online.size))
+            call.respondJson(service.stats(deps.onlinePlayerIds().size))
         }
         get("/internal/admin/accounts") {
             if (!call.adminAllowed(deps.adminSecret)) return@get
@@ -621,8 +630,11 @@ fun Application.lobbyModule(deps: LobbyDeps = LobbyDeps()) {
         get("/internal/admin/accounts/{id}") {
             if (!call.adminAllowed(deps.adminSecret)) return@get
             val id = call.parameters["id"].orEmpty()
+            // Mesmo codigo e status da rota interna de reset de senha (§18.1) para conta inexistente: nao ha um
+            // ErrorCode so para isto (adicionar um novo valor ao enum compartilhado quebraria o `when` exaustivo
+            // do app em OnlineProblem.kt, que nao e deste agente mudar).
             val summary = deps.adminAccounts.detail(id)
-                ?: return@get call.respondError(LobbyException(ErrorCode.CONTA_INEXISTENTE, "Conta não encontrada.", 404))
+                ?: return@get call.respondError(LobbyException(ErrorCode.REQUISICAO_INVALIDA, "Conta não encontrada.", 404))
             val tables = service.currentTablesOf(id)
             call.respondJson(
                 AdminAccountDetail(
