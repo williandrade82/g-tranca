@@ -881,6 +881,7 @@
     <string name="online_problem_invalid_target">Informe uma pontuação-alvo inteira e positiva.</string>
     <string name="online_problem_email_already_registered">Esse e-mail já tem uma conta.</string>
     <string name="online_problem_login_locked">Muitas tentativas erradas. Tente de novo em alguns minutos.</string>
+    <string name="online_problem_account_blocked">Esta conta foi bloqueada. Fale com o suporte.</string>
     <string name="online_problem_unexpected">Algo deu errado. Tente de novo.</string>
 
     <!-- 3.22 Conta online: entrar ou criar conta por e-mail e senha (§18.1) -->
