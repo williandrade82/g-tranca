@@ -40,10 +40,14 @@ const val SERVICE_NAME = "admin-api"
 
 private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
+/** Falhas ao chamar lobby/economy-service pelas rotas de leitura (Sec18.7): nunca o segredo, so a mensagem. */
+private val gatewayLog = LoggerFactory.getLogger("admin.gateway")
+
 /**
- * Esqueleto do console de gerenciamento (Sec18.7): login da equipe, CRUD da equipe (so administrador cadastra) e a
- * infraestrutura de auditoria. As telas de negocio (Contas, Mesas, Economia, Loja, Auditoria) ficam para as
- * proximas etapas; esta e so a base de autenticacao/autorizacao/auditoria sobre a qual elas serao construidas.
+ * Console de gerenciamento (Sec18.7): login da equipe, CRUD da equipe (so administrador cadastra), auditoria,
+ * Painel (saude dos servicos + numeros do lobby-service) e Contas (busca e ficha, so LEITURA: lobby-service para
+ * a conta e as mesas atuais, economy-service para a carteira). Mesas, Economia (escrita) e Loja ficam para as
+ * proximas etapas.
  *
  * Nada de endereco fixo: tudo vem do ambiente (Secret/ConfigMap no cluster).
  */
@@ -93,6 +97,25 @@ fun main() {
         System.getenv("ECONOMY_SERVICE_HEALTH_URL")?.takeIf { it.isNotBlank() }?.let { HealthTarget("economy-service", it) },
     )
 
+    // Tela Contas e numeros do Painel (Sec18.7): rotas /internal/admin/... de LEITURA do lobby/economy-service,
+    // segredo PROPRIO (nunca o INTERNAL_SECRET servico a servico). Sem as duas variaveis, as rotas ficam
+    // desativadas (nulo) em vez de tentar com um segredo errado.
+    val adminInternalSecret = System.getenv("ADMIN_INTERNAL_SECRET")?.takeIf { it.isNotBlank() }
+    val lobbyServiceUrl = System.getenv("LOBBY_SERVICE_URL")?.takeIf { it.isNotBlank() }
+    val economyServiceUrl = System.getenv("ECONOMY_SERVICE_URL")?.takeIf { it.isNotBlank() }
+    val lobbyAdmin = if (adminInternalSecret != null && lobbyServiceUrl != null) {
+        HttpLobbyAdminGateway(lobbyServiceUrl, adminInternalSecret)
+    } else {
+        System.err.println("AVISO: LOBBY_SERVICE_URL/ADMIN_INTERNAL_SECRET ausentes; Painel sem numeros e tela Contas desativada.")
+        null
+    }
+    val economyAdmin = if (adminInternalSecret != null && economyServiceUrl != null) {
+        HttpEconomyAdminGateway(economyServiceUrl, adminInternalSecret)
+    } else {
+        System.err.println("AVISO: ECONOMY_SERVICE_URL/ADMIN_INTERNAL_SECRET ausentes; carteira na tela Contas desativada.")
+        null
+    }
+
     val deps = AdminDeps(
         store = store,
         sessions = sessions,
@@ -107,6 +130,8 @@ fun main() {
         ),
         grafanaUrl = System.getenv("GRAFANA_URL")?.takeIf { it.isNotBlank() },
         lokiUrl = System.getenv("LOKI_URL")?.takeIf { it.isNotBlank() },
+        lobbyAdmin = lobbyAdmin,
+        economyAdmin = economyAdmin,
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { adminModule(deps) }.start(wait = true)
 }
@@ -124,6 +149,10 @@ class AdminDeps(
     val healthGateway: HealthGateway = HttpHealthGateway(),
     val grafanaUrl: String? = null,
     val lokiUrl: String? = null,
+    /** Tela Contas e numeros do Painel (Sec18.7). `null` = rotas Contas desativadas, nulo no Painel (nunca inventa). */
+    val lobbyAdmin: LobbyAdminGateway? = null,
+    /** Carteira na tela Contas (Sec18.7). `null` = wallet sempre nulo na ficha (nunca inventa saldo). */
+    val economyAdmin: EconomyAdminGateway? = null,
 ) {
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val loginAttempts = FailedLoginLimiter(loginAttemptLimit, loginLockoutMinutes * 60_000L, clock)
@@ -256,15 +285,88 @@ fun Application.adminModule(deps: AdminDeps) {
             }
         }
 
-        // Sec18.7 Painel (docs/telas-admin-web.md): saude de cada servico (verde/amarelo/vermelho) e links de
-        // metricas/logs. Jogadores online, mesas ativas e partidas por hora ficam nulos (ver DashboardResponse):
-        // nenhum servico dono do dado expoe essa agregacao ainda; o admin-web mostra "indisponivel".
+        // Sec18.7 Painel (docs/telas-admin-web.md): saude de cada servico (verde/amarelo/vermelho), numeros do
+        // lobby-service (GET /internal/admin/stats) e links de metricas/logs. Sem LOBBY_SERVICE_URL/
+        // ADMIN_INTERNAL_SECRET configurados, ou se o lobby-service nao responder, os 4 numeros ficam nulos (ver
+        // DashboardResponse): o admin-web mostra "indisponivel", nunca inventa.
         get("/admin/dashboard") {
             call.authenticated(Role.LEITOR) { _ ->
-                val services = coroutineScope {
-                    deps.healthTargets.map { target -> async { deps.healthGateway.check(target) } }.awaitAll()
+                val (services, stats) = coroutineScope {
+                    val servicesDeferred = deps.healthTargets.map { target -> async { deps.healthGateway.check(target) } }
+                    val statsDeferred = async {
+                        deps.lobbyAdmin?.let { gateway ->
+                            runCatching { withContext(Dispatchers.IO) { gateway.stats() } }
+                                .onFailure { gatewayLog.warn("lobby-service indisponivel (GET /admin/dashboard): {}", it.message) }
+                                .getOrNull()
+                        }
+                    }
+                    servicesDeferred.awaitAll() to statsDeferred.await()
                 }
-                call.respondJson(DashboardResponse(services = services, grafanaUrl = deps.grafanaUrl, lokiUrl = deps.lokiUrl))
+                call.respondJson(
+                    DashboardResponse(
+                        services = services,
+                        playersOnline = stats?.playersOnline,
+                        tablesOpen = stats?.tablesOpen,
+                        tablesInGame = stats?.tablesInGame,
+                        matchesEndedLastHour = stats?.matchesEndedLastHour,
+                        grafanaUrl = deps.grafanaUrl,
+                        lokiUrl = deps.lokiUrl,
+                    ),
+                )
+            }
+        }
+
+        // Sec18.7 tela Contas (docs/telas-admin-web.md): busca por nome/e-mail/id, agregada do lobby-service.
+        // Sem LOBBY_SERVICE_URL/ADMIN_INTERNAL_SECRET configurados, ou se o lobby-service nao responder, a rota
+        // recusa (503): uma listagem de contas nao tem como degradar para "indisponivel" num campo so.
+        get("/admin/accounts") {
+            call.authenticated(Role.LEITOR) { _ ->
+                // ErrorCode.PARTIDA_INDISPONIVEL emprestado: o contrato compartilhado nao tem um codigo generico
+                // de "servico indisponivel" (sugestao pro online-backend-dev no relatorio desta etapa). A
+                // mensagem em pt-BR mostrada ao operador e clara de qualquer forma.
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                val q = call.request.queryParameters["q"].orEmpty()
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { gateway.searchAccounts(q, limit, offset) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/accounts): {}", e.message)
+                    adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                }
+                call.respondJson(AccountsPageResponse(page.accounts, page.total, limit, offset))
+            }
+        }
+
+        // Sec18.7 tela Contas: a ficha (lobby-service) e a carteira (economy-service) em paralelo. A ficha nao
+        // tem como degradar (sem ela nao ha tela), por isso 503 se o lobby nao responder. A carteira tem 3
+        // desfechos distintos (ver AccountDetailResponse.walletUnavailable): tem carteira, a conta genuinamente
+        // nao tem carteira online ainda (wallet=null, walletUnavailable=false, "sem carteira" na tela) ou o
+        // economy-service/a configuracao nao deixou saber (wallet=null, walletUnavailable=true, "indisponivel").
+        get("/admin/accounts/{id}") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val id = call.parameters["id"].orEmpty()
+                // ErrorCode.PARTIDA_INDISPONIVEL emprestado, ver comentario em GET /admin/accounts acima.
+                val lobby = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                val economy = deps.economyAdmin
+                val (detailResult, walletOutcome) = coroutineScope {
+                    val detailDeferred = async(Dispatchers.IO) { runCatching { lobby.accountDetail(id) } }
+                    val walletDeferred = async(Dispatchers.IO) { economy?.let { gw -> runCatching { gw.wallet(id) } } }
+                    detailDeferred.await() to walletDeferred.await()
+                }
+                val account = detailResult.getOrElse {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/accounts/{{id}}): {}", it.message)
+                    adminError(ErrorCode.PARTIDA_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Conta não encontrada.", 404)
+                walletOutcome?.exceptionOrNull()?.let {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/accounts/{{id}}/wallet): {}", it.message)
+                }
+                val wallet = walletOutcome?.getOrNull()
+                val walletUnavailable = economy == null || walletOutcome?.isFailure == true
+                call.respondJson(AccountDetailResponse(account, wallet, walletUnavailable))
             }
         }
 

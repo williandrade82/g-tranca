@@ -42,6 +42,12 @@ saude de lobby/game/economy-service porque o admin-api ja vem configurado, neste
 `LOBBY_SERVICE_HEALTH_URL`/`GAME_SERVICE_HEALTH_URL`/`ECONOMY_SERVICE_HEALTH_URL` apontando para o
 `/health` de cada um pela rede interna.
 
+**`ADMIN_INTERNAL_SECRET` (Sec18.7, Painel e tela Contas): preencha no `.env` com um valor PROPRIO,
+diferente do `INTERNAL_SECRET`.** Sem ele (ou se for igual ao `INTERNAL_SECRET`), o lobby-service e o
+economy-service desligam as rotas `/internal/admin/...` (aviso no log deles) e o admin-api fica sem numeros
+no Painel ("indisponivel" em tudo) e com a tela Contas respondendo 503 — sem nenhum aviso na tela, so no
+log. Gere com `openssl rand -hex 32`, como os outros segredos deste arquivo.
+
 Reconstruir so um servico depois de mudar o codigo: `docker compose up --build lobby-service` (ou
 `admin-web`, `admin-api`...). O cache do Gradle (`--mount=type=cache,target=/root/.gradle` nos
 Dockerfiles dos servicos Kotlin) e do npm (`--mount=type=cache,target=/root/.npm` no Dockerfile do

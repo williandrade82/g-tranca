@@ -123,6 +123,11 @@ services:
       LOBBY_SERVICE_HEALTH_URL: http://lobby-service:8080/health
       GAME_SERVICE_HEALTH_URL: http://game-service:8080/health
       ECONOMY_SERVICE_HEALTH_URL: http://economy-service:8080/health
+      # Tela Contas e numeros do Painel (Sec18.7): rotas /internal/admin/... de LEITURA, segredo PROPRIO
+      # (nunca o INTERNAL_SECRET servico a servico, ver online/contracts/.../Admin.kt).
+      LOBBY_SERVICE_URL: http://lobby-service:8080
+      ECONOMY_SERVICE_URL: http://economy-service:8080
+      ADMIN_INTERNAL_SECRET: ${ADMIN_INTERNAL_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy

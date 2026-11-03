@@ -1,5 +1,8 @@
 package com.gtranca.online.admin
 
+import com.gtranca.online.contracts.AdminAccountDetail
+import com.gtranca.online.contracts.AdminAccountSummary
+import com.gtranca.online.contracts.AdminWalletDto
 import kotlinx.serialization.Serializable
 
 /** POST /admin/login (Sec18.7, mesmo mecanismo de Sec18.1: e-mail e senha). */
@@ -35,9 +38,10 @@ data class ServiceHealthInfo(val name: String, val status: ServiceStatusLevel, v
 /**
  * GET /admin/dashboard (leitor+): tela Painel (docs/telas-admin-web.md).
  *
- * [playersOnline], [tablesOpen], [tablesInGame] e [matchesEndedLastHour] sao nulos porque **nenhum servico dono do
- * dado expoe essa agregacao hoje** (ver online-backend-dev): o admin-api nao le banco de outro servico, so API.
- * O admin-web mostra "indisponivel" nesse caso, nunca um numero inventado.
+ * [playersOnline], [tablesOpen], [tablesInGame] e [matchesEndedLastHour] vem de `GET /internal/admin/stats` do
+ * lobby-service. Ficam nulos se `LOBBY_SERVICE_URL`/`ADMIN_INTERNAL_SECRET` nao estiverem configurados ou se o
+ * lobby-service nao responder (ver `admin.gateway` no log); o admin-web mostra "indisponivel" nesse caso, nunca
+ * um numero inventado.
  */
 @Serializable
 data class DashboardResponse(
@@ -49,3 +53,24 @@ data class DashboardResponse(
     val grafanaUrl: String? = null,
     val lokiUrl: String? = null,
 )
+
+/**
+ * GET /admin/accounts?q=&limit=&offset= (leitor+): tela Contas (docs/telas-admin-web.md), busca agregada do
+ * lobby-service. Mesmo formato de paginacao de [TeamListResponse] ([items]/[total]/[limit]/[offset]); reusa
+ * [AdminAccountSummary] de `online/contracts` (nao duplica o tipo).
+ */
+@Serializable
+data class AccountsPageResponse(val items: List<AdminAccountSummary>, val total: Int, val limit: Int, val offset: Int)
+
+/**
+ * GET /admin/accounts/{id} (leitor+): ficha da conta (docs/telas-admin-web.md). [account.currentTables] sao as
+ * mesas onde a conta esta sentada AGORA, nao historico (ver [AdminAccountDetail]).
+ *
+ * [wallet] e [walletUnavailable] juntos distinguem dois casos bem diferentes para a conta nao ter carteira:
+ * - [wallet] `null` e [walletUnavailable] `false`: a conta genuinamente ainda nao tem carteira online (o
+ *   economy-service respondeu 404) - a tela mostra "sem carteira online", nao e um problema.
+ * - [wallet] `null` e [walletUnavailable] `true`: o economy-service nao respondeu, ou nao esta configurado - a
+ *   tela mostra "indisponivel" (ver `admin.gateway` no log), nunca inventa saldo.
+ */
+@Serializable
+data class AccountDetailResponse(val account: AdminAccountDetail, val wallet: AdminWalletDto? = null, val walletUnavailable: Boolean = false)

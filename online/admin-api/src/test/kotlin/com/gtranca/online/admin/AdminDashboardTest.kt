@@ -34,16 +34,22 @@ class AdminDashboardTest {
     @AfterAll
     fun stop() = pg.close()
 
-    private fun deps(healthTargets: List<HealthTarget> = emptyList(), healthGateway: HealthGateway, grafanaUrl: String? = null, lokiUrl: String? = null) =
-        AdminDeps(
-            store = TeamStore(db, passwordCost = 4),
-            sessions = SessionStore(db),
-            ipLimitPerMinute = 1_000,
-            healthTargets = healthTargets,
-            healthGateway = healthGateway,
-            grafanaUrl = grafanaUrl,
-            lokiUrl = lokiUrl,
-        )
+    private fun deps(
+        healthTargets: List<HealthTarget> = emptyList(),
+        healthGateway: HealthGateway,
+        grafanaUrl: String? = null,
+        lokiUrl: String? = null,
+        lobbyAdmin: LobbyAdminGateway? = null,
+    ) = AdminDeps(
+        store = TeamStore(db, passwordCost = 4),
+        sessions = SessionStore(db),
+        ipLimitPerMinute = 1_000,
+        healthTargets = healthTargets,
+        healthGateway = healthGateway,
+        grafanaUrl = grafanaUrl,
+        lokiUrl = lokiUrl,
+        lobbyAdmin = lobbyAdmin,
+    )
 
     private suspend fun HttpClient.login(email: String, password: String): HttpResponse =
         post("/admin/login") { setBody(json.encodeToString(LoginRequest.serializer(), LoginRequest(email, password))) }
@@ -85,7 +91,7 @@ class AdminDashboardTest {
         )
         body.grafanaUrl shouldBe "https://grafana.local"
         body.lokiUrl shouldBe "https://loki.local"
-        // Nenhum servico dono do dado expoe essa agregacao ainda (ver relatorio ao online-backend-dev): nulo, nao inventado.
+        // Sem LOBBY_SERVICE_URL/ADMIN_INTERNAL_SECRET configurados (lobbyAdmin=null nesta chamada): nulo, nao inventado.
         body.playersOnline shouldBe null
         body.tablesOpen shouldBe null
         body.tablesInGame shouldBe null
@@ -103,4 +109,48 @@ class AdminDashboardTest {
         r.status.value shouldBe 200
         json.decodeFromString(DashboardResponse.serializer(), r.bodyAsText()).services shouldBe emptyList()
     }
+
+    @Test
+    fun `18_7 numeros do lobby-service aparecem no Painel quando o gateway responde`() = testApplication {
+        val stats = com.gtranca.online.contracts.AdminStatsDto(playersOnline = 7, tablesOpen = 2, tablesInGame = 1, matchesEndedLastHour = 3)
+        val d = deps(healthGateway = HealthGateway { error("sem servico de saude neste teste") }, lobbyAdmin = fakeLobbyAdmin(stats = stats))
+        d.store.seedFirstAdmin("ana@exemplo.com", "segredo123")
+        application { adminModule(d) }
+
+        val token = json.decodeFromString(LoginResponse.serializer(), client.login("ana@exemplo.com", "segredo123").bodyAsText()).token
+        val r = client.get("/admin/dashboard") { header("Authorization", "Bearer $token") }
+        r.status.value shouldBe 200
+        val body = json.decodeFromString(DashboardResponse.serializer(), r.bodyAsText())
+        body.playersOnline shouldBe 7
+        body.tablesOpen shouldBe 2
+        body.tablesInGame shouldBe 1
+        body.matchesEndedLastHour shouldBe 3
+    }
+
+    @Test
+    fun `18_7 lobby-service fora do ar nao quebra o Painel, numeros ficam nulos`() = testApplication {
+        val lobbyAdmin = object : LobbyAdminGateway {
+            override suspend fun stats() = throw LobbyAdminGatewayException("lobby-service inacessível: Timeout")
+            override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
+            override suspend fun accountDetail(id: String) = error("nao usado neste teste")
+        }
+        val d = deps(healthGateway = HealthGateway { error("sem servico de saude neste teste") }, lobbyAdmin = lobbyAdmin)
+        d.store.seedFirstAdmin("ana@exemplo.com", "segredo123")
+        application { adminModule(d) }
+
+        val token = json.decodeFromString(LoginResponse.serializer(), client.login("ana@exemplo.com", "segredo123").bodyAsText()).token
+        val r = client.get("/admin/dashboard") { header("Authorization", "Bearer $token") }
+        r.status.value shouldBe 200
+        val body = json.decodeFromString(DashboardResponse.serializer(), r.bodyAsText())
+        body.playersOnline shouldBe null
+        body.matchesEndedLastHour shouldBe null
+    }
 }
+
+/** Fabrica de teste: um [LobbyAdminGateway] que sempre devolve o mesmo [com.gtranca.online.contracts.AdminStatsDto] (sem rede). */
+private fun fakeLobbyAdmin(stats: com.gtranca.online.contracts.AdminStatsDto): LobbyAdminGateway =
+    object : LobbyAdminGateway {
+        override suspend fun stats() = stats
+        override suspend fun searchAccounts(query: String, limit: Int, offset: Int) = error("nao usado neste teste")
+        override suspend fun accountDetail(id: String) = error("nao usado neste teste")
+    }
