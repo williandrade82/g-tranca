@@ -3,25 +3,57 @@ package com.gtranca.online.admin
 import com.gtranca.online.contracts.ADMIN_API_VERSION
 import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
+import com.gtranca.online.contracts.AdminAdjustRequest
+import com.gtranca.online.contracts.AdminLedgerPage
+import com.gtranca.online.contracts.AdminMigrationsPage
 import com.gtranca.online.contracts.AdminWalletDto
+import com.gtranca.online.contracts.EconomyError
+import com.gtranca.online.contracts.EconomyErrorCode
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 
-/** O economy-service nao respondeu ou recusou uma leitura do console (Sec18.7). */
+/** O economy-service nao respondeu ou recusou uma chamada do console por motivo de INFRAESTRUTURA (Sec18.7):
+ * fora do ar, timeout, versao incompativel... Nunca um erro de negocio (ver [EconomyAdjustRejected]). */
 class EconomyAdminGatewayException(message: String) : RuntimeException(message)
 
-/** Carteira e inventario de uma conta, so LEITURA, para a tela Contas (Sec18.7). */
-fun interface EconomyAdminGateway {
+/**
+ * O economy-service recusou o AJUSTE por regra de negocio (Sec18.7): [code] e a mesma [EconomyErrorCode] que
+ * a rota devolveu (ex. SALDO_INSUFICIENTE se o ajuste deixaria o saldo/quantidade negativos, REQUISICAO_INVALIDA
+ * se o booster nao existe). Isso NAO e "economy-service indisponivel": o operador precisa ver o motivo de
+ * verdade, nunca um 503 generico.
+ */
+class EconomyAdjustRejected(val code: EconomyErrorCode, message: String) : RuntimeException(message)
+
+/** Carteira, livro-razao e ajustes de uma conta, mais as migracoes globais, para a tela Economia (Sec18.7). */
+interface EconomyAdminGateway {
     /** `null` = sem carteira (conta ainda nao existe no economy-service; nunca a cria, Sec18.7). */
     suspend fun wallet(id: String): AdminWalletDto?
+
+    /** `null` = conta nao encontrada (404 tipado CONTA_INEXISTENTE do economy-service). */
+    suspend fun ledger(id: String, limit: Int, offset: Int): AdminLedgerPage?
+
+    /**
+     * "Ajustar saldo ou booster" (Sec18.7): idempotente por [AdminAdjustRequest.operationId] (o economy-service
+     * mesmo garante isso, com a chave do lancamento - repetir a MESMA chamada nunca ajusta duas vezes).
+     * @throws EconomyAdjustRejected em erro de negocio (saldo insuficiente, booster invalido...).
+     */
+    suspend fun adjust(id: String, request: AdminAdjustRequest): AdminWalletDto
+
+    /** Migracoes de carteira local JA feitas, de TODAS as contas (Sec18.6/18.7) - lista global, nao por conta. */
+    suspend fun migrations(limit: Int, offset: Int): AdminMigrationsPage
 }
 
 /** Mesmo esquema de segredo/versao do [HttpLobbyAdminGateway] (segredo e versao PROPRIOS do console). */
@@ -39,20 +71,65 @@ class HttpEconomyAdminGateway(
         }
     }
 
+    private suspend fun get(path: String): HttpResponse = try {
+        client.get("${baseUrl.trimEnd('/')}$path") {
+            header(ADMIN_SECRET_HEADER, secret)
+            header(ADMIN_API_VERSION_HEADER, ADMIN_API_VERSION)
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw EconomyAdminGatewayException("economy-service inacessível: ${e::class.simpleName}")
+    }
+
+    private fun encode(value: String) = URLEncoder.encode(value, "UTF-8")
+
     override suspend fun wallet(id: String): AdminWalletDto? {
-        val encodedId = URLEncoder.encode(id, "UTF-8")
+        val r = get("/internal/admin/accounts/${encode(id)}/wallet")
+        if (r.status == HttpStatusCode.NotFound) return null
+        if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminWalletDto.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun ledger(id: String, limit: Int, offset: Int): AdminLedgerPage? {
+        val r = get("/internal/admin/accounts/${encode(id)}/ledger?limit=$limit&offset=$offset")
+        if (r.status == HttpStatusCode.NotFound) return null
+        if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminLedgerPage.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun adjust(id: String, request: AdminAdjustRequest): AdminWalletDto {
+        val body = Json.encodeToString(AdminAdjustRequest.serializer(), request)
         val r = try {
-            client.get("${baseUrl.trimEnd('/')}/internal/admin/accounts/$encodedId/wallet") {
+            client.post("${baseUrl.trimEnd('/')}/internal/admin/accounts/${encode(id)}/adjust") {
                 header(ADMIN_SECRET_HEADER, secret)
                 header(ADMIN_API_VERSION_HEADER, ADMIN_API_VERSION)
+                contentType(ContentType.Application.Json)
+                setBody(body)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             throw EconomyAdminGatewayException("economy-service inacessível: ${e::class.simpleName}")
         }
-        if (r.status == HttpStatusCode.NotFound) return null
+        // 400/409 sao recusa de NEGOCIO (motivo errado, saldo insuficiente, booster invalido): o corpo e um
+        // EconomyError de verdade, repassa o code/mensagem pro operador, nunca um 503 generico. Se o corpo nao
+        // for um EconomyError valido (resposta inesperada), nao decodificar sem rede - trata como infraestrutura.
+        if (r.status.value == 400 || r.status.value == 409) {
+            val err = try {
+                Json.decodeFromString(EconomyError.serializer(), r.bodyAsText())
+            } catch (e: Exception) {
+                throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value} com corpo inesperado")
+            }
+            throw EconomyAdjustRejected(err.code, err.message)
+        }
         if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
         return Json.decodeFromString(AdminWalletDto.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun migrations(limit: Int, offset: Int): AdminMigrationsPage {
+        val r = get("/internal/admin/migrations?limit=$limit&offset=$offset")
+        if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminMigrationsPage.serializer(), r.bodyAsText())
     }
 }

@@ -1,6 +1,9 @@
 package com.gtranca.online.admin
 
+import com.gtranca.online.contracts.AdminAdjustRequest
 import com.gtranca.online.contracts.AdminRevokeSessionsResponse
+import com.gtranca.online.contracts.AdminWalletDto
+import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.Health
 import com.gtranca.online.contracts.ServerInfo
@@ -547,6 +550,93 @@ fun Application.adminModule(deps: AdminDeps) {
                 }
                 deps.recordAudit(req.operationId, Actor(actor.id, actor.email), "ENCERRAR_MESA", id, req.reason, detail = detail)
                 call.respondJson(table)
+            }
+        }
+
+        // Sec18.7 tela Economia (docs/telas-admin-web.md): livro-razao de uma conta, so LEITURA.
+        get("/admin/accounts/{id}/ledger") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val id = call.parameters["id"].orEmpty()
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { economy.ledger(id, limit, offset) }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/accounts/{{id}}/ledger): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Conta não encontrada.", 404)
+                call.respondJson(LedgerPageResponse(page.entries, page.total, limit, offset))
+            }
+        }
+        // "Ajustar saldo ou booster": operador+, motivo e chave de idempotencia obrigatorios (a chave e gerada
+        // pelo admin-web, como nas outras acoes de escrita). Validacoes de FORMATO (motivo, pelo menos um ajuste
+        // real, booster e quantidade sempre juntos) sao conferidas aqui, pra nao gastar uma chamada de rede com
+        // um pedido obviamente invalido; a validacao de NEGOCIO (saldo/quantidade nunca negativos) so o
+        // economy-service sabe responder, por isso nao e repetida aqui (ver EconomyAdjustRejected).
+        post("/admin/accounts/{id}/adjust") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AdminAdjustRequest>()
+                validateReason(req.reason)
+                if (req.operationId.isBlank() || req.operationId.length > AdminLimits.MAX_OPERATION_ID) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Identificador de operação inválido.", 400)
+                }
+                if ((req.boosterId == null) != (req.quantityDelta == null)) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Informe o booster e a quantidade juntos.", 400)
+                }
+                val coinsDelta = req.coinsDelta ?: 0L
+                val quantityDelta = req.quantityDelta ?: 0
+                if (coinsDelta == 0L && (req.boosterId == null || quantityDelta == 0)) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Informe ao menos um ajuste de moedas ou de booster.", 400)
+                }
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val wallet = try {
+                    withContext(Dispatchers.IO) { economy.adjust(id, req) }
+                } catch (e: EconomyAdjustRejected) {
+                    gatewayLog.warn("ajuste recusado pelo economy-service (conta {}): {} {}", id, e.code, e.message)
+                    val msg = e.message ?: "O economy-service recusou o ajuste."
+                    if (e.code == EconomyErrorCode.SALDO_INSUFICIENTE) {
+                        adminError(ErrorCode.SALDO_INSUFICIENTE, msg, 409)
+                    } else {
+                        adminError(ErrorCode.REQUISICAO_INVALIDA, msg, 400)
+                    }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (POST /admin/accounts/{{id}}/adjust): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                val detail = buildString {
+                    if (coinsDelta != 0L) append("moedas: ${if (coinsDelta > 0) "+" else ""}$coinsDelta")
+                    if (req.boosterId != null && quantityDelta != 0) {
+                        if (isNotEmpty()) append("; ")
+                        append("${req.boosterId}: ${if (quantityDelta > 0) "+" else ""}$quantityDelta")
+                    }
+                }
+                deps.recordAudit(
+                    req.operationId, Actor(actor.id, actor.email), "AJUSTAR_CARTEIRA", id, req.reason,
+                    resultado = json.encodeToString(AdminWalletDto.serializer(), wallet), detail = detail,
+                )
+                call.respondJson(wallet)
+            }
+        }
+        // Migracoes de carteira local JA feitas (Sec18.6), de TODAS as contas - lista GLOBAL, nao de uma conta so.
+        get("/admin/migrations") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { economy.migrations(limit, offset) }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/migrations): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                call.respondJson(MigrationsPageResponse(page.migrations, page.total, limit, offset))
             }
         }
 

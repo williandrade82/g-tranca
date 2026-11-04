@@ -2,6 +2,8 @@ package com.gtranca.online.admin
 
 import com.gtranca.online.contracts.AdminAccountDetail
 import com.gtranca.online.contracts.AdminAccountSummary
+import com.gtranca.online.contracts.AdminLedgerEntryDto
+import com.gtranca.online.contracts.AdminMigrationDto
 import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
@@ -109,3 +111,17 @@ data class TablesPageResponse(val items: List<TableView>, val total: Int, val li
  */
 @Serializable
 data class CloseTableRequest(val reason: String, val operationId: String? = null, val expectedState: TableState? = null)
+
+/**
+ * GET /admin/accounts/{id}/ledger?limit=&offset= (leitor+): livro-razao de uma conta (docs/telas-admin-web.md,
+ * tela Economia). Mesmo formato de paginacao das outras listas; reusa [AdminLedgerEntryDto] (nao duplica o tipo).
+ */
+@Serializable
+data class LedgerPageResponse(val items: List<AdminLedgerEntryDto>, val total: Int, val limit: Int, val offset: Int)
+
+/**
+ * GET /admin/migrations?limit=&offset= (leitor+): migracoes de carteira local JA feitas, de TODAS as contas
+ * (Sec18.6) - lista GLOBAL, nao de uma conta so; reusa [AdminMigrationDto].
+ */
+@Serializable
+data class MigrationsPageResponse(val items: List<AdminMigrationDto>, val total: Int, val limit: Int, val offset: Int)

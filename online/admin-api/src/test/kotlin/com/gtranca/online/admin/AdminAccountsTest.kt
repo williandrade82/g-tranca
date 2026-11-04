@@ -133,7 +133,9 @@ class AdminAccountsTest {
         val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String) = if (id == "G_1") detail else null
         }
-        val economyAdmin = EconomyAdminGateway { id -> if (id == "G_1") wallet else null }
+        val economyAdmin = object : FakeEconomyAdminGateway() {
+            override suspend fun wallet(id: String) = if (id == "G_1") wallet else null
+        }
         val d = deps(lobbyAdmin = lobbyAdmin, economyAdmin = economyAdmin)
         application { adminModule(d) }
         val token = client.loginAsLeitor(d)
@@ -151,7 +153,9 @@ class AdminAccountsTest {
         val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String): AdminAccountDetail? = null
         }
-        val economyAdmin = EconomyAdminGateway { null }
+        val economyAdmin = object : FakeEconomyAdminGateway() {
+            override suspend fun wallet(id: String): AdminWalletDto? = null
+        }
         val d = deps(lobbyAdmin = lobbyAdmin, economyAdmin = economyAdmin)
         application { adminModule(d) }
         val token = client.loginAsLeitor(d)
@@ -169,7 +173,10 @@ class AdminAccountsTest {
         }
 
         // (a) a conta genuinamente ainda nao tem carteira (404 no economy-service, ver HttpEconomyAdminGateway).
-        val semCarteira = deps(lobbyAdmin = lobbyAdmin, economyAdmin = EconomyAdminGateway { null })
+        val semCarteiraGateway = object : FakeEconomyAdminGateway() {
+            override suspend fun wallet(id: String): AdminWalletDto? = null
+        }
+        val semCarteira = deps(lobbyAdmin = lobbyAdmin, economyAdmin = semCarteiraGateway)
         application { adminModule(semCarteira) }
         val tokenA = client.loginAsLeitor(semCarteira)
         val rA = client.get("/admin/accounts/G_1") { header("Authorization", "Bearer $tokenA") }
@@ -184,7 +191,9 @@ class AdminAccountsTest {
         val lobbyAdmin = object : FakeLobbyAdminGateway() {
             override suspend fun accountDetail(id: String) = detail
         }
-        val economyAdmin = EconomyAdminGateway { throw EconomyAdminGatewayException("timeout") }
+        val economyAdmin = object : FakeEconomyAdminGateway() {
+            override suspend fun wallet(id: String): AdminWalletDto? = throw EconomyAdminGatewayException("timeout")
+        }
         val d = deps(lobbyAdmin = lobbyAdmin, economyAdmin = economyAdmin)
         application { adminModule(d) }
         val token = client.loginAsLeitor(d)
