@@ -4,6 +4,7 @@ import { apiFetch } from '../api/client'
 import { ApiRequestError, type CloseTableRequest, type TableState, type TableView } from '../api/types'
 import { useSession } from '../auth/SessionContext'
 import { AppHeader } from '../components/AppHeader'
+import { newOperationId } from '../api/uuid'
 import {
   BOT_LEVEL_LABEL,
   PUNICAO_LABEL,
@@ -34,6 +35,9 @@ export function TableDetail() {
   const [confirmState, setConfirmState] = useState<TableState | null>(null)
   const [openingConfirm, setOpeningConfirm] = useState(false)
   const [reason, setReason] = useState('')
+  // Gerado UMA vez ao abrir o dialogo, nao a cada "Confirmar": uma nova tentativa depois de um erro de rede
+  // repete a MESMA chave (admin-api so grava a auditoria uma vez por operationId).
+  const [closeOperationId, setCloseOperationId] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -80,6 +84,7 @@ export function TableDetail() {
       setTable(fresh)
       setConfirmState(fresh.state)
       setReason('')
+      setCloseOperationId(newOperationId())
       setActionError(null)
       setActionMessage(null)
     } catch (e) {
@@ -101,7 +106,7 @@ export function TableDetail() {
       const response = await apiFetch<TableView>(`/admin/tables/${encodeURIComponent(id)}/close`, {
         method: 'POST',
         token: session?.token,
-        body: { reason, expectedState: confirmState ?? undefined } satisfies CloseTableRequest,
+        body: { reason, operationId: closeOperationId, expectedState: confirmState ?? undefined } satisfies CloseTableRequest,
       })
       setTable(response)
       setActionMessage('Mesa encerrada.')

@@ -150,7 +150,33 @@ describe('TableDetail (Sec18.7, docs/telas-admin-web.md: ficha da mesa)', () => 
 
     const [url, options] = vi.mocked(fetch).mock.calls[2]
     expect(String(url)).toBe('/admin/tables/T1/close')
-    expect(JSON.parse(String(options?.body))).toEqual({ reason: 'mesa travada ha 2 horas', expectedState: 'EM_JOGO' })
+    const body = JSON.parse(String(options?.body))
+    expect(body.reason).toBe('mesa travada ha 2 horas')
+    expect(body.expectedState).toBe('EM_JOGO')
+    expect(typeof body.operationId).toBe('string')
+    expect(body.operationId.length).toBeGreaterThan(0)
+  })
+
+  it('uma 2a tentativa de encerrar (depois de um erro) reusa a MESMA chave de idempotencia', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, MESA_ABERTA))
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, MESA_ABERTA)) // refetch do openConfirm
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(503, { code: 'SERVICO_INDISPONIVEL', message: 'Não foi possível encerrar a mesa agora.' }))
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { ...MESA_ABERTA, state: 'ENCERRADA' }))
+    const user = userEvent.setup()
+    renderDetail('T1', 'OPERADOR')
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Encerrar mesa' })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: 'Encerrar mesa' }))
+    await waitFor(() => expect(screen.getByLabelText('Motivo')).toBeInTheDocument())
+    await user.type(screen.getByLabelText('Motivo'), 'motivo valido')
+    await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await screen.findByRole('alert')
+    await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await waitFor(() => expect(screen.getByText('Mesa encerrada.')).toBeInTheDocument())
+
+    const primeiraChamada = JSON.parse(String(vi.mocked(fetch).mock.calls[2][1]?.body))
+    const segundaChamada = JSON.parse(String(vi.mocked(fetch).mock.calls[3][1]?.body))
+    expect(segundaChamada.operationId).toBe(primeiraChamada.operationId)
   })
 
   it('mesa ja ENCERRADA nao mostra o botao Encerrar mesa', async () => {

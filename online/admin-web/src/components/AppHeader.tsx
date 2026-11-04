@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useSession } from '../auth/SessionContext'
 
-/** Cabecalho comum das telas autenticadas (Sec18.7): navegacao entre Painel/Contas/Mesas, sessao e Sair. */
+/** Cabecalho comum das telas autenticadas (Sec18.7): navegacao entre Painel/Contas/Mesas/Migrações, sessao e Sair. */
 export function AppHeader({ title }: { title: string }) {
   const { session, logout } = useSession()
   return (
@@ -23,6 +23,7 @@ export function AppHeader({ title }: { title: string }) {
         </NavLink>
         <NavLink to="/contas">Contas</NavLink>
         <NavLink to="/mesas">Mesas</NavLink>
+        <NavLink to="/migracoes">Migrações</NavLink>
       </nav>
     </header>
   )

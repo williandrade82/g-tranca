@@ -7,6 +7,7 @@ import { AccountsList } from './pages/AccountsList'
 import { AccountDetail } from './pages/AccountDetail'
 import { TablesList } from './pages/TablesList'
 import { TableDetail } from './pages/TableDetail'
+import { MigrationsList } from './pages/MigrationsList'
 
 export function App() {
   return (
@@ -50,6 +51,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <TableDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/migracoes"
+          element={
+            <ProtectedRoute>
+              <MigrationsList />
             </ProtectedRoute>
           }
         />

@@ -183,3 +183,52 @@ export interface CloseTableRequest {
    * EM_JOGO entre a ficha abrir e o clique, e este campo nao for EM_JOGO, o admin-api recusa com 409. */
   expectedState?: TableState
 }
+
+/** Espelha `com.gtranca.online.contracts.AdminLedgerEntryDto` (livro-razao, tela Economia). */
+export interface AdminLedgerEntryDto {
+  reason: string
+  coins: number
+  boosterId: string | null
+  quantity: number
+  reference: string | null
+  detail: string | null
+  key: string
+  createdMs: number
+}
+
+/** GET /admin/accounts/{id}/ledger. */
+export interface LedgerPageResponse {
+  items: AdminLedgerEntryDto[]
+  total: number
+  limit: number
+  offset: number
+}
+
+/**
+ * POST /admin/accounts/{id}/adjust (operador+): motivo e chave de idempotencia SEMPRE obrigatorios (gere um
+ * uuid no front antes de confirmar). Pelo menos um ajuste real: `coinsDelta` (pode ser negativo) OU o par
+ * `boosterId`/`quantityDelta` (tambem pode ser negativo) - os dois juntos tambem valem. O economy-service
+ * nunca deixa saldo nem quantidade negativos (409); nao precisa validar isso de novo aqui, so tratar o erro.
+ */
+export interface AdminAdjustRequest {
+  reason: string
+  operationId: string
+  coinsDelta?: number
+  boosterId?: string
+  quantityDelta?: number
+}
+
+/** Espelha `com.gtranca.online.contracts.AdminMigrationDto` (Sec18.6): uma migracao de carteira local JA feita. */
+export interface AdminMigrationDto {
+  accountId: string
+  coins: number
+  createdMs: number
+}
+
+/** GET /admin/migrations: lista GLOBAL (todas as contas), nao de uma conta so. */
+export interface MigrationsPageResponse {
+  items: AdminMigrationDto[]
+  total: number
+  limit: number
+  offset: number
+}
