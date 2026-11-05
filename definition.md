@@ -616,7 +616,7 @@ flowchart TD
 
 ### **16.11. Próxima partida**
 - Ao fim de cada partida (§12), o anfitrião faz a pontuação e envia a **cada convidado** um **pacote completo** com o fim da partida (pontos de §12 por lado, totais) e, se o jogo terminou (§13), o fim do jogo (vencedor). O pacote só tem informação visível (§16.4): nada de mãos alheias, monte, mortos ou semente.
-- **Boosters:** ao receber o início de cada partida, cada humano passa pelo **seletor de boosters** (§17.3) antes de ver a distribuição; o anfitrião registra a escolha de cada assento e, na vez de quem ainda não escolheu, espera até o prazo de §16.15.
+- **Boosters:** ao receber o início da **1ª partida** (ou ao entrar num assento que ainda não escolheu), cada humano passa pelo **seletor de boosters** (§17.3) antes de ver a distribuição; a escolha vale até o fim do jogo; o anfitrião registra a escolha de cada assento e, na vez de quem ainda não escolheu, espera até o prazo de §16.15.
 - **Cada aparelho conduz sozinho** a sua sequência de telas de resultado (anúncio, pontos, fim de jogo), no seu tempo.
 - O **anfitrião** segue para a próxima partida (§4.1) quando **ele mesmo** avança nas suas telas: distribui e envia as informações de início a todos. O convidado recebe isso **a qualquer momento** e **guarda** até o seu jogador avançar nas telas de resultado.
 - O jogo **nunca espera** os convidados avançarem telas: só pára para aguardar a jogada do jogador da vez (§16.6).
@@ -667,7 +667,7 @@ flowchart TD
 | Reenvio de mensagem sem confirmação (§16.5) | 1 s, até 5 vezes |
 | Confirmação de recebimento sem outra mensagem a enviar | 200 ms |
 | Mensagem de teste da qualidade da conexão (convidado sem enviar nada) | a cada 5 s |
-| Seletor de boosters antes de cada partida (§17.3) | 30 s no relógio de quem escolhe; sem confirmar, vale o que está selecionado; o jogo só espera na vez dele |
+| Seletor de boosters no início do jogo (§17.3) | 30 s no relógio de quem escolhe; sem confirmar, vale o que está selecionado; o jogo só espera na vez dele |
 
 - **Qualidade da conexão (sinal na tela do convidado):** medida no convidado pelo tempo entre enviar uma mensagem ao anfitrião e receber a confirmação (média móvel), sem tráfego extra frequente: só quando o convidado passou **5 s** sem enviar nada, ele manda uma mensagem curta de teste. **3 barras** (boa): média até **500 ms** e nenhum reenvio recente; **2 barras** (média): média até **1.500 ms** e até **2** reenvios recentes; **1 barra** (ruim): acima disso, ou reconectando. É só informação na tela; não muda o jogo.
 
@@ -675,7 +675,7 @@ flowchart TD
 
 # **17. Boosters**
 
-Boosters são itens do **inventário** do jogador que ele escolhe usar **antes de cada partida**. Valem só para o jogo contra os jogadores virtuais e a mesa multijogador local; o inventário fica **no aparelho** (adulterável, risco aceito por ora, como a carteira de §14.6). Os robôs **não** usam boosters. Plano: `docs/plano-boosters.md`.
+Boosters são itens do **inventário** do jogador que ele escolhe usar **no início do jogo** (valem em todas as partidas dele). Valem só para o jogo contra os jogadores virtuais e a mesa multijogador local; o inventário fica **no aparelho** (adulterável, risco aceito por ora, como a carteira de §14.6). Os robôs **não** usam boosters. Plano (arquivado, executado): `docs/archive/plano-boosters.md`.
 
 ### **17.1. Inventário e catálogo**
 - O inventário guarda a **quantidade** de cada item. As **moedas** (§14.6) são um item do inventário, mas o saldo continua na carteira e é o **único** item que muda de dono entre jogos (ganha-se ao vencer, perde-se ao perder) e o que se gasta na **loja** (§17.10). Os boosters nunca são ganhos nem perdidos por resultado de jogo; entram no inventário pelo valor inicial, pelo presente diário (§17.5) e pela compra (§17.10).
@@ -693,21 +693,21 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 ### **17.2. Escolha no inventário**
 - Na tela do inventário o jogador marca **até 3 boosters distintos** para a próxima partida; **moedas não podem** ser marcadas. A marcação é gravada e **vale também para as próximas partidas** até ser mudada; booster com quantidade **0** não pode ser marcado e, se estava marcado, sai da marcação.
 
-### **17.3. Escolha antes de cada partida**
-- **Antes de cada partida** (a 1ª e as seguintes de um jogo), cada jogador **humano** vê o **seletor de boosters** **sem ver a distribuição das cartas**: a mesa só mostra as cartas (mão, jogos e descartes já feitos) depois que ele confirma.
+### **17.3. Escolha no início do jogo**
+- **No início do jogo** (antes da 1ª partida; *mudança de 30/10/2026: antes era a cada partida*), cada jogador **humano** vê o **seletor de boosters** **sem ver a distribuição das cartas**: a mesa só mostra as cartas (mão, jogos e descartes já feitos) depois que ele confirma.
 - O seletor começa **preenchido com a marcação do inventário** (§17.2), sem os de quantidade 0. O jogador pode trocar, tirar ou deixar como está. Booster de quantidade **0** aparece esmaecido e **não pode ser escolhido**.
 - **Seguir** confirma: debita **o custo de cada booster escolhido** (padrão 1) do inventário e registra a escolha **no aparelho e no anfitrião** (§17.4). Se o débito não passar (a quantidade acabou), o booster fica de fora.
 - **Prazo de 30 s** a partir de quando o seletor aparece. Sem confirmar, vale **o que estiver selecionado na tela** (como se tivesse tocado em Seguir); sem nenhum selecionado, a partida começa **sem boosters**.
 - O jogo **não espera** quem ainda não escolheu: os demais começam. Ao chegar a **vez** de quem ainda não escolheu, o jogo **espera**, como parte da jogada dele, no máximo até o fim dos 30 s. Depois de confirmar, o jogador vê as **animações de distribuição e os descartes já feitos** (§16.6).
-- Os boosters valem **só para a partida**: a partida seguinte tem novo seletor e nova cobrança. **Desistir** (§13.1) ou cair da mesa não devolve o que foi debitado.
+- Os boosters escolhidos valem **em todas as partidas do jogo**, até ele acabar, e são **debitados uma vez só** (no Seguir do início do jogo); as partidas seguintes **não** têm seletor nem nova cobrança. **Desistir** (§13.1) ou cair da mesa não devolve o que foi debitado.
 - Jogo salvo ("Continuar", §14): guarda **por assento** os boosters da partida em andamento (já debitados) e as **reações já usadas** (§17.4, §17.8); retomar **não debita de novo** e devolve os boosters e os usos de reação como estavam. Salvo antes de confirmar o seletor, o seletor volta a aparecer ao retomar.
 
 ### **17.4. Boosters e assentos (multijogador)**
 - O booster fica **no assento**, não no jogador: o jogador põe o booster na **posição da mesa**, e o que vale é o estado do assento (boosters escolhidos, **usos de reação que sobraram** e se o seletor foi confirmado). Esse estado vive **onde a mesa é guardada**: no jogo salvo, para o "Continuar" (§14), e no **anfitrião**, que conhece o de **todos** os assentos humanos (§16.12), para que outro jogador possa assumir o assento.
 - Quem **sai** do assento (§16.8, §16.9) leva o que sobrou do inventário, mas **não** os boosters já debitados da partida; quem **entra** depois (§16.7) **herda o estado do assento** nessa partida (os mesmos boosters e os **usos de reação que sobraram**) **sem descontar do seu inventário**. Se o assento ainda não tinha confirmado o seletor, o novo ocupante o faz.
-- **Na mesa multijogador** (protocolo 18): cada humano vê o seletor no **início de cada partida**, **cada um no seu tempo** (não ao mesmo tempo). O convidado debita do **próprio** inventário ao tocar Seguir e **registra a escolha no anfitrião** (partida + boosters); o anfitrião a guarda no assento e devolve o estado do assento ao jogador. Enquanto o jogador não confirma, **o aparelho dele não mostra a distribuição**: as vistas que chegam esperam na fila e, depois do Seguir, ele vê a distribuição e as jogadas dos outros já feitas. Os demais jogadores jogam normalmente; ao chegar a vez de quem ainda não escolheu, o jogo espera como parte da jogada dele (no máximo o prazo de §16.15).
+- **Na mesa multijogador** (protocolo 18): cada humano vê o seletor no **início do jogo** (ou ao ocupar um assento que ainda não escolheu), **cada um no seu tempo** (não ao mesmo tempo). O convidado debita do **próprio** inventário ao tocar Seguir e **registra a escolha no anfitrião** (partida + boosters); o anfitrião a guarda no assento e devolve o estado do assento ao jogador. Enquanto o jogador não confirma, **o aparelho dele não mostra a distribuição**: as vistas que chegam esperam na fila e, depois do Seguir, ele vê a distribuição e as jogadas dos outros já feitas. Os demais jogadores jogam normalmente; ao chegar a vez de quem ainda não escolheu, o jogo espera como parte da jogada dele (no máximo o prazo de §16.15).
 - Um **assento de robô** que herdou o lugar de um humano **guarda os boosters** e as reações que sobraram; quem entrar depois nesse assento os herda (§16.7). O anfitrião cai com o estado: o sucessor o recebe (§16.10).
-- Nas partidas seguintes, cada ocupante escolhe os seus (§17.3).
+- Nas partidas seguintes, o assento continua com os mesmos boosters (§17.3); só os usos de reação recomeçam (§17.8).
 
 ### **17.5. Presente diário**
 - Na **primeira abertura do dia** (data do aparelho), **só na tela inicial**, o jogador pode receber **um booster de presente**, com a mensagem "Você recebeu um presente", o ícone, o nome e a quantidade.
@@ -723,10 +723,10 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 - Só usa informação **visível** da mesa (§16.4); nunca a mão dos outros. Não é uma jogada e **não** muda `legalActions`.
 
 ### **17.8. b3 Reações**
-- Cada partida com o b3 dá **3 reações** (no total, de qualquer tipo). As reações são: **Aplausos**, **Amei**, **Pensativo**, **Nervoso** e **Frango**.
+- Com o b3 no jogo, **cada partida** dá **3 reações** (no total, de qualquer tipo; os usos recomeçam a cada partida). *(provisório, revisar com produto)* As reações são: **Aplausos**, **Amei**, **Pensativo**, **Nervoso** e **Frango**.
 - O jogador abre o menu e escolhe uma; ela **aparece para toda a mesa** por alguns segundos junto do assento de quem a enviou (*tempo provisório, revisar com produto*) e **gasta 1** das 3. Sem usos restantes, o botão fica esmaecido. As reações valem a **qualquer momento** da partida (não só na vez) e não alteram o jogo.
 - No multijogador a reação viaja pelo anfitrião a todos os humanos (§16.4: não revela nada oculto); o anfitrião valida (b3 no assento, usos restantes e partida certa) e a repassa a todos, inclusive a quem a enviou. A reação aparece em **tamanho médio no meio da tela**, com um **zoom** que **sai da pílula de quem a enviou** (a própria, da mão) até o centro, com o **nome do dono** embaixo e o **avatar** dele no **canto esquerdo da imagem**, logo acima do nome; a imagem final tem **1,5 vez** o tamanho de antes; um **véu leve** escurece a mesa para focar o olhar, **em todos os celulares** da mesa; depois **fica transparente rapidamente e some** (*tamanho e tempos provisórios, revisar com produto*); sem animações, só aparece e some.
-- **Sons:** três reações têm som próprio, tocado **em todos os celulares** da mesa junto com a animação (inclusive no de quem enviou): **Aplausos** toca palmas, **Amei** toca beijos e **Frango** toca uma galinha (arquivos `docs/boosters/sound-booster3-claps.mp3`, `-kiss.mp3` e `-chicken.mp3`). **Pensativo** e **Nervoso** não têm som. Os sons respeitam a chave de som do Perfil.
+- **Sons:** três reações têm som próprio, tocado **em todos os celulares** da mesa junto com a animação (inclusive no de quem enviou): **Aplausos** toca palmas, **Amei** toca beijos e **Frango** toca uma galinha (arquivos `docs/assets/boosters/sound-booster3-claps.mp3`, `-kiss.mp3` e `-chicken.mp3`). **Pensativo** e **Nervoso** não têm som. Os sons respeitam a chave de som do Perfil.
 
 ### **17.9. Boosters de skill na mesa**
 - Ao **iniciar uma nova mesa** (§14.4, tela *Iniciar novo jogo*), o jogador escolhe se a mesa **permite** ou **não permite** os **boosters de skill** (§17.1). O padrão é **permitir** e a escolha é lembrada com as demais opções da mesa. Vale para o jogo **todo** e **não muda** depois que o jogo começa, como as regras (§14.4); o jogo salvo ("Continuar") e o jogo que passa a ser hospedado (§16.7) mantêm a escolha.
@@ -755,46 +755,76 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **antes d
 
 # **18. Jogo online**
 
-O jogo online é um **adicional**: permite jogar pela internet, em **mesas por convite**, com um **servidor dedicado**. Tudo o que existe para jogadores **próximos** (jogo contra robôs, §14, e multijogador local por Nearby, §16) **continua exatamente como está** e não depende de conta nem de internet. Plano e arquitetura (microserviços): `docs/plano-online.md`. Onde esta seção não diz o contrário, valem as regras do jogo (§1 a §13), as regras por mesa (§14.2 a §14.5), as moedas (§14.6) e os boosters (§17).
+O jogo online é um **adicional**: permite jogar pela internet, em **mesas mantidas pelo servidor**, com um **servidor dedicado**. Tudo o que existe para jogadores **próximos** (jogo contra robôs, §14, e multijogador local por Nearby, §16) **continua exatamente como está** e não depende de conta nem de internet. Plano e arquitetura (microserviços): `docs/plano-online.md`. Onde esta seção não diz o contrário, valem as regras do jogo (§1 a §13), as regras por mesa (§14.2 a §14.5), as moedas (§14.6) e os boosters (§17).
 
 ### **18.1. Servidor e conta**
 - O jogador informa o **servidor online** (IP ou nome) num **campo temporário do Perfil**, gravado **só no aparelho**. Sem servidor informado, ou sem conta entrada, as telas online mostram o que falta e o resto do app segue normal.
-- **Conta:** entra-se com o **Google** (o servidor valida a identidade; nenhuma senha é guardada). Uma conta tem **nome** e **foto** opcional de perfil, e pode, no futuro, ganhar **e-mail e senha** como outro jeito de entrar **na mesma conta**.
+- **Conta: entra-se com e-mail e senha** (mudança de 02/11/2026). O servidor **nunca guarda a senha em texto puro**, só o hash. *Login com Google fica no backlog*: o servidor já sabe verificar o ID token, mas o app não tem a tela; revisar depois.
+  - **Cadastro:** e-mail (único no servidor; **sem confirmação por e-mail** nesta fase) e senha (**mínimo de 6 caracteres**, sem outra exigência — baixa complexidade por ora). Uma conta tem **nome** e **foto** opcional de perfil (sem foto própria nesta fase, por não haver Google).
+  - **Esqueci a senha:** **sem recuperação pelo próprio jogador** nesta fase (perder a senha é perder a conta online — a carteira e o inventário **do aparelho** não são afetados). O suporte pode gerar uma **senha temporária nova** por uma rota interna (sem tela própria, até o console de gerenciamento existir, §18.7) e repassá-la ao jogador por fora.
+  - **Força bruta:** limite de tentativas de login erradas por e-mail, além do limite de taxa já existente por IP/token (§18.2).
 - Quem não tem conta, ou não quer entrar, joga offline e por perto como sempre.
 
 ### **18.2. Mesa online**
-- Quem cria a mesa é o **anfitrião da mesa**. Ele escolhe as mesmas opções de §14.4 (modo, perfil de regras, pontuação-alvo, aposta, boosters de skill, §17.9) e mais os **critérios online** (§18.4). Tudo isso é **imutável** depois que o jogo começa.
-- Cada mesa tem um **id da mesa**: **6 caracteres** fáceis de digitar (letras e números **sem** os que se confundem: 0/O, 1/I/L), sem diferença entre maiúsculas e minúsculas, **único entre as mesas abertas**; vale enquanto a mesa existir.
-- **Visibilidade:** toda mesa é **privada** (só entra quem tem o id). *(Mesas públicas ficam para uma versão futura.)*
-- **Como entrar:** (a) **link** (`https://<servidor>/m/<id>`) enviado por mensagem; (b) **QR Code** na tela do anfitrião, lido pela **câmera padrão** do celular; os dois abrem uma página que **abre o aplicativo** já na mesa; (c) **digitando o id** na tela *Entrar numa mesa*, depois de configurar o servidor no Perfil. O aplicativo **não** lê QR Code por conta própria.
-- Os **assentos** são ocupados pelos amigos que entram; o que ficar vago o anfitrião preenche com **robôs** (como em §14.4, §14.5). O anfitrião **inicia** o jogo quando todos os lugares estão preenchidos.
-- **Aposta** (§14.6): cada humano precisa de **saldo maior ou igual** à aposta da mesa para ocupar um assento. A aposta é **retida** ao iniciar o jogo.
+- **Quem cria as mesas é o servidor**; o jogador **não** cria mesa nesta fase. *(Mesa criada pelo jogador fica para uma versão futura, provavelmente paga em moedas; com ela voltam os convites por link, QR Code e id.)*
+- **Mesa do servidor** — toda mesa nova nasce com estas opções, **imutáveis**:
+
+| Opção | Valor |
+|---|---|
+| Modo | Duplas |
+| Perfil de regras | Clássica (§14.3) |
+| Boosters de skill (§17.9) | Permitidos |
+| Pontuação-alvo | 1500 |
+| Tempo de jogada (§18.4) | 15 minutos |
+| Punição de abandono (§18.4) | Perde a aposta |
+| Aposta (§14.6) | 50 moedas |
+| Nível dos robôs (§14.5) | Fácil |
+
+- **Sempre há mesa aberta:** o servidor mantém **ao menos uma mesa aberta** (aguardando jogadores).
+  - Quando o **primeiro jogador** entra numa mesa aberta, o servidor começa a contar **5 minutos**; ao fim deles, abre **mais uma mesa**.
+  - Se o **último lugar** de uma mesa é ocupado e **não sobra nenhuma mesa com lugar livre**, a contagem em curso é **encerrada na hora** e a nova mesa é aberta já, **antecipando** a abertura por tempo (não se abrem duas).
+  - O servidor nunca mantém **mais de uma mesa aberta vazia** (sem ninguém): se já existe uma, não abre outra. *(provisório, revisar com produto)*
+- **Lista de mesas:** a tela *Jogar online* mostra a **quantidade de jogadores online** no servidor e **todas as mesas** do servidor, as **abertas** e as **em jogo** (estas marcadas como "em jogo"). Cada mesa mostra o id e as quatro posições — **Dupla 1 – 1**, **Dupla 1 – 2**, **Dupla 2 – 1** e **Dupla 2 – 2** (as duplas de §16.2) — com o **nome e a foto** de quem está nela (robô com o nome e o retrato do personagem; lugar vago como "livre"). Cada mesa aparece como a **mesa de lugares** (§16.2: as quatro posições em cima, embaixo, à esquerda e à direita), igual em todos os celulares que a estão vendo. O jogador entra **tocando no lugar livre** em que quer sentar: aceito, ele passa a aparecer naquele lugar, com o nome e a foto, para todos. Se dois jogadores pedem **o mesmo lugar**, só o **primeiro** pedido que chega ao servidor é aceito e o segundo é recusado ("Esse lugar acabou de ser ocupado"); do mesmo modo, só o primeiro a entrar numa mesa vazia é o anfitrião. Antes de o jogo começar, quem já está sentado pode **trocar de lugar** tocando noutro lugar livre (mesma regra: o primeiro pedido vence; o anfitrião continua o mesmo). A **foto** mostrada é a do Perfil de cada jogador, reduzida e enviada ao servidor quando ele entra no online (sem foto, vale o medalhão com a inicial). Mesa em jogo é só para ver.
+- Cada mesa tem um **id da mesa** de **6 caracteres** (letras e números **sem** os que se confundem: 0/O, 1/I/L), **único entre as mesas existentes**; serve para identificar a mesa nos registros e aparece discreto. Cada mesa ganha também um **nome amigável**, sorteado pelo servidor entre nomes de **praias** do Brasil, com as mais conhecidas de Florianópolis ("Mesa Joaquina", "Mesa Ipanema"...), diferente dos das outras mesas existentes; é o nome que o jogador vê.
+- **Anfitrião:** o **primeiro jogador** que entra na mesa é o **anfitrião da mesa**. Se a mesa ficar vazia antes do jogo, ela volta a ser uma mesa aberta vazia.
+- **Entregar a mesa** (a mesma ferramenta da mesa local, §16.10): o anfitrião pode, a qualquer momento, **passar o cargo** a outro humano **conectado** da mesa, que é avisado. Se o anfitrião **sai, desiste ou cai**, o cargo passa sozinho ao **próximo humano conectado pela ordem de entrada** (**nunca um robô**) e todos são avisados; se ninguém pode assumir, a mesa segue sem anfitrião até alguém poder (o jogo não para: ele roda no servidor, §18.3). O antigo anfitrião, se voltar, é **jogador comum**. Diferente da mesa local, não há troca de estado nem anfitrião provisório: o servidor guarda a mesa.
+- **Início:** o anfitrião **inicia** o jogo quando quiser; os lugares ainda vagos são preenchidos com **robôs** do nível da mesa (§14.5). Lugar ocupado por humano não vira robô ao iniciar.
+- **Aposta** (§14.6): cada humano precisa de **saldo maior ou igual** à aposta da mesa para ocupar um assento. A aposta é **retida** ao iniciar o jogo. Enquanto não houver carteira online (§18.5, fase 2), a aposta é só **registrada** e nenhuma moeda muda de dono.
+- **Só o aplicativo oficial:** o servidor só atende o **Tranca-Bot**. Cada pedido do aplicativo leva uma **assinatura** feita com uma chave do aplicativo e um carimbo de tempo; pedido sem assinatura válida, ou com carimbo velho, é recusado. Quando o app estiver no Google Play, entra também o **atestado do Google** (Play Integrity). Isso impede robôs de terceiros de ocupar as mesas; não substitui a conta (§18.1).
 
 ### **18.3. A partida**
 - O **servidor** é a autoridade: guarda todas as cartas, valida cada jogada com as mesmas regras do motor e só envia a cada jogador a **vista do assento** dele (§16.4: mão **só** do próprio jogador; nunca a mão dos outros, o monte nem os mortos). O celular só envia a jogada que quer fazer.
 - Cada aparelho mostra a **própria animação**, na velocidade escolhida pelo jogador (como em §16.6).
-- **Boosters:** vêm do **inventário online** da conta (§18.5). Antes de cada partida cada humano vê o **seletor** (§17.3, prazo de 30 s); o custo é debitado do inventário **da conta**.
+- **Boosters:** vêm do **inventário online** da conta (§18.5). No início do jogo cada humano vê o **seletor** (§17.3, prazo de 30 s); o custo é debitado do inventário **da conta**.
 
 ### **18.4. Critérios da mesa: tempo de jogada e abandono**
-- **Tempo de jogada** (escolha do anfitrião ao criar a mesa): **indeterminado**, **1 minuto** ou **5 minutos**. A contagem é da **vez** do jogador (comprar, baixar e descartar) e aparece na mesa. No **indeterminado** não há limite.
+- **Tempo de jogada** (opção da mesa): **indeterminado**, **1 minuto**, **5 minutos** ou **15 minutos** (a mesa do servidor usa 15 minutos, §18.2). A contagem é da **vez** do jogador (comprar, baixar e descartar) e aparece na mesa. No **indeterminado** não há limite.
 - **Tempo esgotado** vale como **abandono** do jogador (abaixo): nunca se joga por ele escolhendo entre jogadas legais.
-- **Punição de abandono** (escolha do anfitrião): **sem punição** ou **perde a aposta**.
+- **Punição de abandono** (opção da mesa): **sem punição** ou **perde a aposta**.
   - **Sem punição:** quem abandona **recebe a aposta de volta**.
   - **Perde a aposta:** quem abandona perde a aposta (retida no assento, como em §16.9), **exceto** se sair nos **primeiros 60 segundos do jogo** (contados desde o início da 1ª partida): então a aposta é **devolvida**.
 - **Abandonar** é sair voluntariamente da mesa (**desistir**, §13.1) ou deixar o tempo esgotar. Um **robô** assume o assento e o jogo segue para os demais; o robô guarda os boosters e as reações que sobraram (§17.4).
-- **1×1 entre dois humanos:** quem abandona (desistir ou tempo esgotado) entrega a vitória ao outro na hora (§13.1, §16.9); não entra robô.
+- **1×1 entre dois humanos:** quem abandona (desistir ou tempo esgotado) entrega a vitória ao outro na hora (§13.1, §16.9); não entra robô. Se o anfitrião **encerra** um 1×1 entre humanos, **ninguém vence** e o outro recebe a aposta de volta.
+- **Nunca se joga sem humano:** se, depois de um abandono, **não resta nenhum humano** na partida (um 1×1 entre humano e robô, ou o último humano de uma mesa maior), o jogo **termina na hora**: o **lado de quem abandonou perde** e o outro vence (§13.1); nenhum robô assume nem o jogo segue só entre robôs.
+- **Todos desconectados:** se **nenhum humano** da partida está conectado por **90 segundos** seguidos (tela bloqueada ou ligação não destroem a mesa na hora), a mesa é **destruída**. Não entra robô e ninguém volta; **todos recebem a aposta de volta**. Quem volta dentro dos 90 s retoma o assento normalmente. A partida recém-iniciada dá **60 segundos** para o primeiro humano conectar antes de valer esta regra.
 - **Sem volta:** quem abandonou **não retoma** o assento (o robô fica nele até o fim do jogo); diferente do jogo local (§16.9).
 - **Próxima partida:** inicia sozinha alguns segundos depois do fim da anterior (§16.11); a mesa não espera por telas.
-- **Nível dos robôs da mesa:** escolha do anfitrião ao criar a mesa (padrão **Fácil**), imutável depois de iniciar.
-- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode, a qualquer momento, **substituí-lo por um robô** (conta como abandono).
+- **Nível dos robôs da mesa:** opção da mesa (a do servidor é **Fácil**, §18.2), imutável.
+- **Duplas:** cada humano joga a **própria vez** no próprio celular; o parceiro não joga por ele.
+- **Moedas dos abandonos em duplas:** como na mesa multijogador local (§16.13).
+- **Fim do jogo:** todos veem a **tela final**; a mesa guarda o resultado por **10 minutos** para quem estava fora e então é apagada. Não há "nova partida" na mesma mesa: para jogar de novo, entra-se noutra mesa da lista.
+- **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode **substituí-lo por um robô** (conta como abandono).
 - **Mesa encerrada durante o jogo:** se o anfitrião da mesa a **encerra** com o jogo em andamento, conta como **abandono do anfitrião** (a punição escolhida vale para ele) e os **demais jogadores humanos recebem a aposta de volta**; nenhum robô assume uma mesa encerrada.
 - **Boosters de skill:** a mesa os **permite ou não** (a mesma escolha de §17.9); não há escolha por tipo.
-- Os critérios aparecem no **convite** (link e tela de entrada), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
+- Os critérios aparecem na **lista de mesas** (§18.2), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
 
 ### **18.5. Moedas, inventário e loja online**
 - A conta tem **carteira** e **inventário de boosters** **guardados no servidor**, separados dos do aparelho. Nada do que se ganha ou gasta no online altera a carteira e o inventário **locais**, e vice-versa (depois da migração, §18.6).
 - Valem as mesmas regras de §14.6 (saldo inicial, ganho diário, aposta, rateio e prêmio), §17.5 (presente diário) e §17.10 (loja e suas ofertas); o servidor as aplica e **registra cada lançamento** (ninguém altera o saldo sem registro).
 - Operações são **idempotentes**: repetir uma compra ou uma liquidação por falha de rede não debita nem credita duas vezes. O saldo **nunca fica negativo**.
+- **Convidado (30/10/2026):** antes do login Google, o **convidado** do servidor (§18.1) também tem **carteira e inventário online**, criados junto com ele, com o saldo inicial de §14.6 (1.000 moedas) e a quantidade inicial de cada booster (§17.1), e vale tudo o que vale para a conta (apostas, ganho diário, presente, loja).
+- **Do convidado para a conta:** ao entrar pela primeira vez **no mesmo aparelho** (por qualquer método de login), a carteira e o inventário do convidado **passam para a conta** se ela **ainda não tem** carteira online; se a conta já tem, a do convidado fica com ele e deixa de ser usada. *(provisório, revisar com produto: evita juntar saldos iniciais de vários convidados numa conta)*
+- Cada reinstalação do app sem login cria um convidado novo com saldo inicial: risco aceito até o login Google (o limite de criação de convidados por endereço continua valendo).
 
 ### **18.6. Migração da carteira local**
 - Cada conta pode **trazer a carteira do aparelho para o online uma única vez**: o saldo local é **copiado** para a carteira online, **sem teto**, e o servidor marca que a conta já migrou. O saldo local **não é alterado** e o jogo offline continua como sempre.
@@ -802,7 +832,8 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas por c
 - O operador pode **revisar** migrações e ajustar saldos pela interface de gerenciamento (§18.7).
 
 ### **18.7. Gerenciamento (operação)**
-- Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** (login Google) e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
+- Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
+- **Entra-se com e-mail e senha** (mesmo mecanismo do §18.1, aplicado à equipe do console: hash nunca em texto puro, sem recuperação pela própria pessoa — a redefinição é feita por quem já é administrador). *Login Google fica no backlog, como no app (§18.1).* Cada membro da equipe é cadastrado pelo administrador (e-mail, senha inicial e papel), não há autocadastro.
 - Toda ação do operador é **registrada** (quem, quando, o quê e por quê) e o registro **não se altera**.
 
 ### **18.8. Versões**

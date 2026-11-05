@@ -1,6 +1,8 @@
 package com.gtranca.online.lobby
 
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.BotLevel
+import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.TableRules
 import com.gtranca.online.contracts.TableState
@@ -17,19 +19,32 @@ data class Guest(val id: String, val name: String)
 sealed interface Seat {
     data object Vago : Seat
     data class Humano(val guestId: String, val name: String) : Seat
-    data object Robo : Seat
+    /** Robo (§14.5): o personagem e sorteado ao iniciar. */
+    data class Robo(val profile: BotProfile, val level: BotLevel) : Seat
 }
 
 /** Mesa imutavel; cada acao produz uma copia (o [TableStore] garante a atomicidade). */
 data class Table(
     val id: String,
-    val host: Guest,
+    /** `null` = sem anfitriao (mesa vazia, ou ninguem conectado pode assumir, §18.2). */
+    val host: Guest?,
     val rules: TableRules,
     val seats: List<Seat>,
     val state: TableState,
     val lastActivityMs: Long,
     /** Passagem ao game-service em andamento: a mesa segue ABERTA mas nada mais muda (ver [LobbyService.beginStart]). */
     val starting: Boolean = false,
+    val createdMs: Long = lastActivityMs,
+    /** Nome amigável (§18.2). */
+    val name: String = "",
+    /** Humanos sentados, na ordem em que entraram: base do anfitriao e da sucessao (§18.2). */
+    val entryOrder: List<String> = emptyList(),
+    /** Lugares que [LobbyService.beginStart] preencheu com robos (desfeitos se a partida nao for criada). */
+    val robotFilled: Set<Int> = emptySet(),
+    /** Em jogo: humanos conectados segundo o game-service. */
+    val connected: Set<String> = emptySet(),
+    /** Em jogo: humanos que abandonaram (robo no lugar, sem volta, §18.4). */
+    val abandoned: Set<String> = emptySet(),
 ) {
     fun seatOf(guestId: String): Int = seats.indexOfFirst { it is Seat.Humano && it.guestId == guestId }
     fun touched(now: Long) = copy(lastActivityMs = now)
@@ -48,6 +63,7 @@ interface TableStore {
     fun update(id: String, transform: (Table) -> Table): Table?
     fun removeIf(predicate: (Table) -> Boolean): Int
     fun count(): Int
+    fun all(): List<Table>
 }
 
 class InMemoryTableStore : TableStore {
@@ -81,4 +97,7 @@ class InMemoryTableStore : TableStore {
 
     @Synchronized
     override fun count(): Int = tables.size
+
+    @Synchronized
+    override fun all(): List<Table> = tables.values.toList()
 }

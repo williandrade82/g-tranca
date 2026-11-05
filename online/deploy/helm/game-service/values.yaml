@@ -1,14 +1,16 @@
 image:
   repository: gtranca/game-service
-  tag: dev
+  tag: "49d7282"   # hash do commit da imagem; nunca latest/dev (troque com --set image.tag=...)
   pullPolicy: IfNotPresent   # imagem local, sem registro externo
 
 replicaCount: 1
+terminationGracePeriodSeconds: 30
 containerPort: 8080
 
 # Configuracao por variaveis de ambiente (nada fixo em codigo)
 env:
   PORT: "8080"
+  ECONOMY_URL: "http://economy-service"   # Service do economy (porta 80, nao a do conteiner)
   JAVA_OPTS: "-XX:MaxRAMPercentage=65"   # heap = 65% do limite do conteiner
   LOBBY_URL: "http://lobby-service"        # nome do Service do lobby (rede interna)
   TRUST_FORWARDED_FOR: "true"             # atras do Traefik: IP real no limite de taxa do handshake
@@ -39,3 +41,9 @@ resources:
   # O motor + robos usam CPU (o Dificil faz busca por decisao); 2 CPUs de teto, memoria 768Mi.
   requests: { cpu: 500m, memory: 384Mi }
   limits: { cpu: "2", memory: 768Mi }
+
+# Chave do aplicativo (APP_SIGNING_KEY, §18.2 "So o aplicativo oficial"): Secret criado no cluster, a mesma que vai no
+# build do app (local.properties). Sem o Secret o servico sobe SEM verificar a assinatura (aviso no log).
+appKey:
+  name: gtranca-app-key
+  key: APP_SIGNING_KEY

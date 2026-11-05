@@ -1,0 +1,25 @@
+# PENDENTE DE APROVACAO DO USUARIO (nao faz parte do fluxo padrao "Subir" do README; aplique a parte).
+#
+# Saida do lobby-service para o Google (JWKS do login, etapa 2.6, §18.1). Sem isto, o Secret GOOGLE_CLIENT_ID fica
+# configurado mas o lobby nao alcanca https://www.googleapis.com/oauth2/v3/certs: toda tentativa de login Google
+# responde 503 LOGIN_INDISPONIVEL ("Nao foi possivel falar com o Google agora"), mesmo com o verificador ativo.
+#
+# E uma excecao consciente a "nenhum servico sai para a internet" (ver infra/networkpolicies.yaml): libera so o
+# lobby-service, so porta 443, e nega as faixas privadas (RFC1918) para nao abrir caminho para o resto do cluster
+# ou da rede local por engano. NetworkPolicy nao aceita nome de dominio (so IP/CIDR), entao e "qualquer IP publico".
+#
+# Aplicar (apos o usuario decidir):
+#   kubectl --context docker-desktop apply -f online/deploy/infra/networkpolicy-lobby-egress-google.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-lobby-egress-google, namespace: gtranca }
+spec:
+  podSelector: { matchLabels: { app: lobby-service } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }

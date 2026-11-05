@@ -22,13 +22,17 @@ fun main() {
     if (deps.config.internalSecret == null) {
         System.err.println("AVISO: INTERNAL_SECRET nao definido; as rotas /internal/* e o canal da partida ficam FECHADOS.")
     }
+    if (deps.config.economyUrl == null) System.err.println("AVISO: ECONOMY_URL nao definido; as apostas so sao registradas.")
     embeddedServer(Netty, port = port, host = "0.0.0.0") { gameModule(deps) }.start(wait = true)
 }
 
 /** Dependencias do servico (trocaveis nos testes). */
 class GameDeps(
     val config: GameConfig = GameConfig(),
-    val registry: MatchRegistry = MatchRegistry(config, notifier = HttpLobbyNotifier(config.lobbyUrl, config.internalSecret)),
+    val registry: MatchRegistry = MatchRegistry(
+        config, notifier = HttpLobbyNotifier(config.lobbyUrl, config.internalSecret),
+        economy = config.economyUrl?.let { HttpEconomyClient(it, config.internalSecret) },
+    ),
     val resolver: GuestResolver = HttpGuestResolver(config.lobbyUrl, config.internalSecret),
 )
 

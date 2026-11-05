@@ -9,6 +9,8 @@ import com.gtranca.online.contracts.ONLINE_PROTOCOL_VERSION
 import com.gtranca.online.contracts.PROTOCOL_HEADER
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.SeatKind
+import com.gtranca.online.contracts.TableListView
 import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
 import io.kotest.matchers.shouldBe
@@ -49,8 +51,12 @@ class LobbyHttpTest {
     private suspend fun HttpClient.guest(name: String): GuestIdentity =
         json.decodeFromString(call(HttpMethod.Post, "/api/lobby/guests", body = json.encodeToString(CreateGuestRequest(name))).bodyAsText())
 
-    private suspend fun HttpClient.table(token: String): TableView =
-        json.decodeFromString(call(HttpMethod.Post, "/api/lobby/tables", token, json.encodeToString(CreateTableRequest(rules))).bodyAsText())
+    /** §18.2: o jogador entra na mesa aberta do servidor (nao cria mesa). */
+    private suspend fun HttpClient.serverTable(token: String): TableView {
+        val list = json.decodeFromString<TableListView>(call(HttpMethod.Get, "/api/lobby/tables", token).bodyAsText())
+        val id = list.tables.first { it.state == TableState.ABERTA && it.seats.any { s -> s.kind == SeatKind.VAGO } }.id
+        return json.decodeFromString(call(HttpMethod.Post, "/api/lobby/tables/$id/join", token, "{}").bodyAsText())
+    }
 
     private suspend fun HttpResponse.error(): ErrorCode = json.decodeFromString<ApiError>(bodyAsText()).code
 
@@ -64,7 +70,7 @@ class LobbyHttpTest {
     fun `18_2 fluxo completo convidado cria mesa, outro entra, anfitriao inicia`() = withApp {
         val ana = client.guest("Ana")
         val beto = client.guest("Beto")
-        val t = client.table(ana.token)
+        val t = client.serverTable(ana.token)
         client.call(HttpMethod.Get, "/api/lobby/tables/${t.id}", beto.token).status shouldBe HttpStatusCode.OK
         val joined = client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/join", beto.token, "{}")
         joined.status shouldBe HttpStatusCode.OK
@@ -74,14 +80,34 @@ class LobbyHttpTest {
     }
 
     @Test
-    fun `18_2 iniciar com lugar vago e recusado`() = withApp {
+    fun `18_2 o anfitriao inicia com lugares vagos e eles viram robos`() = withApp {
         val ana = client.guest("Ana")
-        val t = client.table(ana.token)
+        val t = client.serverTable(ana.token)
         val r = client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token)
-        r.status shouldBe HttpStatusCode.Conflict
-        r.error() shouldBe ErrorCode.LUGARES_VAGOS
-        client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/seats/1/robot", ana.token).status shouldBe HttpStatusCode.OK
-        client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/start", ana.token).status shouldBe HttpStatusCode.OK
+        r.status shouldBe HttpStatusCode.OK
+        json.decodeFromString<TableView>(r.bodyAsText()).seats.count { it.kind == SeatKind.ROBO } shouldBe 3
+    }
+
+    @Test
+    fun `18_2 a lista mostra as mesas do servidor e os jogadores online`() = withApp {
+        val ana = client.guest("Ana")
+        client.serverTable(ana.token)
+        val list = json.decodeFromString<TableListView>(client.call(HttpMethod.Get, "/api/lobby/tables", ana.token).bodyAsText())
+        list.onlinePlayers shouldBe 1
+        list.tables.first().seats.count { it.name == "Ana" } shouldBe 1
+    }
+
+    @Test
+    fun `18_2 o jogador nao cria mesa e o anfitriao entrega a mesa`() = withApp {
+        val ana = client.guest("Ana")
+        val beto = client.guest("Beto")
+        client.call(HttpMethod.Post, "/api/lobby/tables", ana.token, json.encodeToString(CreateTableRequest(rules))).error() shouldBe
+            ErrorCode.SEM_PERMISSAO
+        val t = client.serverTable(ana.token)
+        val b = json.decodeFromString<TableView>(client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/join", beto.token, "{}").bodyAsText())
+            .seats.first { it.name == "Beto" }.index
+        val r = client.call(HttpMethod.Post, "/api/lobby/tables/${t.id}/host", ana.token, """{"seat":$b}""")
+        json.decodeFromString<TableView>(r.bodyAsText()).hostId shouldBe beto.id
     }
 
     @Test
@@ -109,21 +135,18 @@ class LobbyHttpTest {
     }
 
     @Test
-    fun `18_2 anfitriao encerra a mesa com DELETE e so ele`() = withApp {
+    fun `18_2 a mesa do servidor nao e encerrada antes do jogo`() = withApp {
         val ana = client.guest("Ana")
-        val beto = client.guest("Beto")
-        val t = client.table(ana.token)
-        client.call(HttpMethod.Delete, "/api/lobby/tables/${t.id}", beto.token).status shouldBe HttpStatusCode.Forbidden
-        val r = client.call(HttpMethod.Delete, "/api/lobby/tables/${t.id}", ana.token)
-        json.decodeFromString<TableView>(r.bodyAsText()).state shouldBe TableState.ENCERRADA
+        val t = client.serverTable(ana.token)
+        client.call(HttpMethod.Delete, "/api/lobby/tables/${t.id}", ana.token).error() shouldBe ErrorCode.SEM_PERMISSAO
     }
 
     @Test
     fun `seguranca corpo grande demais e recusado e corpo invalido da 400`() = withApp {
         val ana = client.guest("Ana")
-        val big = client.call(HttpMethod.Post, "/api/lobby/tables", ana.token, "x".repeat(40_000))
+        val big = client.call(HttpMethod.Post, "/api/lobby/tables/ABCDEF/join", ana.token, "x".repeat(40_000))
         big.status shouldBe HttpStatusCode.PayloadTooLarge
-        client.call(HttpMethod.Post, "/api/lobby/tables", ana.token, "{nao e json").status shouldBe HttpStatusCode.BadRequest
+        client.call(HttpMethod.Post, "/api/lobby/tables/ABCDEF/host", ana.token, "{nao e json").status shouldBe HttpStatusCode.BadRequest
         client.call(HttpMethod.Post, "/api/lobby/guests", body = """{"name":""}""").status shouldBe HttpStatusCode.BadRequest
     }
 
@@ -142,38 +165,47 @@ class LobbyHttpTest {
     }
 
     @Test
-    fun `18_2 pagina do convite mostra id, botao com link do app e aviso`() = withApp {
-        val r = client.request("/m/abc234") { header(HttpHeaders.Host, "192.168.1.5") }
-        r.status shouldBe HttpStatusCode.OK
-        val html = r.bodyAsText()
-        html shouldContain "ABC234"
-        html shouldContain "Abrir no Tranca-Bot"
-        html shouldContain "tranca://mesa/ABC234?s=192.168.1.5"
-        html shouldContain "configure o servidor e digite o id"
-        html shouldContain "instalado"
-        html shouldContain "viewport"
+    fun `18_2 sem convite nesta fase a pagina do convite nao existe`() = withApp {
+        client.call(HttpMethod.Get, "/m/ABC234", version = null).status shouldBe HttpStatusCode.NotFound
     }
 
     @Test
-    fun `18_2 pagina do convite usa o cabecalho Host codificado no link`() = withApp {
-        val r2 = client.request("/m/ABC234") { header(HttpHeaders.Host, "192.168.1.5:80") }
-        r2.bodyAsText() shouldContain "tranca://mesa/ABC234?s=192.168.1.5%3A80"
+    fun `18_2 so o aplicativo oficial, pedido sem assinatura valida e recusado`() {
+        var now = 10_000_000L
+        withApp(LobbyDeps(appKey = "chave", clock = { now })) {
+            fun signed(method: String, path: String, token: String?, at: Long = now): io.ktor.client.request.HttpRequestBuilder.() -> Unit = {
+                header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION)
+                if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+                header(com.gtranca.online.contracts.AppSignature.TIME_HEADER, at.toString())
+                header(com.gtranca.online.contracts.AppSignature.SIGNATURE_HEADER, com.gtranca.online.contracts.AppSignature.sign("chave", method, path, at, token))
+            }
+            val unsigned = client.call(HttpMethod.Post, "/api/lobby/guests", body = """{"name":"Ana"}""")
+            unsigned.status shouldBe HttpStatusCode.Unauthorized
+            unsigned.error() shouldBe ErrorCode.APP_NAO_RECONHECIDO
+            val ok = client.request("/api/lobby/guests") { method = HttpMethod.Post; signed("POST", "/api/lobby/guests", null)(); setBody("""{"name":"Ana"}""") }
+            ok.status shouldBe HttpStatusCode.Created
+            val ana = json.decodeFromString<GuestIdentity>(ok.bodyAsText())
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/tables", ana.token)() }.status shouldBe HttpStatusCode.OK
+            // assinatura de outro caminho, de outro token ou velha demais nao vale
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/guests", ana.token)() }.status shouldBe HttpStatusCode.Unauthorized
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/tables", "outro")(); header(HttpHeaders.Authorization, "Bearer ${ana.token}") }.status shouldBe HttpStatusCode.Unauthorized
+            client.request("/api/lobby/tables") { method = HttpMethod.Get; signed("GET", "/api/lobby/tables", ana.token, at = now - 5 * 60_000L - 1)() }.status shouldBe HttpStatusCode.Unauthorized
+            // versao antiga recebe "Atualize o aplicativo" e nao "app nao reconhecido"
+            client.call(HttpMethod.Get, "/api/lobby/tables", ana.token, version = ONLINE_PROTOCOL_VERSION - 1).error() shouldBe ErrorCode.VERSAO_INCOMPATIVEL
+        }
     }
 
     @Test
-    fun `18_2 pagina do convite com id invalido nao reflete a entrada`() = withApp {
-        val r = client.call(HttpMethod.Get, "/m/%3Cscript%3Ealert(1)%3C%2Fscript%3E", version = null)
-        r.status shouldBe HttpStatusCode.NotFound
-        val html = r.bodyAsText()
-        html shouldNotContain "alert(1)"
-        html shouldContain "não é válido"
-        InvitePage.escape("<a href=\"x\">&'") shouldBe "&lt;a href=&quot;x&quot;&gt;&amp;&#39;"
-    }
-
-    @Test
-    fun `18_2 pagina do convite ignora Host com formato estranho`() = withApp {
-        val r = client.request("/m/ABC234") { header(HttpHeaders.Host, "evil.com\"><script>") }
-        val html = r.bodyAsText()
-        html shouldNotContain "evil"
+    fun `18_2 o jogador envia a foto e os outros a baixam pelo caminho do lugar`() = withApp {
+        val ana = client.guest("Ana")
+        val beto = client.guest("Beto")
+        val jpeg = java.util.Base64.getEncoder().encodeToString(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 1, 2))
+        client.call(HttpMethod.Put, "/api/lobby/guests/me/photo", ana.token, """{"photoBase64":"$jpeg"}""").status shouldBe HttpStatusCode.OK
+        client.call(HttpMethod.Put, "/api/lobby/guests/me/photo", ana.token, """{"photoBase64":"bmFvIGUganBlZw=="}""").status shouldBe HttpStatusCode.BadRequest
+        val t = client.serverTable(ana.token)
+        val url = t.seats.first { it.name == "Ana" }.photoUrl!!
+        val r = client.call(HttpMethod.Get, url.substringBefore('?'), beto.token)
+        json.decodeFromString<com.gtranca.online.contracts.GuestPhoto>(r.bodyAsText()).photoBase64 shouldBe jpeg
+        client.call(HttpMethod.Get, url.substringBefore('?'), null).status shouldBe HttpStatusCode.Unauthorized
     }
 }

@@ -1,6 +1,6 @@
 # Plano: jogar online (pela internet), em microserviços
 
-Status: **versão 2, com as decisões do usuário de 28/10/2026**; nada implementado. Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
+Status: **versão 2, com as decisões do usuário de 28/10/2026**; nada implementado. Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
 
 > **"Ficar online" = jogar com outras pessoas pela internet.** Publicar na Play Store é outra frente (lista em `docs/loja/` e na memória do projeto) e entra só como fase final.
 
@@ -9,7 +9,7 @@ Tudo o que existe para **jogadores próximos** (multijogador local por Nearby, �
 1. **Não se reescrevem rotinas existentes.** Antes de reaproveitar uma peça (`:net`, `GameController`, `HostSession`...), a gente a **lê e entende**; se não servir sem mudança, **cria-se uma nova** ao lado. Nada de "refatorar para servir aos dois".
 2. **Código novo em lugares novos:** `online/` (serviços, build Gradle próprio, fora do `settings.gradle.kts` do app) e um módulo Android novo `:online-client` (só ele conhece a rede online). `:core-engine`, `:ai`, `:net`, `:sim` e `:data` **só são lidos**; mudar algum deles exige pedir ao usuário, com o motivo.
 3. **Pontos de contato com o app, pequenos e aditivos:** o botão **Jogar online** no Início, a rota das telas online, o campo temporário do servidor no Perfil e as strings novas. O resto do app não muda.
-4. **Documentação:** o online ganha a **§18** no `definition.md` e as telas novas em `docs/telas.md`; §14 a §17 não são reescritas (no máximo uma linha de remissão).
+4. **Documentação:** o online ganha a **§18** no `definition.md` e as telas novas em `docs/telas-app.md`; §14 a §17 não são reescritas (no máximo uma linha de remissão).
 5. **Testes de não regressão:** toda fase termina com `./gradlew.bat test` do app verde, sem tocar nos testes existentes.
 
 ## Decisões do usuário (28/10/2026)
@@ -36,7 +36,7 @@ Tudo o que existe para **jogadores próximos** (multijogador local por Nearby, �
 | 8 | Console de gerenciamento em **React + TypeScript**. |
 | 9 | Login do console com **lista de e-mails** e papéis **leitor, operador e administrador**. |
 
-Fase 0 escrita: `definition.md` §18, `docs/telas.md` (3.21 a 3.24, campo no Perfil e mapa) e `docs/telas-gerenciamento.md`.
+Fase 0 escrita: `definition.md` §18, `docs/telas-app.md` (3.21 a 3.24, campo no Perfil e mapa) e `docs/telas-admin-web.md`.
 
 ### Link e QR (como abrir o app pela câmera padrão)
 - O QR e o link são **endereços https** do próprio serviço: `https://<servidor>/m/<id>`. A câmera do celular (ou o toque no link numa mensagem) abre o navegador nessa página, **servida pelo `lobby-service`** atrás do ingress.
@@ -113,3 +113,37 @@ Desenhar já o campo `visibilidade` da mesa (`PRIVADA` | `PUBLICA`) mas **implem
 - **Migração:** o inventário de boosters migra junto com a carteira?
 - **Papéis do console** (§18.7): divisão leitor/operador/administrador proposta, a confirmar.
 - **Início dos 60 s:** contados desde o início da 1ª partida do jogo.
+
+## Revisão de 30/10/2026: mesas mantidas pelo servidor (`definition.md` §18.2)
+O jogador **não cria mesa**; o servidor mantém mesas abertas (Duplas, Clássica, 1500, 15 min, perde a aposta, aposta 50, boosters de skill permitidos, robôs Fáceis), a tela *Jogar online* lista as abertas e o 1º a entrar é o anfitrião. Decisões B1–B8 escritas na §18.4 (B5 revisto: o anfitrião pode **passar o cargo** e, se cai, o próximo humano conectado assume, como §16.10; B2: 90 s sem humano conectado destroem a mesa).
+
+### O que já existe e o que muda
+| Parte | Situação | Mudança |
+|---|---|---|
+| game-service: partida autoritativa, relógio, abandono, §18.4 "nunca sem humano", reconexão, probe | **vale como está** | `disconnectGraceMs` 0 → **90 s** (B2); `TempoDeJogada.QUINZE_MINUTOS` (contrato, protocolo 3); B1 e B6 só registram até a fase 2 |
+| lobby-service: convidado, mesa, lugares, robô, início, encerrar, `/internal/...` | **reaproveitado** | `POST /api/lobby/tables` sai do jogador → **pool de mesas** no servidor (sempre 1 aberta; +1 cinco minutos depois do 1º jogador, antecipada ao lotar sem outra livre; no máximo 1 vazia); **`GET /api/lobby/tables`** (todas as mesas, abertas e em jogo, posições Dupla 1 e Dupla 2 com nome e foto, mais o total de jogadores online); anfitrião = 1º a entrar, **passar o cargo** e sucessão automática (pela ordem de entrada, entre os conectados) **antes e durante o jogo** — o lobby guarda o anfitrião e o game-service avisa quedas; mesa que esvazia volta a ser "aberta vazia" (sem expirar); "pôr robô" sai (Iniciar completa com robôs); `DELETE` (encerrar) só em jogo |
+| lobby: página de convite `/m/<id>` e id digitado | **sai desta fase** | rota desligada (o código fica para a mesa criada pelo jogador) |
+| Autenticação do app | **novo** | chave do app (fora do repositório, injetada no build por `local.properties`/variável de CI) + cabeçalho com HMAC-SHA256 de método, caminho, carimbo de tempo e corpo; servidor recusa sem assinatura ou com carimbo fora de ±5 min (lobby e handshake do WebSocket); Play Integrity quando o app estiver na loja |
+| Limite de taxa | ajustado em `c9c7c39` | Docker Desktop esconde o IP real; por token continua 120/min |
+| App etapa A (3.21–3.24, `:online-client`) | **parcial** | 3.21 vira a lista; 3.23 perde criar/QR/link/robô e ganha Iniciar sempre habilitado; 3.24 sai; o cliente assina os pedidos |
+| Aposta 50 / carteira | fase 2 | até lá só registrada |
+
+### Próximas tarefas (ordem)
+1. **Backend (online-backend-dev):** pool de mesas + lista + anfitrião/sucessão + 90 s + 15 min + assinatura do app; testes citando §18.2/§18.4; reimplantar e provar com o probe (o probe passa a assinar e a usar a lista).
+2. **App (android-ui-dev):** lista de mesas (3.21), sala (3.23), assinatura no `:online-client`, mensagens de erro (429, app não reconhecido), retry de `STALE_STATE`, permissão de rede local do Android 17.
+3. **Teste com 2–4 celulares** na sala (APK com hash).
+4. **Etapa B:** mesa de jogo online (`OnlineTableDriver`).
+5. Fase 2 (conta Google, carteira: aposta 50 e devoluções de B1/B6/B7), fase 3 (console).
+
+## Fase 2 (iniciada em 30/10/2026): contas e economia
+Decisões: o **convidado também tem carteira** (§18.5, migra para a conta Google no 1º login se a conta ainda não tem carteira); ordem **banco + carteira primeiro**, login Google depois.
+
+| Etapa | Entrega | Verificação |
+|---|---|---|
+| **2.1 Banco** | Postgres no cluster (Secret com senha nova); migrações (Flyway); testes com Postgres embutido (sem Docker) | serviço sobe e migra; testes passam |
+| **2.2 economy-service** | carteira, inventário e **livro-razão** (cada lançamento com motivo e chave de idempotência; saldo nunca negativo, sob concorrência); saldo inicial e boosters iniciais ao criar o convidado; ganho diário, presente diário e loja (§14.6, §17.5, §17.10) | testes de concorrência e idempotência citando §18.5 |
+| **2.3 Apostas na mesa** | lobby confere saldo ≥ 50 ao sentar (§18.2); retenção ao iniciar; liquidação no fim (§14.6 prêmio por assento, §16.13); abandonos (perde a aposta / 60 s / todos desconectados devolvem, B1/B6/B7) | probe com saldos antes/depois; testes por caso de §18.4 |
+| **2.4 Persistência do lobby** | convidados, fotos e mesas no banco (reiniciar o servidor não apaga ninguém) | reiniciar o pod e seguir jogando |
+| **2.5 App** | saldo online na tela Jogar online, seletor de boosters online no início do jogo (§18.3), loja online, ganho diário online | APK + teste com celulares |
+| **2.6 Login Google** | identity: verificação do ID token no servidor; convidado → conta; foto da conta | depende do projeto no Google Cloud (usuário) |
+| **2.7 Migração da carteira local** | uma vez por conta (§18.6) | teste |

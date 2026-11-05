@@ -1,7 +1,7 @@
 # Plano: multijogador local (até 4 pessoas, cada uma no seu celular, sem internet)
 
-Status: **aprovado em 2026-10-20** (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário). **Etapas 1, 2 e 3 feitas** (N12 e N13 confirmadas). Origem: `docs/plano-teamplay.md`.
-Fluxo de sempre: `definition.md` e `docs/telas.md` primeiro, depois testes, código e `rules-auditor`. O jogo individual e o fluxo atual contra
+Status: **quase concluído** — aprovado em 2026-10-20 (recomendações N1 a N11 aceitas; mesa reduzida decidida pelo usuário; N12 a N16 decididas depois). **Etapas 1 a 6 feitas** (a etapa 6 tem 4 itens pontuais ainda fora, listados nela: card completo, excluir duas posições sem API na sessão, "Continuar" da sessão sem espaço no `:data`, e a marca "multijogador" nas estatísticas); **etapa 7 pendente** (loja/privacidade com as novas permissões e revisão final do `rules-auditor`). Origem: `docs/archive/plano-teamplay.md`.
+Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código e `rules-auditor`. O jogo individual e o fluxo atual contra
 robôs **não mudam**; o multijogador é uma opção nova na tela de mesas disponíveis.
 
 ## Objetivo
@@ -160,7 +160,7 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
 | N9 | **Perfil de pontos da mesa vs. estatísticas:** o resultado de uma mesa multijogador conta nas estatísticas e no resultado em moedas de cada celular como hoje? | **Sim**, com o modo marcado como multijogador, sem mudar as contas atuais. |
 
 ## Etapas (um commit por etapa; pare para revisão ao fim de cada uma)
-1. **`definition.md` (§16 novo, §13.1, §14.6, §5.6, §14.4) e `docs/telas.md` (3.4 com o tipo Multijogador, 3.3, 3.13 e 3.14, modais, glossário). — FEITA** (itens "a confirmar" marcados em §16.7, §16.8 e §16.13): nova seção de multijogador (§14.7 ou §16), reescrita de §13.1 e §14.6 para o jogo em grupo (individual
+1. **`definition.md` (§16 novo, §13.1, §14.6, §5.6, §14.4) e `docs/telas-app.md` (3.4 com o tipo Multijogador, 3.3, 3.13 e 3.14, modais, glossário). — FEITA** (itens "a confirmar" marcados em §16.7, §16.8 e §16.13): nova seção de multijogador (§14.7 ou §16), reescrita de §13.1 e §14.6 para o jogo em grupo (individual
    intacto), a exceção da informação oculta para os sucessores (regra de §5.6/§14), e as telas e modais novos (botão Wi-Fi, linha da mesa
    multijogador, criar mesa, escolha de posição, sala de espera, queda/recrutamento, vez remota). Nenhum código. *(android-ui-dev para telas,
    rules-engine-dev para o texto das regras)*
@@ -188,7 +188,7 @@ usa internet"). Recusa = o modo fica desligado e o app segue offline normal.
      real pode trazer só outra mesa).
    **Bateria:** o anfitrião busca o jogo todo (vigia de §16.10) e anuncia o jogo todo; é o custo de uma busca BLE contínua. Medir nos
    celulares; se pesar, usar `setLowPower(true)` na busca do anfitrião. Laboratório do Nearby só no debug (`NearbyLabActivity`, via `adb`).
-6. **Telas** (conforme `docs/telas.md` atualizado), indicador de vez remoto, ViewModels para convidados nos assentos 1 a 3. *(android-ui-dev)* — **FEITA (primeira versão)**: a tela do jogo conduz a mesa por um `TableDriver` (o local é o `GameController` de sempre; o `MultiplayerDriver` segue o papel do aparelho, anfitrião ou convidado, inclusive na sucessão); `MultiplayerTable`/`MultiplayerHub` guardam a mesa entre as telas; botão de Wi-Fi e card na lista, tipo Multijogador em Criar mesa, Publicar mesa, Escolha sua posição, pausa e pedidos do anfitrião, menu do anfitrião, avisos, reconexão, "Voltar à mesa", "Aguardando os outros jogadores" e moedas do fim. **Fora desta etapa:** card completo (anúncio maior), Excluir duas posições (§16.3, sem API na sessão), Continuar da sessão (§16.12, sem espaço no `:data`) e a marca "multijogador" nas estatísticas (§16.14).
+6. **Telas** (conforme `docs/telas-app.md` atualizado), indicador de vez remoto, ViewModels para convidados nos assentos 1 a 3. *(android-ui-dev)* — **FEITA (primeira versão)**: a tela do jogo conduz a mesa por um `TableDriver` (o local é o `GameController` de sempre; o `MultiplayerDriver` segue o papel do aparelho, anfitrião ou convidado, inclusive na sucessão); `MultiplayerTable`/`MultiplayerHub` guardam a mesa entre as telas; botão de Wi-Fi e card na lista, tipo Multijogador em Criar mesa, Publicar mesa, Escolha sua posição, pausa e pedidos do anfitrião, menu do anfitrião, avisos, reconexão, "Voltar à mesa", "Aguardando os outros jogadores" e moedas do fim. **Fora desta etapa:** card completo (anúncio maior), Excluir duas posições (§16.3, sem API na sessão), Continuar da sessão (§16.12, sem espaço no `:data`) e a marca "multijogador" nas estatísticas (§16.14).
 7. **Loja:** `docs/loja/ficha-da-loja.md` e política de privacidade com as novas permissões ("nada sai do aparelho; sem internet").
    Revisão final do `rules-auditor` quanto a vazamento (só os sucessores recebem estado oculto; token não trafega no roster).
 

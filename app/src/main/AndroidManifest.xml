@@ -19,6 +19,8 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="33" />
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- Jogo online (§18): HTTP e WebSocket com o servidor informado no Perfil. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"

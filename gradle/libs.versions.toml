@@ -15,6 +15,9 @@ navigation = "2.10.2"
 coroutines = "1.11.0"
 serialization = "1.11.0"
 playServicesNearby = "19.5.1"
+# Jogo online (online/ usa a mesma versão do Ktor)
+ktor = "3.6.0"
+zxing = "3.5.4"
 
 junit = "6.1.3"
 kotest = "6.2.5"
@@ -27,6 +30,15 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+# Jogo online: cliente HTTP/WebSocket (OkHttp no Android, para valer a política de tráfego em texto puro) e QR Code
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 
 # AndroidX
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }

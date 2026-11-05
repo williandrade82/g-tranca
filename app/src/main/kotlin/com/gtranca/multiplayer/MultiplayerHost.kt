@@ -702,7 +702,15 @@ class MultiplayerHost(
     fun sessionJoinRequests(): StateFlow<List<com.gtranca.net.JoinRequest>> = session.joinRequests
 
     /** §16.11 o anfitrião terminou as telas de resultado: distribui a próxima partida (sem esperar ninguém). */
-    fun continueRound(): Boolean = controller.continueToNextRound()
+    fun continueRound(): Boolean {
+        val next = controller.continueToNextRound()
+        if (next) {
+            // §17.3, §17.8 os boosters valem o jogo todo: a partida nova só recomeça os usos de reação de cada assento.
+            _boosters.update { it.newRound() }
+            config.mode.let { mode -> (0 until mode.seatCount).map { Seat(it) }.forEach(::pushSeatBoosters) }
+        }
+        return next
+    }
 
     /** §16.11 pacote de fim da partida para o convidado do [seat]: só o que é visível a ele (§16.4). */
     private fun roundOver(seat: Seat, event: GameEvent.RoundScored): RoundOver? {

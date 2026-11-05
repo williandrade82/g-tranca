@@ -104,12 +104,12 @@ fun GameScreen(
         viewModel.boosterInventory?.let { inventory ->
             val round = state.boosterSelectorRound.takeIf { it != 0 } ?: snapshot.roundNumber
             com.gtranca.ui.boosters.BoosterSelectorScreen(
-                androidx.lifecycle.viewmodel.compose.viewModel(key = "boosters-selector-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(inventory, snapshot.config.skillBoosters) },
-                viewModel::onBoostersConfirmed,
+                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "boosters-selector-$round") { com.gtranca.ui.boosters.BoosterSelectorViewModel(inventory, snapshot.config.skillBoosters) },
+                onConfirmed = viewModel::onBoostersConfirmed,
             )
         }
     }
-    else if (state.endScreen == EndScreen.FINAL_TABLE) {
+    else if (state.endScreen == EndScreen.FINAL_TABLE || state.endScreen == EndScreen.ROUND_POINTS) {
         // docs/telas.md 3.9, 3.12 a mesa final, só para olhar: o banner de fim de partida grande por 2 s e, depois,
         // minimizado junto do "Seguir", que vai direto aos pontos da partida. Numa caixa só, com a animação por cima.
         val end = roundEnd(snapshot)
@@ -139,7 +139,9 @@ fun GameScreen(
                     )
                 }
             }
-            if (showing) RoundEndOverlay(end!!, snapshot.view.mode, state.animationMillis > 0, onDone = { goOutSeen = finishedRounds })
+            if (showing && state.endScreen == EndScreen.FINAL_TABLE) RoundEndOverlay(end!!, snapshot.view.mode, state.animationMillis > 0, onDone = { goOutSeen = finishedRounds })
+            // docs/telas.md 3.10 os pontos da partida em modal sobre a mesa final.
+            if (state.endScreen == EndScreen.ROUND_POINTS) RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
         }
     }
     else if (state.endScreen != null) {
@@ -307,9 +309,7 @@ private fun EndScreens(
     onExit: () -> Unit,
 ) {
     when (state.endScreen) {
-        null, EndScreen.FINAL_TABLE -> Unit
-        EndScreen.ROUND_POINTS ->
-            RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
+        null, EndScreen.FINAL_TABLE, EndScreen.ROUND_POINTS -> Unit
         EndScreen.FINAL -> GameOverScreen(
             snapshot, onExit, state.personas, state.animationMillis > 0,
             multiplayer = multiplayer != null,

@@ -1,6 +1,6 @@
 # Personagens: fichas de arte e convenções
 
-Os 4 perfis de robô × 3 níveis × 4 poses = **48 imagens**. Plano: [../plano-bots-personas.md](../plano-bots-personas.md).
+Os 4 perfis de robô × 3 níveis × 4 poses = **48 imagens**. Plano: [plano-bots-personas.md](../archive/plano-bots-personas.md) (arquivado, concluído).
 Regras: `definition.md` §14.5. Claude não gera imagens: você gera/encomenda e Claude integra e confere.
 
 | Perfil | Ficha |

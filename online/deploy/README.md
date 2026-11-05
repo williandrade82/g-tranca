@@ -13,7 +13,7 @@ cd .. && TAG=$(git rev-parse --short HEAD) && docker build -f online/game-servic
 
 # 2. Ingress (Traefik) - uma vez
 helm repo add traefik https://traefik.github.io/charts && helm repo update
-helm install traefik traefik/traefik -n traefik --create-namespace --kube-context docker-desktop -f deploy/infra/traefik-values.yaml
+helm upgrade --install traefik traefik/traefik --version 42.1.3 -n traefik --create-namespace --kube-context docker-desktop -f deploy/infra/traefik-values.yaml
 
 # 3. game-service
 helm upgrade --install game-service deploy/helm/game-service -n gtranca --create-namespace \
@@ -23,8 +23,7 @@ helm upgrade --install game-service deploy/helm/game-service -n gtranca --create
 curl http://192.168.1.5/health        # via ingress
 kubectl --context docker-desktop -n gtranca port-forward svc/game-service 8080:80   # alternativa: http://localhost:8080/health
 
-# 5. Infra (so quando for usada; senha do Postgres em deploy/infra/postgres.yaml deve ser trocada)
-kubectl --context docker-desktop apply -f deploy/infra/postgres.yaml
+# 5. Infra: Postgres, backup e rede -> ver "Postgres, backup e rede" abaixo
 helm repo add nats https://nats-io.github.io/k8s/helm/charts/
 helm install nats nats/nats -n gtranca --kube-context docker-desktop -f deploy/infra/nats-values.yaml
 ```
@@ -33,10 +32,44 @@ Desenvolvimento local sem cluster: `.\gradlew.bat :game-service:run` e `http://l
 
 `:core-engine` e `:ai` entram no build de `online/` por caminho (`include` + `projectDir = ../core-engine` no `online/settings.gradle.kts`): nenhum arquivo do app muda. Em contêiner o layout e `/src/{core-engine,ai,online}`; cada Dockerfile tem um `Dockerfile.dockerignore` que limita o contexto.
 
+### Cache do Gradle no build da imagem (BuildKit)
+Os tres Dockerfiles (`lobby-service`, `game-service`, `economy-service`) tem `# syntax=docker/dockerfile:1` e
+`RUN --mount=type=cache,target=/root/.gradle` na etapa de build: o `$GRADLE_USER_HOME` (dependencias baixadas, o
+pacote do Gradle Wrapper e o build cache local, `org.gradle.caching=true` em `online/gradle.properties`) persiste
+**entre builds**, fora da imagem final (so a etapa `build` enxerga o mount; a imagem `jre` de execucao nunca o ve).
+Sem isso, toda imagem nova baixava tudo de novo e recompilava do zero, mesmo para uma mudanca de uma linha — era o
+motivo mais provavel dos deploys levarem 15-30 min.
+Exige **BuildKit** (sem ele a diretiva de cache mount e ignorada em silencio e nada melhora); no Docker Desktop
+recente (conferido aqui: `docker buildx ls` mostra o builder padrao `desktop-linux` com BuildKit ativo) e o padrao do
+`docker build`, sem variavel de ambiente nem flag extra.
+
+Medido em 02/11/2026 (`economy-service`, maquina local): build limpo (cache do Gradle vazio, baixa o Wrapper, as
+dependencias e compila tudo) **~9 min** (545 s sem o cache mount no Dockerfile; 528 s com o cache mount mas ainda
+vazio — sem regressao); build repetido mudando **uma linha** de comentario em `Main.kt`, com o cache do mount ja
+quente, **53 s** (Gradle: 43 s) — cerca de 10x mais rapido. O cache mount (por padrao com `id = target`, compartilhado
+entre os tres Dockerfiles) fica no disco do builder `desktop-linux` do Docker Desktop (nao na imagem, nao no Git);
+`docker builder prune` o esvazia, e o primeiro build depois disso volta a ser lento (esperado). Confirmado tambem (so build, sem deploy, imagens descartadas): com o cache ja
+quente pelo `economy-service`, `lobby-service` e `game-service` cada um buildou em ~1 min (61 s e 69 s) — o cache
+mount e compartilhado entre os tres Dockerfiles (mesmo `target=/root/.gradle`). Um "Reset Kubernetes
+cluster" do Docker Desktop recria o node (kind) mas **nao** deveria afetar esse cache (ele vive no engine do Docker,
+nao no node); nao testado nesta etapa, so por inspecao.
+
+**Ideia anotada, nao implementada** (discutida com o `advisor`; a primeira versao desta nota tinha um erro: `kubectl cp`
+para dentro do pod nao funciona com `readOnlyRootFilesystem: true`, e reiniciar o processo recria o contêiner a partir
+da imagem, perdendo a copia): para iteracao rapida (sem a verificacao final), um **segundo Dockerfile por servico**
+(ex. `Dockerfile.local`) so com `COPY build/install/<servico> /opt/<servico>` sobre `eclipse-temurin:17-jre` — o
+`./gradlew.bat :servico:installDist` roda no Windows, fora do Docker (daemon do Gradle quente, compilacao
+incremental), e o `docker build -f Dockerfile.local` so empacota o resultado, em segundos, sem rodar Gradle no
+contêiner. Continua com imagem nova, tag nova e `helm upgrade --set image.tag=...` normal (mantem `readOnlyRootFilesystem`,
+tag fixa e rollout); a diferenca e que a imagem passa a depender do build feito no host, entao perde a
+reprodutibilidade do build limpo em contêiner — por isso ficaria so para depuracao, nunca para a verificacao final
+nem para o APK. Decisao do usuario se vale a pena montar isso; nao entra nesta etapa.
+
 ## lobby-service (mesas e convites)
 
-**Persistencia: SOMENTE EM MEMORIA nesta fase.** Reiniciar o pod apaga convidados e mesas (a interface `TableStore` permite trocar por Postgres depois). Por isso `replicaCount: 1`; nao escale.
-Sem economy-service: a aposta da mesa NAO tem o saldo verificado ao entrar (`SALDO_INSUFICIENTE` esta declarado mas nunca e devolvido).
+**Persistencia (etapa 2.4): Postgres, schema `lobby`** (convidados com hash do token, fotos e mesas; historico Flyway proprio `lobby.flyway_lobby_history`). O Flyway do lobby cria o schema ao iniciar com o usuario `POSTGRES_USER` (dono do banco). Usa o mesmo Secret `postgres-credentials` do economy (`DB_URL`=`jdbc:postgresql://postgres:5432/$(POSTGRES_DB)`, `DB_USER`/`DB_PASSWORD`) e o mesmo initContainer `wait-for-postgres`. O rotulo `app: lobby-service` libera a NetworkPolicy do Postgres. Conferido: apagar o pod do lobby mantem os convidados no banco e um novo probe roda. Continua com `replicaCount: 1` (sessoes/presenca ainda em memoria).
+startupProbe do lobby e do economy: ate 5 min (3 s x 100), porque o servico retenta o banco e migra antes de abrir o HTTP.
+Ao aplicar valores novos do chart nao use `--reuse-values` (ignora defaults novos, ex. `waitForPostgres`); use `--reset-then-reuse-values` ou repita os `--set`.
 
 ```bash
 # (a partir da raiz do repositorio)  docker build -f online/lobby-service/Dockerfile -t gtranca/lobby-service:$TAG .
@@ -45,7 +78,7 @@ helm upgrade --install lobby-service deploy/helm/lobby-service -n gtranca --kube
 
 Ingress por prefixo no Traefik: `/m` e `/api/lobby` vao para o lobby-service; `/health`, `/info` e o resto seguem no game-service. (Os Dockerfiles copiam todos os modulos porque o `settings.gradle.kts` inclui todos.)
 
-Variaveis: `PORT`, `TABLE_OPEN_TTL_MINUTES` (30), `RATE_LIMIT_PER_MINUTE` (120 por IP), `TRUST_FORWARDED_FOR` (`true` atras do Traefik: usa o ultimo IP de `X-Forwarded-For` no limite de taxa).
+Variaveis: `PORT`, `TABLE_OPEN_TTL_MINUTES` (30), `RATE_LIMIT_PER_MINUTE` (120 por IP; no cluster local 2000, porque o Docker Desktop entrega todos os clientes com o mesmo IP interno), `GUEST_CREATION_PER_MINUTE` (10 por IP; local 200), `TRUST_FORWARDED_FOR` (`true` atras do Traefik: usa o ultimo IP de `X-Forwarded-For` no limite de taxa).
 
 Exemplo (toda chamada de `/api/lobby` leva `X-Protocol-Version: 2`; depois do convidado, `Authorization: Bearer <token>`):
 
@@ -55,6 +88,57 @@ curl -H "$H" -d '{"name":"Ana"}' http://192.168.1.5/api/lobby/guests
 curl -H "$H" -H "Authorization: Bearer $TOKEN" -d '{"rules":{"mode":"INDIVIDUAL","rulesJson":"{}"}}' http://192.168.1.5/api/lobby/tables
 curl http://192.168.1.5/m/<ID>      # pagina do convite
 ```
+
+### Login Google (etapa 2.6, §18.1/§18.5)
+`POST /api/lobby/accounts/google` verifica o ID token (RS256, emissor e `aud` do Google, JWKS por `kid`) e adota a carteira
+do convidado do aparelho uma vez (`walletFromGuest`). Variaveis em `values.yaml` (configuracao normal, **nao** Secret:
+`GOOGLE_CLIENT_ID` e o client_id OAuth tipo "Web" do projeto Google Cloud do app; ele vai no proprio ID token como `aud`
+e e publico por natureza):
+- `GOOGLE_CLIENT_ID` - sem ele a rota responde `LOGIN_INDISPONIVEL` (503) e o login fica desligado (aviso no log).
+- `GOOGLE_JWKS_URL` (opcional) - padrao `https://www.googleapis.com/oauth2/v3/certs`.
+
+**Egress para o Google (pendente de decisao do usuario).** O namespace nega toda saida para a internet por padrao
+(`infra/networkpolicies.yaml`). Sem uma liberacao, o lobby nunca alcanca o JWKS do Google e toda tentativa de login
+responde `LOGIN_INDISPONIVEL` (503, "Não foi possível falar com o Google agora") mesmo com `GOOGLE_CLIENT_ID` configurado
+e o verificador ativo. A liberacao fica **fora** do `networkpolicies.yaml` padrao, em `infra/networkpolicy-lobby-egress-google.yaml`
+(so o lobby-service, so porta 443, nega as faixas privadas RFC1918). Aplique quando decidir permitir essa saida:
+```bash
+kubectl --context docker-desktop apply -f deploy/infra/networkpolicy-lobby-egress-google.yaml
+```
+O economy-service tambem ganhou uma rota nova nesta etapa (`POST /internal/economy/accounts/{accountId}/adopt`,
+migracao `V3__conta_google.sql`): implante lobby-service **e** economy-service juntos, na mesma tag.
+
+### Login por e-mail e senha (§18.1, mudanca de 02/11/2026; tag `e80cc18`)
+No lugar do Google por ora (sem tela no app para o Google ainda): `POST /api/lobby/accounts/email/register` e
+`POST /api/lobby/accounts/email/login` (carteira adotada do convidado do aparelho, igual ao Google, `walletFromGuest`).
+Rota interna (segredo servico a servico, **nao sai pelo ingress**) `POST /internal/lobby/accounts/reset-password`
+`{email}` gera uma senha temporaria nova; quem chama repassa ao jogador por fora.
+
+**Implante o economy-service antes ou junto do lobby-service**: a migracao `V4__conta_email.sql` (libera
+`tipo = 'EMAIL'` no CHECK da tabela `conta`) precisa estar no ar antes do primeiro cadastro por e-mail, senao a
+adocao da carteira bate no CHECK do Postgres e responde `LOGIN_INDISPONIVEL` (503) — a conta ja fica criada no lobby,
+so sem carteira, ate o economy subir (nao e perda de dados). A migracao do lobby e `V3__contas_email.sql`.
+
+Variaveis novas no lobby-service, opcionais (`values.yaml`, nao Secret): `LOGIN_ATTEMPT_LIMIT` (padrao 5) e
+`LOGIN_LOCKOUT_MINUTES` (padrao 15), tentativas erradas seguidas pelo mesmo e-mail.
+
+**O lobby-service precisa continuar com `replicaCount: 1`** (ver `docs/seguranca-pendencias.md`, achado de
+02/11/2026): o limitador de tentativas de login e o cache de contas de e-mail vivem em memoria, por pod; mais de
+uma replica quebra a consistencia entre pods (conta cadastrada ou senha redefinida num pod fica desconhecida nos
+demais) e o limite de forca bruta nao soma entre eles. Nao aumente `replicaCount` do lobby-service sem resolver
+isso antes (mover para Postgres/Redis, fora do escopo combinado agora).
+
+Nenhuma NetworkPolicy nova: as rotas sao HTTP dentro dos servicos ja liberados em `infra/networkpolicies.yaml`.
+
+Implantado em 02/11/2026 na tag `e80cc18` (economy-service e lobby-service; `game-service` ficou na tag anterior
+`49d7282` — o codigo dele nao mudou nesta etapa e o `ONLINE_PROTOCOL_VERSION` continua 4; as mudancas nos contratos
+`AccountKind`/`ErrorCode` sao so valores novos no fim do enum, nunca lidos pelo game-service). Conferido: rollout
+ok nos dois (`economy-service` revisao 8, `lobby-service` revisao 18), 0 restarts, logs sem erro, migracoes `V4`
+(economy) e `V3` (lobby) aplicadas. Teste funcional pelo ingress (`curl` com `X-Protocol-Version: 4` e a assinatura
+do app): cadastro por e-mail -> `201`; cadastro repetido -> `409 EMAIL_JA_CADASTRADO`; login com a senha certa ->
+`200`; login com a senha errada -> `401 NAO_AUTENTICADO`; `POST /internal/lobby/accounts/reset-password` pelo
+ingress -> `404` (fora do ingress, como esperado). Confirmado no Postgres: a conta criada ganhou `tipo = 'EMAIL'`
+na tabela `conta` do economy (o caminho que bateria no CHECK antes da migracao V4).
 
 ## game-service: partida so com robos (etapa 1.3a)
 
@@ -158,3 +242,138 @@ Saida real da prova (imagens `59d92bb`, protocolo 2, tempo real de 1 minuto; no 
 - `encerrar`: Beto (nao anfitriao) -> 403; Ana encerra -> 200; os dois recebem `TableClosed` e a conexao fecha com `1000 Mesa encerrada`; lobby `ENCERRADA`; reconectar -> `404 MESA_INEXISTENTE`.
 - `tempo`: vista com `turn=TurnClock(seat=0, limitMs=60000, leftMs=59997)`; 60 s depois `seats ... RESIGNED (TEMPO)`, tipos `[ROBO*, HUMANO, ROBO, ROBO]`, a Ana recebe `YouResigned` e a conexao fecha; a mesa segue EM_JOGO; o anfitriao encerra e o lobby fica `ENCERRADA`.
 - `jogo` (normal, com queda e volta do Beto): `FIM DO JOGO` com o mesmo placar nas duas vistas e, 2 s depois, lobby `estado=ENCERRADA` (aviso do game-service).
+
+## Chave do aplicativo (§18.2 "Só o aplicativo oficial")
+Cada pedido do app (lobby e handshake do WebSocket) leva `X-App-Time` e `X-App-Signature` (HMAC-SHA256 com a chave do app de `método
+caminho
+horário
+token`, horário com ±5 min). A chave fica **fora do repositório**: no cluster, no Secret `gtranca-app-key`; no app, em `local.properties` (`online.appKey=...`). Sem o Secret os serviços sobem sem verificar (aviso no log).
+
+```bash
+KEY=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-40)
+kubectl --context docker-desktop -n gtranca create secret generic gtranca-app-key --from-literal=APP_SIGNING_KEY="$KEY"
+kubectl --context docker-desktop -n gtranca rollout restart deploy/lobby-service deploy/game-service
+# probe com a mesma chave:
+APP_SIGNING_KEY="$KEY" ./gradlew.bat :probe:run --args="192.168.1.5"
+```
+
+## Postgres, backup e rede
+
+### Layout de `online/deploy/`
+```
+helm/<servico>/            um chart por servico (lobby-service, game-service)
+infra/postgres.yaml        Service + StatefulSet do Postgres (comum local/nuvem)
+infra/postgres-backup.yaml CronJob de pg_dump diario
+infra/networkpolicies.yaml negar por padrao + liberacoes
+infra/local/               SO cluster local: StorageClass gtranca-local, PVs hostPath, PVCs
+infra/cloud/               nuvem: os mesmos PVCs com a StorageClass do provedor (nao testado)
+infra/traefik-values.yaml, infra/nats-values.yaml
+```
+
+### Secrets necessarios (o usuario cria; nunca no repositorio)
+`gtranca-internal` (INTERNAL_SECRET), `gtranca-app-key` (APP_SIGNING_KEY, opcional) - comandos acima - e:
+```bash
+kubectl --context docker-desktop -n gtranca create secret generic postgres-credentials \
+  --from-literal=POSTGRES_USER=gtranca --from-literal=POSTGRES_DB=gtranca \
+  --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+```
+
+### Onde ficam os dados (local)
+O Kubernetes do Docker Desktop roda no **modo kind**: o no (`desktop-control-plane`) e um conteiner **sem acesso as pastas do Windows** (conferido: nao existe `/run/desktop/mnt/host` no no, e o Docker Desktop nao deixa adicionar montagens a ele). Por isso:
+- **Dados vivos**: `/var/lib/gtranca/postgres` do no (PV `gtranca-postgres-data`, hostPath, `Retain`). Fica num volume do Docker: sobrevive a apagar pod/StatefulSet/PVC e a reiniciar o Docker Desktop; **some com "Reset Kubernetes cluster"** ou desinstalar o Docker Desktop.
+- **Dumps**: `/var/lib/gtranca/backups` do no (PV `gtranca-postgres-backups`), copiados para **`C:\Users\willi\gtranca-data\backups`** (fora do Git e fora do OneDrive). E o dump (`pg_dump -Fc`), nao a pasta de dados, que serve para levar o banco para a nuvem: a pasta crua so funciona na mesma versao maior do Postgres e nao entra num Postgres gerenciado.
+- Alternativa (decisao do usuario): trocar o Kubernetes do Docker Desktop para o modo kubeadm expoe `C:\` no no em `/run/desktop/mnt/host/c/...`, mas recria o cluster (Traefik, servicos e Secrets precisam ser refeitos) e montagens do Windows costumam brigar com o dono 999/permissao 0700 que o Postgres exige.
+
+### Subir (primeira vez ou apos reset do cluster)
+```bash
+# pastas no no, com dono 999 (hostPath ignora fsGroup)
+MSYS_NO_PATHCONV=1 docker exec desktop-control-plane sh -c 'mkdir -p /var/lib/gtranca/postgres /var/lib/gtranca/backups && chown 999:999 /var/lib/gtranca/postgres /var/lib/gtranca/backups && chmod 700 /var/lib/gtranca/postgres'
+kubectl --context docker-desktop apply -f deploy/infra/local/postgres-storage.yaml -f deploy/infra/postgres.yaml -f deploy/infra/postgres-backup.yaml -f deploy/infra/networkpolicies.yaml
+kubectl --context docker-desktop -n gtranca rollout status sts/postgres
+```
+Na nuvem: troque `infra/local/postgres-storage.yaml` por `infra/cloud/postgres-storage.yaml` (com a StorageClass do provedor); o resto e igual.
+
+**Recriar o PVC apos apaga-lo** (o PV `Retain` fica `Released` e nao religa sozinho):
+```bash
+kubectl --context docker-desktop patch pv gtranca-postgres-data --type merge -p '{"spec":{"claimRef":{"uid":null,"resourceVersion":null}}}'
+kubectl --context docker-desktop apply -f deploy/infra/local/postgres-storage.yaml
+```
+
+### Backup e restauracao (testado em 31/10/2026)
+CronJob `postgres-backup`: 03:30 UTC, `pg_dump -Fc` em `/backups/<db>-<data>.dump`, apaga dumps com mais de 7 dias (`BACKUP_KEEP_DAYS`).
+```bash
+K="kubectl --context docker-desktop -n gtranca"
+# disparar agora
+$K create job --from=cronjob/postgres-backup backup-manual-$(date +%s)
+# copiar os dumps para o Windows (manual; pode virar tarefa do Agendador de Tarefas do Windows)
+MSYS_NO_PATHCONV=1 docker cp desktop-control-plane:/var/lib/gtranca/backups/. "C:/Users/willi/gtranca-data/backups"
+# restaurar um dump do Windows (substitui os objetos existentes)
+F="C:/Users/willi/gtranca-data/backups/gtranca-AAAAMMDD-HHMMSS.dump"
+$K exec -i postgres-0 -- sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < "$F"
+```
+Teste feito: tabela `restore_test` com uma linha -> job manual -> copia para o Windows -> `drop table` -> `pg_restore` do arquivo no Windows -> a linha voltou -> tabela apagada. Persistencia: linha sobreviveu a apagar o pod e a apagar StatefulSet + PVC e recriar.
+
+### Endurecimento
+Todos os pods: `runAsNonRoot` com uid fixo (servicos 10001, Postgres/backup 999), `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `readOnlyRootFilesystem` (emptyDir em `/tmp`; no Postgres tambem `/var/run/postgresql`), `automountServiceAccountToken: false`, requests e limite de memoria, startupProbe. Imagens com tag fixa em `values.yaml` (`image.tag`, hash do commit; Postgres `17.11`): troque com `--set image.tag=$TAG` a cada build.
+
+### NetworkPolicy (`infra/networkpolicies.yaml`)
+Nega tudo no namespace `gtranca` e libera: DNS (kube-system, 53 UDP/TCP) para todos; Traefik (namespace `traefik`) -> lobby e game (8080); lobby <-> game (8080); Postgres (5432) so a partir de pods `app: economy-service`, `app: lobby-service` (2.4) e `app: postgres-backup`; Traefik e game-service -> economy-service (8080). Etapa 2.3: tambem lobby -> economy e economy -> lobby (8080). Nenhum servico sai para a internet.
+**O kindnet do Docker Desktop APLICA as politicas** (conferido: um pod qualquer nao alcanca o lobby nem o Postgres; ingress, lobby<->game, backup->Postgres e a prova ponta a ponta seguem funcionando). Servico novo no namespace precisa da sua liberacao aqui, senao fica mudo.
+
+## economy-service (saldo, ganho diario, compras; etapa 2.2)
+Chart `helm/economy-service`. Usa os Secrets ja existentes (o usuario cria; nada no repositorio):
+- `postgres-credentials` (chaves `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`): viram `DB_USER`/`DB_PASSWORD`; `DB_URL` = `jdbc:postgresql://postgres:5432/$(POSTGRES_DB)` (expansao do Kubernetes).
+- `gtranca-app-key` (chave `APP_SIGNING_KEY`): obrigatoria; sem ela o pod nao sobe.
+- `gtranca-internal` (chave `INTERNAL_SECRET`, etapa 2.3): obrigatoria; o mesmo Secret do lobby e do game. Aplique o chart com esta referencia ANTES (ou junto) da imagem 2.3, senao o pod entra em CrashLoop.
+
+O Flyway cria as tabelas ao iniciar (`conta`, `carteira`, `inventario`, `lancamento`, `aposta`), com o usuario `POSTGRES_USER` (dono do banco).
+
+```powershell
+# (raiz do repositorio)  docker build -f online/economy-service/Dockerfile -t gtranca/economy-service:$TAG .
+helm --kube-context docker-desktop -n gtranca upgrade --install economy-service online/deploy/helm/economy-service --set ingress.enabled=true --set image.tag=$TAG
+kubectl --context docker-desktop -n gtranca rollout status deploy/economy-service
+```
+
+Ingress: so `/economy` (assinado, §18.2; sem assinatura -> 401). `/internal/economy` nunca sai pelo ingress; `/health` e `/info` no ingress sao do game-service, entao confira a saude do economy por `kubectl port-forward deploy/economy-service 18080:8080` e `curl localhost:18080/health`.
+Rede: Traefik, lobby e game-service (2.3, `http://economy-service/...`, Service na porta 80) -> economy (8080); economy -> lobby (`LOBBY_URL=http://lobby-service`) e -> Postgres (5432). Lobby e game recebem `ECONOMY_URL=http://economy-service` (porta 80 do Service, nao 8080).
+
+Inicio apos reinicio do Docker Desktop: o Hikari falha rapido se o Postgres (ou o DNS) ainda nao voltou e a JVM sai (eram 8 reinicios). O initContainer `wait-for-postgres` (imagem `postgres:17.11`, so `pg_isready`, nao-root, raiz somente leitura) segura o pod ate o Postgres aceitar conexoes.
+Rollout `maxUnavailable: 0` (sobe o novo antes de derrubar o antigo; o estado esta no Postgres).
+
+Conferido em 31/10/2026: rollout ok, `/health` UP, `GET /economy/probe-k8s-01` assinado pelo ingress -> 200 (conta criada com saldo inicial), sem assinatura -> 401, `/internal/economy` pelo ingress -> 404, tabelas criadas.
+
+### Migracao da carteira local para a conta (§18.6, `POST /economy/{accountId}/migrate`)
+Rota nova, so no `economy-service` (`lobby-service` e `game-service` sem mudanca: `git diff e80cc18..68ea01a --stat`
+para os dois veio vazio). Publica, dentro do `/economy` ja exposto pelo ingress, mesma assinatura do app e mesmo
+token de conta das outras rotas de `/economy`; nenhuma variavel de ambiente, Secret ou NetworkPolicy nova.
+
+Implantado em 02/11/2026 na tag `68ea01a` (so `economy-service`, `values.yaml` atualizado para esta tag como novo
+padrao; `lobby-service` continua `e80cc18` e `game-service` continua `49d7282`, sem mudanca de protocolo). Conferido: rollout ok (revisao 9), pod `1/1 Running`, 0 restarts, logs
+limpos, migracao Flyway em `V4` (nenhuma nova nesta etapa). Teste funcional pelo ingress, com uma conta de e-mail de
+teste criada so para isto (`POST /api/lobby/accounts/email/register`): antes do deploy, `POST
+/economy/{id}/migrate` assinado respondia `404` (rota nao existia na imagem `e80cc18`); depois do deploy, a mesma
+chamada com `{"coins":777,"inventory":{"b1":4}}` respondeu `200` com o saldo somado (`balance: 1777`,
+`migratedLocal: true`); repetir a chamada com valores bem diferentes devolveu o **mesmo** estado (sem somar de
+novo, §18.6 "uma vez por conta"); sem `X-App-Signature` -> `401 APP_NAO_RECONHECIDO`; `/internal/economy/...` pelo
+ingress -> `404` (continua de fora). O risco de contas-fantasma somando a mesma carteira adulterada varias vezes ja
+estava registrado em `docs/seguranca-pendencias.md` (achado de 02/11/2026 do `online-backend-dev`); nada novo
+encontrado na camada de infraestrutura nesta implantacao.
+
+## Seletor de boosters online (protocolo 2 -> 4; etapa S17.3/S18.3)
+
+`ONLINE_PROTOCOL_VERSION` subiu de 3 para 4 (fase do seletor de boosters na vista, novo endpoint interno do economy
+`/internal/economy/matches/{matchId}/seats/{seat}/boosters`, `EconomyStore.debitBoosters`). Isso muda o que o
+**lobby-service** aceita em `X-Protocol-Version` mesmo sem o codigo-fonte dele ter mudado nesta etapa: a constante vem
+do `:online-contracts`, compilada no jar. **Implante os tres servicos juntos** (lobby-service, game-service,
+economy-service) na mesma tag, senao o app novo (protocolo 4) recebe `426 VERSAO_INCOMPATIVEL` do lobby antigo em
+toda chamada `/api/lobby` (nao so nos boosters). Ordem: economy-service antes ou junto do game-service (a rota nova de
+debito e chamada pelo game-service; sem ela o debito falha com 404 nas 3 tentativas e o jogo segue sem boosters, sem
+perder moeda). Nenhuma variavel de ambiente nova obrigatoria (`BOOSTER_SELECT_MS`, opcional, padrao 30000). Nenhuma
+NetworkPolicy nova (egress game-service -> economy-service ja existia).
+
+Implantado em 02/11/2026 na tag `49d7282` (os tres `values.yaml` atualizados para esta tag como novo padrao):
+rollout ok nos tres, 0 restarts, logs sem erro, sem migracao Flyway nova. Confirmado fim a fim pelo
+`probe` (ver "Prova no cluster" acima): handshake com `X-Protocol-Version: 3` -> `426`; com `4` passa a checagem de
+versao (cai no filtro de assinatura do app a seguir, esperado sem `APP_SIGNING_KEY` no cliente); jogo completo com
+seletor de boosters nos dois assentos (`BoosterPrompt` -> confirmacao vazia -> `BoostersConfirmed`/`BOOSTERS_CHOSEN`),
+queda e reconexao do Beto, placar coerente nas duas vistas, mesa `ENCERRADA` no lobby ao final.

@@ -44,13 +44,25 @@ object GameLimits {
     const val MAX_CLIENT_MESSAGE_BYTES = 16 * 1024
 }
 
-/** Por que um jogador abandonou (§18.4): desistiu, o tempo da vez esgotou, ou o anfitriao encerrou a mesa em jogo. */
+/**
+ * Por que um jogador abandonou (§18.4): desistiu, o tempo da vez esgotou, o anfitriao encerrou a mesa em jogo, ou nenhum
+ * humano ficou conectado e a mesa foi destruida ([TODOS_DESCONECTADOS]; so registrado no servidor, nunca vai ao cliente).
+ */
 @Serializable
-enum class AbandonReason { DESISTIU, TEMPO, ANFITRIAO_ENCERROU }
+enum class AbandonReason { DESISTIU, TEMPO, ANFITRIAO_ENCERROU, TODOS_DESCONECTADOS }
 
 /** Como o jogo terminou (§13, §18.4). */
 @Serializable
-enum class GameEndReason { PONTUACAO, ABANDONO, ANFITRIAO_ENCERROU, INATIVIDADE, ERRO }
+enum class GameEndReason {
+    PONTUACAO, ABANDONO, ANFITRIAO_ENCERROU,
+
+    /** Reservado (antigo descarte por 2 h); o servidor nao o emite mais desde §18.4 "Todos desconectados". */
+    INATIVIDADE,
+    ERRO,
+
+    /** §18.4: nenhum humano da partida conectado; a mesa foi destruida na hora. */
+    TODOS_DESCONECTADOS,
+}
 
 /** Perfis de robo (§14.5). */
 @Serializable
@@ -103,6 +115,13 @@ data class CloseMatchResponse(val alreadyOver: Boolean = false)
 @Serializable
 data class MatchEndedNotice(val reason: GameEndReason)
 
+/**
+ * game -> lobby: quem esta conectado e quem abandonou (§18.2, §18.4); enviado a cada mudanca. O lobby usa para a
+ * sucessao do anfitriao (nunca um robo) e para contar os jogadores online.
+ */
+@Serializable
+data class PresenceNotice(val connected: List<String>, val abandoned: List<String> = emptyList())
+
 /** game -> lobby: de quem e este token? (o corpo, nao a URL, leva o token). */
 @Serializable
 data class ResolveGuestRequest(val token: String)
@@ -132,6 +151,32 @@ data class PlayAction(val seq: Long, val stateVersion: Long, val action: Action)
 @SerialName("resign")
 data class Resign(val seq: Long) : ClientMessage
 
+/**
+ * §17.3/§18.3: a escolha do seletor de boosters do inicio do jogo (ate 3, §17.2). O servidor sanitiza contra o
+ * catalogo, o `skillBoostersAllowed` da mesa (§17.9) e as reacoes (b3, ainda nao retransmitidas online).
+ *
+ * [final] `false` = **rascunho**: so GRAVA o que esta marcado na tela agora, sem debitar nada (a tela ainda esta
+ * escolhendo); o app manda um **assim que o seletor abre** (com a marcacao pre-preenchida, §17.2) e a cada toque
+ * depois — sem isso, quem nao toca em nada antes do prazo confirma SEM boosters, mesmo que a tela mostrasse algo
+ * marcado. `true` = **Seguir** (ou o auto-envio do app ao chegar aos 30 s, §16.15): tenta debitar do inventario
+ * online (§18.5); o que nao puder ser debitado fica de fora (§17.3).
+ *
+ * **A selecao TRAVA na primeira tentativa com `final = true`** (do jogador ou do PRAZO DO SERVIDOR, o que chegar
+ * primeiro): depois disso, [boosters] deste tipo deixa de importar — um [SelectBoosters] seguinte so faz o servidor
+ * TENTAR DE NOVO a mesma lista ja travada (nunca troca por uma lista diferente, mesmo que a tela mude). Isso evita
+ * debitar dois boosters diferentes se a resposta da 1a tentativa se perder sem o debito ter de fato falhado. A UI
+ * deve desativar a edicao do seletor depois do primeiro Seguir; "Tentar de novo" so reenvia `final = true`.
+ *
+ * O servidor tem o SEU PROPRIO prazo de 30 s (contado de quando o [BoosterPrompt] foi enviado); se nenhum
+ * [SelectBoosters] com [final] = `true` chegar a tempo, ele mesmo confirma com o ULTIMO rascunho recebido (ou sem
+ * boosters, se nenhum chegou) — nunca descarta o que a tela tinha selecionado por uma corrida de rede (§17.3 "vale
+ * o que estiver selecionado na tela"). Ignorado se o assento ja confirmou, ou se o jogo ja acabou (§18.4: abandonar
+ * sem ter confirmado nunca debita por isso).
+ */
+@Serializable
+@SerialName("selectBoosters")
+data class SelectBoosters(val boosters: List<String>, val final: Boolean = true) : ClientMessage
+
 // ---------------------------------------------------------------------------------------------------------------
 // Servidor -> cliente
 // ---------------------------------------------------------------------------------------------------------------
@@ -152,6 +197,14 @@ data class SeatInfo(
     val connected: Boolean = true,
     /** Humano que desistiu; o assento agora e de um robo ([kind] = ROBO). */
     val resigned: Boolean = false,
+    /** Humano: id do convidado, para o app buscar a foto (§18.2) e mostrar no assento. */
+    val guestId: String? = null,
+    /**
+     * §17.3/§18.3: este assento humano ainda nao confirmou o seletor de boosters do jogo (nunca `true` para robo, nem
+     * depois de confirmado uma vez: a escolha vale o jogo todo). Serve para a mesa mostrar "Aguardando <nome> escolher
+     * os boosters" quando chega a vez de quem ainda nao escolheu (§17.3, como no multijogador local).
+     */
+    val choosingBoosters: Boolean = false,
 )
 
 /** Relogio da vez (§18.4): so existe com tempo de jogada definido, durante a vez de um humano. [leftMs] e o que resta no envio. */
@@ -243,7 +296,7 @@ data class OnlineSeatView(
 data class SeatUpdate(val event: PublicEvent? = null, val view: OnlineSeatView) : ServerMessage
 
 @Serializable
-enum class SeatChange { CONNECTED, DISCONNECTED, RESIGNED }
+enum class SeatChange { CONNECTED, DISCONNECTED, RESIGNED, BOOSTERS_CHOSEN }
 
 /** Presenca/assentos mudaram. [seat] e o assento a que [change] se refere; [reason] so em RESIGNED (desistiu ou tempo). */
 @Serializable
@@ -266,12 +319,18 @@ enum class RejectReason {
 
     /** A jogada nao esta em `legalActions` do assento. */
     ILLEGAL,
+
+    /** §17.3/§18.3: o assento ainda nao confirmou (ou teve confirmado por tempo esgotado) o seletor de boosters. */
+    BOOSTERS_PENDING,
 }
 
-/** Jogada recusada com o motivo; nada muda no jogo. [refusals] = recusas acumuladas deste jogador. */
+/**
+ * Jogada recusada com o motivo; nada muda no jogo. [refusals] = recusas acumuladas deste jogador. [ruleError] = nome do
+ * erro do motor (`ActionError`/`MeldError`) quando a jogada é ilegal, para o app mostrar o texto em pt-BR de sempre.
+ */
 @Serializable
 @SerialName("rejected")
-data class Rejected(val seq: Long, val reason: RejectReason, val message: String, val refusals: Int) : ServerMessage
+data class Rejected(val seq: Long, val reason: RejectReason, val message: String, val refusals: Int, val ruleError: String? = null) : ServerMessage
 
 /** A conexao foi substituida por outra do mesmo jogador (§18.4); esta sera fechada. */
 @Serializable
@@ -292,3 +351,45 @@ data class TableClosed(val message: String) : ServerMessage
 @Serializable
 @SerialName("error")
 data class GameError(val code: ErrorCode, val message: String) : ServerMessage
+
+/**
+ * §17.3/§18.3: pede ao assento humano a escolha dos boosters do jogo, ANTES de ver a propria mao (nunca enviada a um
+ * robo, nem a um assento ja confirmado). O catalogo (nomes, resumos, tipo) e a quantidade de cada booster no
+ * inventario online ja sao conhecidos do aplicativo (catalogo compartilhado por `:core-engine`; quantidade por
+ * `/economy/{guestId}`, §18.5) — aqui so o que so o servidor sabe: [skillAllowed] = a mesa permite boosters de skill
+ * (§17.9); b3 (Reacoes) nunca e aceito online nesta fase, seja ou nao enviado (§17.4 fase 2). [deadlineMs] e quanto
+ * falta do prazo de 30 s a partir de AGORA: conte a partir do recebimento, como em [TurnClock] (relogios de aparelho
+ * e servidor nao sao comparaveis). Sem confirmar a tempo, o SERVIDOR decide (§17.3): segue com o que foi enviado por
+ * ultimo, ou sem boosters se nada chegou.
+ */
+@Serializable
+@SerialName("boosterPrompt")
+data class BoosterPrompt(val skillAllowed: Boolean, val deadlineMs: Long) : ServerMessage
+
+/**
+ * §17.3/§18.3: os boosters confirmados deste assento no jogo (ja debitados do inventario online, §18.5); valem o jogo
+ * todo e nunca mudam depois. Chega apos um [SelectBoosters] aceito e, de novo, a cada reconexao de um assento ja
+ * confirmado (para repor o estado do aparelho sem reconsultar a economia).
+ *
+ * §17.3/§17.4: vem seguida de **uma ou mais** [SeatUpdate], NUNCA antes desta mensagem ("sem ver a distribuicao das
+ * cartas"): a fila de vistas que ficaram esperando enquanto o assento ainda escolhia os boosters (uma por jogada
+ * que aconteceu nesse meio-tempo, podendo ser so uma — a de quando o [BoosterPrompt] apareceu, se nada mais mudou),
+ * em ordem, seguida de uma vista fresca do estado atual (a unica com o relogio da vez, §18.4, reiniciado). A vista
+ * mais antiga da fila pode ter a MESMA `version` da mais recente, se nada mudou nesse meio-tempo; nunca uma `version`
+ * menor que a anterior. Passe a lista inteira pelo `SnapshotPacer` de sempre, na ordem recebida.
+ *
+ * **Invariante (com a economia ligada):** o assento NUNCA recebe um [SeatUpdate] antes desta mensagem — nem ao
+ * conectar, nem ao reconectar, nem se o jogo acabar (§18.4) enquanto ele ainda escolhia (nesse caso [boosters] vem
+ * vazio: ninguem fica esperando o prazo de 30 s depois que o jogo ja terminou, e nada e debitado por isso).
+ */
+@Serializable
+@SerialName("boostersConfirmed")
+data class BoostersConfirmed(val boosters: List<String>) : ServerMessage
+
+/**
+ * §17.3/§18.3: a confirmacao dos boosters falhou agora (rede ou economia fora do ar); NAO fecha a conexao e a selecao
+ * enviada nao se perde — o cliente pode mandar [SelectBoosters] de novo (telas.md 3.19 Online: "Tentar de novo").
+ */
+@Serializable
+@SerialName("boosterConfirmFailed")
+data class BoosterConfirmFailed(val message: String) : ServerMessage

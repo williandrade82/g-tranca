@@ -52,6 +52,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import com.gtranca.R
 import androidx.annotation.StringRes
 import com.gtranca.game.SeatRole
@@ -88,10 +93,31 @@ fun RoundSummaryScreen(
     val rules = LocalTableRules.current
     // Tour da tabela (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
     com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.SUMMARY, com.gtranca.ui.tour.Tours.summarySteps(rules.noWilds), autoStart = true) { startTour ->
-    GBackground(Modifier.fillMaxSize().testTag("round-summary"), royal = true) {
+    // docs/telas.md 3.10: modal semitransparente sobre a mesa final; topo e rodapé fixos, detalhes com rolagem no meio.
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .pointerInput(Unit) { detectTapGestures { } } // a mesa atrás não recebe toques
+            .safeDrawingPadding()
+            .padding(horizontal = Spacing.md, vertical = Spacing.sm)
+            .testTag("round-summary"),
+        contentAlignment = Alignment.Center,
+    ) {
+        val maxModal = maxHeight * MODAL_MAX_FRACTION
+        // Texto da tabela um pouco menor que o padrão: o modal é mais estreito que a tela cheia de antes.
+        // Cor clara pelo LocalContentColor (não pelo estilo): o botão dourado continua com a cor escura dele.
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides GColors.Ivory) {
+        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().padding(Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = maxModal)
+                .clip(RoundedCornerShape(24.dp))
+                .background(GColors.Indigo.copy(alpha = 0.93f))
+                .border(1.5.dp, GColors.Gold.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
+                .padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 GTitle(stringResource(R.string.round_over_title, record.number), Modifier.weight(1f))
@@ -99,18 +125,18 @@ fun RoundSummaryScreen(
             }
             if (end != null) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    RoundEndBanner(end, view.mode, compact = false, artHeight = 84.dp)
+                    RoundEndBanner(end, view.mode, compact = false, artHeight = 64.dp)
                 }
             }
 
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = Spacing.sm)) {
-            GPanel(Modifier.fillMaxWidth()) {
+            // Cabeçalho da tabela (fixo).
+            Column(Modifier.fillMaxWidth()) {
             // Cabeçalho com o avatar de cada lado (§14.1) e o nome: no individual o da persona; em duplas, "Nós" e "Eles".
             // Cada lado ocupa duas colunas (quantidade e pontos); o título leva o avatar, o ícone de 3 cartas (cor do baralho
             // do jogador no seu lado, cinza-claro no adversário) e o nome do lado.
             val ownDeck = com.gtranca.ui.cards.LocalDeckColor.current
             Row(Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom).tourTarget("score-col-item"), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.score_item), Modifier.weight(LABEL_WEIGHT).align(Alignment.Bottom).tourTarget("score-col-item"), fontWeight = FontWeight.Bold, color = GColors.Ivory)
                 Box(Modifier.weight(VALUE_WEIGHT))
                 sides.forEach { side ->
                     Column(Modifier.weight(COUNT_WEIGHT + POINTS_WEIGHT).tourTarget("score-side-${if (side == view.side) "own" else "other"}"), horizontalAlignment = Alignment.End) {
@@ -128,8 +154,18 @@ fun RoundSummaryScreen(
             }
             ColumnHeaders(sides.size, tour = true)
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
+            }
             // Tudo vem de ScoreBreakdown: a soma das linhas exibidas é o "Total da partida" de cada lado.
             val lines = scores.map { ScoreBreakdown.lines(it) }
+            // Detalhes (rolagem): nunca menores que a altura mínima, para não sumirem em telas pequenas.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .heightIn(min = DETAILS_MIN_HEIGHT)
+                    .verticalScroll(rememberScrollState())
+                    .testTag("round-summary-details"),
+            ) {
             // §12.1 pontos especiais e §12.2 morto não pego.
             ScoreItem.entries.filter { it.section == ScoreSection.SPECIAL }.forEach { item ->
                 val noCanasta = stringResource(R.string.score_red_threes_no_canasta)
@@ -149,6 +185,9 @@ fun RoundSummaryScreen(
             // §12.1 cartas na mesa e §12.2 cartas na mão: seções destacadas, com subtotal.
             ScoreSectionBox(ScoreSection.TABLE, scores, lines)
             ScoreSectionBox(ScoreSection.HAND, scores, lines)
+            }
+            // Totais e botão (fixos embaixo).
+            Column(Modifier.fillMaxWidth()) {
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
             ScoreRow(stringResource(R.string.score_round_total), scores.map { ScoreCell(null, signed(it.total)) }, bold = true, pill = true, tourKey = "score-round-total")
             ScoreRow(
@@ -159,7 +198,6 @@ fun RoundSummaryScreen(
                 pill = true,
                 tourKey = "cumulative",
             )
-            }
             }
 
             val tie = snapshot.stage == Stage.ROUND_OVER && snapshot.totals.any { it >= snapshot.config.targetScore }
@@ -174,6 +212,8 @@ fun RoundSummaryScreen(
                     Text(stringResource(R.string.next_round))
                 }
             }
+        }
+        }
         }
     }
     }
@@ -200,7 +240,13 @@ private data class ScoreCell(val count: String?, val points: String, val note: S
 private fun ScoreBreakdown.Line.cell(item: ScoreItem, side: Int, note: String? = null): ScoreCell =
     ScoreCell(count?.toString(), if (count == 0) "0" else signed(points), note, "count-${item.name}-$side")
 
-private const val LABEL_WEIGHT = 1.1f
+/** O modal ocupa no máximo esta fração da altura da tela (docs/telas.md 3.10). */
+private const val MODAL_MAX_FRACTION = 0.92f
+
+/** Altura mínima da janela dos detalhes, para não sumir em telas pequenas. */
+private val DETAILS_MIN_HEIGHT = 200.dp
+
+private const val LABEL_WEIGHT = 1.25f
 private const val VALUE_WEIGHT = 0.5f
 private const val COUNT_WEIGHT = 0.42f
 private const val POINTS_WEIGHT = 0.78f
@@ -236,6 +282,7 @@ private fun ScoreSectionBox(section: ScoreSection, scores: List<SideScore>, line
             stringResource(if (section == ScoreSection.TABLE) R.string.score_table_header else R.string.score_hand_header),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
+            color = GColors.Gold,
             modifier = Modifier.semantics { heading() }.tourTarget(tag),
         )
         // Os títulos das colunas de novo, no topo da seção.
@@ -329,6 +376,8 @@ private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = fal
     val numbers = LocalTextStyle.current.copy(fontFeatureSettings = TabularNums, fontWeight = weight, textAlign = TextAlign.End)
     Row(
         Modifier.fillMaxWidth()
+            .heightIn(min = 34.dp)
+            .padding(vertical = 2.dp)
             .then(if (tag != null) Modifier.testTag(tag) else Modifier)
             .then(if (tourKey != null) Modifier.tourTarget(tourKey) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
@@ -336,7 +385,14 @@ private fun ScoreRow(label: String, values: List<ScoreCell>, bold: Boolean = fal
         if (examples != null) {
             Box(Modifier.weight(LABEL_WEIGHT)) { CardExamples(examples, label) }
         } else {
-            Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = if (pill) GColors.Gold else Color.Unspecified)
+            // Totais: o rótulo cabe numa linha (encolhe a fonte se precisar) para não encostar nas cápsulas.
+            if (pill) {
+                Box(Modifier.weight(LABEL_WEIGHT)) {
+                    com.gtranca.ui.theme.FitText(label, LocalTextStyle.current.copy(fontWeight = weight, color = GColors.Gold), minFontSp = 10)
+                }
+            } else {
+                Text(label, Modifier.weight(LABEL_WEIGHT), fontWeight = weight, color = GColors.Ivory)
+            }
         }
         // §12 valor de cada carta/item (vazio nos subtotais e totais).
         Box(Modifier.weight(VALUE_WEIGHT), contentAlignment = Alignment.CenterEnd) {

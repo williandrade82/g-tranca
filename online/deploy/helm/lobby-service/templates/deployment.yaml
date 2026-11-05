@@ -15,14 +15,36 @@ spec:
       labels:
         app.kubernetes.io/name: lobby-service
         app.kubernetes.io/instance: {{ .Release.Name }}
+        app: lobby-service   # rotulo usado pela NetworkPolicy do Postgres
     spec:
+      automountServiceAccountToken: false   # nao fala com a API do Kubernetes
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: wait-for-postgres   # apos reinicio do Docker Desktop o Postgres (e o DNS) voltam depois
+          image: {{ .Values.waitForPostgres.image | quote }}
+          imagePullPolicy: IfNotPresent
+          # -U/-d explicitos: com uid sem entrada no passwd o pg_isready nem tenta ("no attempt")
+          command: ["sh", "-c", "until pg_isready -q -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U wait -d postgres -t 2; do sleep 2; done"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
       containers:
         - name: lobby-service
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           ports:
             - name: http
               containerPort: {{ .Values.containerPort }}
@@ -31,18 +53,42 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            - name: POSTGRES_DB
+              valueFrom: { secretKeyRef: { name: {{ .Values.database.secret }}, key: POSTGRES_DB } }
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.database.secret }}, key: POSTGRES_USER } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.database.secret }}, key: POSTGRES_PASSWORD } }
+            - name: DB_URL   # $(POSTGRES_DB) expandido pelo Kubernetes (definido acima)
+              value: "jdbc:postgresql://{{ .Values.database.host }}:{{ .Values.database.port }}/$(POSTGRES_DB)"
             - name: INTERNAL_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.internalSecret.name }}
                   key: {{ .Values.internalSecret.key }}
+            - name: APP_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appKey.name }}
+                  key: {{ .Values.appKey.key }}
+                  optional: true
+          startupProbe:          # JVM + retentativa do banco + Flyway: ate 5 min antes das outras probes valerem
+            httpGet: { path: /health, port: http }
+            periodSeconds: 3
+            failureThreshold: 100
           livenessProbe:
             httpGet: { path: /health, port: http }
-            initialDelaySeconds: 15
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           readinessProbe:
             httpGet: { path: /health, port: http }
-            initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }   # raiz somente leitura; a JVM usa /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }

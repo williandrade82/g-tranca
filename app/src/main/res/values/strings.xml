@@ -757,6 +757,9 @@
     <string name="boosters_slot_empty">Nicho %1$d vazio, toque para escolher um booster</string>
     <string name="boosters_slot_filled">%1$s, quantidade %2$d, toque para tirar</string>
     <string name="boosters_pick_title">Escolha um booster</string>
+    <!-- Boosters: Seletor online (docs/telas.md 3.19 "Online", §18.3) -->
+    <string name="boosters_reactions_online_blocked">Reações ainda não funcionam nas mesas online</string>
+    <string name="turn_awaiting_boosters">Aguardando %1$s escolher os boosters</string>
     <!-- Boosters: Reações (b3, docs/telas.md 3.8) -->
     <string name="reaction_applause">Aplausos</string>
     <string name="reaction_love">Amei</string>
@@ -800,4 +803,149 @@
     <string name="shop_buy">Comprar</string>
     <string name="shop_bought">Compra feita: %1$s, %2$s.</string>
     <string name="shop_failed">Não foi possível concluir a compra. Tente de novo.</string>
+
+    <!-- Jogar online (§18, docs/telas.md 3.21 a 3.24) -->
+    <string name="home_online">Jogar online</string>
+    <string name="online_title">Jogar online</string>
+    <string name="online_no_server">Informe o servidor online no Perfil para jogar pela internet.</string>
+    <string name="online_go_profile">Abrir o Perfil</string>
+    <string name="online_playing_as">Jogando como %1$s</string>
+    <string name="online_google_soon">Entrar com o Google (em breve)</string>
+    <!-- 3.21: abre a Conta online (3.22, §18.1) enquanto a conta ainda é convidado -->
+    <string name="online_login_button">Entrar / Criar conta</string>
+    <string name="online_create">Criar mesa</string>
+    <string name="online_join">Entrar numa mesa</string>
+    <string name="online_retry">Tentar de novo</string>
+    <!-- 3.21 saldo online, ganho diário (§14.6) e Loja online (3.20a, §18.5/§17.10) -->
+    <string name="online_shop_button">Loja online</string>
+    <string name="online_migrate_button">Trazer minha carteira</string>
+    <string name="online_migrate_title">Trazer carteira local</string>
+    <string name="online_migrate_text">Isto soma o saldo e os boosters deste aparelho à sua carteira online. Só pode ser feito uma vez; o jogo offline continua igual.</string>
+    <string name="online_migrate_coins">Moedas: %1$d</string>
+    <string name="online_migrate_item">%1$s: %2$d</string>
+    <string name="online_migrate_confirm">Trazer</string>
+    <!-- 3.20a Loja online: §18.5 -->
+    <string name="online_problem_wallet_not_yours">Esta carteira não é sua.</string>
+    <string name="online_problem_shop_invalid">Não foi possível completar esta compra. Tente de novo.</string>
+    <!-- 3.21 lista de mesas do servidor (§18.2) -->
+    <plurals name="online_players_count">
+        <item quantity="one">%1$d jogador online</item>
+        <item quantity="many">%1$d jogadores online</item>
+        <item quantity="other">%1$d jogadores online</item>
+    </plurals>
+    <string name="online_tables_title">Mesas</string>
+    <string name="online_tables_opening">Abrindo uma mesa…</string>
+    <string name="online_table_open">Aberta</string>
+    <string name="online_table_playing">Em jogo</string>
+    <string name="online_table_mine">Você está aqui</string>
+    <string name="online_seat_free">livre</string>
+    <string name="online_dupla_seat">Dupla %1$d – %2$d</string>
+    <string name="online_table_enter">Entrar</string>
+    <string name="online_table_back_to_room">Voltar à sala</string>
+    <string name="online_table_back_to_game">Voltar ao jogo</string>
+    <string name="online_table_choose_title">Mesa %1$s</string>
+    <string name="online_game_ended_title">Fim da mesa</string>
+    <string name="online_waiting_host">Aguardando início pelo anfitrião</string>
+    <string name="online_table_id_small">id %1$s</string>
+    <string name="online_seat_tap_hint">Toque num lugar VAGO para sentar.</string>
+    <string name="online_problem_seat_taken">Esse lugar acabou de ser ocupado. Escolha outro.</string>
+    <string name="online_remove_title">Remover %1$s da mesa?</string>
+    <string name="online_list_problem">A lista não atualizou. Tentando de novo…</string>
+    <string name="online_pass_host">Entregar a mesa</string>
+    <string name="online_pass_title">Entregar a mesa a quem?</string>
+    <string name="online_pass_text">Quem receber passa a ser o anfitrião: inicia o jogo e pode entregar a mesa de novo.</string>
+    <string name="online_time_15">15 minutos</string>
+    <string name="online_bet_value">Aposta: %1$d moedas (registrada; as moedas online chegam na próxima fase)</string>
+    <string name="online_problem_app_not_recognized">Aplicativo não reconhecido. Atualize o Tranca-Bot.</string>
+    <string name="online_default_name">Jogador</string>
+    <string name="online_ended_closed">A mesa foi encerrada.</string>
+    <string name="online_ended_not_found">A mesa não existe mais.</string>
+    <string name="online_ended_removed">Você foi removido da mesa.</string>
+    <string name="online_ended_left">Você saiu da mesa.</string>
+
+    <string name="online_problem_network">Não foi possível falar com o servidor. Confira o endereço no Perfil e a sua conexão.</string>
+    <string name="online_problem_update_app">Atualize o aplicativo.</string>
+    <string name="online_problem_maintenance">Servidor em manutenção. Tente de novo mais tarde.</string>
+    <string name="online_problem_unauthenticated">Seu acesso expirou. Tente de novo.</string>
+    <string name="online_problem_table_not_found">Mesa não encontrada. Confira o id.</string>
+    <string name="online_problem_table_full">A mesa está cheia.</string>
+    <string name="online_problem_already_started">O jogo desta mesa já começou.</string>
+    <string name="online_problem_not_host">Só o anfitrião pode fazer isso.</string>
+    <string name="online_problem_empty_seats">Preencha todos os lugares (com jogadores ou robôs) para iniciar.</string>
+    <string name="online_problem_invalid_seat">Esse lugar não pode ser alterado.</string>
+    <string name="online_problem_invalid_request">O servidor não aceitou esta mesa. Revise as opções.</string>
+    <string name="online_problem_rate_limit">Servidor ocupado. Tente de novo em instantes.</string>
+    <string name="online_problem_game_unavailable">Não foi possível iniciar a partida agora. A mesa continua aberta; tente de novo.</string>
+    <string name="online_problem_insufficient_balance">Saldo menor que a aposta da mesa.</string>
+    <string name="online_problem_invalid_id">O id tem 6 letras e números (sem 0, O, 1, I e L).</string>
+    <string name="online_problem_invalid_target">Informe uma pontuação-alvo inteira e positiva.</string>
+    <string name="online_problem_email_already_registered">Esse e-mail já tem uma conta.</string>
+    <string name="online_problem_login_locked">Muitas tentativas erradas. Tente de novo em alguns minutos.</string>
+    <string name="online_problem_unexpected">Algo deu errado. Tente de novo.</string>
+
+    <!-- 3.22 Conta online: entrar ou criar conta por e-mail e senha (§18.1) -->
+    <string name="online_account_title">Conta online</string>
+    <string name="online_account_offline_hint">O jogo offline continua sem conta. A conta é só para o jogo online (§18).</string>
+    <string name="online_account_email">E-mail</string>
+    <string name="online_account_password">Senha</string>
+    <string name="online_account_password_hint">Mínimo de %1$d caracteres.</string>
+    <string name="online_account_login_button">Entrar</string>
+    <string name="online_account_signup_button">Criar conta</string>
+    <string name="online_account_forgot_password">Esqueceu a senha? Fale com o suporte.</string>
+    <string name="online_account_problem_invalid_credentials">E-mail ou senha incorretos.</string>
+    <string name="online_account_problem_email_registered">Esse e-mail já tem uma conta. Toque em Entrar.</string>
+    <string name="online_account_problem_wallet_pending">Sua conta foi criada, mas a carteira não abriu agora. Toque em Entrar para concluir.</string>
+    <string name="online_account_problem_invalid_request">Confira o e-mail e a senha (mínimo de 6 caracteres).</string>
+
+    <string name="online_create_title">Criar mesa online</string>
+    <string name="online_bet_none">Aposta: nenhuma (por enquanto)</string>
+    <string name="online_time_limit">Tempo de jogada</string>
+    <string name="online_time_indefinite">Indeterminado</string>
+    <string name="online_time_1">1 minuto</string>
+    <string name="online_time_5">5 minutos</string>
+    <string name="online_penalty">Punição de abandono</string>
+    <string name="online_penalty_none">Sem punição</string>
+    <string name="online_penalty_bet">Perde a aposta</string>
+    <string name="online_robot_level">Nível dos robôs</string>
+
+    <string name="online_room_title">Mesa online</string>
+    <string name="online_table_id_label">Id da mesa</string>
+    <string name="online_qr_desc">QR Code do convite da mesa %1$s</string>
+    <string name="online_copy">Copiar id</string>
+    <string name="online_copied">Id copiado</string>
+    <string name="online_share">Compartilhar link</string>
+    <string name="online_share_text">Venha jogar Tranca-Bot comigo! Mesa %1$s: %2$s</string>
+    <string name="online_seats_title">Lugares</string>
+    <string name="online_seat_empty">Lugar vago</string>
+    <string name="online_seat_robot">Robô</string>
+    <string name="online_seat_host">anfitrião</string>
+    <string name="online_seat_you">você</string>
+    <string name="online_seat_add_robot">Colocar robô</string>
+    <string name="online_seat_remove">Remover</string>
+    <string name="online_start">Iniciar jogo</string>
+    <string name="online_close">Encerrar mesa</string>
+    <string name="online_close_title">Encerrar a mesa?</string>
+    <string name="online_close_text">Todos que estão na mesa saem. Com o jogo em andamento, isso conta como abandono seu.</string>
+    <string name="online_leave">Sair da mesa</string>
+    <string name="online_started">Jogo iniciado</string>
+    <string name="online_started_hint">A mesa de jogo online chega na próxima etapa.</string>
+    <string name="online_connection_lost">Sem conexão com o servidor. Tentando de novo…</string>
+    <string name="online_summary_mode">%1$s · alvo %2$d</string>
+    <string name="online_summary_time">Tempo de jogada: %1$s</string>
+    <string name="online_summary_penalty">Punição de abandono: %1$s</string>
+    <string name="online_summary_robots">Nível dos robôs: %1$s</string>
+    <string name="online_summary_skill_on">Boosters de skill: permitidos</string>
+    <string name="online_summary_skill_off">Boosters de skill: não permitidos</string>
+
+    <string name="online_join_title">Entrar numa mesa</string>
+    <string name="online_join_id_label">Id da mesa (6 caracteres)</string>
+    <string name="online_join_go">Entrar</string>
+    <string name="online_join_seat">Ocupar este lugar</string>
+    <string name="online_invite_title">Convite</string>
+    <string name="online_invite_host">Anfitrião: %1$s</string>
+    <string name="online_invite_accept">Ao ocupar o lugar você aceita as regras e os critérios desta mesa.</string>
+
+    <string name="profile_online_server">Servidor online</string>
+    <string name="profile_online_server_hint">Temporário, só neste aparelho. Endereço (IP ou nome) do servidor do jogo online, com porta se houver (ex.: 192.168.0.10:8080). Vazio desliga o online.</string>
+    <string name="profile_online_server_invalid">Endereço inválido. Use IP ou nome, com :porta se houver.</string>
 </resources>

@@ -53,6 +53,11 @@ class MatchCloseHttpTest {
             if (attempts.get() <= failTimes) throw LobbyNotifyException("lobby fora do ar")
             calls += tableId to reason
         }
+
+        val presences = CopyOnWriteArrayList<com.gtranca.online.contracts.PresenceNotice>()
+        override suspend fun presence(tableId: String, notice: com.gtranca.online.contracts.PresenceNotice) {
+            presences += notice
+        }
     }
 
     private fun request(mode: TableMode = TableMode.DUPLAS, seats: List<com.gtranca.online.contracts.SeatSpec> = duplasSeats()) =
@@ -140,6 +145,23 @@ class MatchCloseHttpTest {
     fun `18_4 encerrar uma partida desconhecida no registro devolve nulo`() = runBlocking {
         val registry = MatchRegistry(FAST)
         registry.closeMatch("ABC234", "ga") shouldBe null
+        registry.close()
+    }
+
+    @Test
+    fun `18_2 o lobby recebe quem esta conectado e quem abandonou`() = runBlocking {
+        val notifier = RecordingNotifier()
+        val registry = MatchRegistry(FAST, notifier = notifier, notifyRetryDelaysMs = listOf(1, 1, 1))
+        registry.create(request(TableMode.DUPLAS, duplasSeats()))
+        val session = registry.find("ABC234")!!
+        val a = TestPlayer(session, "ga")
+        val b = TestPlayer(session, "gb")
+        a.attach()
+        b.attach()
+        withTimeout(5_000) { while (notifier.presences.lastOrNull()?.connected != listOf("ga", "gb")) delay(10) }
+        a.resign() // robo assume o lugar de Ana
+        withTimeout(5_000) { while (notifier.presences.lastOrNull()?.abandoned != listOf("ga")) delay(10) }
+        notifier.presences.last().connected shouldBe listOf("gb")
         registry.close()
     }
 }

@@ -26,6 +26,10 @@ android {
         versionCode = build
         versionName = "0.$build"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // §18.2: chave do aplicativo para o jogo online, lida de local.properties (fora do git). Vazia = sem assinatura.
+        val onlineAppKey = rootProject.file("local.properties").takeIf { it.exists() }
+            ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("online.appKey") }.orEmpty()
+        buildConfigField("String", "ONLINE_APP_KEY", "\"${onlineAppKey.replace("\"", "")}\"")
     }
 
     // Assinatura de release: lida de keystore.properties (fora do git). Sem o arquivo, o release sai assinado com a
@@ -73,6 +77,9 @@ dependencies {
     implementation(project(":ai"))
     implementation(project(":data"))
     implementation(project(":net"))
+    // Jogo online (docs/plano-online.md): cliente do lobby/partida e QR Code do convite (só gera; o app não lê QR).
+    implementation(project(":online-client"))
+    implementation(libs.zxing.core)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

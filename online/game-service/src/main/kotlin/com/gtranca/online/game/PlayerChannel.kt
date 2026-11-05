@@ -1,6 +1,7 @@
 package com.gtranca.online.game
 
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.ClientMessage
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.GameError
@@ -17,6 +18,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.application.install
+import io.ktor.server.request.path
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
@@ -139,6 +141,16 @@ fun Application.playerChannelModule(deps: GameDeps) {
                 }
                 val token = call.request.headers[HttpHeaders.Authorization]
                     ?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")?.trim()?.takeIf { it.isNotEmpty() }
+                // §18.2: so o aplicativo oficial abre o canal da partida.
+                val appKey = cfg.appKey
+                if (appKey != null && !AppSignature.verify(
+                        appKey, "GET", call.request.path(), call.request.headers[AppSignature.TIME_HEADER],
+                        call.request.headers[AppSignature.SIGNATURE_HEADER], token, System.currentTimeMillis(),
+                    )
+                ) {
+                    call.refuse(HttpStatusCode.Unauthorized, ErrorCode.APP_NAO_RECONHECIDO, "Aplicativo não reconhecido. Atualize o Tranca-Bot.")
+                    return@onCall
+                }
                 if (token == null) {
                     call.refuse(HttpStatusCode.Unauthorized, ErrorCode.NAO_AUTENTICADO, "Entre novamente.")
                     return@onCall

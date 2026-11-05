@@ -61,8 +61,16 @@ interface TableDriver {
     /** §17.8 envia uma reação na partida [round]. */
     fun sendReaction(round: Int, reaction: com.gtranca.engine.Reaction) {}
 
+    /**
+     * §17.3/§18.3 assentos (índice) que ainda não confirmaram o próprio seletor de boosters do jogo; vazio quando nenhum
+     * humano espera (jogo contra robôs, ou todos já confirmaram). Serve para a mesa mostrar "Aguardando <nome> escolher
+     * os boosters" quando a vez chega a um desses assentos antes dele confirmar (telas.md 3.19 "Online"/"Multijogador").
+     */
+    val choosingBoosters: StateFlow<Set<Int>> get() = NO_SEAT_CHOOSING
+
     companion object {
         private val NO_BOOSTER_ROUND: StateFlow<Int?> = kotlinx.coroutines.flow.MutableStateFlow(null)
+        private val NO_SEAT_CHOOSING: StateFlow<Set<Int>> = kotlinx.coroutines.flow.MutableStateFlow(emptySet())
     }
 }
 

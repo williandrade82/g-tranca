@@ -1,6 +1,6 @@
 # Ficha de arte: Alternativo (`ALTERNATIVO`)
 
-Parte do plano [plano-bots-personas.md](../plano-bots-personas.md); regras e níveis em `definition.md` §14.5.
+Parte do plano [plano-bots-personas.md](../archive/plano-bots-personas.md); regras e níveis em `definition.md` §14.5.
 Convenções de arquivo, formato e checklist: [README.md](README.md).
 
 ## Descrição visual (vale para os 3 níveis)

@@ -230,6 +230,22 @@ fun ProfileScreen(
                     }
                 }
             }
+            // §18.1 servidor do jogo online (campo temporário, só neste aparelho).
+            GPanel(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = state.onlineServer,
+                    onValueChange = viewModel::onOnlineServer,
+                    label = { Text(stringResource(R.string.profile_online_server)) },
+                    isError = !state.onlineServerValid,
+                    supportingText = {
+                        Text(stringResource(if (state.onlineServerValid) R.string.profile_online_server_hint else R.string.profile_online_server_invalid))
+                    },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth().testTag("profile-online-server"),
+                )
+            }
             // §14.4 regras personalizadas do jogador (padrão de "Personalizada" ao criar mesa).
             GButton(onRules, Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("profile-rules"), kind = GButtonKind.Secondary) {
                 Text(stringResource(R.string.profile_my_rules), style = MaterialTheme.typography.titleMedium)
@@ -240,7 +256,7 @@ fun ProfileScreen(
                     viewModel.onSave(unnamed)
                     onDone()
                 },
-                enabled = state.loaded,
+                enabled = state.loaded && state.onlineServerValid,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("profile-save"),
             ) { Text(stringResource(R.string.profile_save), style = MaterialTheme.typography.titleMedium) }
             GButton(onDone, Modifier.fillMaxWidth().testTag("profile-cancel"), kind = GButtonKind.Text) {

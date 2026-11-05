@@ -1,0 +1,6 @@
+apiVersion: v2
+name: economy-service
+description: Economia do Tranca-Bot online (saldo, ganho diario, compras) no Postgres
+type: application
+version: 0.1.0
+appVersion: "dev"

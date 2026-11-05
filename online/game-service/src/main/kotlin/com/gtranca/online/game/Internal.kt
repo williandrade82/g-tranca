@@ -47,7 +47,7 @@ private fun Route.matchRoutes(deps: GameDeps) {
             return@post call.respond(HttpStatusCode.BadRequest, ApiError(ErrorCode.REQUISICAO_INVALIDA, "Pedido inválido."))
         }
         try {
-            val (session, created) = deps.registry.create(req)
+            val (session, created) = deps.registry.createWithBets(req)
             call.respond(
                 if (created) HttpStatusCode.Created else HttpStatusCode.OK,
                 CreateMatchResponse(session.tableId),

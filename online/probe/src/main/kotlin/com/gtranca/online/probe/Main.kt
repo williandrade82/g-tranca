@@ -4,7 +4,14 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.Card
+import com.gtranca.online.contracts.AppSignature
+import com.gtranca.online.contracts.BoosterConfirmFailed
+import com.gtranca.online.contracts.BoosterPrompt
+import com.gtranca.online.contracts.BoostersConfirmed
 import com.gtranca.online.contracts.BotLevel
+import com.gtranca.online.contracts.SeatKind
+import com.gtranca.online.contracts.TableListView
+import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.ClientMessage
 import com.gtranca.online.contracts.CreateGuestRequest
 import com.gtranca.online.contracts.CreateTableRequest
@@ -18,6 +25,7 @@ import com.gtranca.online.contracts.PlayAction
 import com.gtranca.online.contracts.Rejected
 import com.gtranca.online.contracts.SeatUpdate
 import com.gtranca.online.contracts.SeatsChanged
+import com.gtranca.online.contracts.SelectBoosters
 import com.gtranca.online.contracts.ServerMessage
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
@@ -56,27 +64,26 @@ fun main(args: Array<String>) = runBlocking {
     val target = args.getOrNull(1)?.toInt() ?: 200
     val dropAfter = args.getOrNull(2)?.toInt() ?: 8
     val http = HttpClient(CIO) { install(WebSockets) }
-
-    // Etapa 1.3c: cenarios de relogio, desistencia no 1x1 e mesa encerrada (4o argumento).
-    when (val scenario = args.getOrNull(3)) {
-        null, "jogo" -> Unit
-        else -> {
-            val sc = Scenarios(server, http, this)
-            when (scenario) {
-                "tempo" -> sc.tempo()
-                "desistir" -> sc.desistir()
-                "encerrar" -> sc.encerrar()
-                else -> error("cenario desconhecido: $scenario (jogo|tempo|desistir|encerrar)")
-            }
-            http.close()
-            return@runBlocking
+    // §18.2: a chave do aplicativo vem do ambiente (a mesma do Secret do cluster); sem ela os pedidos vao sem assinatura.
+    val appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() }
+    fun io.ktor.client.request.HttpRequestBuilder.app(method: String, path: String, token: String?, version: String = ONLINE_PROTOCOL_VERSION.toString()) {
+        header(PROTOCOL_HEADER, version)
+        if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+        if (appKey != null) {
+            val now = System.currentTimeMillis()
+            header(AppSignature.TIME_HEADER, now.toString())
+            header(AppSignature.SIGNATURE_HEADER, AppSignature.sign(appKey, method, path, now, token))
         }
     }
 
+    // Etapa 1.3c: cenarios de relogio, desistencia no 1x1 e mesa encerrada (4o argumento).
+    // Os cenarios de relogio (tempo|desistir|encerrar, Scenarios.kt) criavam mesas proprias: nao rodam com as mesas do
+    // servidor (§18.2). Ficam no codigo para a futura mesa criada pelo jogador.
+    args.getOrNull(3)?.let { require(it == "jogo") { "nesta fase so o cenario 'jogo' roda (mesas do servidor, §18.2)" } }
+
     suspend fun lobby(path: String, token: String?, body: String): String {
         val r = http.post("http://$server/api/lobby/$path") {
-            header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
-            if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+            app("POST", "/api/lobby/$path", token)
             contentType(ContentType.Application.Json)
             setBody(body)
         }
@@ -94,25 +101,28 @@ fun main(args: Array<String>) = runBlocking {
     )
     println("convidados: Ana=${ana.id.take(8)} Beto=${beto.id.take(8)}")
 
-    val rules = TableRules(TableMode.DUPLAS, "{}", targetScore = target, robotLevel = BotLevel.FACIL)
-    val table = OnlineJson.decodeFromString(
-        TableView.serializer(),
-        lobby("tables", ana.token, OnlineJson.encodeToString(CreateTableRequest.serializer(), CreateTableRequest(rules))),
+    // §18.2: as mesas sao do servidor; Ana entra na primeira aberta com 2 lugares livres e vira anfitria.
+    val unsigned = http.get("http://$server/api/lobby/tables") {
+        header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
+        header(HttpHeaders.Authorization, "Bearer ${ana.token}")
+    }
+    println("lista sem assinatura do app -> ${unsigned.status.value}")
+    val list = OnlineJson.decodeFromString(
+        TableListView.serializer(),
+        http.get("http://$server/api/lobby/tables") { app("GET", "/api/lobby/tables", ana.token) }.bodyAsText(),
     )
-    println("mesa ${table.id} criada (duplas, alvo $target)")
+    println("lista: ${list.tables.size} mesa(s), ${list.onlinePlayers} jogador(es) online")
+    val open = list.tables.first { it.state == TableState.ABERTA && it.seats.count { s -> s.kind == SeatKind.VAGO } >= 2 }
+    val table = OnlineJson.decodeFromString(TableView.serializer(), lobby("tables/${open.id}/join", ana.token, "{}"))
+    println("mesa ${table.id}: anfitriao=${table.hostName} (alvo ${table.rules.targetScore}, ${table.rules.tempoDeJogada})")
     lobby("tables/${table.id}/join", beto.token, "{}")
-    lobby("tables/${table.id}/seats/2/robot", ana.token, "")
-    lobby("tables/${table.id}/seats/3/robot", ana.token, "")
     val started = OnlineJson.decodeFromString(TableView.serializer(), lobby("tables/${table.id}/start", ana.token, ""))
     println("mesa iniciada: estado=${started.state}")
 
     // Recusas do handshake (antes do upgrade) e a rota interna fechada no ingress.
-    val bad = http.get("http://$server/ws/match/${table.id}") {
-        header(PROTOCOL_HEADER, "0")
-        header(HttpHeaders.Authorization, "Bearer ${ana.token}")
-    }
+    val bad = http.get("http://$server/ws/match/${table.id}") { app("GET", "/ws/match/${table.id}", ana.token, version = "0") }
     println("handshake com versao 0 -> ${bad.status.value} ${bad.bodyAsText()}")
-    val noAuth = http.get("http://$server/ws/match/${table.id}") { header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString()) }
+    val noAuth = http.get("http://$server/ws/match/${table.id}") { app("GET", "/ws/match/${table.id}", null) }
     println("handshake sem token -> ${noAuth.status.value} ${noAuth.bodyAsText()}")
     println("GET /internal/sim pelo ingress -> ${http.get("http://$server/internal/sim").status.value}")
 
@@ -157,10 +167,7 @@ fun main(args: Array<String>) = runBlocking {
     /** Joga ate o fim do jogo; se [dropAt] > 0, derruba a conexao depois dessa quantidade de acoes e devolve false. */
     suspend fun session(b: Brain, dropAt: Int, injectIllegal: Boolean): Boolean {
         var done = false
-        http.webSocket("ws://$server/ws/match/${table.id}", request = {
-            header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
-            header(HttpHeaders.Authorization, "Bearer ${b.token}")
-        }) {
+        http.webSocket("ws://$server/ws/match/${table.id}", request = { app("GET", "/ws/match/${table.id}", b.token) }) {
             for (frame in incoming) {
                 if (frame !is Frame.Text) continue
                 when (val m = OnlineJson.decodeFromString(ServerMessage.serializer(), frame.readText())) {
@@ -197,6 +204,10 @@ fun main(args: Array<String>) = runBlocking {
                     }
                     is SeatsChanged -> println("[${b.name}] mesa: assento ${m.seat} ${m.change}")
                     is GameError -> println("[${b.name}] ERRO ${m.code}: ${m.message}")
+                    // §17.3/§18.3: o probe nao testa a escolha em si, so confirma sem boosters para a partida seguir.
+                    is BoosterPrompt -> { println("[${b.name}] seletor de boosters: confirmando sem boosters"); sendMsg(SelectBoosters(emptyList())) }
+                    is BoostersConfirmed -> println("[${b.name}] boosters confirmados: ${m.boosters}")
+                    is BoosterConfirmFailed -> println("[${b.name}] falha ao confirmar boosters: ${m.message}")
                     else -> println("[${b.name}] ${m::class.simpleName}")
                 }
             }
@@ -221,10 +232,7 @@ fun main(args: Array<String>) = runBlocking {
     val results = jobs.awaitAll()
     println("RESULTADO: terminou=$results acoesAna=${a.actions} acoesBeto=${b.actions} recusas=${a.rejections}/${b.rejections} partidas=${a.rounds}")
     delay(2_000)
-    val after = http.get("http://$server/api/lobby/tables/${table.id}") {
-        header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
-        header(HttpHeaders.Authorization, "Bearer ${ana.token}")
-    }
+    val after = http.get("http://$server/api/lobby/tables/${table.id}") { app("GET", "/api/lobby/tables/${table.id}", ana.token) }
     println("lobby depois do fim do jogo: estado=${OnlineJson.decodeFromString(TableView.serializer(), after.bodyAsText()).state}")
     http.close()
 }

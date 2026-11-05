@@ -1,0 +1,71 @@
+package com.gtranca.online.client
+
+import com.gtranca.online.contracts.AccountLogin
+import com.gtranca.online.contracts.GuestIdentity
+import com.gtranca.online.contracts.TableRules
+import com.gtranca.online.contracts.TableListView
+import com.gtranca.online.contracts.TableView
+
+/**
+ * Operações do lobby (mesas, §18.2). Todas lançam [OnlineException]. Existe como interface para as telas e os
+ * ViewModels serem testados com um servidor falso em memória.
+ */
+interface LobbyApi {
+    /** Identidade provisória de convidado (a fase 2 troca por login Google). O token só aparece nesta resposta. */
+    suspend fun createGuest(name: String): GuestIdentity
+
+    /**
+     * §18.1 / plano 2.6: entra com o Google. [idToken] vem do Credential Manager; [guestToken] é o do convidado deste
+     * aparelho (a carteira dele passa para a conta se ela ainda não tem, §18.5). O token devolvido substitui o do convidado.
+     */
+    suspend fun loginGoogle(idToken: String, guestToken: String?): AccountLogin =
+        throw UnsupportedOperationException("loginGoogle")
+
+    /**
+     * §18.1 (mudanca de 02/11/2026): cria a conta com e-mail e senha. [name] e opcional (o nome do Perfil do
+     * aparelho, se houver); [guestToken] como em [loginGoogle], a carteira do convidado deste aparelho passa para a
+     * conta nova (§18.5).
+     */
+    suspend fun registerEmail(email: String, password: String, name: String?, guestToken: String?): AccountLogin =
+        throw UnsupportedOperationException("registerEmail")
+
+    /** §18.1: entra com e-mail e senha ja cadastrados. [guestToken] como em [registerEmail]. */
+    suspend fun loginEmail(email: String, password: String, guestToken: String?): AccountLogin =
+        throw UnsupportedOperationException("loginEmail")
+
+    suspend fun createTable(token: String, rules: TableRules): TableView
+
+    /** §18.2: todas as mesas do servidor e os jogadores online. */
+    suspend fun tables(token: String): TableListView
+
+    /** Trocar para um lugar livre antes do jogo (§18.2). */
+    suspend fun move(token: String, tableId: String, seat: Int): TableView
+
+    /** Envia (ou tira, com `null`) a foto do próprio jogador (§18.2). */
+    suspend fun setPhoto(token: String, photoBase64: String?)
+
+    /** A foto de outro jogador pelo caminho do lugar ([com.gtranca.online.contracts.SeatView.photoUrl]); `null` = sem foto. */
+    suspend fun photo(token: String, photoUrl: String): String?
+
+    /** Entregar a mesa (§18.2). */
+    suspend fun passHost(token: String, tableId: String, seat: Int): TableView
+
+    suspend fun table(token: String, tableId: String): TableView
+
+    /** [seat] `null` = primeiro lugar vago. Idempotente para quem já está na mesa. */
+    suspend fun join(token: String, tableId: String, seat: Int? = null): TableView
+
+    suspend fun leave(token: String, tableId: String): TableView
+
+    /** Anfitrião: lugar vago vira robô. */
+    suspend fun seatRobot(token: String, tableId: String, seat: Int): TableView
+
+    /** Anfitrião: remove um humano (o lugar fica vago). */
+    suspend fun removeHuman(token: String, tableId: String, seat: Int): TableView
+
+    /** Anfitrião: inicia (todos os lugares preenchidos). */
+    suspend fun start(token: String, tableId: String): TableView
+
+    /** Anfitrião: encerra a mesa (com jogo em andamento conta como abandono dele, §18.4). */
+    suspend fun close(token: String, tableId: String): TableView
+}

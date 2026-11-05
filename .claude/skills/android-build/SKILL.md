@@ -8,7 +8,7 @@ description: Compilar, testar e instalar o G-Tranca no Windows (Gradle, JDK 21 c
 ## Pré-requisitos
 - **JDK 21** para rodar o Gradle: `JAVA_HOME` = `C:\Program Files\Java\jdk-21` (**sem** `\bin` no final).
 - **JDK 17** para compilar: os módulos usam `kotlin { jvmToolchain(17) }`; o Gradle detecta o `C:\Program Files\Java\jdk-17` instalado. Não troque o `JAVA_HOME` para o 17.
-- **Android SDK** em `%LOCALAPPDATA%\Android\Sdk`: definir `ANDROID_HOME` e adicionar `%ANDROID_HOME%\platform-tools` e `%ANDROID_HOME%\emulator` ao PATH (para `adb`, `emulator` e o MCP `mobile-mcp`).
+- **Android SDK** em `%LOCALAPPDATA%\Android\Sdk`: definir `ANDROID_HOME` e adicionar `%ANDROID_HOME%\platform-tools` e `%ANDROID_HOME%\emulator` ao PATH (para `adb`, `emulator` e o MCP `mobile-mcp`, quando habilitado — hoje vem desabilitado neste projeto).
 - Plataforma instalada para compilar: `android-37.0`; build-tools `36.0.0`. Emulador recomendado para testes: AVD `Pixel_4_API_33`.
 - SDK: basta o `ANDROID_HOME` (já definido nesta máquina). Opcionalmente, `local.properties` com `sdk.dir=C\:\\Users\\<usuario>\\AppData\\Local\\Android\\Sdk` (não versionar).
 - `python` no PATH aponta para um virtualenv quebrado: use `py -3` em scripts.
@@ -33,7 +33,7 @@ Verificação rápida:
 ## Rodar e ver o app no emulador
 1. `adb devices`; se vazio, inicie o AVD em segundo plano: `Start-Process emulator -ArgumentList '-avd','Pixel_4_API_33','-no-snapshot-save'` e espere `adb wait-for-device` + `adb shell getprop sys.boot_completed` = `1`.
 2. `.\gradlew.bat :app:installDebug` e `adb shell am start -n br.com.funnyandplay.trancabot/com.gtranca.MainActivity`.
-3. Verificação visual com o MCP `mobile-mcp`: `mobile_list_available_devices` → use o id em todas as chamadas; leia a tela com `mobile_list_elements_on_screen` (screenshot só para julgar aparência); agrupe toques com `mobile_batch_commands`.
+3. Verificação visual com o MCP `mobile-mcp`, se habilitado em `.mcp.json` (hoje desabilitado neste projeto; nesse caso use `adb exec-out screencap` para capturar a tela e toques via `adb shell input`): `mobile_list_available_devices` → use o id em todas as chamadas; leia a tela com `mobile_list_elements_on_screen` (screenshot só para julgar aparência); agrupe toques com `mobile_batch_commands`.
 4. Travamento: `adb logcat -d -b crash` ou `mobile_list_crashes`.
 
 ## Diagnóstico

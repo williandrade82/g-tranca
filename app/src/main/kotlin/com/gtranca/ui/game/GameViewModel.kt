@@ -170,6 +170,11 @@ data class GameUiState(
     val lastReaction: ReactionEvent? = null,
     /** §17.3 mesa multijogador: a partida a que o seletor na tela se refere (0 = contra robôs: a da partida atual). */
     val boosterSelectorRound: Int = 0,
+    /**
+     * §17.3/§18.3 a vez é de um assento remoto que ainda não confirmou o próprio seletor de boosters: a mesa mostra
+     * "Aguardando <nome> escolher os boosters" no lugar do texto de vez de sempre (telas.md 3.19 "Online"/"Multijogador").
+     */
+    val boostersAwaitingSeat: Seat? = null,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
     private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
@@ -243,11 +248,11 @@ class GameViewModel(
     private val robots: Map<Int, String> = emptyMap(),
     /** §16.7 o jogo continua de onde estava na tela (virou online no meio): a primeira vista não refaz animação. */
     private val continuing: Boolean = false,
-    /** §17.3 boosters da partida em andamento (já debitados); no jogo retomado vale o do jogo salvo. */
+    /** §17.3 boosters do jogo (escolhidos e debitados no início, valem até o fim); no jogo retomado vale o do jogo salvo. */
     initialBoosters: List<String> = emptyList(),
     /**
-     * §17.3 inventário de boosters: com ele, cada partida depois da primeira começa pelo seletor (a 1ª passa por ele antes de
-     * o jogo ser criado). `null` = sem boosters (testes e mesa multijogador).
+     * §17.3 inventário de boosters: o seletor é só no início do jogo (antes de o jogo ser criado); as partidas seguintes
+     * seguem com os mesmos. `null` = sem boosters (testes e mesa multijogador).
      */
     val boosterInventory: com.gtranca.data.InventoryRepository? = null,
 ) : ViewModel(), TableEvents {
@@ -352,6 +357,8 @@ class GameViewModel(
         val seatReactions: Map<Int, Pair<com.gtranca.engine.Reaction, Long>> = emptyMap(),
         /** Muda quando o anfitrião atualiza os boosters do assento (a tela refaz a conta). */
         val boostersTick: Int = 0,
+        /** §17.3/§18.3 assentos (índice) que ainda não confirmaram o próprio seletor de boosters do jogo. */
+        val choosingBoosters: Set<Int> = emptySet(),
         val ownReaction: com.gtranca.engine.Reaction? = null,
         val ownReactionId: Long = 0,
         val lastReaction: ReactionEvent? = null,
@@ -492,6 +499,8 @@ class GameViewModel(
             }
             externalSeat?.let { flow -> viewModelScope.launch { flow.collect { local.update { it.copy(boostersTick = it.boostersTick + 1) } } } }
             viewModelScope.launch { controller.seatReactions.collect(::showSeatReaction) }
+            // §17.3/§18.3 "Aguardando <nome> escolher os boosters" quando a vez chega a um assento que ainda não confirmou.
+            viewModelScope.launch { controller.choosingBoosters.collect { set -> local.update { it.copy(choosingBoosters = set) } } }
         }
         // Trocas de outros assentos: animação automática, uma de cada vez.
         viewModelScope.launch {
@@ -787,6 +796,7 @@ class GameViewModel(
             seatReactions = state.seatReactions.mapValues { it.value.first },
             lastReaction = state.lastReaction,
             boosterSelectorRound = state.pendingBoosterRound,
+            boostersAwaitingSeat = snapshot.view.currentSeat.takeIf { it.index in state.choosingBoosters && it != snapshot.viewerSeat },
             ownReaction = state.ownReaction,
             ownReactionId = state.ownReactionId,
             opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
@@ -931,14 +941,10 @@ class GameViewModel(
     }
 
     fun onNextRound() {
-        // §17.3 contra robôs, cada partida começa pelo seletor de boosters (antes de ver a distribuição).
-        // §17.3 a partida nova zera os boosters de todos os assentos (todos escolhem de novo).
+        // §17.3 (30/10/2026) os boosters valem o jogo todo: a partida nova não tem seletor; só as reações recomeçam (§17.8).
         table = table.newRound()
-        if (boosterInventory != null && playsLocally && !multiplayer) local.update { it.copy(selectorPending = true, ownReaction = null) }
-        else {
-            local.update { it.copy(ownReaction = null) }
-            controller.continueToNextRound()
-        }
+        local.update { it.copy(ownReaction = null) }
+        controller.continueToNextRound()
     }
 
     private val reactionIds = AtomicLong(0)

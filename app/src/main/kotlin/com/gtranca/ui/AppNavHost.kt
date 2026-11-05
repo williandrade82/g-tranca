@@ -40,6 +40,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.gtranca.ui.online.onlineGraph
 import com.gtranca.ai.Difficulty
 import com.gtranca.data.GameData
 import com.gtranca.game.WriteQueue
@@ -243,7 +244,10 @@ fun AppNavHost() {
     val coinBalance by remember(data) { data.wallet.wallet.map { it.balance as Int? }.catch { emit(null) } }
         .collectAsStateWithLifecycle(null)
     // Na mesa de jogo o saldo vai na linha do cabeçalho (não ganha faixa).
-    val onGame = entry?.destination?.let { it.hasRoute<GameRoute>() || it.hasRoute<MultiplayerGameRoute>() } == true
+    val onGame = entry?.destination?.let { it.hasRoute<GameRoute>() || it.hasRoute<MultiplayerGameRoute>() || it.hasRoute<com.gtranca.ui.online.OnlineGameRoute>() } == true
+    // §18.5: dentro do online (3.21/3.20a, docs/telas.md) o saldo do topo é o ONLINE, mostrado na própria tela — a
+    // faixa global aqui é a carteira LOCAL e mostraria o número errado.
+    val onOnlineWallet = entry?.destination?.let { it.hasRoute<com.gtranca.ui.online.OnlineHomeRoute>() || it.hasRoute<com.gtranca.ui.online.OnlineShopRoute>() } == true
     CompositionLocalProvider(
         com.gtranca.ui.theme.LocalCoinBalance provides coinBalance,
         com.gtranca.ui.tour.LocalTours provides tourSettings,
@@ -261,7 +265,13 @@ fun AppNavHost() {
             },
     ) {
     androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()) {
-    if (!onGame) com.gtranca.ui.theme.CoinBalanceBar(androidx.compose.ui.Modifier.background(com.gtranca.ui.theme.GColors.Midnight).statusBarsPadding())
+    if (!onGame && !onOnlineWallet) {
+        com.gtranca.ui.theme.CoinBalanceBar(androidx.compose.ui.Modifier.background(com.gtranca.ui.theme.GColors.Midnight).statusBarsPadding())
+    } else if (onOnlineWallet) {
+        // Sem a faixa (o saldo aqui é o da carteira ONLINE, mostrado dentro da própria tela): ainda precisa reservar
+        // a área da barra de status, que o NavHost abaixo consome (igual a faixa fazia com statusBarsPadding()).
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxWidth().background(com.gtranca.ui.theme.GColors.Midnight).statusBarsPadding())
+    }
     NavHost(
         navController,
         startDestination = HomeRoute,
@@ -289,9 +299,12 @@ fun AppNavHost() {
                 onStats = { navController.navigateFromHome(StatsRoute) },
                 onInventory = { navController.navigateFromHome(InventoryRoute) },
                 onProfile = { navController.navigateFromHome(ProfileRoute) },
+                onPlayOnline = { navController.navigateFromHome(com.gtranca.ui.online.OnlineHomeRoute) },
             )
             }
         }
+        // Jogo online (§18): rotas novas, aditivas (docs/telas.md 3.21 a 3.24).
+        onlineGraph(navController, data)
         composable<GameRoute> { entry -> GameDestination(entry.toRoute(), data, navController) }
         composable<ProfileRoute> {
             ProfileScreen(

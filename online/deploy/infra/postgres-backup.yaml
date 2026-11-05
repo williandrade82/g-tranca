@@ -1,0 +1,59 @@
+# Backup diario do Postgres (pg_dump -Fc) no PVC postgres-backups, guardando BACKUP_KEEP_DAYS dias.
+# Local: o PVC e /var/lib/gtranca/backups do no; copie para o Windows com o comando do README.
+# Disparo manual: kubectl --context docker-desktop -n gtranca create job --from=cronjob/postgres-backup backup-manual-1
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: gtranca
+spec:
+  schedule: "30 3 * * *"          # 03:30 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: { app: postgres-backup }
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: pg-dump
+              image: postgres:17.11
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - secretRef: { name: postgres-credentials }
+              env:
+                - { name: PGHOST, value: postgres }
+                - { name: BACKUP_KEEP_DAYS, value: "7" }
+              command: ["sh", "-ec"]
+              args:
+                - |
+                  export PGPASSWORD="$POSTGRES_PASSWORD"
+                  f="/backups/$POSTGRES_DB-$(date -u +%Y%m%d-%H%M%S).dump"
+                  pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "$f.part"
+                  mv "$f.part" "$f"
+                  find /backups -name '*.dump' -mtime +"$BACKUP_KEEP_DAYS" -delete
+                  ls -l /backups
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { memory: 256Mi }
+              volumeMounts:
+                - { name: backups, mountPath: /backups }
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: postgres-backups }

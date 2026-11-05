@@ -1,13 +1,18 @@
+# syntax=docker/dockerfile:1
 # Contexto de build: a RAIZ do repositorio (precisa do :core-engine e do :ai, usados so leitura)
 #   docker build -f online/game-service/Dockerfile -t gtranca/game-service:dev .
 # O .dockerignore ao lado (game-service/Dockerfile.dockerignore) limita o contexto ao necessario.
+# Cache mount em /root/.gradle (BuildKit): guarda dependencias e o build cache local do Gradle
+# entre builds (precisa de BuildKit ativo; no Docker Desktop recente e o padrao).
 FROM eclipse-temurin:17-jdk AS build
 WORKDIR /src
 COPY core-engine ./core-engine
 COPY ai ./ai
 COPY online ./online
 WORKDIR /src/online
-RUN sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew --no-daemon :game-service:installDist -x test
+RUN sed -i 's/\r$//' gradlew && chmod +x gradlew
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew --no-daemon :game-service:installDist -x test
 
 FROM eclipse-temurin:17-jre
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \

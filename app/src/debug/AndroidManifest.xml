@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- SÓ no build de teste (debug): permite http/ws para o servidor online informado no Perfil (o host é escolhido em tempo
+         de execução, então a regra vale para qualquer host). O release não tem este arquivo e exige TLS (https/wss). -->
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+
+</manifest>

@@ -8,6 +8,8 @@ data class GameConfig(
     val internalSecret: String? = null,
     /** Endereco interno do lobby-service (nome do Service do cluster). */
     val lobbyUrl: String = "http://lobby-service",
+    /** Endereco interno do economy-service (apostas, §18.2). `null` = sem economia (a aposta so e registrada). */
+    val economyUrl: String? = null,
     /** Pausa antes de cada jogada de robo, para o humano acompanhar. */
     val botDelayMs: Long = 1_200,
     /** Pausa entre o fim de uma partida e a distribuicao da proxima (§16.11: o jogo nao espera telas). */
@@ -16,12 +18,25 @@ data class GameConfig(
     /** Depois do fim do jogo a sessao continua aceitando reconexao (para receber o resultado) por este tempo. */
     val retainAfterEndMs: Long = 10 * 60_000L,
     /**
-     * Sessao com TODOS os humanos desconectados por este tempo e descartada (encerramento por inatividade, §18.4). Jogo com
-     * humano conectado nao e descartado (sem relogio de jogada a mesa espera); com tempo definido o relogio decide.
+     * §18.4 "Todos desconectados": a mesa e destruida quando NENHUM humano esta conectado por este tempo seguido (90 s:
+     * tela bloqueada ou ligacao nao destroem a mesa na hora).
      */
-    val idleTtlMs: Long = 2 * 3_600_000L,
+    val disconnectGraceMs: Long = 90_000L,
+    /** Chave do aplicativo (§18.2) para o handshake. `null` = sem verificacao. */
+    val appKey: String? = null,
+    /**
+     * §18.4: prazo para o PRIMEIRO humano conectar depois que a partida e criada (60 s).
+     * A sessao nasce sem ninguem conectado (o app abre o canal logo apos o /start); a regra de destruicao so vale depois
+     * que algum humano conectou ao menos uma vez ou, sem nenhuma conexao, passado este prazo.
+     */
+    val firstConnectMs: Long = 60_000L,
     /** Abandono dentro deste tempo desde o inicio do jogo devolve a aposta mesmo com `PERDE_APOSTA` (§18.4: 60 s). */
     val abandonGraceMs: Long = 60_000,
+    /**
+     * §17.3/§18.3: prazo do seletor de boosters do inicio do jogo, a partir de quando ele aparece a cada assento
+     * humano (30 s). So vale com a economia configurada (`economyUrl`); sem ela o seletor nem aparece.
+     */
+    val boosterSelectMs: Long = 30_000L,
     val hardConfig: HardBotConfig = HardBotConfig.DEFAULT,
     /** Limite de mensagens do cliente por conexao: reposicao por segundo e rajada maxima. */
     val wsMessagesPerSecond: Int = 10,
@@ -40,11 +55,15 @@ data class GameConfig(
             return GameConfig(
                 internalSecret = env["INTERNAL_SECRET"]?.takeIf { it.isNotBlank() },
                 lobbyUrl = env["LOBBY_URL"]?.takeIf { it.isNotBlank() } ?: d.lobbyUrl,
+                economyUrl = env["ECONOMY_URL"]?.takeIf { it.isNotBlank() },
                 botDelayMs = long("BOT_DELAY_MS", d.botDelayMs),
                 roundPauseMs = long("ROUND_PAUSE_MS", d.roundPauseMs),
                 maxMatches = int("MAX_MATCHES", d.maxMatches),
                 retainAfterEndMs = long("RETAIN_AFTER_END_MS", d.retainAfterEndMs),
-                idleTtlMs = long("IDLE_TTL_MS", d.idleTtlMs),
+                disconnectGraceMs = long("DISCONNECT_GRACE_MS", d.disconnectGraceMs),
+                appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() },
+                firstConnectMs = long("FIRST_CONNECT_MS", d.firstConnectMs),
+                boosterSelectMs = long("BOOSTER_SELECT_MS", d.boosterSelectMs),
                 wsMessagesPerSecond = int("WS_MESSAGES_PER_SECOND", d.wsMessagesPerSecond),
                 wsBurst = int("WS_BURST", d.wsBurst),
                 wsPingMs = long("WS_PING_MS", d.wsPingMs),

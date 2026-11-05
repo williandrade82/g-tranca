@@ -1,6 +1,7 @@
 package com.gtranca.engine
 
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
 
@@ -20,15 +21,6 @@ class TableBoostersTest {
         table.of(1).boosters shouldBe listOf("b1", "b2", "b3")
         table.of(1).confirmedFor(1) shouldBe true
         table.of(0) shouldBe SeatBoosters() // os outros assentos não mudam
-    }
-
-    @Test
-    fun `§17_3 o assento so vale na partida em que confirmou - na seguinte todos escolhem de novo`() {
-        val table = TableBoosters.single(0, listOf("b1", "b3"), round = 2)
-        table.forRound(0, 2).boosters shouldBe listOf("b1", "b3")
-        table.forRound(0, 3) shouldBe SeatBoosters() // partida 3: ainda ninguém confirmou
-        table.of(0).confirmedFor(3) shouldBe false
-        table.useReaction(0, round = 3) shouldBe null
     }
 
     @Test
@@ -67,17 +59,32 @@ class TableBoostersTest {
     }
 
     @Test
-    fun `§17_3 newRound zera os assentos`() {
-        val table = TableBoosters.single(0, listOf("b1")).confirm(2, listOf("b3"), round = 1).newRound()
-        table.of(0).confirmedFor(1) shouldBe false
-        table.of(2).boosters shouldBe emptyList()
-    }
-
-    @Test
     fun `§17_4 vai e volta pelo JSON do jogo salvo ou do anfitriao`() {
         var table = TableBoosters.single(0, listOf("b3", "b2")).confirm(3, listOf("b1"), round = 1)
         table = table.useReaction(0)!!
         val json = Json { encodeDefaults = true }
         json.decodeFromString(TableBoosters.serializer(), json.encodeToString(TableBoosters.serializer(), table)) shouldBe table
+    }
+
+    // §17.3 (30/10/2026) a escolha do início do jogo vale em todas as partidas seguintes, sem novo seletor
+    @Test
+    fun `17_3 a escolha do inicio vale nas partidas seguintes e a partida nova so zera as reacoes`() {
+        val t = TableBoosters().confirm(0, listOf(BoosterCatalog.REACTIONS, "b1"), round = 1).useReaction(0)!!
+        t.of(0).reactionsUsed shouldBe 1
+        val next = t.newRound()
+        next.of(0).boosters shouldBe listOf(BoosterCatalog.REACTIONS, "b1")
+        next.of(0).reactionsUsed shouldBe 0
+        next.of(0).confirmedFor(2) shouldBe true
+        next.forRound(0, 3).boosters shouldBe listOf(BoosterCatalog.REACTIONS, "b1")
+        next.useReaction(0, round = 2) shouldNotBe null
+    }
+
+    // §17.3 quem ainda nao escolheu continua sem boosters ate escolher
+    @Test
+    fun `17_3 assento sem escolha continua vazio e quem escolhe depois vale dali em diante`() {
+        val t = TableBoosters().confirm(1, listOf("b2"), round = 3)
+        t.forRound(0, 3) shouldBe SeatBoosters()
+        t.of(1).confirmedFor(2) shouldBe false
+        t.of(1).confirmedFor(4) shouldBe true
     }
 }
