@@ -8,6 +8,8 @@ import { AccountDetail } from './pages/AccountDetail'
 import { TablesList } from './pages/TablesList'
 import { TableDetail } from './pages/TableDetail'
 import { MigrationsList } from './pages/MigrationsList'
+import { TeamList } from './pages/TeamList'
+import { AuditList } from './pages/AuditList'
 
 export function App() {
   return (
@@ -59,6 +61,22 @@ export function App() {
           element={
             <ProtectedRoute>
               <MigrationsList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/auditoria"
+          element={
+            <ProtectedRoute>
+              <AuditList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/equipe"
+          element={
+            <ProtectedRoute>
+              <TeamList />
             </ProtectedRoute>
           }
         />

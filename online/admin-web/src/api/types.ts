@@ -232,3 +232,66 @@ export interface MigrationsPageResponse {
   limit: number
   offset: number
 }
+
+/** Espelha `com.gtranca.online.admin.TeamMember`: um membro da equipe do console. */
+export interface TeamMember {
+  id: string
+  email: string
+  role: Role
+  createdMs: number
+}
+
+/** GET /admin/team: mesmo formato de paginacao das outras listagens. */
+export interface TeamListResponse {
+  items: TeamMember[]
+  total: number
+  limit: number
+  offset: number
+}
+
+/** POST /admin/team (administrador; sem autocadastro): motivo sempre obrigatorio. */
+export interface CreateMemberRequest {
+  email: string
+  password: string
+  role: Role
+  reason: string
+  operationId?: string
+}
+
+/** PATCH /admin/team/{id} (administrador): ao menos um de `role`/`password` precisa vir preenchido. */
+export interface UpdateMemberRequest {
+  role?: Role
+  password?: string
+  reason: string
+  operationId?: string
+}
+
+/** DELETE /admin/team/{id} (administrador): motivo no corpo, nunca em query string. */
+export interface RemoveMemberRequest {
+  reason: string
+  operationId?: string
+}
+
+/**
+ * GET /admin/audit: tela Auditoria (leitor+) - "quem, quando, o que, por que", mais recente primeiro.
+ * Espelha `com.gtranca.online.admin.AuditEntryResponse`; nunca o `resultado` bruto (pode ser um JSON de
+ * dominio grande, ex. a carteira inteira).
+ */
+export interface AuditEntryResponse {
+  id: number
+  operationId: string | null
+  whenMs: number
+  actorEmail: string
+  action: string
+  targetId: string | null
+  targetEmail: string | null
+  reason: string
+  detail: string | null
+}
+
+export interface AuditPageResponse {
+  items: AuditEntryResponse[]
+  total: number
+  limit: number
+  offset: number
+}
