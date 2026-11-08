@@ -72,4 +72,31 @@ class AuditLog(private val db: DataSource, private val clock: () -> Long = Syste
                 throw e
             }
         }
+
+    /** Uma linha da auditoria para a tela Auditoria (Sec18.7): nunca inclui [resultado] (pode ser um JSON de
+     * dominio grande, ex. carteira inteira - a lista so mostra quem/quando/o que/alvo/por que/detalhe). */
+    data class Entry(
+        val id: Long, val operationId: String?, val whenMs: Long, val actorEmail: String, val action: String,
+        val targetId: String?, val targetEmail: String?, val reason: String, val detail: String?,
+    )
+
+    /** Lista paginada (toda listagem e paginada), mais recente primeiro. @return (total sem paginar, a pagina). */
+    fun list(limit: Int, offset: Int): Pair<Int, List<Entry>> = db.connection.use { c ->
+        val total = c.prepareStatement("SELECT count(*) FROM admin.auditoria").use { it.executeQuery().use { rs -> rs.next(); rs.getInt(1) } }
+        val items = c.prepareStatement(
+            "SELECT id, operacao_id, quando_ms, ator_email, acao, alvo_id, alvo_email, motivo, detalhe FROM admin.auditoria " +
+                "ORDER BY quando_ms DESC, id DESC LIMIT ? OFFSET ?",
+        ).use { st ->
+            st.setInt(1, limit)
+            st.setInt(2, offset)
+            st.executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add(Entry(rs.getLong(1), rs.getString(2), rs.getLong(3), rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9)))
+                    }
+                }
+            }
+        }
+        total to items
+    }
 }

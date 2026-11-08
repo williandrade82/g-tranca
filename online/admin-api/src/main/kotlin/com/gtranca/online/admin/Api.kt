@@ -125,3 +125,24 @@ data class LedgerPageResponse(val items: List<AdminLedgerEntryDto>, val total: I
  */
 @Serializable
 data class MigrationsPageResponse(val items: List<AdminMigrationDto>, val total: Int, val limit: Int, val offset: Int)
+
+/**
+ * GET /admin/audit?limit=&offset= (leitor+): tela Auditoria (docs/telas-admin-web.md) - "quem, quando, o que,
+ * por que", mais recente primeiro. Nunca [AuditLog.Entry.resultado] (pode ser um JSON de dominio grande, ex.
+ * a carteira inteira; a lista so mostra o que o operador le direto).
+ */
+@Serializable
+data class AuditEntryResponse(
+    val id: Long,
+    val operationId: String?,
+    val whenMs: Long,
+    val actorEmail: String,
+    val action: String,
+    val targetId: String?,
+    val targetEmail: String?,
+    val reason: String,
+    val detail: String?,
+)
+
+@Serializable
+data class AuditPageResponse(val items: List<AuditEntryResponse>, val total: Int, val limit: Int, val offset: Int)

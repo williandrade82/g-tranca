@@ -687,5 +687,20 @@ fun Application.adminModule(deps: AdminDeps) {
                 call.respondJson(Health())
             }
         }
+
+        // Sec18.7 tela Auditoria: leitor+, so LEITURA (a gravacao - AuditLog.record - ja existe desde a etapa
+        // de Contas; faltava a listagem). Mais recente primeiro, nunca o `resultado` (ver AuditEntryResponse).
+        get("/admin/audit") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val (total, rows) = withContext(Dispatchers.IO) { deps.auditLog.list(limit, offset) }
+                val items = rows.map {
+                    AuditEntryResponse(it.id, it.operationId, it.whenMs, it.actorEmail, it.action, it.targetId, it.targetEmail, it.reason, it.detail)
+                }
+                call.respondJson(AuditPageResponse(items, total, limit, offset))
+            }
+        }
     }
 }
