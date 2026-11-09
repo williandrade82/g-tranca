@@ -36,7 +36,9 @@ services:
       context: ..
       dockerfile: online/lobby-service/Dockerfile
     ports:
-      - "8081:8080"
+      # So localhost: com TRUST_FORWARDED_FOR=true, a rede entra so pelo edge (8080), senao um
+      # X-Forwarded-For forjado direto nesta porta escaparia do limite por IP.
+      - "127.0.0.1:8081:8080"
     environment:
       PORT: "8080"
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gtranca}
@@ -47,7 +49,7 @@ services:
       APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
       GAME_SERVICE_URL: http://game-service:8080
       ECONOMY_URL: http://economy-service:8080
-      TRUST_FORWARDED_FOR: "false"
+      TRUST_FORWARDED_FOR: "true"
       RATE_LIMIT_PER_MINUTE: "120"
       GUEST_CREATION_PER_MINUTE: "10"
       TABLE_OPEN_TTL_MINUTES: "30"
@@ -63,14 +65,14 @@ services:
       context: ..
       dockerfile: online/game-service/Dockerfile
     ports:
-      - "8082:8080"
+      - "127.0.0.1:8082:8080" # so localhost, mesmo motivo do lobby-service
     environment:
       PORT: "8080"
       INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
       APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
       LOBBY_URL: http://lobby-service:8080
       ECONOMY_URL: http://economy-service:8080
-      TRUST_FORWARDED_FOR: "false"
+      TRUST_FORWARDED_FOR: "true"
       BOT_DELAY_MS: "1200"
       ROUND_PAUSE_MS: "6000"
       MAX_MATCHES: "50"
@@ -145,3 +147,16 @@ services:
         # o admin-web ficaria com o endereco velho e devolveria 502; isto reinicia o admin-web tambem.
         # No cluster (k8s-ops) isso nao e necessario: o IP do Service e estavel.
         restart: true
+
+  # So para dev local: junta lobby/game/economy numa porta so para o app apontar (campo
+  # "Servidor online" do Perfil, so host:porta). No cluster isso e o Ingress de verdade (k8s-ops).
+  edge:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./edge/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      - lobby-service
+      - game-service
+      - economy-service

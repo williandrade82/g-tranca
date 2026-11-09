@@ -21,8 +21,9 @@ numa porta do host (sem Traefik/ingress; sem NetworkPolicy — tudo na mesma red
 | Servico | Porta no host | Endereco interno (entre servicos) |
 |---|---|---|
 | postgres | 5432 | `postgres:5432` |
-| lobby-service | 8081 | `http://lobby-service:8080` |
-| game-service | 8082 | `http://game-service:8080` |
+| edge (proxy) | 8080 | *(porta que o app usa: `<IP do PC>:8080` no campo "Servidor online")* |
+| lobby-service | 8081 (só localhost) | `http://lobby-service:8080` |
+| game-service | 8082 (só localhost) | `http://game-service:8080` |
 | economy-service | 8083 | `http://economy-service:8080` |
 | admin-api | 8084 | `http://admin-api:8080` (admin-web faz proxy pra ca) |
 | admin-web | 8085 | *(nao chamado pelos outros)* |
