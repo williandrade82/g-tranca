@@ -97,4 +97,34 @@ class AdminContractsTest {
         val page = AdminMigrationsPage(total = 1, migrations = listOf(migration))
         Json.decodeFromString<AdminMigrationsPage>(Json.encodeToString(page)) shouldBe page
     }
+
+    @Test
+    fun `17_10 e 18_7 a configuracao da loja (ofertas e ganho diario) vai e volta em JSON`() {
+        val offer = AdminShopOfferConfigDto(
+            index = 0, boosterId = "b1",
+            price = AdminConfigFieldDto(50L, AdminConfigSource.DEFAULT),
+            quantity = AdminConfigFieldDto(10L, AdminConfigSource.OVERRIDE, sinceMs = 100L),
+        )
+        val config = AdminShopConfigDto(offers = listOf(offer), dailyGain = AdminConfigFieldDto(200L, AdminConfigSource.DEFAULT))
+        Json.decodeFromString<AdminShopConfigDto>(Json.encodeToString(config)) shouldBe config
+    }
+
+    @Test
+    fun `18_7 uma linha do historico da loja e a pagina vao e voltam em JSON`() {
+        val entry = AdminShopConfigHistoryEntryDto(
+            field = "oferta-0-preco", value = 70L, previousValue = 50L,
+            reason = "promocao", operationId = "op-1", createdMs = 100L,
+        )
+        val page = AdminShopConfigHistoryPage(total = 1, entries = listOf(entry))
+        Json.decodeFromString<AdminShopConfigHistoryPage>(Json.encodeToString(page)) shouldBe page
+    }
+
+    @Test
+    fun `18_7 pedido de ajustar oferta e de ajustar ganho diario vao e voltam em JSON`() {
+        val offerReq = AdminShopOfferAdjustRequest(price = 70, quantity = null, reason = "promocao", operationId = "op-1")
+        Json.decodeFromString<AdminShopOfferAdjustRequest>(Json.encodeToString(offerReq)) shouldBe offerReq
+
+        val gainReq = AdminShopGainAdjustRequest(amount = 300L, reason = "inflacao", operationId = "op-2")
+        Json.decodeFromString<AdminShopGainAdjustRequest>(Json.encodeToString(gainReq)) shouldBe gainReq
+    }
 }

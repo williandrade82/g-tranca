@@ -175,3 +175,79 @@ data class AdminTablesPage(val total: Int, val tables: List<TableView>)
  */
 @Serializable
 data class AdminCloseTableRequest(val reason: String? = null)
+
+// ------------------------------------------------------------------------------------------ Loja e configuracao (§18.7)
+
+/**
+ * De onde vem o valor ATUAL de um campo configuravel da loja/ganho diario (economy-service, §17.10/§14.6/§18.7):
+ * [DEFAULT] = ninguem mudou ainda, vale a constante do `:core-engine` (`Shop.OFFERS`/`Coins.DAILY_GAIN`, nunca
+ * duplicada aqui); [OVERRIDE] = um administrador mudou (ver `config_loja`, append-only, nunca `UPDATE`).
+ */
+@Serializable
+enum class AdminConfigSource { DEFAULT, OVERRIDE }
+
+/**
+ * Um campo configuravel (preco/quantidade de uma oferta, ou o ganho diario): o valor ATUAL, de onde ele vem
+ * ([AdminConfigSource]) e desde quando (`null` quando [source] e [AdminConfigSource.DEFAULT] — nunca mudou).
+ */
+@Serializable
+data class AdminConfigFieldDto(val value: Long, val source: AdminConfigSource, val sinceMs: Long? = null)
+
+/**
+ * Uma das nove ofertas da loja (§17.10) com o preco e a quantidade ATUAIS (default ou com override, cada um
+ * independente — mudar so o preco nao cria historico de quantidade). [boosterId] e fixo (vem do catalogo,
+ * `:core-engine`, fora do alcance desta etapa); so [price] e [quantity] sao editaveis.
+ */
+@Serializable
+data class AdminShopOfferConfigDto(val index: Int, val boosterId: String, val price: AdminConfigFieldDto, val quantity: AdminConfigFieldDto)
+
+/**
+ * GET /internal/admin/shop-config (economy-service, §17.10/§14.6/§18.7): o preco/quantidade atual de cada oferta
+ * e o valor atual do ganho diario. O presente diario (§17.5) NAO esta nesta etapa: nao existe hoje como rota
+ * online (so a carteira local tem o sorteio) nem tem um unico "valor" no `:core-engine` (e uma chance de 3 em 5
+ * mais uma faixa min/max POR booster, que e parte do catalogo, explicitamente fora do alcance) — ver relatorio da
+ * etapa.
+ */
+@Serializable
+data class AdminShopConfigDto(val offers: List<AdminShopOfferConfigDto>, val dailyGain: AdminConfigFieldDto)
+
+/**
+ * Uma linha do historico de `config_loja` (economy-service, §18.7): [field] identifica o campo mudado
+ * (`oferta-0-preco`, `oferta-0-quantidade`, `ganho-diario`...), nunca o motivo de negocio (esse e [reason], texto
+ * livre do operador, sempre obrigatorio aqui, ao contrario do livro-razao onde so `AJUSTE` o usa).
+ * [previousValue] e `null` so quando a linha e a PRIMEIRA mudanca desse campo (o valor anterior era o default do
+ * `:core-engine`, nunca gravado aqui).
+ */
+@Serializable
+data class AdminShopConfigHistoryEntryDto(
+    val field: String,
+    val value: Long,
+    val previousValue: Long? = null,
+    val reason: String,
+    val operationId: String,
+    val createdMs: Long,
+)
+
+/** GET /internal/admin/shop-config/history?limit=&offset= (economy-service, §18.7): mais recente primeiro. */
+@Serializable
+data class AdminShopConfigHistoryPage(val total: Int, val entries: List<AdminShopConfigHistoryEntryDto>)
+
+/**
+ * POST /internal/admin/shop-config/offer/{index} (economy-service, §17.10/§18.7): muda o preco e/ou a quantidade
+ * da oferta [index]. Pelo menos um dos dois precisa vir preenchido; [reason] e [operationId] sao sempre
+ * obrigatorios (idempotencia, como as demais mutacoes do servico).
+ */
+@Serializable
+data class AdminShopOfferAdjustRequest(
+    val price: Int? = null,
+    val quantity: Int? = null,
+    val reason: String,
+    val operationId: String,
+)
+
+/**
+ * POST /internal/admin/shop-config/daily-gain (economy-service, §14.6/§18.7): novo valor do ganho diario
+ * (`Coins.DAILY_GAIN`). [reason] e [operationId] obrigatorios.
+ */
+@Serializable
+data class AdminShopGainAdjustRequest(val amount: Long, val reason: String, val operationId: String)

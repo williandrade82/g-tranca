@@ -4,10 +4,18 @@ import com.gtranca.online.contracts.ADMIN_API_VERSION
 import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminAdjustRequest
+import com.gtranca.online.contracts.AdminConfigFieldDto
+import com.gtranca.online.contracts.AdminConfigSource
 import com.gtranca.online.contracts.AdminLedgerEntryDto
 import com.gtranca.online.contracts.AdminLedgerPage
 import com.gtranca.online.contracts.AdminMigrationDto
 import com.gtranca.online.contracts.AdminMigrationsPage
+import com.gtranca.online.contracts.AdminShopConfigDto
+import com.gtranca.online.contracts.AdminShopConfigHistoryEntryDto
+import com.gtranca.online.contracts.AdminShopConfigHistoryPage
+import com.gtranca.online.contracts.AdminShopGainAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferConfigDto
 import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.AdoptWalletRequest
 import com.gtranca.online.contracts.AdoptWalletResponse
@@ -126,6 +134,10 @@ private fun EconomyState.toDto() = EconomyStateDto(balance, inventory, lastDaily
 private fun EconomyState.toAdminDto() = AdminWalletDto(balance, inventory, migratedLocal)
 private fun LedgerEntry.toDto() = AdminLedgerEntryDto(reason, coins, boosterId, quantity, reference, detail, key, createdAtMs)
 private fun MigrationEntry.toDto() = AdminMigrationDto(accountId, coins, createdAtMs)
+private fun ConfigField.toDto() = AdminConfigFieldDto(value, if (isOverride) AdminConfigSource.OVERRIDE else AdminConfigSource.DEFAULT, sinceMs)
+private fun OfferConfig.toDto() = AdminShopOfferConfigDto(index, boosterId, price.toDto(), quantity.toDto())
+private fun ShopConfigSnapshot.toDto() = AdminShopConfigDto(offers.map { it.toDto() }, dailyGain.toDto())
+private fun ConfigHistoryEntry.toDto() = AdminShopConfigHistoryEntryDto(field, value, previousValue, reason, operationId, createdAtMs)
 
 private fun EconomyException.status(): Int = when (code) {
     EconomyException.Code.SALDO_INSUFICIENTE, EconomyException.Code.JA_RESGATADO -> 409
@@ -291,6 +303,61 @@ private fun io.ktor.server.routing.Routing.adminEconomyRoutes(deps: EconomyDeps)
         val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
         val (total, migrations) = withContext(Dispatchers.IO) { store.migrations(limit, offset) }
         call.respondJson(AdminMigrationsPage(total, migrations.map { it.toDto() }))
+    }
+
+    // §17.10/§14.6/§18.7 "Loja e configuracao": preco/quantidade de cada oferta e o ganho diario, com historico
+    // (append-only). O presente diario (§17.5) nao esta aqui: nao existe hoje como rota online, ver relatorio.
+    get("/internal/admin/shop-config") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        call.respondJson(withContext(Dispatchers.IO) { store.shopConfig() }.toDto())
+    }
+
+    get("/internal/admin/shop-config/history") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+        val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+        val (total, entries) = withContext(Dispatchers.IO) { store.shopConfigHistory(limit, offset) }
+        call.respondJson(AdminShopConfigHistoryPage(total, entries.map { it.toDto() }))
+    }
+
+    post("/internal/admin/shop-config/offer/{index}") {
+        if (!call.adminAllowed(deps.adminSecret)) return@post
+        try {
+            val index = call.parameters["index"]?.toIntOrNull()
+                ?: throw HttpFail(400, EconomyErrorCode.OFERTA_INEXISTENTE, "Oferta inexistente.")
+            val req = call.receiveLimited<AdminShopOfferAdjustRequest>()
+            if (req.reason.isBlank() || req.reason.length > EconomyLimits.MAX_ADJUST_REASON) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe um motivo (até ${EconomyLimits.MAX_ADJUST_REASON} caracteres).")
+            }
+            if (req.operationId.isBlank() || req.operationId.length > EconomyLimits.MAX_OPERATION_ID) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Pedido inválido.")
+            }
+            val entry = withContext(Dispatchers.IO) { store.adjustOfferConfig(index, req.price, req.quantity, req.reason, req.operationId) }
+            call.respondJson(entry.toDto())
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+
+    post("/internal/admin/shop-config/daily-gain") {
+        if (!call.adminAllowed(deps.adminSecret)) return@post
+        try {
+            val req = call.receiveLimited<AdminShopGainAdjustRequest>()
+            if (req.reason.isBlank() || req.reason.length > EconomyLimits.MAX_ADJUST_REASON) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe um motivo (até ${EconomyLimits.MAX_ADJUST_REASON} caracteres).")
+            }
+            if (req.operationId.isBlank() || req.operationId.length > EconomyLimits.MAX_OPERATION_ID) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Pedido inválido.")
+            }
+            val field = withContext(Dispatchers.IO) { store.adjustDailyGainConfig(req.amount, req.reason, req.operationId) }
+            call.respondJson(field.toDto())
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
     }
 }
 
