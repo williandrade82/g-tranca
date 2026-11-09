@@ -10,6 +10,7 @@ import { TableDetail } from './pages/TableDetail'
 import { MigrationsList } from './pages/MigrationsList'
 import { TeamList } from './pages/TeamList'
 import { AuditList } from './pages/AuditList'
+import { ShopConfig } from './pages/ShopConfig'
 
 export function App() {
   return (
@@ -61,6 +62,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <MigrationsList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/loja"
+          element={
+            <ProtectedRoute>
+              <ShopConfig />
             </ProtectedRoute>
           }
         />

@@ -295,3 +295,60 @@ export interface AuditPageResponse {
   limit: number
   offset: number
 }
+
+/** Espelha `com.gtranca.online.contracts.AdminConfigSource` (tela Loja e configuração, §17.10/§18.7). */
+export type AdminConfigSource = 'DEFAULT' | 'OVERRIDE'
+
+/** Um campo configurável (preço/quantidade de uma oferta, ou o ganho diário): o valor ATUAL, de onde ele vem
+ * e desde quando (`null` quando `source` é `DEFAULT` - nunca mudou). */
+export interface AdminConfigFieldDto {
+  value: number
+  source: AdminConfigSource
+  sinceMs: number | null
+}
+
+/** Uma das nove ofertas da loja (§17.10): `boosterId` é fixo (catálogo do `:core-engine`, fora do alcance desta
+ * tela); só `price`/`quantity` são editáveis. */
+export interface AdminShopOfferConfigDto {
+  index: number
+  boosterId: string
+  price: AdminConfigFieldDto
+  quantity: AdminConfigFieldDto
+}
+
+/** GET /admin/shop-config: preço/quantidade atual de cada oferta e o ganho diário atual. */
+export interface AdminShopConfigDto {
+  offers: AdminShopOfferConfigDto[]
+  dailyGain: AdminConfigFieldDto
+}
+
+/** Uma linha do histórico (append-only, nunca se altera): `previousValue` é `null` só na 1ª mudança do campo. */
+export interface AdminShopConfigHistoryEntryDto {
+  field: string
+  value: number
+  previousValue: number | null
+  reason: string
+  operationId: string
+  createdMs: number
+}
+
+/** GET /admin/shop-config/history?limit=&offset=: mais recente primeiro. */
+export interface AdminShopConfigHistoryPage {
+  total: number
+  entries: AdminShopConfigHistoryEntryDto[]
+}
+
+/** POST /admin/shop-config/offer/{index} (administrador): ao menos um de `price`/`quantity` precisa vir preenchido. */
+export interface AdminShopOfferAdjustRequest {
+  price?: number
+  quantity?: number
+  reason: string
+  operationId: string
+}
+
+/** POST /admin/shop-config/daily-gain (administrador). */
+export interface AdminShopGainAdjustRequest {
+  amount: number
+  reason: string
+  operationId: string
+}

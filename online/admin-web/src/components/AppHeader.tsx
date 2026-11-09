@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useSession } from '../auth/SessionContext'
 
-/** Cabecalho comum das telas autenticadas (Sec18.7): navegacao entre Painel/Contas/Mesas/Migrações/Auditoria
+/** Cabecalho comum das telas autenticadas (Sec18.7): navegacao entre Painel/Contas/Mesas/Migrações/Loja/Auditoria
  * (e Equipe, so para administrador), sessao e Sair. */
 export function AppHeader({ title }: { title: string }) {
   const { session, logout } = useSession()
@@ -26,6 +26,7 @@ export function AppHeader({ title }: { title: string }) {
         <NavLink to="/contas">Contas</NavLink>
         <NavLink to="/mesas">Mesas</NavLink>
         <NavLink to="/migracoes">Migrações</NavLink>
+        <NavLink to="/loja">Loja</NavLink>
         <NavLink to="/auditoria">Auditoria</NavLink>
         {/* Sec18.7: so administrador cadastra/altera/remove a equipe - leitor e operador nem veem o link. */}
         {isAdmin && <NavLink to="/equipe">Equipe</NavLink>}
