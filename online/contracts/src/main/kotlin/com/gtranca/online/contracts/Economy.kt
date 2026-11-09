@@ -30,6 +30,24 @@ data class DailyClaimRequest(val today: Long)
 data class BuyRequest(val offerIndex: Int, val key: String)
 
 /**
+ * Uma oferta da loja (§17.10) com o preco e a quantidade ATUAIS (o default do `:core-engine`, ou o override do
+ * administrador se houver, §18.7) — o MESMO valor que `EconomyStore.buy` cobra/credita de verdade. [boosterId] e
+ * fixo (catalogo); so [price] e [quantity] podem ter override.
+ */
+@Serializable
+data class ShopOfferDto(val index: Int, val boosterId: String, val price: Long, val quantity: Long)
+
+/**
+ * GET /economy/shop-config (§17.10/§14.6): o preco/quantidade atual de cada oferta e o ganho diario atual — a
+ * MESMA fonte de `EconomyStore.buy`/`claimDaily` (nunca `Shop.OFFERS`/`Coins.DAILY_GAIN` isolados do app). Rota
+ * PUBLICA (sem o segredo do console, §18.7): e informacao que qualquer jogador autenticado ja veria ao comprar ou
+ * resgatar, so adiantada; nunca tem historico nem a origem (default/override) — isso e so da tela do operador
+ * (`AdminShopConfigDto`, `online/contracts/Admin.kt`).
+ */
+@Serializable
+data class ShopConfigDto(val offers: List<ShopOfferDto>, val dailyGain: Long)
+
+/**
  * POST /economy/{guestId}/migrate (§18.6): o saldo e o inventario (so boosters com quantidade > 0) da carteira LOCAL
  * do aparelho, para somar a carteira online uma unica vez por conta. O servidor nao confia em nada do aparelho alem
  * do que vem aqui (o save local nao tem autoridade nenhuma): so confere limites defensivos (negativo, absurdo) e

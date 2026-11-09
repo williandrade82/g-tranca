@@ -30,6 +30,8 @@ import com.gtranca.online.contracts.BoosterDebitResponse
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.BuyRequest
 import com.gtranca.online.contracts.DailyClaimRequest
+import com.gtranca.online.contracts.ShopConfigDto
+import com.gtranca.online.contracts.ShopOfferDto
 import com.gtranca.online.contracts.MigrateLocalWalletRequest
 import com.gtranca.online.contracts.EconomyError
 import com.gtranca.online.contracts.EconomyErrorCode
@@ -139,6 +141,15 @@ private fun OfferConfig.toDto() = AdminShopOfferConfigDto(index, boosterId, pric
 private fun ShopConfigSnapshot.toDto() = AdminShopConfigDto(offers.map { it.toDto() }, dailyGain.toDto())
 private fun ConfigHistoryEntry.toDto() = AdminShopConfigHistoryEntryDto(field, value, previousValue, reason, operationId, createdAtMs)
 
+/**
+ * §17.10/§14.6: versao PUBLICA do snapshot (ao contrario de [ShopConfigSnapshot.toDto] em [AdminShopConfigDto],
+ * sem a origem nem desde quando — isso e so da tela do operador).
+ */
+private fun ShopConfigSnapshot.toPublicDto() = ShopConfigDto(
+    offers.map { ShopOfferDto(it.index, it.boosterId, it.price.value, it.quantity.value) },
+    dailyGain.value,
+)
+
 private fun EconomyException.status(): Int = when (code) {
     EconomyException.Code.SALDO_INSUFICIENTE, EconomyException.Code.JA_RESGATADO -> 409
     EconomyException.Code.CONTA_INEXISTENTE -> 404
@@ -198,6 +209,16 @@ fun Application.economyModule(deps: EconomyDeps) {
 
         get("/economy/{guestId}") {
             call.guarded { id -> withContext(Dispatchers.IO) { store.ensureAccount(id) } }
+        }
+        // §17.10/§14.6: rota PUBLICA (sem o segredo do console) com o MESMO valor que buy()/claimDaily() usam de
+        // verdade - a causa raiz do descompasso registrado em docs/seguranca-pendencias.md (2026-11-08): sem isto,
+        // o app so tinha as constantes fixas do :core-engine pra mostrar preco/ganho diario, divergindo de um
+        // override do administrador (§18.7). Sem token de jogador (decisao desta etapa, ver relatorio): e dado
+        // publico do servidor, igual ao catalogo de boosters, que qualquer jogador autenticado ja veria ao
+        // comprar - exigir um Bearer aqui so andaria a mesma verificacao sem ganhar nada em seguranca. Continua
+        // sob a assinatura do app (EconomyAppSignature, instalada para todo "/economy/...").
+        get("/economy/shop-config") {
+            call.respondJson(withContext(Dispatchers.IO) { store.shopConfig() }.toPublicDto())
         }
         post("/economy/{guestId}/daily") {
             call.guarded { id ->
