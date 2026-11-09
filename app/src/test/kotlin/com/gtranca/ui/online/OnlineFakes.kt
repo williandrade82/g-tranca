@@ -19,6 +19,8 @@ import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.GuestIdentity
 import com.gtranca.online.contracts.SeatKind
 import com.gtranca.online.contracts.SeatView
+import com.gtranca.online.contracts.ShopConfigDto
+import com.gtranca.online.contracts.ShopOfferDto
 import com.gtranca.online.contracts.TableListView
 import com.gtranca.online.contracts.TableMode
 import com.gtranca.online.contracts.TableRules
@@ -304,22 +306,31 @@ class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
         enter()
         val a = account(accountId)
         if (a.lastDailyClaim != null && today <= a.lastDailyClaim!!) error(EconomyErrorCode.JA_RESGATADO)
-        a.balance += Coins.DAILY_GAIN
+        // §18.7: como buyOffer, credita o valor de shopConfigValue (o mesmo que /economy/shop-config anuncia),
+        // nunca a constante Coins.DAILY_GAIN isolada — por padrão os dois valem o mesmo.
+        a.balance += shopConfigValue.dailyGain
         a.lastDailyClaim = today
         return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
     }
 
+    /** O índice de cada pedido de compra que chegou a este servidor falso, na ordem (§18.7: confere que o app manda o
+     * índice do SERVIDOR, nunca um achado por igualdade de valor que colidiria com um override do administrador). */
+    val buyOfferIndexAttempts = mutableListOf<Int>()
+
     override suspend fun buyOffer(token: String, accountId: String, offerIndex: Int, key: String): EconomyStateDto {
         // Conta mesmo quando falha (failNext), para o teste de idempotência ver as duas tentativas com a mesma chave.
         buyAttempts += accountId to key
+        buyOfferIndexAttempts += offerIndex
         enter()
         val a = account(accountId)
         if (accountId to key in appliedKeys) return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
-        val offer = Shop.OFFERS.getOrNull(offerIndex) ?: error(EconomyErrorCode.OFERTA_INEXISTENTE, 404)
+        // §18.7: lê o preço/quantidade de shopConfigValue (como o economy-service real lê config_loja dentro da
+        // própria transação de compra) — nunca Shop.OFFERS isolado, senão um override do teste não se refletiria aqui.
+        val offer = shopConfigValue.offers.getOrNull(offerIndex) ?: error(EconomyErrorCode.OFERTA_INEXISTENTE, 404)
         if (a.balance < offer.price) error(EconomyErrorCode.SALDO_INSUFICIENTE)
         appliedKeys += accountId to key
         a.balance -= offer.price
-        a.inventory[offer.boosterId] = (a.inventory[offer.boosterId] ?: 0) + offer.quantity
+        a.inventory[offer.boosterId] = (a.inventory[offer.boosterId] ?: 0) + offer.quantity.toInt()
         return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
     }
 
@@ -342,5 +353,19 @@ class FakeEconomy(private val initialBalance: Long = 1_000) : EconomyApi {
         inventory.filterValues { it > 0 }.forEach { (id, qty) -> a.inventory[id] = (a.inventory[id] ?: 0) + qty }
         a.migratedLocal = true
         return EconomyStateDto(a.balance, a.inventory.toMap(), a.lastDailyClaim, a.migratedLocal)
+    }
+
+    /** §17.10/§14.6: a configuração pública simulada do servidor; o padrão espelha `Shop.OFFERS`/`Coins.DAILY_GAIN`
+     * (como o economy-service sem nenhum override do administrador, §18.7) — os testes trocam para simular um
+     * valor diferente (override) ou [failShopConfig] para simular rede/servidor fora. */
+    var shopConfigValue: ShopConfigDto = ShopConfigDto(
+        Shop.OFFERS.mapIndexed { i, o -> ShopOfferDto(i, o.boosterId, o.price.toLong(), o.quantity.toLong()) },
+        Coins.DAILY_GAIN.toLong(),
+    )
+    var failShopConfig: OnlineException? = null
+
+    override suspend fun shopConfig(): ShopConfigDto {
+        failShopConfig?.let { failShopConfig = null; throw it }
+        return shopConfigValue
     }
 }

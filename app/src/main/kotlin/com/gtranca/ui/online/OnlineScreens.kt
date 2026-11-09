@@ -235,7 +235,7 @@ fun OnlineHomeScreen(
                                 enabled = !state.claimingDaily,
                                 kind = GButtonKind.Secondary,
                             ) {
-                                Text(stringResource(R.string.home_daily_claim, com.gtranca.engine.Coins.DAILY_GAIN), style = MaterialTheme.typography.labelLarge)
+                                Text(stringResource(R.string.home_daily_claim, state.dailyGain), style = MaterialTheme.typography.labelLarge)
                             }
                         }
                     }

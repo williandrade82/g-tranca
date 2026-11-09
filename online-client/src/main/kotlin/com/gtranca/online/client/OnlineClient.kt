@@ -21,6 +21,7 @@ import com.gtranca.online.contracts.PROTOCOL_HEADER
 import com.gtranca.online.contracts.AppSignature
 import com.gtranca.online.contracts.PassHostRequest
 import com.gtranca.online.contracts.GuestPhoto
+import com.gtranca.online.contracts.ShopConfigDto
 import com.gtranca.online.contracts.TableId
 import com.gtranca.online.contracts.TableRules
 import com.gtranca.online.contracts.TableListView
@@ -157,6 +158,10 @@ class OnlineClient(
             EconomyStateDto.serializer(), token, HttpMethod.Post, "economy/${accountIdOf(accountId)}/migrate",
             OnlineJson.encodeToString(MigrateLocalWalletRequest.serializer(), MigrateLocalWalletRequest(coins, inventory)),
         )
+
+    // §17.10/§14.6: rota pública, sem token de jogador (ver EconomyApi.shopConfig).
+    override suspend fun shopConfig(): ShopConfigDto =
+        request(ShopConfigDto.serializer(), null, HttpMethod.Get, "economy/shop-config", null, ::economyFailure)
 
     /** Confere o formato antes de montar o caminho (o mesmo que o economy-service aceita): nunca uma URL. */
     private fun accountIdOf(accountId: String): String {

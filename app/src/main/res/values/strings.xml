@@ -827,6 +827,9 @@
     <!-- 3.20a Loja online: §18.5 -->
     <string name="online_problem_wallet_not_yours">Esta carteira não é sua.</string>
     <string name="online_problem_shop_invalid">Não foi possível completar esta compra. Tente de novo.</string>
+    <!-- §17.10/§18.7: aviso quando a Loja online não conseguiu confirmar o preço/quantidade atual com o servidor
+         (docs/seguranca-pendencias.md, 2026-11-08) — a compra em si nunca cobra o valor desatualizado. -->
+    <string name="online_shop_stale_offers">Preço pode estar desatualizado. A compra sempre confere o valor certo com o servidor.</string>
     <!-- 3.21 lista de mesas do servidor (§18.2) -->
     <plurals name="online_players_count">
         <item quantity="one">%1$d jogador online</item>

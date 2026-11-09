@@ -17,8 +17,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Uma oferta da loja com o booster do catálogo que ela vende (§17.10). */
-data class ShopItem(val offer: ShopOffer, val def: BoosterDef) {
+/**
+ * Uma oferta da loja com o booster do catálogo que ela vende (§17.10). [offerIndex] é o índice que
+ * `EconomyStore.buy`/`Shop.OFFERS.getOrNull(offerIndex)` usam de verdade; a Loja offline não compra pelo índice
+ * (usa [offer] direto), então aqui fica `-1` (nunca lido). A Loja online ([com.gtranca.ui.online.OnlineShopViewModel])
+ * preenche com o índice do servidor (`ShopOfferDto.index`, §18.7): nunca `List.indexOf(offer)`, que colidiria se um
+ * administrador alterasse preço/quantidade a ponto de duas ofertas ficarem iguais.
+ */
+data class ShopItem(val offer: ShopOffer, val def: BoosterDef, val offerIndex: Int = -1) {
     /** Saldo depois da compra; negativo = não cobre. */
     fun balanceAfter(balance: Int): Int = Shop.balanceAfter(balance, offer)
 }

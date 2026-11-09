@@ -1,6 +1,7 @@
 package com.gtranca.online.client
 
 import com.gtranca.online.contracts.EconomyStateDto
+import com.gtranca.online.contracts.ShopConfigDto
 
 /**
  * Operações da economia online (carteira, loja e ganho diário, §18.3/§18.5/§17.10) atrás do mesmo servidor do
@@ -40,4 +41,11 @@ interface EconomyApi {
      * de rede) ou chamar de novo depois de já ter migrado nunca soma de novo: devolve o estado atual sem erro.
      */
     suspend fun migrateLocalWallet(token: String, accountId: String, coins: Long, inventory: Map<String, Int>): EconomyStateDto
+
+    /**
+     * Preço/quantidade atual de cada oferta da loja (§17.10) e o ganho diário atual (§14.6) — a MESMA fonte que
+     * `EconomyStore.buy`/`claimDaily` usam de verdade no servidor (nunca `Shop.OFFERS`/`Coins.DAILY_GAIN`, isolados
+     * do app, ver `docs/seguranca-pendencias.md`, 2026-11-08). Rota pública: sem `accountId`/token de jogador.
+     */
+    suspend fun shopConfig(): ShopConfigDto
 }
