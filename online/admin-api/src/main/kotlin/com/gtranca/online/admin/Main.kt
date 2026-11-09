@@ -1,7 +1,11 @@
 package com.gtranca.online.admin
 
 import com.gtranca.online.contracts.AdminAdjustRequest
+import com.gtranca.online.contracts.AdminConfigFieldDto
 import com.gtranca.online.contracts.AdminRevokeSessionsResponse
+import com.gtranca.online.contracts.AdminShopGainAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferConfigDto
 import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.ErrorCode
@@ -637,6 +641,103 @@ fun Application.adminModule(deps: AdminDeps) {
                     adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
                 }
                 call.respondJson(MigrationsPageResponse(page.migrations, page.total, limit, offset))
+            }
+        }
+
+        // Sec17.10/18.7 "Loja e configuracao": preco/quantidade das 9 ofertas e o ganho diario, versionados com
+        // historico (append-only no economy-service). Leitura: leitor+ (como as demais telas). Escrita: so
+        // ADMINISTRADOR, igual a "Equipe" (nao operador) - mexe com dinheiro de TODOS os jogadores de uma vez, nao
+        // so de uma conta. O catalogo de boosters (quais existem) e o presente diario NAO estao aqui (fora do
+        // alcance combinado: ver docs/telas-admin-web.md e o relatorio desta etapa).
+        get("/admin/shop-config") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val config = try {
+                    withContext(Dispatchers.IO) { economy.shopConfig() }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/shop-config): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                call.respondJson(config)
+            }
+        }
+        get("/admin/shop-config/history") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { economy.shopConfigHistory(limit, offset) }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/shop-config/history): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                call.respondJson(page)
+            }
+        }
+        post("/admin/shop-config/offer/{index}") {
+            call.authenticated(Role.ADMINISTRADOR) { actor ->
+                val index = call.parameters["index"]?.toIntOrNull()
+                    ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Oferta inválida.", 400)
+                val req = call.receiveLimited<AdminShopOfferAdjustRequest>()
+                validateReason(req.reason)
+                if (req.operationId.isBlank() || req.operationId.length > AdminLimits.MAX_OPERATION_ID) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Identificador de operação inválido.", 400)
+                }
+                if (req.price == null && req.quantity == null) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Informe o preço ou a quantidade.", 400)
+                }
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val offer = try {
+                    withContext(Dispatchers.IO) { economy.adjustOffer(index, req) }
+                } catch (e: EconomyAdjustRejected) {
+                    gatewayLog.warn("ajuste de oferta recusado pelo economy-service (oferta {}): {} {}", index, e.code, e.message)
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, e.message ?: "O economy-service recusou o ajuste.", 400)
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (POST /admin/shop-config/offer/{{index}}): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                val detail = buildString {
+                    if (req.price != null) append("preço: ${req.price}")
+                    if (req.quantity != null) {
+                        if (isNotEmpty()) append("; ")
+                        append("quantidade: ${req.quantity}")
+                    }
+                }
+                deps.recordAudit(
+                    req.operationId, Actor(actor.id, actor.email), "AJUSTAR_OFERTA_LOJA", "oferta-$index", req.reason,
+                    resultado = json.encodeToString(AdminShopOfferConfigDto.serializer(), offer), detail = detail,
+                )
+                call.respondJson(offer)
+            }
+        }
+        post("/admin/shop-config/daily-gain") {
+            call.authenticated(Role.ADMINISTRADOR) { actor ->
+                val req = call.receiveLimited<AdminShopGainAdjustRequest>()
+                validateReason(req.reason)
+                if (req.operationId.isBlank() || req.operationId.length > AdminLimits.MAX_OPERATION_ID) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Identificador de operação inválido.", 400)
+                }
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val field = try {
+                    withContext(Dispatchers.IO) { economy.adjustDailyGain(req) }
+                } catch (e: EconomyAdjustRejected) {
+                    gatewayLog.warn("ajuste do ganho diario recusado pelo economy-service: {} {}", e.code, e.message)
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, e.message ?: "O economy-service recusou o ajuste.", 400)
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (POST /admin/shop-config/daily-gain): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                deps.recordAudit(
+                    req.operationId, Actor(actor.id, actor.email), "AJUSTAR_GANHO_DIARIO", "ganho-diario", req.reason,
+                    resultado = json.encodeToString(AdminConfigFieldDto.serializer(), field), detail = "novo valor: ${req.amount}",
+                )
+                call.respondJson(field)
             }
         }
 

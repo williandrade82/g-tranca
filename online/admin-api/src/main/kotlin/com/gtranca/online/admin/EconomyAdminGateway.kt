@@ -4,8 +4,14 @@ import com.gtranca.online.contracts.ADMIN_API_VERSION
 import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
 import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
 import com.gtranca.online.contracts.AdminAdjustRequest
+import com.gtranca.online.contracts.AdminConfigFieldDto
 import com.gtranca.online.contracts.AdminLedgerPage
 import com.gtranca.online.contracts.AdminMigrationsPage
+import com.gtranca.online.contracts.AdminShopConfigDto
+import com.gtranca.online.contracts.AdminShopConfigHistoryPage
+import com.gtranca.online.contracts.AdminShopGainAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferConfigDto
 import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.EconomyError
 import com.gtranca.online.contracts.EconomyErrorCode
@@ -54,6 +60,24 @@ interface EconomyAdminGateway {
 
     /** Migracoes de carteira local JA feitas, de TODAS as contas (Sec18.6/18.7) - lista global, nao por conta. */
     suspend fun migrations(limit: Int, offset: Int): AdminMigrationsPage
+
+    /** Tela "Loja e configuracao" (Sec17.10/18.7): preco/quantidade atual das 9 ofertas e o ganho diario atual. */
+    suspend fun shopConfig(): AdminShopConfigDto
+
+    /** Historico de `config_loja` (TODOS os campos), mais recente primeiro. */
+    suspend fun shopConfigHistory(limit: Int, offset: Int): AdminShopConfigHistoryPage
+
+    /**
+     * Muda o preco e/ou a quantidade da oferta [index] (so ADMINISTRADOR, ver rota).
+     * @throws EconomyAdjustRejected oferta inexistente ou pedido invalido (preco/quantidade <= 0, nenhum dos dois).
+     */
+    suspend fun adjustOffer(index: Int, request: AdminShopOfferAdjustRequest): AdminShopOfferConfigDto
+
+    /**
+     * Muda o ganho diario (so ADMINISTRADOR, ver rota).
+     * @throws EconomyAdjustRejected valor <= 0.
+     */
+    suspend fun adjustDailyGain(request: AdminShopGainAdjustRequest): AdminConfigFieldDto
 }
 
 /** Mesmo esquema de segredo/versao do [HttpLobbyAdminGateway] (segredo e versao PROPRIOS do console). */
@@ -131,5 +155,69 @@ class HttpEconomyAdminGateway(
         val r = get("/internal/admin/migrations?limit=$limit&offset=$offset")
         if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
         return Json.decodeFromString(AdminMigrationsPage.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun shopConfig(): AdminShopConfigDto {
+        val r = get("/internal/admin/shop-config")
+        if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminShopConfigDto.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun shopConfigHistory(limit: Int, offset: Int): AdminShopConfigHistoryPage {
+        val r = get("/internal/admin/shop-config/history?limit=$limit&offset=$offset")
+        if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminShopConfigHistoryPage.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun adjustOffer(index: Int, request: AdminShopOfferAdjustRequest): AdminShopOfferConfigDto {
+        val body = Json.encodeToString(AdminShopOfferAdjustRequest.serializer(), request)
+        val r = try {
+            client.post("${baseUrl.trimEnd('/')}/internal/admin/shop-config/offer/$index") {
+                header(ADMIN_SECRET_HEADER, secret)
+                header(ADMIN_API_VERSION_HEADER, ADMIN_API_VERSION)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw EconomyAdminGatewayException("economy-service inacessível: ${e::class.simpleName}")
+        }
+        if (r.status.value == 400 || r.status.value == 409) {
+            val err = try {
+                Json.decodeFromString(EconomyError.serializer(), r.bodyAsText())
+            } catch (e: Exception) {
+                throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value} com corpo inesperado")
+            }
+            throw EconomyAdjustRejected(err.code, err.message)
+        }
+        if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminShopOfferConfigDto.serializer(), r.bodyAsText())
+    }
+
+    override suspend fun adjustDailyGain(request: AdminShopGainAdjustRequest): AdminConfigFieldDto {
+        val body = Json.encodeToString(AdminShopGainAdjustRequest.serializer(), request)
+        val r = try {
+            client.post("${baseUrl.trimEnd('/')}/internal/admin/shop-config/daily-gain") {
+                header(ADMIN_SECRET_HEADER, secret)
+                header(ADMIN_API_VERSION_HEADER, ADMIN_API_VERSION)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw EconomyAdminGatewayException("economy-service inacessível: ${e::class.simpleName}")
+        }
+        if (r.status.value == 400 || r.status.value == 409) {
+            val err = try {
+                Json.decodeFromString(EconomyError.serializer(), r.bodyAsText())
+            } catch (e: Exception) {
+                throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value} com corpo inesperado")
+            }
+            throw EconomyAdjustRejected(err.code, err.message)
+        }
+        if (r.status.value != 200) throw EconomyAdminGatewayException("economy-service respondeu ${r.status.value}")
+        return Json.decodeFromString(AdminConfigFieldDto.serializer(), r.bodyAsText())
     }
 }
