@@ -689,6 +689,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 | b1 | Green-LED | Skill | Mostra um ponto verde nas cartas que pode baixar | 5 | 1 a 3 |
 | b2 | Yellow-LED | Skill | Mostra um ponto amarelo nas cartas que se encaixam no jogo do adversário | 5 | 1 a 3 |
 | b3 | Reações | Interação | Permite expressar até 3 reações durante a partida | 5 | 2 a 7 |
+| b4 | Placar | Skill | Mostra os pontos da mesa de cada lado e o valor de cada conjunto | 5 | 1 a 3 |
 
 ### **17.2. Escolha no inventário**
 - Na tela do inventário o jogador marca **até 3 boosters distintos** para a próxima partida; **moedas não podem** ser marcadas. A marcação é gravada e **vale também para as próximas partidas** até ser mudada; booster com quantidade **0** não pode ser marcado e, se estava marcado, sai da marcação.
@@ -730,7 +731,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 
 ### **17.9. Boosters de skill na mesa**
 - Ao **iniciar uma nova mesa** (§14.4, tela *Iniciar novo jogo*), o jogador escolhe se a mesa **permite** ou **não permite** os **boosters de skill** (§17.1). O padrão é **permitir** e a escolha é lembrada com as demais opções da mesa. Vale para o jogo **todo** e **não muda** depois que o jogo começa, como as regras (§14.4); o jogo salvo ("Continuar") e o jogo que passa a ser hospedado (§16.7) mantêm a escolha.
-- Com os boosters de skill **não permitidos**: no seletor (§17.3) eles aparecem **esmaecidos**, com um aviso de que a mesa não os permite, e **não podem ser escolhidos** nem são debitados; a marcação do inventário (§17.2) não muda, só não vale nessa mesa. O anfitrião **recusa** a escolha de um booster de skill nessa mesa (como recusa um id fora do catálogo, §17.4). Os **boosters de interação** (b3) continuam permitidos.
+- Com os boosters de skill **não permitidos**: no seletor (§17.3) eles aparecem **esmaecidos**, com um aviso de que a mesa não os permite, e **não podem ser escolhidos** nem são debitados; a marcação do inventário (§17.2) não muda, só não vale nessa mesa. O anfitrião **recusa** a escolha de um booster de skill nessa mesa (como recusa um id fora do catálogo, §17.4). Os **boosters de interação** (b3) continuam permitidos; b1, b2 e b4 são de skill.
 - Quem é **recrutado** (§16.2) é informado no **convite** se os boosters de skill são **permitidos ou não** na mesa, antes de aceitar; aceitar o convite é aceitar essa regra, como as demais (§14.4). A informação aparece também na *Mesa do recrutado* e no convite de partida em andamento (§16.7).
 
 ### **17.10. Loja**
@@ -748,10 +749,23 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 | b3 Reações | 10 | 50 |
 | b3 Reações | 5 | 30 |
 | b3 Reações | 1 | 10 |
+| b4 Placar | 10 | 50 |
+| b4 Placar | 5 | 30 |
+| b4 Placar | 1 | 10 |
 
 - Antes de confirmar, o jogador vê o booster, a quantidade, o **valor total**, as moedas que **tem** e as que **terá depois**. A compra **pode zerar** o saldo, mas **nunca deixá-lo negativo**: com saldo menor que o valor, a compra **não é feita** e nada muda.
 - Confirmada, **debita** o valor da carteira e **soma** a quantidade ao inventário numa só operação (nunca um sem o outro, nem em caso de queda do app no meio); o booster já vale para o **próximo seletor** (§17.3) e o saldo na tela é atualizado.
 - A compra **não tem limite** de estoque (o teto de 10 do presente, §17.5, só vale para o presente). Não conta como aposta nem entra no resultado em moedas das estatísticas (§14.6).
+
+### **17.11. b4 Placar**
+- Com o b4 no jogo, a mesa mostra, **o tempo todo** (não só na vez do jogador):
+  - no **canto superior direito da área de jogos de cada lado** (o próprio e o adversário; em duplas, a mesa da dupla), o **total da mesa** daquele lado;
+  - no **canto superior direito de cada conjunto** baixado, o **valor daquele conjunto**.
+- Os valores seguem a tabela do §12.1, **só com o que está na mesa**:
+  - **valor do conjunto** = bônus de canastra (limpa **+200**, suja **+100**; nada se ainda não é canastra) + o valor de cada carta dele (4 a 10: **+8**; J, Q, K, A e coringa: **+10**). Ex.: canastra limpa 4-5-6-7-8-9-10 = **256**;
+  - **total da mesa** = soma dos valores dos conjuntos do lado + cada 3 vermelho baixado: **+5** mais **+100** se o lado já tem canastra, ou **–100** se ainda não tem (o valor muda na hora em que a 1ª canastra fecha).
+- **Não entram** os pontos que só existem no fim da partida: batida (+100), morto não pego (–100) e cartas na mão (§12.2). Só usa informação **visível** da mesa (§16.4).
+- O número muda quando a jogada **pousa** na mesa (fim da animação), não antes. Não é uma jogada e **não** muda `legalActions`. Sem o b4 na partida, nada disso aparece.
 
 # **18. Jogo online**
 
