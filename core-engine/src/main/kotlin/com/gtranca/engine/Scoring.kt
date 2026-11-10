@@ -2,6 +2,7 @@ package com.gtranca.engine
 
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.HandPenalty
+import com.gtranca.engine.model.Meld
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.RoundResult
@@ -60,6 +61,37 @@ fun tableCardPoints(state: RoundState, side: Side, rules: RuleSet = RuleSet.DEFA
         faceCardsAndAces = line(meldCards.count { it.rank in Rank.JACK..Rank.ACE }, rules.tableFaceCardOrAcePoints),
         wilds = line(meldCards.count { it.isWild }, rules.tableWildPoints),
     )
+}
+
+/**
+ * §17.11 valor do conjunto [meld] na mesa, pela tabela do §12.1: bônus de canastra (limpa ou suja; nada se ainda não é
+ * canastra) mais o valor de cada carta (4 a 10, J/Q/K/A, coringa). Ex.: canastra limpa 4 a 10 = 256.
+ */
+fun meldPoints(meld: Meld, rules: RuleSet = RuleSet.DEFAULT): Int {
+    val bonus = when {
+        meld.isCleanCanasta(rules) -> rules.cleanCanastaPoints
+        meld.isDirtyCanasta(rules) -> rules.dirtyCanastaPoints
+        else -> 0
+    }
+    return bonus + meld.cards.sumOf { card ->
+        when {
+            card.isWild -> rules.tableWildPoints
+            card.rank in Rank.FOUR..Rank.TEN -> rules.tableFourToTenPoints
+            card.rank in Rank.JACK..Rank.ACE -> rules.tableFaceCardOrAcePoints
+            else -> 0
+        }
+    }
+}
+
+/**
+ * §17.11 total da mesa de um lado, só com o que está nela: [melds] ([meldPoints]) e [redThrees] 3 vermelhos baixados
+ * (+5 cada, mais ±100 conforme o lado já tenha canastra). Sem batida, morto não pego nem cartas na mão (§12.2): é a
+ * parte "mesa" da pontuação de [scoreRound].
+ */
+fun tablePoints(melds: List<Meld>, redThrees: Int, rules: RuleSet = RuleSet.DEFAULT): Int {
+    val hasCanasta = melds.any { it.isCleanCanasta(rules) || it.isDirtyCanasta(rules) }
+    val perRedThree = rules.tableRedThreePoints + if (hasCanasta) rules.redThreePoints else rules.redThreeWithoutCanastaPoints
+    return melds.sumOf { meldPoints(it, rules) } + redThrees * perRedThree
 }
 
 /** §12.2 penalidade das cartas na mão, por categoria. */
