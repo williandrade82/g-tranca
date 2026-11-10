@@ -114,7 +114,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.zIndex
 import com.gtranca.engine.model.Meld
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -1401,6 +1400,8 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
                     contentAlignment = Alignment.Center,
                 ) { GMedallion(Modifier.size(34.dp), active = state.isHumanTurn) { PersonaAvatar(it, 28.dp) } }
             }
+            // §17.3 os boosters do jogo, à direita do avatar.
+            BoosterStrip(state)
             Spacer(Modifier.weight(1f))
             // §17.8 b3 Reações: ao lado do avatar.
             if (state.reactionsEnabled) ReactionsButton(state, events::onReaction)
@@ -1776,7 +1777,10 @@ private fun planResult(plan: DiscardPlan, top: Card?, view: PlayerView): List<Ca
     return built?.cards ?: incoming
 }
 
-/** Jogo sobreposto como na mesa, com a carta do descarte ([top]) elevada e com borda dourada. */
+/**
+ * Jogo sobreposto como na mesa (cada carta por baixo da que está à direita, inclusive a destacada), com a carta do
+ * descarte ([top]) elevada e com borda dourada.
+ */
 @Composable
 private fun PlannedMeld(cards: List<Card>, top: Card?) {
     val step = 14.dp
@@ -1787,7 +1791,7 @@ private fun PlannedMeld(cards: List<Card>, top: Card?) {
             val position = Modifier.offset(x = step * i, y = if (highlight) 0.dp else 6.dp)
             PlayingCard(
                 card,
-                if (highlight) position.zIndex(1f).border(2.dp, GColors.Gold, RoundedCornerShape(Corner.xs)).testTag("plan-discard-card") else position,
+                if (highlight) position.border(2.dp, GColors.Gold, RoundedCornerShape(Corner.xs)).testTag("plan-discard-card") else position,
                 size = size,
                 describe = false,
             )

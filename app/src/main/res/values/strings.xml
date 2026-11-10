@@ -258,6 +258,10 @@
     <string name="take_mistake_no_indication">Para pegar o descarte, toque no jogo da mesa e/ou nas cartas da mão que vão com ele e depois na carta do descarte ou em Pegar.</string>
     <string name="take_mistake_tip">Confira o jogo e as cartas que você marcou, ou veja as opções possíveis.</string>
     <string name="take_mistake_options">Ver opções</string>
+    <string name="booster_strip_description">Seus boosters: %1$s. Toque para ver o que fazem.</string>
+    <string name="boosters_info_title">Seus boosters</string>
+    <string name="boosters_info_reactions_left">Reações que sobram: %1$d</string>
+    <string name="boosters_info_whole_game">Valem até o fim do jogo.</string>
     <string name="decline_title">Recusar a compra?</string>
     <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem batida.</string>
     <string name="decline_confirm">Recusar e encerrar</string>
