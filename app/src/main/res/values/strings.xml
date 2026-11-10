@@ -253,7 +253,11 @@
         <item quantity="one">+%1$d ponto na mesa</item>
         <item quantity="other">+%1$d pontos na mesa</item>
     </plurals>
-    <string name="plan_choice_hint">Ou selecione as cartas da mão antes de tocar no lixo.</string>
+    <string name="plan_choice_hint">Da próxima vez, toque no jogo da mesa e/ou nas cartas da mão antes de tocar no descarte.</string>
+    <string name="take_mistake_title">Não dá para pegar assim</string>
+    <string name="take_mistake_no_indication">Para pegar o descarte, toque no jogo da mesa e/ou nas cartas da mão que vão com ele e depois na carta do descarte ou em Pegar.</string>
+    <string name="take_mistake_tip">Confira o jogo e as cartas que você marcou, ou veja as opções possíveis.</string>
+    <string name="take_mistake_options">Ver opções</string>
     <string name="decline_title">Recusar a compra?</string>
     <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem batida.</string>
     <string name="decline_confirm">Recusar e encerrar</string>

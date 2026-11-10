@@ -872,7 +872,8 @@ class GameViewModelTest {
                 if (state.awaitingDraw) {
                     val groups = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
                         .groupBy { HumanTurnResolver.handCardsOf(it).classCounts() }
-                    val multi = groups.values.firstOrNull { it.size > 1 }
+                    // Com cartas da mão indicadas (sem nenhuma, a indicação seria o jogo da mesa).
+                    val multi = groups.filterKeys { it.isNotEmpty() }.values.firstOrNull { it.size > 1 }
                     if (multi != null) {
                         val requestId = state.snapshot.humanRequestId
                         vm.select(state.physical(HumanTurnResolver.handCardsOf(multi.first())))
@@ -1166,7 +1167,7 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§5_1 tocar no lixo sem selecao abre a escolha com todos os planos e nada e aplicado ate escolher`() = runTest(dispatcher) {
+    fun `§5_1 tocar no lixo sem indicacao mostra o engano e Ver opcoes abre todos os planos sem aplicar nada`() = runTest(dispatcher) {
         var checked = false
         seeds@ for (seed in 1L..120L) {
             val vm = newGame(seed, target = 1_000_000)
@@ -1178,14 +1179,27 @@ class GameViewModelTest {
                     vm.onClearSelection()
                     vm.onDiscardPileClick()
                     advanceUntilIdle()
+                    vm.uiState.value.takeMistake.shouldNotBeNull().indicated shouldBe false
+                    vm.uiState.value.planChoice.shouldBeNull()
+                    vm.onTakeMistakeOptions()
+                    advanceUntilIdle()
                     val choice = vm.uiState.value.planChoice.shouldNotBeNull()
+                    vm.uiState.value.takeMistake.shouldBeNull()
                     // Todos os planos, mesmo que haja um só; nada aplicado ainda.
                     choice.toSet() shouldBe plans.toSet()
                     vm.uiState.value.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
                     vm.uiState.value.snapshot.turnEvents[0].none { it.action is Action.TakeDiscardPile } shouldBe true
-                    // O botão "Pegar" (lixo) segue a mesma regra.
+                    // O botão "Pegar" (lixo) segue a mesma regra; "Fechar" só fecha.
                     vm.onDismissPlanChoice()
                     vm.onTakeDiscardPile()
+                    advanceUntilIdle()
+                    vm.onDismissTakeMistake()
+                    advanceUntilIdle()
+                    vm.uiState.value.takeMistake.shouldBeNull()
+                    vm.uiState.value.planChoice.shouldBeNull()
+                    vm.onTakeDiscardPile()
+                    advanceUntilIdle()
+                    vm.onTakeMistakeOptions()
                     advanceUntilIdle()
                     vm.uiState.value.planChoice.shouldNotBeNull().toSet() shouldBe plans.toSet()
                     // Escolher um plano aplica exatamente esse plano.

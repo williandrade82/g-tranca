@@ -113,6 +113,9 @@ import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.zIndex
+import com.gtranca.engine.model.Meld
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -211,6 +214,13 @@ interface TableEvents {
     fun onDismissDecline()
     fun onPlanChosen(action: Action.TakeDiscardPile)
     fun onDismissPlanChoice()
+
+    /** §5.1 antes de comprar: indica (ou desmarca) o jogo do próprio lado que recebe o topo do lixo. */
+    fun onMeldTarget(meldId: MeldId) = Unit
+
+    /** Modal *Não dá para pegar assim*: "Ver opções" abre *Como usar o descarte?*; "Fechar" só fecha. */
+    fun onTakeMistakeOptions() = Unit
+    fun onDismissTakeMistake() = Unit
     fun onMeldChosen(action: Action)
     fun onDismissMeldChoice()
     fun onMessageShown()
@@ -473,8 +483,13 @@ private fun TableScreenContent(
                             title = stringResource(meldsTitleRes(view.mode, own = true)),
                             melds = view.tables[view.side.index].melds,
                             redThrees = state.redThrees[view.side.index],
-                            onMeldClick = if (state.playing) events::onAddToMeld else null,
+                            onMeldClick = when {
+                                state.playing -> events::onAddToMeld
+                                state.awaitingDraw && state.canTakeDiscardPile -> events::onMeldTarget
+                                else -> null
+                            },
                             sideTag = "own",
+                            targetMeld = state.targetMeld,
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -557,6 +572,23 @@ private fun TableScreenContent(
     if (showDiscardPile) DiscardPileDialog(view.discardPile) { showDiscardPile = false }
     refusal?.let { RefusalDialog(it, LocalRefusalSettings.current.set, events::onMessageShown) }
     explainedRefusal?.let { RefusalDialog(it, LocalRefusalSettings.current.set) { explainedRefusal = null } }
+    state.takeMistake?.let { mistake ->
+        GMessage(
+            title = stringResource(R.string.take_mistake_title),
+            text = if (mistake.indicated) stringResource(mistake.reason.messageRes()) + "\n\n" + stringResource(R.string.take_mistake_tip)
+            else stringResource(R.string.take_mistake_no_indication),
+            illustration = MessageIllustration.Question,
+            tone = MessageTone.Warning,
+            confirmText = stringResource(R.string.take_mistake_options),
+            onConfirm = events::onTakeMistakeOptions,
+            dismissText = stringResource(R.string.close),
+            onDismiss = events::onDismissTakeMistake,
+            onDismissRequest = events::onDismissTakeMistake,
+            modifier = Modifier.testTag("take-mistake"),
+            confirmTag = "take-mistake-options",
+            dismissTag = "take-mistake-close",
+        )
+    }
     state.planChoice?.let { options -> PlanChoiceDialog(options, view, events) }
     state.meldChoice?.let { options -> MeldChoiceDialog(options, view, events) }
     if (state.confirmDecline) {
@@ -892,6 +924,7 @@ private fun SideArea(
     redThrees: List<Card>,
     onMeldClick: ((MeldId) -> Unit)?,
     sideTag: String,
+    targetMeld: MeldId? = null,
 ) {
     Column(
         Modifier.fillMaxWidth()
@@ -936,6 +969,7 @@ private fun SideArea(
                         Modifier.anchor(AnimAnchor.Meld(side, meld.id.value)).testTag("meld-$sideTag-${meld.id.value}"),
                         flash = flashes.lastOrNull { it.side == side && it.meldId == meld.id.value },
                         animationMillis = animationMillis,
+                        targeted = meld.id == targetMeld,
                     )
                 }
             }
@@ -951,6 +985,7 @@ private fun MeldView(
     modifier: Modifier,
     flash: CanastaFlash? = null,
     animationMillis: Long = 0,
+    targeted: Boolean = false,
 ) {
     // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em bronze). [animationMillis] já vem
     // escalado; se o destaque for removido no meio, o pulso volta a 0 (nunca fica preso maior/colorido).
@@ -977,6 +1012,7 @@ private fun MeldView(
         else -> stringResource(R.string.canasta_dirty)
     }
     val borderColor = when {
+        targeted -> GColors.Gold // indicado para receber o topo do lixo
         canasta && meld.isClean -> GColors.CanastraClean
         canasta -> GColors.CanastraDirty
         onClick != null -> OnTable.copy(alpha = 0.6f) // tocável para acrescentar
@@ -996,9 +1032,12 @@ private fun MeldView(
             .semantics { canastaPulse = pulse.value }
             .heightIn(min = 48.dp)
             .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(Corner.xs))
-            .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(Corner.xs))
+            .border(BorderStroke(if (targeted) 3.dp else 2.dp, borderColor), RoundedCornerShape(Corner.xs))
             .then(if (onClick != null) Modifier.clickable { onClick(tableMeld.id) } else Modifier)
-            .semantics(mergeDescendants = true) { contentDescription = description }
+            .semantics(mergeDescendants = true) {
+                contentDescription = description
+                selected = targeted
+            }
             .padding(3.dp),
     ) {
         OverlappedCards(meld.cards, step = 14.dp, anchorFor = { AnimAnchor.MeldCard(side, tableMeld.id.value, it) })
@@ -1708,14 +1747,8 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description },
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterHorizontally),
-                                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                            ) {
-                                used.forEach { PlayingCard(it, size = CardSize.SMALL, describe = false) }
-                            }
+                            PlannedMeld(planResult(plan, top, view), top)
                             Text(destination, textAlign = TextAlign.Center)
-                            DestinationMeld(option, view)
                         }
                     }
                 }
@@ -1725,6 +1758,41 @@ private fun PlanChoiceDialog(options: List<Action.TakeDiscardPile>, view: Player
         confirmButton = {},
         dismissButton = { TextButton(events::onDismissPlanChoice) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/**
+ * Cartas do jogo como ficaria na mesa depois de pegar o lixo com [plan]: a ordem vem do próprio conjunto montado
+ * (`Meld.create`/`Meld.add`, só para desenhar; a jogada aplicada é a de `legal`). Sem conseguir montar, topo + mão.
+ */
+private fun planResult(plan: DiscardPlan, top: Card?, view: PlayerView): List<Card> {
+    val incoming = listOfNotNull(top) + when (plan) {
+        is DiscardPlan.NewMeld -> plan.handCards
+        is DiscardPlan.AddToMeld -> plan.handCards
+    }
+    val built = when (plan) {
+        is DiscardPlan.NewMeld -> Meld.create(incoming, view.rules).getOrNull()
+        is DiscardPlan.AddToMeld -> view.tables[view.side.index].meld(plan.meldId)?.add(incoming, view.rules)?.getOrNull()
+    }
+    return built?.cards ?: incoming
+}
+
+/** Jogo sobreposto como na mesa, com a carta do descarte ([top]) elevada e com borda dourada. */
+@Composable
+private fun PlannedMeld(cards: List<Card>, top: Card?) {
+    val step = 14.dp
+    val size = CardSize.SMALL
+    Box(Modifier.width(size.width + step * (cards.size - 1).coerceAtLeast(0)).height(size.height + 6.dp)) {
+        cards.forEachIndexed { i, card ->
+            val highlight = card == top
+            val position = Modifier.offset(x = step * i, y = if (highlight) 0.dp else 6.dp)
+            PlayingCard(
+                card,
+                if (highlight) position.zIndex(1f).border(2.dp, GColors.Gold, RoundedCornerShape(Corner.xs)).testTag("plan-discard-card") else position,
+                size = size,
+                describe = false,
+            )
+        }
+    }
 }
 
 /**

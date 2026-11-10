@@ -46,8 +46,8 @@ class HumanTurnResolverTest {
         phase = phase,
     )
 
-    private fun resolve(state: RoundState, intent: PlayIntent, selection: List<Card>): Resolution =
-        HumanTurnResolver.resolve(intent, selection, RoundEngine.legalActions(state, Seat(0))) { action ->
+    private fun resolve(state: RoundState, intent: PlayIntent, selection: List<Card>, target: MeldId? = null): Resolution =
+        HumanTurnResolver.resolve(intent, selection, RoundEngine.legalActions(state, Seat(0)), target) { action ->
             (RoundEngine.validate(state, Seat(0), action) as? RuleResult.Failure)?.error
         }
 
@@ -138,10 +138,11 @@ class HumanTurnResolverTest {
             nextMeldId = 2,
         )
         val s = state(hand, Phase.AWAITING_DRAW, discardPile = cards("5C", "8H'"), table = table)
-        // Sem seleção: nunca executa sozinho; mostra todos os planos legais, do que usa menos cartas da mão ao que usa
-        // mais (o topo sozinho no grupo de 8 vem primeiro).
+        // Sem indicação: nunca executa sozinho; é engano, com todos os planos legais para "Ver opções", do que usa
+        // menos cartas da mão ao que usa mais (o topo sozinho no grupo de 8 vem primeiro).
         val all = RoundEngine.legalActions(s, Seat(0)).filterIsInstance<Action.TakeDiscardPile>()
-        val choice0 = resolve(s, PlayIntent.TakeDiscardPile, emptyList()).shouldBeInstanceOf<Resolution.ChoosePlan>()
+        val choice0 = resolve(s, PlayIntent.TakeDiscardPile, emptyList()).shouldBeInstanceOf<Resolution.TakeMistake>()
+        choice0.indicated shouldBe false
         choice0.options shouldContainExactlyInAnyOrder all
         choice0.options.first() shouldBe Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1)))
         choice0.options.map { HumanTurnResolver.handCardsOf(it).size } shouldBe choice0.options.map { HumanTurnResolver.handCardsOf(it).size }.sorted()
@@ -155,6 +156,29 @@ class HumanTurnResolverTest {
             DiscardPlan.NewMeld(cards("8H", "2C")),
             DiscardPlan.AddToMeld(MeldId(1), cards("8H", "2C")),
         )
+        // Indicando o grupo de 8 na mesa, as mesmas cartas viram uma jogada só: executa direto.
+        resolve(s, PlayIntent.TakeDiscardPile, cards("8H", "2C"), MeldId(1)) shouldBe
+            Resolution.Play(Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1), cards("8H", "2C"))))
+        // Só o grupo de 8 indicado, sem cartas da mão: o topo sozinho vai a ele.
+        resolve(s, PlayIntent.TakeDiscardPile, emptyList(), MeldId(1)) shouldBe
+            Resolution.Play(Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1))))
+    }
+
+    @Test
+    fun `§5_1 indicacao que nao casa com nenhum plano e engano com o motivo e todas as opcoes`() {
+        val table = SideTable(
+            listOf(TableMeld(MeldId(0), meld("4H", "5H", "6H")), TableMeld(MeldId(1), meld("8C", "8D", "8S"))),
+            nextMeldId = 2,
+        )
+        val s = state(hand, Phase.AWAITING_DRAW, discardPile = cards("5C", "8H'"), table = table)
+        val all = RoundEngine.legalActions(s, Seat(0)).filterIsInstance<Action.TakeDiscardPile>()
+        // O topo 8H' sozinho não entra na sequência 4-5-6H (falta o 7H).
+        val mistake = resolve(s, PlayIntent.TakeDiscardPile, emptyList(), MeldId(0)).shouldBeInstanceOf<Resolution.TakeMistake>()
+        mistake.indicated shouldBe true
+        (mistake.reason != null) shouldBe true
+        mistake.options shouldContainExactlyInAnyOrder all
+        // QS + QC não formam conjunto com o 8H'.
+        resolve(s, PlayIntent.TakeDiscardPile, cards("QS", "QC")).shouldBeInstanceOf<Resolution.TakeMistake>().indicated shouldBe true
     }
 
     @Test
@@ -204,8 +228,8 @@ class HumanTurnResolverTest {
         val sequence = legal.filterIsInstance<Action.TakeDiscardPile>().single {
             it.plan is DiscardPlan.NewMeld && HumanTurnResolver.handCardsOf(it).classCounts() == cards("2C", "9H").classCounts()
         }
-        // Seleção vazia: escolha com os dois planos; nada é aplicado.
-        val choice = resolve(s, PlayIntent.TakeDiscardPile, emptyList()).shouldBeInstanceOf<Resolution.ChoosePlan>()
+        // Sem indicação: engano, e "Ver opções" traz os dois planos; nada é aplicado.
+        val choice = resolve(s, PlayIntent.TakeDiscardPile, emptyList()).shouldBeInstanceOf<Resolution.TakeMistake>()
         choice.options shouldContain addToGroup
         choice.options shouldContain sequence
         // Escolher a sequência aplica a sequência.
@@ -216,14 +240,16 @@ class HumanTurnResolverTest {
     }
 
     @Test
-    fun `§5_1 plano unico no total com selecao vazia ainda pede confirmacao`() {
+    fun `§5_1 plano unico no total sem indicacao ainda e engano (nada automatico)`() {
         // Só o grupo de 8 aceita o topo; nenhuma combinação da mão forma conjunto com ele.
         val hand = cards("QS", "QC", "5D", "AS", "KD", "4S", "7C")
         val table = SideTable(listOf(TableMeld(MeldId(1), meld("8C", "8D", "8S"))), nextMeldId = 2)
         val s = state(hand, Phase.AWAITING_DRAW, discardPile = cards("5C", "8H"), table = table)
         val only = Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1)))
         RoundEngine.legalActions(s, Seat(0)).filterIsInstance<Action.TakeDiscardPile>() shouldBe listOf(only)
-        resolve(s, PlayIntent.TakeDiscardPile, emptyList()) shouldBe Resolution.ChoosePlan(listOf(only))
+        resolve(s, PlayIntent.TakeDiscardPile, emptyList()) shouldBe Resolution.TakeMistake(false, null, listOf(only))
+        // Indicando o grupo, aplica.
+        resolve(s, PlayIntent.TakeDiscardPile, emptyList(), MeldId(1)) shouldBe Resolution.Play(only)
     }
 }
 
