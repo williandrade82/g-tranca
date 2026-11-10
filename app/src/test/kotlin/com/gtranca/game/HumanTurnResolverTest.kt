@@ -240,14 +240,14 @@ class HumanTurnResolverTest {
     }
 
     @Test
-    fun `§5_1 plano unico no total sem indicacao ainda e engano (nada automatico)`() {
+    fun `§5_1 plano unico no total sem indicacao e jogado direto`() {
         // Só o grupo de 8 aceita o topo; nenhuma combinação da mão forma conjunto com ele.
         val hand = cards("QS", "QC", "5D", "AS", "KD", "4S", "7C")
         val table = SideTable(listOf(TableMeld(MeldId(1), meld("8C", "8D", "8S"))), nextMeldId = 2)
         val s = state(hand, Phase.AWAITING_DRAW, discardPile = cards("5C", "8H"), table = table)
         val only = Action.TakeDiscardPile(DiscardPlan.AddToMeld(MeldId(1)))
         RoundEngine.legalActions(s, Seat(0)).filterIsInstance<Action.TakeDiscardPile>() shouldBe listOf(only)
-        resolve(s, PlayIntent.TakeDiscardPile, emptyList()) shouldBe Resolution.TakeMistake(false, null, listOf(only))
+        resolve(s, PlayIntent.TakeDiscardPile, emptyList()) shouldBe Resolution.Play(only)
         // Indicando o grupo, aplica.
         resolve(s, PlayIntent.TakeDiscardPile, emptyList(), MeldId(1)) shouldBe Resolution.Play(only)
     }

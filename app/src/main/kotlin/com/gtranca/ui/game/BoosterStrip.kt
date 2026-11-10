@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,6 +47,23 @@ import com.gtranca.ui.inventory.boosterIconRes
 import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GDialog
 import com.gtranca.ui.theme.Spacing
+
+/** Cor do círculo atrás do ícone: a mesma do ponto que o booster põe nas cartas (b1 verde, b2 amarelo); outros, nenhuma. */
+private fun boosterAccent(id: String): Color? = when (id) {
+    BoosterCatalog.GREEN_LED -> GColors.CardPlayableMark
+    BoosterCatalog.RED_LED -> GColors.CardOpponentMark
+    else -> null
+}
+
+/** Ícone do booster com o círculo da cor dele por trás (b1 e b2). */
+@Composable
+private fun BoosterIcon(def: BoosterDef, size: Dp) {
+    Box(contentAlignment = Alignment.Center) {
+        boosterAccent(def.id)?.let { Box(Modifier.size(size).background(it, CircleShape)) }
+        boosterIconRes(def.id)?.let { Image(painterResource(it), null, Modifier.size(size), contentScale = ContentScale.Fit) }
+            ?: Text(def.name.take(1), color = GColors.Gold, style = MaterialTheme.typography.labelSmall)
+    }
+}
 
 /** Os boosters do jogador nesta partida, na ordem do catálogo (ids fora do catálogo ficam de fora). */
 private fun ownBoosters(ids: List<String>): List<BoosterDef> = BoosterCatalog.DEFAULT.filter { it.id in ids }
@@ -89,8 +109,7 @@ internal fun BoosterStrip(state: GameUiState) {
     ) {
         boosters.forEach { def ->
             Box(Modifier.testTag("booster-strip-${def.id}"), contentAlignment = Alignment.BottomEnd) {
-                boosterIconRes(def.id)?.let { Image(painterResource(it), null, Modifier.size(20.dp), contentScale = ContentScale.Fit) }
-                    ?: Text(def.name.take(1), color = GColors.Gold, style = MaterialTheme.typography.labelSmall)
+                BoosterIcon(def, 20.dp)
                 if (def.id == BoosterCatalog.REACTIONS) {
                     Text(
                         "${state.reactionsLeft}",
@@ -116,7 +135,7 @@ private fun BoostersInfoDialog(boosters: List<BoosterDef>, reactionsLeft: Int, o
             Column(Modifier.testTag("boosters-info"), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 boosters.forEach { def ->
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                        boosterIconRes(def.id)?.let { Image(painterResource(it), null, Modifier.size(40.dp), contentScale = ContentScale.Fit) }
+                        BoosterIcon(def, 40.dp)
                         Column(Modifier.weight(1f)) {
                             Text(def.name, style = MaterialTheme.typography.titleSmall, color = GColors.Gold, fontWeight = FontWeight.Bold)
                             Text(def.summary, style = MaterialTheme.typography.bodySmall)

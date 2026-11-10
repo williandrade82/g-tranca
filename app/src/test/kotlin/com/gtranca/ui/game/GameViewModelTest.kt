@@ -1174,8 +1174,9 @@ class GameViewModelTest {
             repeat(30) {
                 val state = vm.uiState.value
                 if (state.snapshot.stage != Stage.PLAYING) return@repeat
-                if (state.awaitingDraw && state.canTakeDiscardPile) {
-                    val plans = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
+                val plans = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
+                // Com um plano só a jogada é feita direto (sem modal): procura uma vez com mais de um.
+                if (state.awaitingDraw && plans.size > 1) {
                     vm.onClearSelection()
                     vm.onDiscardPileClick()
                     advanceUntilIdle()

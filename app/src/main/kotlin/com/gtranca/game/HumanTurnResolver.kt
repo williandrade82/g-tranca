@@ -120,8 +120,10 @@ object HumanTurnResolver {
                 when {
                     // Nenhum plano legal (ex.: §5.3 3 preto no topo): a recusa comum explica o motivo.
                     all.isEmpty() -> reject(candidate)
-                    // §5.1 sem indicação não há intenção expressa: nunca executa sozinho (jogadas não se desfazem).
-                    selection.isEmpty() && targetMeld == null -> Resolution.TakeMistake(false, null, sorted)
+                    // §5.1 sem indicação: com um único plano no total, não há o que escolher (pedido do usuário, 10/11/2026);
+                    // com mais de um, não há intenção expressa e nada é executado (jogadas não se desfazem).
+                    selection.isEmpty() && targetMeld == null ->
+                        if (all.size == 1) Resolution.Play(all.single()) else Resolution.TakeMistake(false, null, sorted)
                     else -> {
                         // O plano que usa exatamente essas cartas da mão (e o jogo indicado, se houver) expressa a intenção.
                         val options = all.filter { action ->

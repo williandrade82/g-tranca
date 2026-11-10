@@ -1021,7 +1021,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
         onDispose { if (!started) com.gtranca.multiplayer.MultiplayerHub.closeRecruiting() }
     }
     val start: () -> Unit = start@{
-        if (!vm.canStart || starting) return@start
+        if (!vm.canStart || starting || started) return@start
         starting = true
         scope.launch {
             val live = rec
@@ -1043,10 +1043,14 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
                     live.sendStart(tableId, plan)
                 }
             } else {
-                // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede, depois de no mínimo 1,5 s de "Prepare-se!".
+                // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede, com exatamente 1,5 s de "Prepare-se!"
+                // (contados do toque; a camada some junto com a abertura do jogo, sem esperar a transição de tela).
+                val shownAt = System.nanoTime()
                 started = true
                 live?.closeHosting()
-                kotlinx.coroutines.delay(com.gtranca.net.PREPARE_MILLIS)
+                val left = com.gtranca.net.PREPARE_MILLIS - (System.nanoTime() - shownAt) / 1_000_000
+                if (left > 0) kotlinx.coroutines.delay(left)
+                starting = false
                 navController.startGame(config, vm.seed, com.gtranca.game.Tables.relativeRobots(config.mode, com.gtranca.engine.model.Seat(0), vm.layout.robots))
             }
         }
