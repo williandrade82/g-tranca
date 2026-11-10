@@ -258,7 +258,8 @@ class OnlineTableDriver private constructor(
 
     companion object {
         private const val DEAL_MILLIS: Long = (4 * 11 + 2) * TableAnimations.DEAL_STAGGER_MILLIS + GameViewModel.DEFAULT_ANIMATION_MILLIS
-        private const val WAIT_GRACE_MILLIS: Long = 4_000
+        // Inclui o "Prepare-se!" de 1,5 s que antecede a distribuição da 1ª partida.
+        private const val WAIT_GRACE_MILLIS: Long = 4_000 + com.gtranca.net.PREPARE_MILLIS
         private const val PRESENTATION_WAIT_MILLIS: Long = 20_000
 
         /** Os assentos (índice) de humanos que ainda não confirmaram o seletor de boosters do jogo (§17.3/§18.3). */

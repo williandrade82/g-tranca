@@ -547,12 +547,29 @@ class GameViewModelTest {
         fun delays(slow: Boolean): List<Long> = GameViewModel(
             GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 7, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450, slowAnimations = slow,
-        ).uiState.value.flights.map { it.delayMillis }
+        ).uiState.value.flights.map { it.delayMillis - com.gtranca.net.PREPARE_MILLIS }
         val fast = delays(false)
         val slowed = delays(true)
         fast.size shouldBe slowed.size
         fast.zip(slowed).all { (a, b) -> b == (a * 1.3f).toLong() } shouldBe true
         (fast.max() > 0) shouldBe true
+    }
+
+    @Test
+    fun `Prepare-se sobre a mesa dura 1,5 s e a distribuicao da 1a partida so comeca depois`() = runTest(dispatcher) {
+        val vm = GameViewModel(
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 5, computeDispatcher = dispatcher,
+            botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450,
+        )
+        val start = vm.uiState.value
+        start.opening shouldBe true
+        start.flights.filter { it.id in start.dealFlightIds }.all { it.delayMillis >= com.gtranca.net.PREPARE_MILLIS } shouldBe true
+        advanceTimeBy(com.gtranca.net.PREPARE_MILLIS - 1)
+        runCurrent()
+        vm.uiState.value.opening shouldBe true
+        advanceTimeBy(2)
+        runCurrent()
+        vm.uiState.value.opening shouldBe false
     }
 
     @Test

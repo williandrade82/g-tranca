@@ -212,7 +212,8 @@ class MultiplayerDriver private constructor(
         private const val DEAL_MILLIS: Long = (4 * 11 + 2) * TableAnimations.DEAL_STAGGER_MILLIS + GameViewModel.DEFAULT_ANIMATION_MILLIS
 
         /** Folga das esperas pela tela (rede de segurança, como no jogo local). */
-        private const val WAIT_GRACE_MILLIS: Long = 4_000
+        // Inclui o "Prepare-se!" de 1,5 s que antecede a distribuição da 1ª partida.
+        private const val WAIT_GRACE_MILLIS: Long = 4_000 + com.gtranca.net.PREPARE_MILLIS
 
         /** §17.3 limite da espera pelo seletor: os 30 s do prazo (§16.15) mais a folga da rede. */
         private const val BOOSTERS_WAIT_MILLIS: Long = 35_000

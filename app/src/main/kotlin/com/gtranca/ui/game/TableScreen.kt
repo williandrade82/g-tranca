@@ -543,6 +543,8 @@ private fun TableScreenContent(
             }
         }
     }
+    // "Prepare-se!" (docs/telas-app.md): 1,5 s sobre a mesa já montada, antes da distribuição da 1ª partida.
+    if (state.opening) com.gtranca.ui.selection.GetReadyOverlay()
     }
 
     if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }

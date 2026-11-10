@@ -1043,13 +1043,9 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
                     live.sendStart(tableId, plan)
                 }
             } else {
-                // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede, com exatamente 1,5 s de "Prepare-se!"
-                // (contados do toque; a camada some junto com a abertura do jogo, sem esperar a transição de tela).
-                val shownAt = System.nanoTime()
+                // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede (o "Prepare-se!" fica na mesa).
                 started = true
                 live?.closeHosting()
-                val left = com.gtranca.net.PREPARE_MILLIS - (System.nanoTime() - shownAt) / 1_000_000
-                if (left > 0) kotlinx.coroutines.delay(left)
                 starting = false
                 navController.startGame(config, vm.seed, com.gtranca.game.Tables.relativeRobots(config.mode, com.gtranca.engine.model.Seat(0), vm.layout.robots))
             }
@@ -1065,8 +1061,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
             navController.popBackStack()
         },
     )
-    if (starting) com.gtranca.ui.selection.GetReadyOverlay()
-    // Em rede: a mesa do jogo é criada; quando começa, abre o jogo (depois de no mínimo 1,5 s de camada).
+    // Em rede: a mesa do jogo é criada; quando começa, abre o jogo.
     val current = table
     if (started && current != null) {
         GetReadyEffect(current) {
@@ -1124,7 +1119,6 @@ private fun RecruitedDestination(data: GameData, navController: NavHostControlle
         )
     }
     if (gettingReady) {
-        com.gtranca.ui.selection.GetReadyOverlay()
         val current = table
         if (current != null) {
             GetReadyEffect(current) {
@@ -1142,21 +1136,15 @@ private fun RecruitedDestination(data: GameData, navController: NavHostControlle
 }
 
 /**
- * §16.2 "Prepare-se!": com a camada na tela, espera a mesa do jogo começar (anfitrião com o jogo criado, convidado
- * jogando) e abre o jogo ([onStarted]) depois de no mínimo 1,5 s de camada. Não desenha nada.
+ * §16.2 espera a mesa do jogo começar (anfitrião com o jogo criado, convidado jogando) e abre o jogo ([onStarted]); o
+ * "Prepare-se!" aparece depois, sobre a mesa. Não desenha nada.
  */
 @Composable
 private fun GetReadyEffect(table: com.gtranca.multiplayer.MultiplayerTable, onStarted: () -> Unit) {
     val role by table.role.collectAsStateWithLifecycle()
     val status by table.guestStatus.collectAsStateWithLifecycle()
-    val shownAt = remember { System.nanoTime() / 1_000_000 }
     val started = (role as? com.gtranca.multiplayer.MpRole.Hosting)?.host != null || status == com.gtranca.net.GuestStatus.Playing
-    LaunchedEffect(started) {
-        if (!started) return@LaunchedEffect
-        val left = com.gtranca.net.PREPARE_MILLIS - (System.nanoTime() / 1_000_000 - shownAt)
-        if (left > 0) kotlinx.coroutines.delay(left)
-        onStarted()
-    }
+    LaunchedEffect(started) { if (started) onStarted() }
 }
 
 /**
