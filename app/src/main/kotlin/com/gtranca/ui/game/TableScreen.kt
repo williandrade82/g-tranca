@@ -171,6 +171,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldId
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.paint
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
@@ -425,7 +426,24 @@ private fun TableScreenContent(
     com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.TABLE, com.gtranca.ui.tour.Tours.tableSteps, autoStart = tourReady) { startTour ->
     Scaffold(
         modifier = modifier
-            .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
+            // Salão da tela inicial ao fundo (docs/telas-app.md 3.8), escurecido para o cabeçalho, as pílulas e a mão
+            // continuarem legíveis; o feltro verde da mesa fica por cima. Parado: nada de animação contínua durante o jogo.
+            .background(GColors.Midnight)
+            .paint(
+                androidx.compose.ui.res.painterResource(R.drawable.home_bg),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                alignment = Alignment.TopCenter,
+            )
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to GColors.Midnight.copy(alpha = 0.62f),
+                        0.3f to GColors.Midnight.copy(alpha = 0.5f),
+                        0.6f to GColors.Midnight.copy(alpha = 0.8f),
+                        1f to GColors.Midnight.copy(alpha = 0.9f),
+                    ),
+                )
+            }
             .testTag("table-screen")
             // Registra a altura do último toque (sem consumir o evento) para o aviso discreto aparecer ali.
             .pointerInput(Unit) {
