@@ -110,9 +110,19 @@ class PlayerSelectionViewModel(
      * perder a seleção.
      */
     suspend fun attach(r: SeatRecruiter) {
-        val local = layout
         r.open()
-        local.robots.forEach { (seat, persona) -> r.placeRobot(seat, persona) }
+        // Repete os robôs que estão nos lugares AGORA, não os de antes de abrir: abrir demora e, nesse meio tempo, os toques
+        // (ex.: Completar com robôs) ainda mudam o layout local. Repete até não sobrar nenhum novo; entre a última conferência
+        // e virar rede não há suspensão, então nenhum toque fica de fora.
+        val sent = mutableMapOf<Int, String>()
+        while (true) {
+            val pending = layout.robots.filter { (seat, persona) -> sent[seat] != persona }
+            if (pending.isEmpty()) break
+            pending.forEach { (seat, persona) ->
+                r.placeRobot(seat, persona)
+                sent[seat] = persona
+            }
+        }
         recruiter = r
     }
 
