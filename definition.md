@@ -763,9 +763,22 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
   - no **canto superior direito de cada conjunto** baixado, o **valor daquele conjunto**.
 - Os valores seguem a tabela do §12.1, **só com o que está na mesa**:
   - **valor do conjunto** = bônus de canastra (limpa **+200**, suja **+100**; nada se ainda não é canastra) + o valor de cada carta dele (4 a 10: **+8**; J, Q, K, A e coringa: **+10**). Ex.: canastra limpa 4-5-6-7-8-9-10 = **256**;
-  - **total da mesa** = soma dos valores dos conjuntos do lado + cada 3 vermelho baixado: **+5** mais **+100** se o lado já tem canastra, ou **–100** se ainda não tem (o valor muda na hora em que a 1ª canastra fecha).
-- **Não entram** os pontos que só existem no fim da partida: batida (+100), morto não pego (–100) e cartas na mão (§12.2). Só usa informação **visível** da mesa (§16.4).
+  - **total da mesa** = soma dos valores dos conjuntos do lado + cada 3 vermelho baixado: **+5** mais **+100** se o lado já tem canastra, ou **–100** se ainda não tem (o valor muda na hora em que a 1ª canastra fecha) + o **morto não pego** (§12.2, o valor da regra da mesa, normalmente **–100**) enquanto o lado ainda não pegou o morto. Cada lado começa a partida em **–100**; pegar o morto **soma 100** ao total.
+- **Não entram** os pontos que só existem no fim da partida: batida (+100) e cartas na mão (§12.2). Só usa informação **visível** da mesa (§16.4).
 - O número muda quando a jogada **pousa** na mesa (fim da animação), não antes. Não é uma jogada e **não** muda `legalActions`. Sem o b4 na partida, nada disso aparece.
+
+#### **17.11.1. Barra de progressão**
+- Com o b4, o jogador vê também a **barra de progressão**, logo abaixo da barra de títulos, **fixa** (não rola com a mesa). Sem o b4, ela não aparece.
+- O **zero fica no meio**. Para a **direita**, o total da mesa (§17.11) do próprio lado; para a **esquerda**, o do lado adversário. Nas pontas, a arte dos jogadores: à direita o próprio, à esquerda o adversário; em duplas, os dois da dupla lado a lado, a imagem mais perto do centro cobrindo 40% da outra.
+- Cada lado tem **um só valor** (o total da mesa): positivo, a barra é **dourada**; negativo, **vermelha**. Nunca as duas no mesmo lado ao mesmo tempo. O número de cada lado fica junto da arte.
+- **Escala** (igual para os dois lados, começa em **500** a cada partida e **nunca diminui** dentro dela):
+  - quando um lado chega a **500**: animação empolgante, a escala vai a **1000** e aparece uma estrela no ponto 500 com o número "500" embaixo;
+  - quando um lado chega a **1000**: animação mais emocionante, a escala vai a **1200** e aparece a estrela do 1000;
+  - quando um lado **passa de 1200**: a última animação, a mais forte, aparece a estrela do 1200 e, dali em diante, a escala acompanha o maior total (ele enche a metade da barra).
+  - se um salto passa por mais de um marco, toca só a animação do maior, e aparecem todas as estrelas alcançadas.
+- **Toda** mudança de valor é animada: a barra cresce ou diminui até o novo valor e o número gira como um letreiro. O valor muda quando a jogada pousa (§17.11).
+- **Fim da partida**: depois dos fogos de artifício, a barra recebe a **pontuação final da partida** de cada lado (§12, com batida e cartas na mão). Os dois números giram juntos em **0,5 s** e o novo valor aparece com um destaque; se um marco foi alcançado, toca a animação dele; só então aparece a arte de bateu ou perdeu e o fim de partida segue como antes.
+- Só usa informação visível (§16.4). Não é jogada, não muda `legalActions` nem a pontuação oficial (§12).
 
 # **18. Jogo online**
 
