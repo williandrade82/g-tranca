@@ -194,6 +194,12 @@ data class GameUiState(
     /** "Baixar" só quando a seleção forma conjunto novo ou completa um conjunto da mesa (em `legalActions`). */
     val canMeld: Boolean get() = playing && HumanTurnResolver.canMeld(legal, selected)
 
+    /** Jogos do lado que recebem todas as cartas selecionadas de uma vez (destacados na mesa). */
+    val addableMelds: Set<MeldId> get() = if (playing) HumanTurnResolver.addTargets(legal, selected) else emptySet()
+
+    /** As cartas selecionadas formam um conjunto novo: a mesa mostra o conjunto vazio. */
+    val canCreateNew: Boolean get() = playing && HumanTurnResolver.canCreateNew(legal, selected)
+
     val canDiscard: Boolean get() = playing && selected.size == 1
 
     /** A carta selecionada pode ser descartada agora (há um `Discard` dela em `legalActions`). */
@@ -883,6 +889,7 @@ class GameViewModel(
     }
 
     override fun onCreateMeld() = play(PlayIntent.CreateMeld)
+    override fun onNewMeld() = play(PlayIntent.NewMeld)
 
     override fun onAddToMeld(meldId: MeldId) = play(PlayIntent.AddToMeld(meldId))
 

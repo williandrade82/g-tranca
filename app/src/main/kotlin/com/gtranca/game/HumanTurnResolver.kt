@@ -33,6 +33,9 @@ sealed interface PlayIntent {
      */
     data object CreateMeld : PlayIntent
 
+    /** Baixar as cartas selecionadas só como conjunto novo (toque no conjunto vazio da mesa); nunca um acréscimo. */
+    data object NewMeld : PlayIntent
+
     /** Acrescentar as cartas selecionadas ao conjunto [meldId] do lado. */
     data class AddToMeld(val meldId: MeldId) : PlayIntent
 
@@ -94,6 +97,20 @@ object HumanTurnResolver {
         return legal.any { (it is Action.CreateMeld || it is Action.AddToMeld) && handCardsOf(it).classCounts() == wanted }
     }
 
+    /** Jogos do lado que recebem todas as cartas da [selection] de uma vez (destaque na mesa). */
+    fun addTargets(legal: List<Action>, selection: List<Card>): Set<MeldId> {
+        if (selection.isEmpty()) return emptySet()
+        val wanted = selection.classCounts()
+        return legal.filterIsInstance<Action.AddToMeld>().filter { it.cards.classCounts() == wanted }.map { it.meldId }.toSet()
+    }
+
+    /** A [selection] forma um conjunto novo legal (conjunto vazio na mesa). */
+    fun canCreateNew(legal: List<Action>, selection: List<Card>): Boolean {
+        if (selection.isEmpty()) return false
+        val wanted = selection.classCounts()
+        return legal.any { it is Action.CreateMeld && it.cards.classCounts() == wanted }
+    }
+
     fun resolve(
         intent: PlayIntent,
         selection: List<Card>,
@@ -146,6 +163,10 @@ object HumanTurnResolver {
                     else -> Resolution.ChooseMeld(options)
                 }
             }
+            PlayIntent.NewMeld ->
+                legal.firstOrNull { it is Action.CreateMeld && sameCards(it) }
+                    ?.let(Resolution::Play)
+                    ?: reject(Action.CreateMeld(selection))
             is PlayIntent.AddToMeld ->
                 legal.firstOrNull { it is Action.AddToMeld && it.meldId == intent.meldId && sameCards(it) }
                     ?.let(Resolution::Play)

@@ -169,6 +169,8 @@ import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldId
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.draw.drawBehind
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
@@ -206,6 +208,9 @@ interface TableEvents {
     fun onTakeDiscardPile()
     fun onDiscardPileClick()
     fun onCreateMeld()
+
+    /** Toque no conjunto vazio da mesa: baixar a seleção só como conjunto novo. */
+    fun onNewMeld() = onCreateMeld()
     fun onAddToMeld(meldId: MeldId)
     fun onDiscard()
     fun onDeclineDraw()
@@ -505,6 +510,8 @@ private fun TableScreenContent(
                             },
                             sideTag = "own",
                             targetMeld = state.targetMeld,
+                            addable = state.addableMelds,
+                            onNewMeld = if (state.canCreateNew) events::onNewMeld else null,
                             scoreboard = scoreboard,
                             mortoTaken = view.hasTakenMorto(view.side),
                         )
@@ -945,9 +952,16 @@ private fun SideArea(
     onMeldClick: ((MeldId) -> Unit)?,
     sideTag: String,
     targetMeld: MeldId? = null,
+    addable: Set<MeldId> = emptySet(),
+    onNewMeld: (() -> Unit)? = null,
     scoreboard: Boolean = false,
     mortoTaken: Boolean = false,
 ) {
+    // Destaque pulsante dos jogos que recebem a seleção (e do conjunto vazio).
+    val glow = if (addable.isEmpty() && onNewMeld == null) 0f else {
+        val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "addable")
+        t.animateFloat(0.35f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(600), androidx.compose.animation.core.RepeatMode.Reverse), label = "addable-glow").value
+    }
     val rules = LocalTableRules.current
     val landing = LocalLanding.current
     // §17.11 o total só muda quando nada do lado está voando (a jogada pousou).
@@ -999,19 +1013,22 @@ private fun SideArea(
                 )
             }
         }
-        if (melds.isEmpty()) {
+        if (melds.isEmpty() && onNewMeld == null) {
             Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
         } else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 melds.forEach { meld ->
+                    val canAdd = meld.id in addable
                     MeldView(
                         side,
                         meld,
                         onMeldClick,
-                        Modifier.anchor(AnimAnchor.Meld(side, meld.id.value)).testTag("meld-$sideTag-${meld.id.value}"),
+                        Modifier.anchor(AnimAnchor.Meld(side, meld.id.value)).testTag("meld-$sideTag-${meld.id.value}")
+                            .then(if (canAdd) Modifier.testTag("meld-addable-${meld.id.value}") else Modifier),
                         flash = flashes.lastOrNull { it.side == side && it.meldId == meld.id.value },
                         animationMillis = animationMillis,
                         targeted = meld.id == targetMeld,
+                        addGlow = if (canAdd) glow else 0f,
                         points = if (!scoreboard) null else settledValue(
                             com.gtranca.engine.meldPoints(meld.meld, rules),
                             settled = meld.meld.cards.none { it in landing },
@@ -1020,8 +1037,35 @@ private fun SideArea(
                         scoreTag = "meld-score-${meld.id.value}",
                     )
                 }
+                onNewMeld?.let { NewMeldSlot(glow, it) }
             }
         }
+    }
+}
+
+/** Conjunto vazio (contorno tracejado): tocar baixa a seleção como conjunto novo, nesta posição. */
+@Composable
+private fun NewMeldSlot(glow: Float, onClick: () -> Unit) {
+    val label = stringResource(R.string.new_meld_slot)
+    val color = GColors.Gold.copy(alpha = glow)
+    Box(
+        Modifier
+            .size(width = 96.dp, height = 70.dp)
+            .drawBehind {
+                drawRoundRect(
+                    color,
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 2.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
+                    ),
+                )
+            }
+            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+            .testTag("new-meld-slot"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = GColors.Gold, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1034,6 +1078,7 @@ private fun MeldView(
     flash: CanastaFlash? = null,
     animationMillis: Long = 0,
     targeted: Boolean = false,
+    addGlow: Float = 0f,
     points: Int? = null,
     scoreTag: String = "",
 ) {
@@ -1063,6 +1108,7 @@ private fun MeldView(
     }
     val borderColor = when {
         targeted -> GColors.Gold // indicado para receber o topo do lixo
+        addGlow > 0f -> GColors.Gold.copy(alpha = addGlow) // recebe todas as cartas selecionadas
         canasta && meld.isClean -> GColors.CanastraClean
         canasta -> GColors.CanastraDirty
         onClick != null -> OnTable.copy(alpha = 0.6f) // tocável para acrescentar
@@ -1083,7 +1129,7 @@ private fun MeldView(
             .semantics { canastaPulse = pulse.value }
             .heightIn(min = 48.dp)
             .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(Corner.xs))
-            .border(BorderStroke(if (targeted) 3.dp else 2.dp, borderColor), RoundedCornerShape(Corner.xs))
+            .border(BorderStroke(if (targeted || addGlow > 0f) 3.dp else 2.dp, borderColor), RoundedCornerShape(Corner.xs))
             .then(if (onClick != null) Modifier.clickable { onClick(tableMeld.id) } else Modifier)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
