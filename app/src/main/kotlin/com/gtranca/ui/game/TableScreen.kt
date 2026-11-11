@@ -459,6 +459,8 @@ private fun TableScreenContent(
                             .onGloballyPositioned { seatsHeight = it.size.height },
                     ) { SeatsPanel(state) { detailSeat = it } }
                     val feltMin = (available - with(LocalDensity.current) { seatsHeight.toDp() } - 4.dp).coerceAtLeast(0.dp)
+                    // §17.11 b4 Placar: só com o b4 entre os boosters deste jogador.
+                    val scoreboard = com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters
                     Column(
                         Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
                             .padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-felt"),
@@ -473,6 +475,7 @@ private fun TableScreenContent(
                             redThrees = state.redThrees[view.mode.sides.first { it != view.side }.index],
                             onMeldClick = null,
                             sideTag = "opponent",
+                            scoreboard = scoreboard,
                         )
                         CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
                         SideArea(
@@ -489,6 +492,7 @@ private fun TableScreenContent(
                             },
                             sideTag = "own",
                             targetMeld = state.targetMeld,
+                            scoreboard = scoreboard,
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -926,7 +930,15 @@ private fun SideArea(
     onMeldClick: ((MeldId) -> Unit)?,
     sideTag: String,
     targetMeld: MeldId? = null,
+    scoreboard: Boolean = false,
 ) {
+    val rules = LocalTableRules.current
+    val landing = LocalLanding.current
+    // §17.11 o total só muda quando nada do lado está voando (a jogada pousou).
+    val total = if (!scoreboard) null else settledValue(
+        com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, rules),
+        settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
+    )
     Column(
         Modifier.fillMaxWidth()
             .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
@@ -957,6 +969,19 @@ private fun SideArea(
                     }
                 }
             }
+            total?.let { points ->
+                Text(
+                    signedPoints(points),
+                    Modifier.padding(start = 6.dp)
+                        .background(GColors.Midnight.copy(alpha = 0.7f), RoundedCornerShape(50))
+                        .border(1.dp, GColors.Gold, RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 1.dp)
+                        .testTag("table-score-$sideTag"),
+                    color = if (points < 0) NegativePoints else GColors.Gold,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
         if (melds.isEmpty()) {
             Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
@@ -971,6 +996,12 @@ private fun SideArea(
                         flash = flashes.lastOrNull { it.side == side && it.meldId == meld.id.value },
                         animationMillis = animationMillis,
                         targeted = meld.id == targetMeld,
+                        points = if (!scoreboard) null else settledValue(
+                            com.gtranca.engine.meldPoints(meld.meld, rules),
+                            settled = meld.meld.cards.none { it in landing },
+                            key = meld.id,
+                        ),
+                        scoreTag = "meld-score-${meld.id.value}",
                     )
                 }
             }
@@ -987,6 +1018,8 @@ private fun MeldView(
     flash: CanastaFlash? = null,
     animationMillis: Long = 0,
     targeted: Boolean = false,
+    points: Int? = null,
+    scoreTag: String = "",
 ) {
     // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em bronze). [animationMillis] já vem
     // escalado; se o destaque for removido no meio, o pulso volta a 0 (nunca fica preso maior/colorido).
@@ -1023,6 +1056,7 @@ private fun MeldView(
     val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
         (label?.let { ". $it" } ?: "")
     val flashColor = if (flash?.clean == true) GColors.Gold else GColors.CanastraDirtyFlash
+    Box {
     Column(
         modifier
             .graphicsLayer {
@@ -1049,6 +1083,39 @@ private fun MeldView(
             }
         }
     }
+    // §17.11 b4 Placar: o valor do conjunto no canto superior direito.
+    points?.let {
+        Text(
+            "$it",
+            Modifier.align(Alignment.TopEnd)
+                .offset(x = 4.dp, y = (-6).dp)
+                .background(GColors.Midnight, RoundedCornerShape(6.dp))
+                .border(1.dp, GColors.Gold.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 3.dp)
+                .testTag(scoreTag),
+            color = GColors.Champagne,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    }
+}
+
+/** Vermelho-claro dos totais negativos do placar (§17.11). */
+private val NegativePoints = Color(0xFFFF8A80)
+
+/** "−95" com o sinal de menos tipográfico; positivos sem sinal. */
+private fun signedPoints(points: Int): String = if (points < 0) "−${-points}" else "$points"
+
+/**
+ * §17.11 o último [value] visto com [settled] (nada voando); `null` até a primeira vez, para um conjunto novo não mostrar
+ * o valor antes de as cartas pousarem.
+ */
+@Composable
+private fun settledValue(value: Int, settled: Boolean, key: Any? = null): Int? {
+    var shown by remember(key) { mutableStateOf<Int?>(null) }
+    if (settled && shown != value) shown = value
+    return shown
 }
 
 /** Cartas pequenas sobrepostas, cada uma deslocada [step] para a direita (o índice de cada uma fica visível). */
