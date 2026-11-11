@@ -62,6 +62,9 @@ data class PlayerView(
     /** §3.5 o [seat] já teve o início da sua primeira vez nesta partida. */
     fun hasBegunFirstTurn(seat: Seat): Boolean = hasBegunFirstTurn(mode, firstSeat, turnsBegun, seat)
 
+    /** §9 o lado [side] já pegou um morto (público, como em [RoundState.hasTakenMorto]). */
+    fun hasTakenMorto(side: Side): Boolean = mortoStatus.any { (it as? MortoStatus.Taken)?.side == side }
+
     /** Topo do lixo (último elemento), ou `null` se vazio. */
     val discardTop: Card? get() = discardPile.lastOrNull()
 }

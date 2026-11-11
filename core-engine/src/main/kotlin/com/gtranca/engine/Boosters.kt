@@ -31,6 +31,7 @@ object BoosterCatalog {
     const val GREEN_LED = "b1"
     const val RED_LED = "b2"
     const val REACTIONS = "b3"
+    const val SCOREBOARD = "b4"
 
     /** §17.1 o booster [id] é de skill? (id fora do catálogo: não). */
     fun isSkill(id: String): Boolean = DEFAULT.firstOrNull { it.id == id }?.kind == BoosterKind.SKILL
@@ -39,6 +40,7 @@ object BoosterCatalog {
         BoosterDef(GREEN_LED, "Green-LED", "Mostra um ponto verde nas cartas que pode baixar", 1, 5, 1, 3),
         BoosterDef(RED_LED, "Yellow-LED", "Mostra um ponto amarelo nas cartas que se encaixam no jogo do adversário", 1, 5, 1, 3),
         BoosterDef(REACTIONS, "Reações", "Permite expressar até 3 reações durante a partida", 1, 5, 2, 7, BoosterKind.INTERACTION),
+        BoosterDef(SCOREBOARD, "Placar", "Mostra os pontos da mesa de cada lado e o valor de cada conjunto", 1, 5, 1, 3),
     )
 }
 

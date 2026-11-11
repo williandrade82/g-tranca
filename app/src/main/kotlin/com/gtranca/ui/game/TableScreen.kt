@@ -443,7 +443,19 @@ private fun TableScreenContent(
                     // cortar os voos e os fogos ali, de modo que passem por baixo.
                     val headerBottom = LocalTableHeaderBottom.current
                     Box(Modifier.onGloballyPositioned { headerHeightPx = it.size.height; headerBottom?.value = it.positionInRoot().y + it.size.height }) {
-                        Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                        Column {
+                            Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                            // §17.11.1 barra de progressão do b4: fixa sob o cabeçalho, fora da rolagem da mesa (e, como
+                            // ele, à frente dos voos e dos fogos).
+                            // Com o b4, substitui a pílula "Nós × Eles" (§17.11.1) e, como ela, abre as informações do jogo.
+                            if (com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters) {
+                                TableScoreBar(
+                                    state,
+                                    Modifier.clickable(onClickLabel = stringResource(R.string.match_info_open), role = Role.Button) { showMatchInfo = true }
+                                        .testTag("score").tourTarget("score"),
+                                )
+                            }
+                        }
                     }
                     // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
                     // pelo menos o espaço livre e cresce com o conteúdo, nunca cortando cartas (telas baixas, fonte grande).
@@ -459,6 +471,8 @@ private fun TableScreenContent(
                             .onGloballyPositioned { seatsHeight = it.size.height },
                     ) { SeatsPanel(state) { detailSeat = it } }
                     val feltMin = (available - with(LocalDensity.current) { seatsHeight.toDp() } - 4.dp).coerceAtLeast(0.dp)
+                    // §17.11 b4 Placar: só com o b4 entre os boosters deste jogador.
+                    val scoreboard = com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters
                     Column(
                         Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
                             .padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-felt"),
@@ -473,6 +487,8 @@ private fun TableScreenContent(
                             redThrees = state.redThrees[view.mode.sides.first { it != view.side }.index],
                             onMeldClick = null,
                             sideTag = "opponent",
+                            scoreboard = scoreboard,
+                            mortoTaken = view.hasTakenMorto(view.mode.sides.first { it != view.side }),
                         )
                         CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
                         SideArea(
@@ -489,6 +505,8 @@ private fun TableScreenContent(
                             },
                             sideTag = "own",
                             targetMeld = state.targetMeld,
+                            scoreboard = scoreboard,
+                            mortoTaken = view.hasTakenMorto(view.side),
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -691,7 +709,8 @@ private fun Header(
         // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
         OptionsMenu(events, extra, onLegend)
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // Com o b4, o placar do b4 (sob o cabeçalho) toma o lugar desta pílula (§17.11.1).
+    if (com.gtranca.engine.BoosterCatalog.SCOREBOARD !in state.boosters) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(
             Modifier.weight(1f)
                 .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo),
@@ -926,7 +945,16 @@ private fun SideArea(
     onMeldClick: ((MeldId) -> Unit)?,
     sideTag: String,
     targetMeld: MeldId? = null,
+    scoreboard: Boolean = false,
+    mortoTaken: Boolean = false,
 ) {
+    val rules = LocalTableRules.current
+    val landing = LocalLanding.current
+    // §17.11 o total só muda quando nada do lado está voando (a jogada pousou).
+    val total = if (!scoreboard) null else settledValue(
+        com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, mortoTaken, rules),
+        settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
+    )
     Column(
         Modifier.fillMaxWidth()
             .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
@@ -957,6 +985,19 @@ private fun SideArea(
                     }
                 }
             }
+            total?.let { points ->
+                Text(
+                    signedPoints(points),
+                    Modifier.padding(start = 6.dp)
+                        .background(GColors.Midnight.copy(alpha = 0.7f), RoundedCornerShape(50))
+                        .border(1.dp, GColors.Gold, RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 1.dp)
+                        .testTag("table-score-$sideTag"),
+                    color = if (points < 0) NegativePoints else GColors.Gold,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
         if (melds.isEmpty()) {
             Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
@@ -971,6 +1012,12 @@ private fun SideArea(
                         flash = flashes.lastOrNull { it.side == side && it.meldId == meld.id.value },
                         animationMillis = animationMillis,
                         targeted = meld.id == targetMeld,
+                        points = if (!scoreboard) null else settledValue(
+                            com.gtranca.engine.meldPoints(meld.meld, rules),
+                            settled = meld.meld.cards.none { it in landing },
+                            key = meld.id,
+                        ),
+                        scoreTag = "meld-score-${meld.id.value}",
                     )
                 }
             }
@@ -987,6 +1034,8 @@ private fun MeldView(
     flash: CanastaFlash? = null,
     animationMillis: Long = 0,
     targeted: Boolean = false,
+    points: Int? = null,
+    scoreTag: String = "",
 ) {
     // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em bronze). [animationMillis] já vem
     // escalado; se o destaque for removido no meio, o pulso volta a 0 (nunca fica preso maior/colorido).
@@ -1023,6 +1072,7 @@ private fun MeldView(
     val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
         (label?.let { ". $it" } ?: "")
     val flashColor = if (flash?.clean == true) GColors.Gold else GColors.CanastraDirtyFlash
+    Box {
     Column(
         modifier
             .graphicsLayer {
@@ -1049,6 +1099,90 @@ private fun MeldView(
             }
         }
     }
+    // §17.11 b4 Placar: o valor do conjunto no canto superior direito.
+    points?.let {
+        Text(
+            "$it",
+            Modifier.align(Alignment.TopEnd)
+                .offset(x = 4.dp, y = (-6).dp)
+                .background(GColors.Midnight, RoundedCornerShape(6.dp))
+                .border(1.dp, GColors.Gold.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 3.dp)
+                .testTag(scoreTag),
+            color = GColors.Champagne,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    }
+}
+
+/** Vermelho-claro dos totais negativos do placar (§17.11). */
+private val NegativePoints = Color(0xFFFF8A80)
+
+/** "−95" com o sinal de menos tipográfico; positivos sem sinal. */
+private fun signedPoints(points: Int): String = if (points < 0) "−${-points}" else "$points"
+
+/**
+ * §17.11 o último [value] visto com [settled] (nada voando); `null` até a primeira vez, para um conjunto novo não mostrar
+ * o valor antes de as cartas pousarem.
+ */
+@Composable
+private fun settledValue(value: Int, settled: Boolean, key: Any? = null): Int? {
+    var shown by remember(key) { mutableStateOf<Int?>(null) }
+    if (settled && shown != value) shown = value
+    return shown
+}
+
+/**
+ * §17.11.1 a barra de progressão com os totais da mesa (§17.11) de cada lado, que mudam quando a jogada pousa. A escala
+ * vive no [LocalScoreBar] (sobrevive à troca para a mesa final); sem ele, numa barra local.
+ */
+@Composable
+private fun TableScoreBar(state: GameUiState, modifier: Modifier = Modifier) {
+    val view = state.snapshot.view
+    val rules = LocalTableRules.current
+    val landing = LocalLanding.current
+    val holder = LocalScoreBar.current ?: remember { ScoreBarHolder() }
+    val opponentSide = view.mode.sides.first { it != view.side }
+    @Composable
+    fun total(side: com.gtranca.engine.model.Side): Int? {
+        val melds = view.tables[side.index].melds
+        val redThrees = state.redThrees[side.index]
+        return settledValue(
+            com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, view.hasTakenMorto(side), rules),
+            settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
+        )
+    }
+    fun personas(side: com.gtranca.engine.model.Side): List<com.gtranca.game.Persona> {
+        // O jogador (ou o adversário mais próximo na vez) primeiro: é a imagem de dentro, perto do centro.
+        val seats = view.mode.seatsOf(side).sortedBy { if (it == view.seat) 0 else 1 }
+        return seats.mapNotNull { state.personas.getOrNull(it.index) }
+    }
+    val snapshot = state.snapshot
+    // §17.11.2 placar do jogo e o acumulado ao fim de cada partida terminada.
+    val rows = MatchInfo.rows(snapshot.history)
+    val game = GameBarData(
+        own = snapshot.totals[view.side.index],
+        opponent = snapshot.totals[opponentSide.index],
+        target = snapshot.config.targetScore,
+        ownMarks = rows.map { it.cumulative[view.side.index] },
+        opponentMarks = rows.map { it.cumulative[opponentSide.index] },
+    )
+    ScoreBar(
+        holder = holder,
+        ownSide = view.side.index,
+        opponentSide = opponentSide.index,
+        ownTotal = total(view.side),
+        opponentTotal = total(opponentSide),
+        ownPersonas = personas(view.side),
+        opponentPersonas = personas(opponentSide),
+        ownLabel = shortSideName(view.mode, view.side, view.side),
+        opponentLabel = shortSideName(view.mode, opponentSide, view.side),
+        game = game,
+        animationMillis = state.animationMillis,
+        modifier = modifier.padding(horizontal = Spacing.sm, vertical = 2.dp),
+    )
 }
 
 /** Cartas pequenas sobrepostas, cada uma deslocada [step] para a direita (o índice de cada uma fica visível). */

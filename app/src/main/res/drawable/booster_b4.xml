@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §17.11 b4 Placar: um placar azul royal com moldura dourada e dois números. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- moldura dourada -->
+    <path
+        android:fillColor="#E0B63A"
+        android:pathData="M14,22 h68 a8,8 0 0 1 8,8 v40 a8,8 0 0 1 -8,8 h-68 a8,8 0 0 1 -8,-8 v-40 a8,8 0 0 1 8,-8 z" />
+    <!-- painel -->
+    <path
+        android:fillColor="#1F3A93"
+        android:pathData="M16,28 h64 a4,4 0 0 1 4,4 v36 a4,4 0 0 1 -4,4 h-64 a4,4 0 0 1 -4,-4 v-36 a4,4 0 0 1 4,-4 z" />
+    <!-- divisória -->
+    <path
+        android:fillColor="#E0B63A"
+        android:pathData="M46.5,32 h3 v36 h-3 z" />
+    <!-- "1" à esquerda -->
+    <path
+        android:fillColor="#FFF4D6"
+        android:pathData="M27,40 l6,-4 h4 v26 h4 v4 h-14 v-4 h4 v-19 l-4,2 z" />
+    <!-- "7" à direita -->
+    <path
+        android:fillColor="#FFF4D6"
+        android:pathData="M56,36 h18 v4 l-10,26 h-5 l10,-26 h-13 z" />
+    <!-- coroa no topo -->
+    <path
+        android:fillColor="#E0B63A"
+        android:pathData="M36,20 l4,-10 l8,7 l8,-7 l4,10 z" />
+</vector>

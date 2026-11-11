@@ -63,12 +63,12 @@ class EconomyBoosterHttpTest {
         json.decodeFromString<BoosterDebitResponse>(r.bodyAsText()).applied.toSet() shouldBe setOf("b1", "b2")
 
         val state = get("/internal/economy/accounts/g1") { header(INTERNAL_SECRET_HEADER, secret) }
-        json.decodeFromString<EconomyStateDto>(state.bodyAsText()).inventory shouldBe mapOf("b1" to 4, "b2" to 4, "b3" to 5)
+        json.decodeFromString<EconomyStateDto>(state.bodyAsText()).inventory shouldBe mapOf("b1" to 4, "b2" to 4, "b3" to 5, "b4" to 5)
 
         // Repetir (rede falhou depois de debitar) nao debita de novo.
         internal("/internal/economy/matches/ABC234/seats/0/boosters", """{"accountId":"g1","boosterIds":["b1","b2"]}""")
         val again = get("/internal/economy/accounts/g1") { header(INTERNAL_SECRET_HEADER, secret) }
-        json.decodeFromString<EconomyStateDto>(again.bodyAsText()).inventory shouldBe mapOf("b1" to 4, "b2" to 4, "b3" to 5)
+        json.decodeFromString<EconomyStateDto>(again.bodyAsText()).inventory shouldBe mapOf("b1" to 4, "b2" to 4, "b3" to 5, "b4" to 5)
     }
 
     @Test

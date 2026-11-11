@@ -156,6 +156,7 @@ fun boosterIconRes(id: String): Int? = when (id) {
     BoosterCatalog.GREEN_LED -> R.drawable.booster_b1
     BoosterCatalog.RED_LED -> R.drawable.booster_b2
     BoosterCatalog.REACTIONS -> R.drawable.booster_b3
+    BoosterCatalog.SCOREBOARD -> R.drawable.booster_b4
     else -> null
 }
 

@@ -15,7 +15,13 @@ package com.gtranca.ai
  * atingir o teto). **A calibragem deve ser refeita num aparelho real quando o
  * `:app` existir** (medir a média e o máximo por decisão e quantas vezes o teto é atingido).
  *
- * Força medida contra o Médio (`:sim`, alvo 1000, `--check-invariants`, IC 95%):
+ * Força medida contra o Médio em 11/11/2026, padrão atual (8 visitas mínimas, 1,5 erro-padrão e a proteção de
+ * não trocar uma jogada que esvazia a mão por uma que guarda carta), 200 jogos, alvo 1000: individual (semente
+ * 3000) 63,0% ± 6,7 p.p. (+184,9 ± 71,7 por partida); duplas (semente 4000) 57,5% ± 6,9 p.p. (+111,7 ± 67,5).
+ * Com a mesma proteção e as travas antigas (5 visitas, 1,0 erro-padrão), duplas deu os mesmos 57,5% e só +51,6:
+ * as travas novas não enfraquecem. Os 66% de duplas abaixo são de uma versão anterior do motor e dos bots.
+ *
+ * Histórico, contra o Médio (`:sim`, alvo 1000, `--check-invariants`, IC 95%):
  * - **padrão** (20 iterações, 2 candidatas por tipo, 5 visitas mínimas), 200 jogos por modo com sementes
  *   novas (3000 e 4000): individual 63,0% ± 6,7 p.p. (diferença por partida +79,7 ± 46,4); duplas
  *   66,0% ± 6,6 p.p. (+113,1 ± 48,8); duplas com lados trocados (Difícil no lado 1, semente 5000)
@@ -56,8 +62,8 @@ data class HardBotConfig(
     val rewardScale: Double = 600.0,
     val treeDepth: Int = 1,
     val overrideMargin: Double = 0.01,
-    val minVisitsToOverride: Int = 5,
-    val overrideConfidence: Double = 1.0,
+    val minVisitsToOverride: Int = 8,
+    val overrideConfidence: Double = 1.5,
 ) {
     init {
         require(iterations > 0) { "iterations deve ser positivo: $iterations" }
