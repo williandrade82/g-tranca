@@ -5,6 +5,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -125,7 +127,19 @@ fun HomeScreen(
             onNewGame()
         }
     }
-    GBackground(Modifier.fillMaxSize(), royal = true, rays = true) {
+    GBackground(Modifier.fillMaxSize(), royal = true, rays = false) {
+        // Salão art déco ao fundo, escurecendo para o azul-noite onde ficam os botões.
+        Image(
+            painterResource(R.drawable.home_bg),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize()
+                .drawWithContent {
+                    drawContent()
+                    drawRect(Brush.verticalGradient(0.45f to Color.Transparent, 0.75f to GColors.Midnight.copy(alpha = 0.85f), 1f to GColors.Midnight))
+                },
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopCenter,
+        )
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         // Conteúdo centralizado na vertical; se a tela for baixa, rola (a altura mínima é a da área disponível).
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -138,25 +152,36 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.lg, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Acima de tudo: os quatro robôs (WebP reduzido; as bordas de baixo, cortadas na arte, esmaecem).
+            // Brasão da coroa e, abaixo, os quatro robôs atrás da mesa de cartas (a mesa cobre a base deles).
             Image(
-                painterResource(R.drawable.home_all_bots),
-                contentDescription = stringResource(R.string.home_bots_description),
-                modifier = Modifier
-                    .widthIn(max = 520.dp)
-                    .fillMaxWidth()
-                    .aspectRatio(900f / 508f)
-                    .testTag("home-bots")
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(
-                            Brush.verticalGradient(0.7f to Color.Black, 1f to Color.Transparent),
-                            blendMode = BlendMode.DstIn,
-                        )
-                    },
+                painterResource(R.drawable.home_crest),
+                contentDescription = null,
+                modifier = Modifier.widthIn(max = 260.dp).fillMaxWidth(0.55f).aspectRatio(640f / 298f).testTag("home-crest"),
                 contentScale = ContentScale.Fit,
             )
+            Box(Modifier.widthIn(max = 560.dp).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                Image(
+                    painterResource(R.drawable.home_all_bots),
+                    contentDescription = stringResource(R.string.home_bots_description),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(900f / 508f).testTag("home-bots"),
+                    contentScale = ContentScale.Fit,
+                )
+                // A mesa começa a ~75% da altura dos robôs e é um pouco mais larga que eles.
+                BoxWithConstraints(Modifier.matchParentSize()) {
+                    Image(
+                        painterResource(R.drawable.home_table),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .requiredWidth(maxWidth * 1.1f)
+                            .aspectRatio(1080f / 316f)
+                            .offset(y = maxHeight * 0.75f)
+                            .testTag("home-table"),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            }
+            // Espaço da parte da mesa que passa da caixa dos robôs.
+            Spacer(Modifier.height(48.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 LogoTitle(stringResource(R.string.home_title))
                 Text(
