@@ -30,7 +30,7 @@ class EconomyStoreTest {
     fun `18_5 o convidado nasce com 1000 moedas e os boosters iniciais, e criar de novo nao muda nada`() {
         val s = store.ensureAccount("g1")
         s.balance shouldBe 1_000
-        s.inventory shouldBe mapOf("b1" to 5, "b2" to 5, "b3" to 5)
+        s.inventory shouldBe mapOf("b1" to 5, "b2" to 5, "b3" to 5, "b4" to 5)
         store.ensureAccount("g1") shouldBe s
     }
 

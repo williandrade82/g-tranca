@@ -64,7 +64,7 @@ class EconomyAccountTest {
         val (migrated, b) = store.adoptGuestWallet("G_b", "conv3")
         migrated shouldBe false
         b.balance shouldBe 1_000
-        b.inventory shouldBe mapOf("b1" to 5, "b2" to 5, "b3" to 5)
+        b.inventory shouldBe mapOf("b1" to 5, "b2" to 5, "b3" to 5, "b4" to 5)
     }
 
     @Test

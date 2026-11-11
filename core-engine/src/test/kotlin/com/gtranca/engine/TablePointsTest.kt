@@ -46,6 +46,17 @@ class TablePointsTest {
     }
 
     @Test
+    fun `§17_11 valores vem do RuleSet da mesa`() {
+        val rules = RuleSet.DEFAULT.copy(cleanCanastaPoints = 300, tableFourToTenPoints = 5, redThreePoints = 50, tableRedThreePoints = 1)
+        val s = round {
+            redThrees(0, "3H")
+            meld(0, "4H 5H 6H 7H 8H 9H TH")
+        }
+        meldPoints(melds(s, 0).single(), rules) shouldBe 300 + 7 * 5
+        tablePoints(melds(s, 0), 1, rules) shouldBe 335 + 51
+    }
+
+    @Test
     fun `§17_11 mesa vazia vale 0`() {
         table(round { }, 0) shouldBe 0
     }
