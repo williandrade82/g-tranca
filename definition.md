@@ -772,10 +772,11 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 - O **zero fica no meio**. Para a **direita**, o total da mesa (§17.11) do próprio lado; para a **esquerda**, o do lado adversário. Nas pontas, a arte dos jogadores: à direita o próprio, à esquerda o adversário; em duplas, os dois da dupla lado a lado, a imagem mais perto do centro cobrindo 40% da outra.
 - Cada lado tem **um só valor** (o total da mesa): positivo, a barra é **dourada**; negativo, **vermelha**. Nunca as duas no mesmo lado ao mesmo tempo. O número de cada lado fica junto da arte.
 - **Escala** (igual para os dois lados, começa em **500** a cada partida e **nunca diminui** dentro dela):
-  - quando um lado chega a **500**: animação empolgante, a escala vai a **1000** e aparece uma estrela no ponto 500 com o número "500" embaixo;
-  - quando um lado chega a **1000**: animação mais emocionante, a escala vai a **1200** e aparece a estrela do 1000;
-  - quando um lado **passa de 1200**: a última animação, a mais forte, aparece a estrela do 1200 e, dali em diante, a escala acompanha o maior total (ele enche a metade da barra).
-  - se um salto passa por mais de um marco, toca só a animação do maior, e aparecem todas as estrelas alcançadas.
+  - quando um lado chega a **500**: animação empolgante e a escala vai a **750**;
+  - quando um lado chega a **750**: animação mais emocionante e a escala vai a **1000**;
+  - quando um lado **passa de 1000**: a última animação, a mais forte, e, dali em diante, a escala acompanha o maior total (ele enche a metade da barra).
+  - se um salto passa por mais de um marco, toca só a animação do maior.
+- **Marcação** de cada marco alcançado (500, 750, 1000), com o número embaixo, nas duas metades: na metade do lado que **já alcançou** aquele marco em algum momento da partida, uma **estrela**; na metade do lado que ainda não alcançou (o marco só aparece porque o outro lado chegou lá), só uma **fina linha vertical** no ponto.
 - **Toda** mudança de valor é animada: a barra cresce ou diminui até o novo valor e o número gira como um letreiro. O valor muda quando a jogada pousa (§17.11).
 - **Fim da partida**: depois dos fogos de artifício, a barra recebe a **pontuação final da partida** de cada lado (§12, com batida e cartas na mão). Os dois números giram juntos em **0,5 s** e o novo valor aparece com um destaque; se um marco foi alcançado, toca a animação dele; só então aparece a arte de bateu ou perdeu e o fim de partida segue como antes.
 - Só usa informação visível (§16.4). Não é jogada, não muda `legalActions` nem a pontuação oficial (§12).

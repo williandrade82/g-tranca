@@ -74,7 +74,7 @@ object ScoreBarTiming {
     /** Destaque do novo valor final. */
     const val HIGHLIGHT_MILLIS: Int = 600
 
-    /** Animação de um marco (500, 1000, 1200). */
+    /** Animação de um marco (500, 750, 1000). */
     const val MILESTONE_MILLIS: Int = 1_600
 
     /** Giro e crescimento da barra durante o jogo, quando as animações do sistema não dão um tempo. */
@@ -168,7 +168,7 @@ fun ScoreBar(
     // A escala sobe quando o valor aparece; no fim, depois do giro e do destaque.
     LaunchedEffect(own, opponent, finals != null) {
         if (finals != null && animate) delay((ScoreBarTiming.FINAL_ROLL_MILLIS + ScoreBarTiming.HIGHLIGHT_MILLIS).toLong())
-        holder.see(listOf(own, opponent))
+        holder.see(List(maxOf(ownSide, opponentSide) + 1) { i -> if (i == ownSide) own else if (i == opponentSide) opponent else 0 })
     }
     val sound = LocalSound.current
     val pulse = remember { Animatable(0f) }
@@ -195,7 +195,7 @@ fun ScoreBar(
     val scale = holder.scale
     val p = pulse.value
     val level = holder.milestone
-    // Tremor no marco do 1000 e mais forte no 1200.
+    // Tremor no marco do 750 e mais forte no 1000.
     val shake = if (p in 0.01f..0.99f && level >= 2) sin(p * 40f) * (1f - p) * (if (level >= 3) 5f else 3f) else 0f
     Box(
         modifier.fillMaxWidth().zIndex(2f).testTag("score-bar")
@@ -212,6 +212,8 @@ fun ScoreBar(
             BarNumber(opponent, duration, highlight.value, Modifier.testTag("score-bar-opponent"))
             Track(
                 scale = scale,
+                ownSide = ownSide,
+                opponentSide = opponentSide,
                 own = own,
                 opponent = opponent,
                 duration = duration,
@@ -224,7 +226,7 @@ fun ScoreBar(
     }
 }
 
-/** Brilho da borda no marco: pulsa duas vezes (500) ou três (1000, 1200). */
+/** Brilho da borda no marco: pulsa duas vezes (500) ou três (750, 1000). */
 private fun glow(p: Float, level: Int): Float {
     if (p <= 0f || p >= 1f) return 0f
     val beats = if (level >= 2) 3f else 2f
@@ -299,9 +301,12 @@ fun RollingNumber(value: Int, durationMillis: Int, color: Color, modifier: Modif
     }
 }
 
-/** A trilha: zero no meio, cada metade enche do centro para fora; estrelas nos marcos com o número embaixo. */
+/**
+ * A trilha: zero no meio, cada metade enche do centro para fora. Nos marcos alcançados, com o número embaixo: estrela na
+ * metade do lado que já chegou lá, linha fina na do outro.
+ */
 @Composable
-private fun Track(scale: ScoreBarScale, own: Int, opponent: Int, duration: Int, modifier: Modifier) {
+private fun Track(scale: ScoreBarScale, ownSide: Int, opponentSide: Int, own: Int, opponent: Int, duration: Int, modifier: Modifier) {
     val spec = tween<Float>(duration, easing = FastOutSlowInEasing)
     val ownFill by animateFloatAsState(scale.fraction(own), spec, label = "own-fill")
     val oppFill by animateFloatAsState(scale.fraction(opponent), spec, label = "opp-fill")
@@ -327,18 +332,25 @@ private fun Track(scale: ScoreBarScale, own: Int, opponent: Int, duration: Int, 
         )
         // Zero no meio.
         Box(Modifier.offset(x = half - 1.dp, y = trackTop - 2.dp).width(2.dp).height(trackHeight + 4.dp).background(GColors.Champagne))
-        // Estrelas (as duas metades), escorregando quando o teto sobe.
-        scale.stars.forEach { mark ->
-            val f by animateFloatAsState(scale.starFraction(mark), spec, label = "star-$mark")
-            listOf(half + half * f, half - half * f).forEachIndexed { i, x ->
-                Text(
-                    "★",
-                    Modifier.offset(x = x - 6.dp, y = trackTop - 3.dp).width(12.dp)
-                        .then(if (i == 0) Modifier.testTag("score-bar-star-$mark") else Modifier),
-                    color = Color(0xFFFFF3B0),
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                )
+        // Marcações (as duas metades), escorregando quando o teto sobe.
+        scale.marks.forEach { mark ->
+            val f by animateFloatAsState(scale.markFraction(mark), spec, label = "mark-$mark")
+            listOf(ownSide to half + half * f, opponentSide to half - half * f).forEach { (side, x) ->
+                val tag = if (side == ownSide) "own" else "opponent"
+                if (scale.hasStar(side, mark)) {
+                    Text(
+                        "★",
+                        Modifier.offset(x = x - 6.dp, y = trackTop - 3.dp).width(12.dp).testTag("score-bar-star-$tag-$mark"),
+                        color = Color(0xFFFFF3B0),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                } else {
+                    Box(
+                        Modifier.offset(x = x - 0.5.dp, y = trackTop - 1.dp).width(1.dp).height(trackHeight + 2.dp)
+                            .background(GColors.Champagne.copy(alpha = 0.8f)).testTag("score-bar-tick-$tag-$mark"),
+                    )
+                }
                 Text(
                     "$mark",
                     Modifier.offset(x = x - 14.dp, y = trackTop + trackHeight).width(28.dp),
@@ -354,8 +366,8 @@ private fun Track(scale: ScoreBarScale, own: Int, opponent: Int, duration: Int, 
 private fun fillColor(value: Int): Color = if (value < 0) ScoreBarRed else GColors.Gold
 
 /**
- * Animação de um marco, por cima da barra ([p] de 0 a 1): 500 só o brilho da borda (no [ScoreBar]); 1000 chuva de
- * estrelinhas; 1200 mini fogos.
+ * Animação de um marco, por cima da barra ([p] de 0 a 1): 500 só o brilho da borda (no [ScoreBar]); 750 chuva de
+ * estrelinhas; 1000 mini fogos.
  */
 @Composable
 private fun MilestoneEffect(level: Int, p: Float, modifier: Modifier) {
