@@ -1,0 +1,162 @@
+# Ambiente de desenvolvimento local, sem Kubernetes.
+# Mesmos Dockerfiles do cluster (online/<servico>/Dockerfile). Os servicos Kotlin fazem build a partir da
+# raiz do repositorio (:core-engine e :ai entram so leitura, igual ao build de imagem documentado em
+# deploy/README.md); o admin-web e um projeto npm independente, sem nada do monorepo Kotlin, e faz build
+# a partir da propria pasta (online/admin-web).
+#
+# Uso (a partir desta pasta, online/):
+#   cp .env.example .env        # uma vez; edite os segredos
+#   docker compose up --build
+#
+# Sem Traefik, Helm nem NetworkPolicy: isso continua reservado para a homologacao em Kubernetes
+# (ver deploy/README.md). Os servicos aqui se enxergam pelo nome (rede padrao do Compose) e ficam
+# expostos em portas distintas no host, uma por servico.
+
+name: gtranca-dev
+
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gtranca}
+      POSTGRES_DB: ${POSTGRES_DB:-gtranca}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ${GTRANCA_STORAGE:-C:/Projetos/g-tranca-storage}/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-gtranca}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  lobby-service:
+    build:
+      context: ..
+      dockerfile: online/lobby-service/Dockerfile
+    ports:
+      # So localhost: com TRUST_FORWARDED_FOR=true, a rede entra so pelo edge (8080), senao um
+      # X-Forwarded-For forjado direto nesta porta escaparia do limite por IP.
+      - "127.0.0.1:8081:8080"
+    environment:
+      PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gtranca}
+      DB_USER: ${POSTGRES_USER:-gtranca}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      ADMIN_INTERNAL_SECRET: ${ADMIN_INTERNAL_SECRET:-}
+      APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
+      GAME_SERVICE_URL: http://game-service:8080
+      ECONOMY_URL: http://economy-service:8080
+      TRUST_FORWARDED_FOR: "true"
+      RATE_LIMIT_PER_MINUTE: "120"
+      GUEST_CREATION_PER_MINUTE: "10"
+      TABLE_OPEN_TTL_MINUTES: "30"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      LOGIN_ATTEMPT_LIMIT: "5"
+      LOGIN_LOCKOUT_MINUTES: "15"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  game-service:
+    build:
+      context: ..
+      dockerfile: online/game-service/Dockerfile
+    ports:
+      - "127.0.0.1:8082:8080" # so localhost, mesmo motivo do lobby-service
+    environment:
+      PORT: "8080"
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
+      LOBBY_URL: http://lobby-service:8080
+      ECONOMY_URL: http://economy-service:8080
+      TRUST_FORWARDED_FOR: "true"
+      BOT_DELAY_MS: "1200"
+      ROUND_PAUSE_MS: "6000"
+      MAX_MATCHES: "50"
+      WS_MESSAGES_PER_SECOND: "10"
+      WS_BURST: "20"
+      JAVA_OPTS: "-XX:MaxRAMPercentage=65"
+    depends_on:
+      - lobby-service
+
+  economy-service:
+    build:
+      context: ..
+      dockerfile: online/economy-service/Dockerfile
+    ports:
+      - "8083:8080"
+    environment:
+      PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gtranca}
+      DB_USER: ${POSTGRES_USER:-gtranca}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?defina INTERNAL_SECRET no .env}
+      ADMIN_INTERNAL_SECRET: ${ADMIN_INTERNAL_SECRET:-}
+      APP_SIGNING_KEY: ${APP_SIGNING_KEY:-}
+      LOBBY_URL: http://lobby-service:8080
+      JAVA_OPTS: "-XX:MaxRAMPercentage=65"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  admin-api:
+    build:
+      context: ..
+      dockerfile: online/admin-api/Dockerfile
+    ports:
+      - "8084:8080"
+    environment:
+      PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gtranca}
+      DB_USER: ${POSTGRES_USER:-gtranca}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      TRUST_FORWARDED_FOR: "false"
+      RATE_LIMIT_PER_MINUTE: "60"
+      LOGIN_ATTEMPT_LIMIT: "5"
+      LOGIN_LOCKOUT_MINUTES: "15"
+      ADMIN_PASSWORD_COST: "12"
+      ADMIN_SESSION_IDLE_MINUTES: "30"
+      ADMIN_SESSION_MAX_HOURS: "8"
+      ADMIN_SEED_EMAIL: ${ADMIN_SEED_EMAIL:-}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-}
+      LOBBY_SERVICE_HEALTH_URL: http://lobby-service:8080/health
+      GAME_SERVICE_HEALTH_URL: http://game-service:8080/health
+      ECONOMY_SERVICE_HEALTH_URL: http://economy-service:8080/health
+      # Tela Contas e numeros do Painel (Sec18.7): rotas /internal/admin/... de LEITURA, segredo PROPRIO
+      # (nunca o INTERNAL_SECRET servico a servico, ver online/contracts/.../Admin.kt).
+      LOBBY_SERVICE_URL: http://lobby-service:8080
+      ECONOMY_SERVICE_URL: http://economy-service:8080
+      ADMIN_INTERNAL_SECRET: ${ADMIN_INTERNAL_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  admin-web:
+    build:
+      context: ./admin-web
+    ports:
+      - "8085:8080"
+    depends_on:
+      admin-api:
+        condition: service_healthy
+        # "restart: true": o nginx so resolve "admin-api" uma vez, no arranque (proxy_pass com nome
+        # literal). Se o admin-api subir de novo sozinho (`docker compose up admin-api`) e trocar de IP,
+        # o admin-web ficaria com o endereco velho e devolveria 502; isto reinicia o admin-web tambem.
+        # No cluster (k8s-ops) isso nao e necessario: o IP do Service e estavel.
+        restart: true
+
+  # So para dev local: junta lobby/game/economy numa porta so para o app apontar (campo
+  # "Servidor online" do Perfil, so host:porta). No cluster isso e o Ingress de verdade (k8s-ops).
+  edge:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./edge/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      - lobby-service
+      - game-service
+      - economy-service

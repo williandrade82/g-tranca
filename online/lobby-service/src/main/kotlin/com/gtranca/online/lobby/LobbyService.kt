@@ -1,5 +1,7 @@
 package com.gtranca.online.lobby
 
+import com.gtranca.online.contracts.AdminStatsDto
+import com.gtranca.online.contracts.AdminTableSummary
 import com.gtranca.online.contracts.BotLevel
 import com.gtranca.online.contracts.BotProfile
 import com.gtranca.online.contracts.CreateMatchRequest
@@ -16,6 +18,7 @@ import com.gtranca.online.contracts.TableState
 import com.gtranca.online.contracts.TableView
 import com.gtranca.online.contracts.TempoDeJogada
 import com.gtranca.online.contracts.Visibilidade
+import java.util.concurrent.ConcurrentLinkedDeque
 import kotlin.random.Random
 
 /** §18.2: opcoes fixas de toda mesa do servidor. `"{}"` = perfil Classica (RuleSet padrao do motor). */
@@ -63,6 +66,14 @@ class LobbyService(
 
     /** Quando abrir a proxima mesa por tempo (`null` = sem contagem). */
     private var nextOpenAt: Long? = null
+
+    /**
+     * §18.7: o instante (relogio do servidor) de cada partida encerrada, para contar "na ultima hora" no Painel.
+     * So em memoria (zera ao reiniciar o pod; nos primeiros 60 min depois de um reinicio o numero fica menor que o
+     * real) - preferido a inventar uma contagem a partir das mesas ENCERRADA, que somem do [store] poucos minutos
+     * depois (ver [LobbyConfig.closedRetentionMs]) e teriam o id reaproveitado.
+     */
+    private val matchEndedTimestamps = ConcurrentLinkedDeque<Long>()
 
     /** §18.2: nesta fase o jogador nao cria mesa. */
     @Suppress("UNUSED_PARAMETER")
@@ -227,15 +238,113 @@ class LobbyService(
      * O game-service avisa que o jogo terminou ou foi encerrado (§18.4): a mesa EM_JOGO vira ENCERRADA. Idempotente; mesa
      * ABERTA nao e tocada (um aviso atrasado de outro jogo nao a fecha).
      */
-    fun matchEnded(rawId: String): TableView = mutate(rawId) { t ->
-        if (t.state == TableState.EM_JOGO) t.copy(state = TableState.ENCERRADA) else t
+    fun matchEnded(rawId: String): TableView {
+        var wasInGame = false
+        val view = mutate(rawId) { t ->
+            if (t.state == TableState.EM_JOGO) {
+                wasInGame = true
+                t.copy(state = TableState.ENCERRADA)
+            } else {
+                t
+            }
+        }
+        recordMatchEndedIfJustNow(wasInGame, view)
+        return view
     }
 
-    fun close(guest: Guest, rawId: String): TableView = mutate(rawId) { t ->
-        requireHost(t, guest)
-        if (t.state == TableState.ENCERRADA) return@mutate t
-        requireCanClose(t)
-        t.copy(state = TableState.ENCERRADA)
+    /**
+     * §18.7: registra o fim de UMA partida, so quando [mutate] de fato terminou (nunca dentro da transformacao
+     * que o [TableStore] pode tentar de novo/perder no meio, ver [PersistentTableStore.update]): gravar o
+     * instante ANTES de [persistence] confirmar criaria uma conta dupla se o game-service reenviar o aviso
+     * depois de um erro de rede/banco (o estado em memoria so muda se a gravacao deu certo, entao o proximo
+     * [wasInGame] so fica `true` de novo se esta chamada nao tiver realmente concluido a transicao).
+     */
+    private fun recordMatchEndedIfJustNow(wasInGame: Boolean, view: TableView) {
+        if (wasInGame && view.state == TableState.ENCERRADA) matchEndedTimestamps.addLast(clock())
+    }
+
+    /** §18.7: numeros do Painel do console de gerenciamento. [onlinePlayers] vem de fora (depende do [GuestRegistry]). */
+    fun stats(onlinePlayers: Int): AdminStatsDto = synchronized(lock) {
+        val all = store.all()
+        AdminStatsDto(
+            playersOnline = onlinePlayers,
+            tablesOpen = all.count { it.state == TableState.ABERTA },
+            tablesInGame = all.count { it.state == TableState.EM_JOGO },
+            matchesEndedLastHour = matchesEndedLastHour(),
+        )
+    }
+
+    private fun matchesEndedLastHour(): Int {
+        val cutoff = clock() - 3_600_000L
+        while (true) {
+            val head = matchEndedTimestamps.peekFirst() ?: break
+            if (head < cutoff) matchEndedTimestamps.pollFirst() else break
+        }
+        return matchEndedTimestamps.size
+    }
+
+    /**
+     * §18.7: mesas onde [accountId] esta sentado AGORA (nao e historico: uma mesa ENCERRADA some do [store] poucos
+     * minutos depois, ver [LobbyConfig.closedRetentionMs]). So leitura: nunca chama [maintainLocked] (que pode
+     * abrir/fechar mesas) para uma consulta do console nao ter efeito colateral nenhum.
+     */
+    fun currentTablesOf(accountId: String): List<AdminTableSummary> = synchronized(lock) {
+        store.all().filter { it.seatOf(accountId) >= 0 }.map { AdminTableSummary(it.id, it.name, it.state, it.lastActivityMs) }
+    }
+
+    /**
+     * §18.7: mesas para o console de gerenciamento, em QUALQUER estado (ao contrario de [list], que nunca mostra
+     * ENCERRADA — aqui o operador pode ver uma mesa recem-encerrada para investigar). So leitura: nunca chama
+     * [maintainLocked] (uma consulta do console nao pode abrir nem fechar mesa). Mais recente primeiro dentro de
+     * cada estado; ABERTA e EM_JOGO antes de ENCERRADA. @return (total sem paginar, a pagina pedida).
+     */
+    fun adminTables(limit: Int, offset: Int): Pair<Int, List<TableView>> = synchronized(lock) {
+        val all = store.all().sortedWith(
+            compareBy<Table> { stateOrder(it.state) }.thenByDescending { it.lastActivityMs }.thenBy { it.id },
+        )
+        val page = all.drop(offset.coerceAtLeast(0)).take(limit.coerceIn(1, ADMIN_TABLES_MAX_LIMIT)).map { it.toView() }
+        all.size to page
+    }
+
+    private fun stateOrder(state: TableState) = when (state) {
+        TableState.ABERTA -> 0
+        TableState.EM_JOGO -> 1
+        TableState.ENCERRADA -> 2
+    }
+
+    /** §18.7: a mesa, em qualquer estado (404 tipado se nao existe). So leitura. */
+    fun adminTable(rawId: String): TableView = synchronized(lock) {
+        (store.find(idOf(rawId)) ?: missing()).toView()
+    }
+
+    /**
+     * §18.7 "Encerrar mesa travada": o operador encerra a mesa, idempotente (ENCERRADA fica como esta), em
+     * qualquer estado. Mesa EM_JOGO: o CHAMADOR ja avisou o game-service ANTES de chamar isto
+     * ([GameGateway.closeByOperator], §18.4 decisao de 03/11/2026 - ninguem e punido, a aposta de todos os
+     * humanos volta); aqui so se reflete o estado no lobby, exatamente como o DELETE do anfitriao faz com
+     * [close] depois de [GameGateway.closeMatch]. Conta para [recordMatchEndedIfJustNow] como as demais.
+     */
+    fun adminClose(rawId: String): TableView {
+        var wasInGame = false
+        val view = mutate(rawId) { t ->
+            if (t.state == TableState.EM_JOGO) wasInGame = true
+            if (t.state == TableState.ENCERRADA) t else t.copy(state = TableState.ENCERRADA, starting = false)
+        }
+        recordMatchEndedIfJustNow(wasInGame, view)
+        return view
+    }
+
+    fun close(guest: Guest, rawId: String): TableView {
+        var wasInGame = false
+        val view = mutate(rawId) { t ->
+            requireHost(t, guest)
+            if (t.state == TableState.ENCERRADA) return@mutate t
+            requireCanClose(t)
+            wasInGame = true // so chega aqui com EM_JOGO (ABERTA cai em requireCanClose, ENCERRADA no return@mutate acima)
+            t.copy(state = TableState.ENCERRADA)
+        }
+        recordMatchEndedIfJustNow(wasInGame, view)
+        return view
     }
 
     // ------------------------------------------------------------------------------------------ conjunto de mesas
@@ -366,6 +475,9 @@ class LobbyService(
 
     companion object {
         private const val MAX_ID_ATTEMPTS = 50
+
+        /** §18.7: paginacao de GET /internal/admin/tables (mesmo teto de GET /internal/admin/accounts). */
+        const val ADMIN_TABLES_MAX_LIMIT = 100
 
         /** Praias do Brasil, com as mais conhecidas de Florianópolis (§18.2). */
         val TABLE_NAMES = listOf(

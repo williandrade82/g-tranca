@@ -116,6 +116,10 @@ data class GameUiState(
     val ownSwapPending: Boolean,
     val banner: RedThreeNotice?,
     val planChoice: List<Action.TakeDiscardPile>?,
+    /** Jogo do próprio lado indicado para receber o topo do lixo (borda dourada). */
+    val targetMeld: MeldId? = null,
+    /** A indicação para pegar o lixo não casou com nenhum plano: modal *Não dá para pegar assim*. */
+    val takeMistake: Resolution.TakeMistake? = null,
     /** "Baixar" com mais de uma possibilidade: opções (conjunto novo/acréscimos), a que mais pontua primeiro. */
     val meldChoice: List<Action>? = null,
     val confirmDecline: Boolean,
@@ -141,6 +145,8 @@ data class GameUiState(
     val dealPending: Boolean = false,
     /** Voos da distribuição (a tela espera todos pousarem para avisar que ela terminou). */
     val dealFlightIds: Set<Long> = emptySet(),
+    /** Camada "Prepare-se!" sobre a mesa, antes da distribuição da 1ª partida. */
+    val opening: Boolean = false,
     /** Quanto tempo o aviso de troca de 3 vermelho fica na tela antes de fechar sozinho (0 = sem animações). */
     val swapNoticeMillis: Long = 0,
     /** §16.6 multijogador: a vez já chegou, mas este aparelho ainda anima as jogadas anteriores. */
@@ -329,6 +335,8 @@ class GameViewModel(
         val dealDone: Boolean = true,
         /** A 1ª troca depois da distribuição vem logo depois dela (pausa curta, sem o aviso longo parado). */
         val afterDeal: Boolean = false,
+        /** Camada "Prepare-se!" sobre a mesa: 1,5 s antes da distribuição da 1ª partida (os voos dela esperam). */
+        val opening: Boolean = false,
         /** §3.5 troca própria do início da vez → troca em cadeia que chega à mão quando ela é confirmada. */
         val delivers: Map<Long, List<Long>> = emptyMap(),
         val flashes: List<CanastaFlash> = emptyList(),
@@ -340,6 +348,9 @@ class GameViewModel(
         /** §9.4 trocas de 3 vermelho que vieram no morto (id da troca → morto). */
         val mortoSwaps: Map<Long, Int> = emptyMap(),
         val planChoice: List<Action.TakeDiscardPile>? = null,
+        /** Jogo do próprio lado indicado (antes de comprar) para receber o topo do lixo. */
+        val targetMeld: MeldId? = null,
+        val takeMistake: Resolution.TakeMistake? = null,
         val meldChoice: List<Action>? = null,
         /** Pedido ([GameSnapshot.humanRequestId]) em que os planos de [planChoice] foram resolvidos. */
         val planRequestId: Long = 0,
@@ -434,6 +445,7 @@ class GameViewModel(
                 speed = speedFor(slowAnimations),
                 animationScale = speedFor(slowAnimations),
                 endStep = if ((restored != null || continuing) && initial.stage == Stage.ROUND_OVER) 1 else 0,
+                opening = restored == null && !continuing && initial.stage == Stage.PLAYING && initial.roundNumber == 1,
             )
             absorb(base, initial, previous = if (restored != null || continuing) initial else null)
         },
@@ -449,6 +461,12 @@ class GameViewModel(
         multiplayer && (!state.dealDone || state.flights.isNotEmpty() || state.swaps.isNotEmpty() || state.settling > 0)
 
     init {
+        if (local.value.opening) {
+            viewModelScope.launch {
+                delay(com.gtranca.net.PREPARE_MILLIS)
+                local.update { it.copy(opening = false) }
+            }
+        }
         viewModelScope.launch {
             controller.state.collect { snapshot ->
                 local.update { absorb(it, snapshot, it.snapshot) }
@@ -689,6 +707,7 @@ class GameViewModel(
                 fresh.filter { it.seat == snapshot.viewerSeat && it.atTurnStart && !it.chained }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
             TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet)
                 .map { it.scaled(state.animationScale) }
+                .map { if (state.opening) it.copy(delayMillis = it.delayMillis + com.gtranca.net.PREPARE_MILLIS) else it }
         } else {
             emptyList()
         }
@@ -716,6 +735,10 @@ class GameViewModel(
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             delivers = if (playing) delivers.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
             planChoice = state.planChoice.takeIf { snapshot.isHumanTurn },
+            targetMeld = state.targetMeld?.takeIf {
+                snapshot.isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW && snapshot.view.tables[snapshot.view.side.index].meld(it) != null
+            },
+            takeMistake = state.takeMistake.takeIf { snapshot.isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW },
             meldChoice = state.meldChoice.takeIf { snapshot.isHumanTurn },
             confirmDecline = state.confirmDecline && snapshot.isHumanTurn,
             confirmResign = state.confirmResign && snapshot.stage == old.stage && sameRound,
@@ -774,6 +797,8 @@ class GameViewModel(
             banner = head?.takeIf { state.dealDone && reveal == null && !isOwn(it, snapshot) && state.flights.none { f -> f.id !in state.dealIds } && state.settling <= 0 },
             swapNoticeMillis = if (state.afterDeal) minOf(swapAnimationMillis, DEAL_SWAP_PAUSE_MILLIS) else (swapAnimationMillis * state.speed).toLong(),
             planChoice = state.planChoice,
+            targetMeld = state.targetMeld,
+            takeMistake = state.takeMistake,
             meldChoice = state.meldChoice,
             confirmDecline = state.confirmDecline,
             confirmResign = state.confirmResign,
@@ -802,6 +827,7 @@ class GameViewModel(
             opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
+            opening = state.opening,
         )
     }
 
@@ -882,6 +908,19 @@ class GameViewModel(
     }
 
     override fun onDismissPlanChoice() = local.update { it.copy(planChoice = null) }
+
+    /** Antes de comprar, tocar num jogo do próprio lado o indica (ou desmarca) como destino do topo do lixo (§5.1). */
+    override fun onMeldTarget(meldId: MeldId) = local.update { state ->
+        state.copy(targetMeld = if (state.targetMeld == meldId) null else meldId, message = null)
+    }
+
+    /** "Ver opções" no modal do engano: todos os planos legais, resolvidos no mesmo pedido. */
+    override fun onTakeMistakeOptions() = local.update { state ->
+        val mistake = state.takeMistake ?: return@update state
+        state.copy(takeMistake = null, planChoice = PlanRanking.rank(mistake.options, state.snapshot.view))
+    }
+
+    override fun onDismissTakeMistake() = local.update { it.copy(takeMistake = null) }
 
     /** Escolha entre as opções de "Baixar" (todas vindas de `legal`). */
     override fun onMeldChosen(action: Action) {
@@ -1017,12 +1056,13 @@ class GameViewModel(
         if (!snapshot.isHumanTurn || !controller.awaitingHuman() || ownSwapPending || turnHeld(local.value)) return
         val requestId = snapshot.humanRequestId
         val selected = local.value.selected.filter { it in snapshot.view.hand }
-        val resolution = HumanTurnResolver.resolve(intent, selected, snapshot.humanLegal) { controller.explain(it, requestId) }
+        val resolution = HumanTurnResolver.resolve(intent, selected, snapshot.humanLegal, local.value.targetMeld) { controller.explain(it, requestId) }
         if (resolution !is Resolution.Play && controller.state.value !== snapshot) return
         when (resolution) {
             is Resolution.Play -> submit(resolution.action, requestId)
             is Resolution.ChoosePlan ->
                 local.update { it.copy(planChoice = PlanRanking.rank(resolution.options, snapshot.view), planRequestId = requestId, message = null) }
+            is Resolution.TakeMistake -> local.update { it.copy(takeMistake = resolution, planRequestId = requestId, message = null) }
             is Resolution.Rejected -> local.update { it.copy(message = UiMessage.Rejected(resolution.reason)) }
             Resolution.SelectOneCardToDiscard -> local.update { it.copy(message = UiMessage.SelectOneCardToDiscard) }
             is Resolution.ChooseMeld ->
@@ -1133,7 +1173,7 @@ class GameViewModel(
 
     private fun submit(action: Action, requestId: Long) {
         if (controller.submit(action, requestId)) {
-            local.update { it.copy(selected = emptyList(), newCards = emptySet(), message = null) }
+            local.update { it.copy(selected = emptyList(), targetMeld = null, newCards = emptySet(), message = null) }
         }
     }
 }

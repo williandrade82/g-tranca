@@ -48,6 +48,13 @@ sealed interface Resolution {
     /** Mais de um plano para pegar o lixo corresponde à seleção: o humano escolhe. */
     data class ChoosePlan(val options: List<Action.TakeDiscardPile>) : Resolution
 
+    /**
+     * Há planos para pegar o lixo, mas a indicação (jogo da mesa e/ou cartas da mão) não casa com nenhum, ou não houve
+     * indicação ([indicated] falso). [reason] vem de `RoundEngine.validate`; [options] são todos os planos legais, para
+     * "Ver opções".
+     */
+    data class TakeMistake(val indicated: Boolean, val reason: RuleError?, val options: List<Action.TakeDiscardPile>) : Resolution
+
     /** Nenhuma ação corresponde; [reason] vem de `RoundEngine.validate` (`null` se o motor não apontou motivo). */
     data class Rejected(val reason: RuleError?) : Resolution
 
@@ -91,6 +98,8 @@ object HumanTurnResolver {
         intent: PlayIntent,
         selection: List<Card>,
         legal: List<Action>,
+        /** Jogo do próprio lado indicado na mesa para receber o topo do lixo (só vale para pegar o lixo). */
+        targetMeld: MeldId? = null,
         explain: (Action) -> RuleError?,
     ): Resolution {
         val wanted = selection.classCounts()
@@ -104,18 +113,27 @@ object HumanTurnResolver {
                 if (Action.DeclineDraw in legal) Resolution.Play(Action.DeclineDraw) else reject(Action.DeclineDraw)
             PlayIntent.TakeDiscardPile -> {
                 val all = legal.filterIsInstance<Action.TakeDiscardPile>()
-                if (selection.isEmpty()) {
-                    // §5.1 sem seleção não há intenção expressa: nunca executa sozinho (jogadas não se desfazem). Mostra
-                    // todos os planos, inclusive um só (como confirmação), do que usa menos cartas da mão ao que usa mais.
-                    if (all.isEmpty()) reject(Action.TakeDiscardPile(DiscardPlan.NewMeld(selection)))
-                    else Resolution.ChoosePlan(all.sortedBy { handCardsOf(it).size })
-                } else {
-                    // Com seleção: o plano que usa exatamente essas cartas da mão expressa a intenção.
-                    val options = all.filter(::sameCards)
-                    when (options.size) {
-                        0 -> reject(Action.TakeDiscardPile(DiscardPlan.NewMeld(selection)))
-                        1 -> Resolution.Play(options.single())
-                        else -> Resolution.ChoosePlan(options)
+                val candidate = Action.TakeDiscardPile(
+                    if (targetMeld != null) DiscardPlan.AddToMeld(targetMeld, selection) else DiscardPlan.NewMeld(selection),
+                )
+                val sorted = all.sortedBy { handCardsOf(it).size }
+                when {
+                    // Nenhum plano legal (ex.: §5.3 3 preto no topo): a recusa comum explica o motivo.
+                    all.isEmpty() -> reject(candidate)
+                    // §5.1 sem indicação: com um único plano no total, não há o que escolher (pedido do usuário, 10/11/2026);
+                    // com mais de um, não há intenção expressa e nada é executado (jogadas não se desfazem).
+                    selection.isEmpty() && targetMeld == null ->
+                        if (all.size == 1) Resolution.Play(all.single()) else Resolution.TakeMistake(false, null, sorted)
+                    else -> {
+                        // O plano que usa exatamente essas cartas da mão (e o jogo indicado, se houver) expressa a intenção.
+                        val options = all.filter { action ->
+                            sameCards(action) && (targetMeld == null || (action.plan as? DiscardPlan.AddToMeld)?.meldId == targetMeld)
+                        }
+                        when (options.size) {
+                            0 -> Resolution.TakeMistake(true, explain(candidate), sorted)
+                            1 -> Resolution.Play(options.single())
+                            else -> Resolution.ChoosePlan(options)
+                        }
                     }
                 }
             }

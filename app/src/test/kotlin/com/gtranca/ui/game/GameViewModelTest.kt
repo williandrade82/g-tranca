@@ -547,12 +547,29 @@ class GameViewModelTest {
         fun delays(slow: Boolean): List<Long> = GameViewModel(
             GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 7, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450, slowAnimations = slow,
-        ).uiState.value.flights.map { it.delayMillis }
+        ).uiState.value.flights.map { it.delayMillis - com.gtranca.net.PREPARE_MILLIS }
         val fast = delays(false)
         val slowed = delays(true)
         fast.size shouldBe slowed.size
         fast.zip(slowed).all { (a, b) -> b == (a * 1.3f).toLong() } shouldBe true
         (fast.max() > 0) shouldBe true
+    }
+
+    @Test
+    fun `Prepare-se sobre a mesa dura 1,5 s e a distribuicao da 1a partida so comeca depois`() = runTest(dispatcher) {
+        val vm = GameViewModel(
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 5, computeDispatcher = dispatcher,
+            botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450,
+        )
+        val start = vm.uiState.value
+        start.opening shouldBe true
+        start.flights.filter { it.id in start.dealFlightIds }.all { it.delayMillis >= com.gtranca.net.PREPARE_MILLIS } shouldBe true
+        advanceTimeBy(com.gtranca.net.PREPARE_MILLIS - 1)
+        runCurrent()
+        vm.uiState.value.opening shouldBe true
+        advanceTimeBy(2)
+        runCurrent()
+        vm.uiState.value.opening shouldBe false
     }
 
     @Test
@@ -872,7 +889,8 @@ class GameViewModelTest {
                 if (state.awaitingDraw) {
                     val groups = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
                         .groupBy { HumanTurnResolver.handCardsOf(it).classCounts() }
-                    val multi = groups.values.firstOrNull { it.size > 1 }
+                    // Com cartas da mão indicadas (sem nenhuma, a indicação seria o jogo da mesa).
+                    val multi = groups.filterKeys { it.isNotEmpty() }.values.firstOrNull { it.size > 1 }
                     if (multi != null) {
                         val requestId = state.snapshot.humanRequestId
                         vm.select(state.physical(HumanTurnResolver.handCardsOf(multi.first())))
@@ -1166,26 +1184,40 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `§5_1 tocar no lixo sem selecao abre a escolha com todos os planos e nada e aplicado ate escolher`() = runTest(dispatcher) {
+    fun `§5_1 tocar no lixo sem indicacao mostra o engano e Ver opcoes abre todos os planos sem aplicar nada`() = runTest(dispatcher) {
         var checked = false
         seeds@ for (seed in 1L..120L) {
             val vm = newGame(seed, target = 1_000_000)
             repeat(30) {
                 val state = vm.uiState.value
                 if (state.snapshot.stage != Stage.PLAYING) return@repeat
-                if (state.awaitingDraw && state.canTakeDiscardPile) {
-                    val plans = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
+                val plans = state.snapshot.humanLegal.filterIsInstance<Action.TakeDiscardPile>()
+                // Com um plano só a jogada é feita direto (sem modal): procura uma vez com mais de um.
+                if (state.awaitingDraw && plans.size > 1) {
                     vm.onClearSelection()
                     vm.onDiscardPileClick()
                     advanceUntilIdle()
+                    vm.uiState.value.takeMistake.shouldNotBeNull().indicated shouldBe false
+                    vm.uiState.value.planChoice.shouldBeNull()
+                    vm.onTakeMistakeOptions()
+                    advanceUntilIdle()
                     val choice = vm.uiState.value.planChoice.shouldNotBeNull()
+                    vm.uiState.value.takeMistake.shouldBeNull()
                     // Todos os planos, mesmo que haja um só; nada aplicado ainda.
                     choice.toSet() shouldBe plans.toSet()
                     vm.uiState.value.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
                     vm.uiState.value.snapshot.turnEvents[0].none { it.action is Action.TakeDiscardPile } shouldBe true
-                    // O botão "Pegar" (lixo) segue a mesma regra.
+                    // O botão "Pegar" (lixo) segue a mesma regra; "Fechar" só fecha.
                     vm.onDismissPlanChoice()
                     vm.onTakeDiscardPile()
+                    advanceUntilIdle()
+                    vm.onDismissTakeMistake()
+                    advanceUntilIdle()
+                    vm.uiState.value.takeMistake.shouldBeNull()
+                    vm.uiState.value.planChoice.shouldBeNull()
+                    vm.onTakeDiscardPile()
+                    advanceUntilIdle()
+                    vm.onTakeMistakeOptions()
                     advanceUntilIdle()
                     vm.uiState.value.planChoice.shouldNotBeNull().toSet() shouldBe plans.toSet()
                     // Escolher um plano aplica exatamente esse plano.

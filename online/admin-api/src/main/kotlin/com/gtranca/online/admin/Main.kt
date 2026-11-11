@@ -1,8 +1,17 @@
 package com.gtranca.online.admin
 
+import com.gtranca.online.contracts.AdminAdjustRequest
+import com.gtranca.online.contracts.AdminConfigFieldDto
+import com.gtranca.online.contracts.AdminRevokeSessionsResponse
+import com.gtranca.online.contracts.AdminShopGainAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferConfigDto
+import com.gtranca.online.contracts.AdminWalletDto
+import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.ErrorCode
 import com.gtranca.online.contracts.Health
 import com.gtranca.online.contracts.ServerInfo
+import com.gtranca.online.contracts.TableState
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -27,6 +36,9 @@ import io.ktor.server.routing.routing
 import io.ktor.utils.io.readRemaining
 import kotlin.system.exitProcess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.io.readByteArray
 import kotlinx.serialization.encodeToString
@@ -37,10 +49,14 @@ const val SERVICE_NAME = "admin-api"
 
 private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
+/** Falhas ao chamar lobby/economy-service pelas rotas de leitura (Sec18.7): nunca o segredo, so a mensagem. */
+private val gatewayLog = LoggerFactory.getLogger("admin.gateway")
+
 /**
- * Esqueleto do console de gerenciamento (Sec18.7): login da equipe, CRUD da equipe (so administrador cadastra) e a
- * infraestrutura de auditoria. As telas de negocio (Contas, Mesas, Economia, Loja, Auditoria) ficam para as
- * proximas etapas; esta e so a base de autenticacao/autorizacao/auditoria sobre a qual elas serao construidas.
+ * Console de gerenciamento (Sec18.7): login da equipe, CRUD da equipe (so administrador cadastra), auditoria,
+ * Painel (saude dos servicos + numeros do lobby-service) e Contas (busca e ficha, so LEITURA: lobby-service para
+ * a conta e as mesas atuais, economy-service para a carteira). Mesas, Economia (escrita) e Loja ficam para as
+ * proximas etapas.
  *
  * Nada de endereco fixo: tudo vem do ambiente (Secret/ConfigMap no cluster).
  */
@@ -81,6 +97,34 @@ fun main() {
         else -> System.err.println("AVISO: ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD ausentes; sem eles o console so funciona se a equipe ja tiver alguem.")
     }
 
+    // Painel (Sec18.7): servicos a sondar, so os configurados (nome -> variavel com o /health dele). Links de
+    // metricas/logs tambem por variavel (nunca VITE_*: o mesmo bundle do admin-web roda no cluster local e na
+    // nuvem depois, so a configuracao do admin-api muda).
+    val healthTargets = listOfNotNull(
+        System.getenv("LOBBY_SERVICE_HEALTH_URL")?.takeIf { it.isNotBlank() }?.let { HealthTarget("lobby-service", it) },
+        System.getenv("GAME_SERVICE_HEALTH_URL")?.takeIf { it.isNotBlank() }?.let { HealthTarget("game-service", it) },
+        System.getenv("ECONOMY_SERVICE_HEALTH_URL")?.takeIf { it.isNotBlank() }?.let { HealthTarget("economy-service", it) },
+    )
+
+    // Tela Contas e numeros do Painel (Sec18.7): rotas /internal/admin/... de LEITURA do lobby/economy-service,
+    // segredo PROPRIO (nunca o INTERNAL_SECRET servico a servico). Sem as duas variaveis, as rotas ficam
+    // desativadas (nulo) em vez de tentar com um segredo errado.
+    val adminInternalSecret = System.getenv("ADMIN_INTERNAL_SECRET")?.takeIf { it.isNotBlank() }
+    val lobbyServiceUrl = System.getenv("LOBBY_SERVICE_URL")?.takeIf { it.isNotBlank() }
+    val economyServiceUrl = System.getenv("ECONOMY_SERVICE_URL")?.takeIf { it.isNotBlank() }
+    val lobbyAdmin = if (adminInternalSecret != null && lobbyServiceUrl != null) {
+        HttpLobbyAdminGateway(lobbyServiceUrl, adminInternalSecret)
+    } else {
+        System.err.println("AVISO: LOBBY_SERVICE_URL/ADMIN_INTERNAL_SECRET ausentes; Painel sem numeros e tela Contas desativada.")
+        null
+    }
+    val economyAdmin = if (adminInternalSecret != null && economyServiceUrl != null) {
+        HttpEconomyAdminGateway(economyServiceUrl, adminInternalSecret)
+    } else {
+        System.err.println("AVISO: ECONOMY_SERVICE_URL/ADMIN_INTERNAL_SECRET ausentes; carteira na tela Contas desativada.")
+        null
+    }
+
     val deps = AdminDeps(
         store = store,
         sessions = sessions,
@@ -88,6 +132,15 @@ fun main() {
         ipLimitPerMinute = System.getenv("RATE_LIMIT_PER_MINUTE")?.toIntOrNull() ?: 60,
         loginAttemptLimit = System.getenv("LOGIN_ATTEMPT_LIMIT")?.toIntOrNull() ?: 5,
         loginLockoutMinutes = System.getenv("LOGIN_LOCKOUT_MINUTES")?.toLongOrNull() ?: 15L,
+        healthTargets = healthTargets,
+        healthGateway = HttpHealthGateway(
+            timeoutMs = System.getenv("ADMIN_HEALTH_TIMEOUT_MS")?.toLongOrNull() ?: 2_000L,
+            yellowAboveMs = System.getenv("ADMIN_HEALTH_YELLOW_MS")?.toLongOrNull() ?: 500L,
+        ),
+        grafanaUrl = System.getenv("GRAFANA_URL")?.takeIf { it.isNotBlank() },
+        lokiUrl = System.getenv("LOKI_URL")?.takeIf { it.isNotBlank() },
+        lobbyAdmin = lobbyAdmin,
+        economyAdmin = economyAdmin,
     )
     embeddedServer(Netty, port = port, host = "0.0.0.0") { adminModule(deps) }.start(wait = true)
 }
@@ -100,9 +153,38 @@ class AdminDeps(
     val ipLimitPerMinute: Int = 60,
     val loginAttemptLimit: Int = 5,
     val loginLockoutMinutes: Long = 15L,
+    /** Painel (Sec18.7): servicos a sondar. Vazio = a tela so mostra o que nao depende de rede nenhuma. */
+    val healthTargets: List<HealthTarget> = emptyList(),
+    val healthGateway: HealthGateway = HttpHealthGateway(),
+    val grafanaUrl: String? = null,
+    val lokiUrl: String? = null,
+    /** Tela Contas e numeros do Painel (Sec18.7). `null` = rotas Contas desativadas, nulo no Painel (nunca inventa). */
+    val lobbyAdmin: LobbyAdminGateway? = null,
+    /** Carteira na tela Contas (Sec18.7). `null` = wallet sempre nulo na ficha (nunca inventa saldo). */
+    val economyAdmin: EconomyAdminGateway? = null,
+    /** Auditoria das acoes sobre conta (bloquear/desbloquear/encerrar sessoes): mesmo banco da Equipe, ver [AuditLog]. */
+    val auditLog: AuditLog = AuditLog(store.db, clock),
 ) {
     val ipLimiter = RateLimiter(ipLimitPerMinute, clock = clock)
     val loginAttempts = FailedLoginLimiter(loginAttemptLimit, loginLockoutMinutes * 60_000L, clock)
+}
+
+/**
+ * Grava a auditoria de uma acao de escrita sobre conta ou mesa (Sec18.7), depois que a chamada remota ao
+ * lobby-service confirmou. Se o INSERT falhar (banco indisponivel no meio exato entre a mutacao remota e a
+ * auditoria local - ver pendencia no relatorio da etapa), a acao JA ACONTECEU no lobby-service sem registro:
+ * log ERROR antes de propagar, nunca silencioso.
+ */
+private suspend fun AdminDeps.recordAudit(
+    operationId: String?, actor: Actor, action: String, targetId: String, reason: String,
+    resultado: String? = null, detail: String? = null,
+) {
+    try {
+        withContext(Dispatchers.IO) { auditLog.record(operationId, actor, action, targetId, null, reason, resultado, detail) }
+    } catch (e: Exception) {
+        gatewayLog.error("auditoria NAO gravada (acao={}, alvo={}, ator={}): {}", action, targetId, actor.email, e.message)
+        throw e
+    }
 }
 
 private val StartedAt = io.ktor.util.AttributeKey<Long>("admin.startedAt")
@@ -221,6 +303,444 @@ fun Application.adminModule(deps: AdminDeps) {
             }
         }
 
+        // Sec18.7: revoga a sessao no servidor ("Sair"). Sem token ou token ja invalido: mesma resposta (idempotente).
+        post("/admin/logout") {
+            try {
+                val token = call.bearer() ?: adminError(ErrorCode.NAO_AUTENTICADO, "Entre novamente.", 401)
+                withContext(Dispatchers.IO) { deps.sessions.revoke(token) }
+                call.respondJson(Health())
+            } catch (e: AdminException) {
+                call.respondError(e)
+            }
+        }
+
+        // Sec18.7 Painel (docs/telas-admin-web.md): saude de cada servico (verde/amarelo/vermelho), numeros do
+        // lobby-service (GET /internal/admin/stats) e links de metricas/logs. Sem LOBBY_SERVICE_URL/
+        // ADMIN_INTERNAL_SECRET configurados, ou se o lobby-service nao responder, os 4 numeros ficam nulos (ver
+        // DashboardResponse): o admin-web mostra "indisponivel", nunca inventa.
+        get("/admin/dashboard") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val (services, stats) = coroutineScope {
+                    val servicesDeferred = deps.healthTargets.map { target -> async { deps.healthGateway.check(target) } }
+                    val statsDeferred = async {
+                        deps.lobbyAdmin?.let { gateway ->
+                            runCatching { withContext(Dispatchers.IO) { gateway.stats() } }
+                                .onFailure { gatewayLog.warn("lobby-service indisponivel (GET /admin/dashboard): {}", it.message) }
+                                .getOrNull()
+                        }
+                    }
+                    servicesDeferred.awaitAll() to statsDeferred.await()
+                }
+                call.respondJson(
+                    DashboardResponse(
+                        services = services,
+                        playersOnline = stats?.playersOnline,
+                        tablesOpen = stats?.tablesOpen,
+                        tablesInGame = stats?.tablesInGame,
+                        matchesEndedLastHour = stats?.matchesEndedLastHour,
+                        grafanaUrl = deps.grafanaUrl,
+                        lokiUrl = deps.lokiUrl,
+                    ),
+                )
+            }
+        }
+
+        // Sec18.7 tela Contas (docs/telas-admin-web.md): busca por nome/e-mail/id, agregada do lobby-service.
+        // Sem LOBBY_SERVICE_URL/ADMIN_INTERNAL_SECRET configurados, ou se o lobby-service nao responder, a rota
+        // recusa (503): uma listagem de contas nao tem como degradar para "indisponivel" num campo so.
+        get("/admin/accounts") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                val q = call.request.queryParameters["q"].orEmpty()
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { gateway.searchAccounts(q, limit, offset) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/accounts): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                }
+                call.respondJson(AccountsPageResponse(page.accounts, page.total, limit, offset))
+            }
+        }
+
+        // Sec18.7 tela Contas: a ficha (lobby-service) e a carteira (economy-service) em paralelo. A ficha nao
+        // tem como degradar (sem ela nao ha tela), por isso 503 se o lobby nao responder. A carteira tem 3
+        // desfechos distintos (ver AccountDetailResponse.walletUnavailable): tem carteira, a conta genuinamente
+        // nao tem carteira online ainda (wallet=null, walletUnavailable=false, "sem carteira" na tela) ou o
+        // economy-service/a configuracao nao deixou saber (wallet=null, walletUnavailable=true, "indisponivel").
+        get("/admin/accounts/{id}") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val id = call.parameters["id"].orEmpty()
+                val lobby = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                val economy = deps.economyAdmin
+                val (detailResult, walletOutcome) = coroutineScope {
+                    val detailDeferred = async(Dispatchers.IO) { runCatching { lobby.accountDetail(id) } }
+                    val walletDeferred = async(Dispatchers.IO) { economy?.let { gw -> runCatching { gw.wallet(id) } } }
+                    detailDeferred.await() to walletDeferred.await()
+                }
+                val account = detailResult.getOrElse {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/accounts/{{id}}): {}", it.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Conta não encontrada.", 404)
+                walletOutcome?.exceptionOrNull()?.let {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/accounts/{{id}}/wallet): {}", it.message)
+                }
+                val wallet = walletOutcome?.getOrNull()
+                val walletUnavailable = economy == null || walletOutcome?.isFailure == true
+                call.respondJson(AccountDetailResponse(account, wallet, walletUnavailable))
+            }
+        }
+
+        // Sec18.7 "Bloquear conta" (definition.md, decisao de 03/11/2026): operador+, motivo obrigatorio (acao
+        // destrutiva). Impede logar de novo e entrar em mesa nova; NAO ejeta de partida em andamento nem
+        // invalida tokens ja emitidos (isso e /revoke-sessions, acao independente, logo abaixo). Idempotente no
+        // lobby-service; aqui so evita duplicar a linha de auditoria quando o mesmo operationId repete.
+        post("/admin/accounts/{id}/block") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AccountActionRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                // Confere ANTES de chamar o lobby-service: repetir o mesmo operationId nao chama de novo (uma
+                // 2a chamada bloquear/desbloquear/bloquear com o mesmo operationId nao pode reverter a 1a).
+                val jaFeito = req.operationId != null && withContext(Dispatchers.IO) { deps.auditLog.hasOperation(req.operationId) }
+                if (!jaFeito) {
+                    val gateway = deps.lobbyAdmin
+                        ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    try {
+                        withContext(Dispatchers.IO) { gateway.block(id, req.reason) }
+                    } catch (e: LobbyAdminGatewayException) {
+                        gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/block): {}", e.message)
+                        adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    }
+                    deps.recordAudit(req.operationId, Actor(actor.id, actor.email), "BLOQUEAR_CONTA", id, req.reason)
+                }
+                call.respondJson(Health())
+            }
+        }
+        // Reverte o bloqueio acima, sem efeito retroativo. Mesmas regras (operador+, motivo obrigatorio).
+        post("/admin/accounts/{id}/unblock") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AccountActionRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                val jaFeito = req.operationId != null && withContext(Dispatchers.IO) { deps.auditLog.hasOperation(req.operationId) }
+                if (!jaFeito) {
+                    val gateway = deps.lobbyAdmin
+                        ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    try {
+                        withContext(Dispatchers.IO) { gateway.unblock(id) }
+                    } catch (e: LobbyAdminGatewayException) {
+                        gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/unblock): {}", e.message)
+                        adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    }
+                    deps.recordAudit(req.operationId, Actor(actor.id, actor.email), "DESBLOQUEAR_CONTA", id, req.reason)
+                }
+                call.respondJson(Health())
+            }
+        }
+        // Sec18.7 "Encerrar sessões": acao INDEPENDENTE do bloqueio - invalida os tokens vivos, sem impedir
+        // logins futuros. Motivo obrigatorio, como as duas de cima. Idempotencia COM resposta (como
+        // TeamStore.findAuditResult): repetir o mesmo operationId devolve o MESMO "revoked" da 1a vez, sem
+        // encerrar sessoes criadas depois da 1a chamada.
+        post("/admin/accounts/{id}/revoke-sessions") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AccountActionRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                val cached = req.operationId?.let { opId -> withContext(Dispatchers.IO) { deps.auditLog.findResult(opId) } }
+                val revoked = if (cached != null) {
+                    json.decodeFromString(AdminRevokeSessionsResponse.serializer(), cached).revoked
+                } else {
+                    val gateway = deps.lobbyAdmin
+                        ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    val result = try {
+                        withContext(Dispatchers.IO) { gateway.revokeSessions(id) }
+                    } catch (e: LobbyAdminGatewayException) {
+                        gatewayLog.warn("lobby-service indisponivel (POST /admin/accounts/{{id}}/revoke-sessions): {}", e.message)
+                        adminError(ErrorCode.SERVICO_INDISPONIVEL, "Contas indisponíveis agora. Tente de novo.", 503)
+                    }
+                    deps.recordAudit(
+                        req.operationId, Actor(actor.id, actor.email), "ENCERRAR_SESSOES_CONTA", id, req.reason,
+                        resultado = json.encodeToString(AdminRevokeSessionsResponse.serializer(), AdminRevokeSessionsResponse(result)),
+                        detail = "sessões encerradas: $result",
+                    )
+                    result
+                }
+                call.respondJson(AdminRevokeSessionsResponse(revoked))
+            }
+        }
+
+        // Sec18.7 tela Mesas (docs/telas-admin-web.md): lista TODO estado (ao contrario da lista publica do
+        // app, que nunca mostra ENCERRADA), agregada do lobby-service.
+        get("/admin/tables") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { gateway.tables(limit, offset) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/tables): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                }
+                call.respondJson(TablesPageResponse(page.tables, page.total, limit, offset))
+            }
+        }
+        // A ficha da mesa (assentos, regras): mesmo TableView da lista publica do app, so que em QUALQUER
+        // estado (console, Sec18.7).
+        get("/admin/tables/{id}") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val id = call.parameters["id"].orEmpty()
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                val table = try {
+                    withContext(Dispatchers.IO) { gateway.tableDetail(id) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (GET /admin/tables/{{id}}): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.MESA_INEXISTENTE, "Mesa não encontrada.", 404)
+                call.respondJson(table)
+            }
+        }
+        // Sec18.7 "Encerrar mesa travada": operador+, motivo obrigatorio. Idempotente em qualquer estado no
+        // lobby-service (fechar de novo so devolve o mesmo estado, nunca ejeta/penaliza duas vezes) - por isso,
+        // ao contrario de bloquear/desbloquear conta, NAO precisa conferir o operationId antes de chamar o
+        // gateway: nao ha "desfazer" que uma repeticao possa reverter. O operationId so evita duplicar a linha
+        // de auditoria (deps.recordAudit/AuditLog.record ja fazem isso).
+        //
+        // Busca o estado ATUAL antes de fechar, por dois motivos: (1) o 404 sai antes de tentar fechar; (2) o
+        // aviso que o operador confirmou na tela pode estar desatualizado (ele abriu a ficha, a mesa estava
+        // ABERTA, o anfitriao apertou Iniciar, so entao o operador confirma "isso vai encerrar esta mesa" sem
+        // saber que agora e uma partida em andamento). Se [CloseTableRequest.expectedState] vier preenchido E a
+        // mesa estiver EM_JOGO (a UNICA direcao perigosa: mesa ja ENCERRADA continua sem efeito) e diferente do
+        // esperado, recusa com 409 para o operador conferir o aviso de novo (mesmo ErrorCode/status que
+        // TeamStore usa pro ultimo administrador).
+        post("/admin/tables/{id}/close") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<CloseTableRequest>()
+                validateReason(req.reason)
+                validateOperationId(req.operationId)
+                val gateway = deps.lobbyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                val before = try {
+                    withContext(Dispatchers.IO) { gateway.tableDetail(id) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (POST /admin/tables/{{id}}/close, consulta previa): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Mesas indisponíveis agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.MESA_INEXISTENTE, "Mesa não encontrada.", 404)
+                if (req.expectedState != null && before.state == TableState.EM_JOGO && req.expectedState != before.state) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "A mesa mudou de estado; confira o aviso de novo.", 409)
+                }
+                val table = try {
+                    withContext(Dispatchers.IO) { gateway.closeTable(id, req.reason) }
+                } catch (e: LobbyAdminGatewayException) {
+                    gatewayLog.warn("lobby-service indisponivel (POST /admin/tables/{{id}}/close): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Não foi possível encerrar a mesa agora (ninguém foi penalizado). Tente de novo.", 503)
+                } ?: adminError(ErrorCode.MESA_INEXISTENTE, "Mesa não encontrada.", 404)
+                val detail = when (before.state) {
+                    TableState.EM_JOGO -> "estado anterior: EM_JOGO, partida encerrada, aposta devolvida a todos"
+                    TableState.ABERTA -> "estado anterior: ABERTA"
+                    TableState.ENCERRADA -> "já estava ENCERRADA (sem efeito)"
+                }
+                deps.recordAudit(req.operationId, Actor(actor.id, actor.email), "ENCERRAR_MESA", id, req.reason, detail = detail)
+                call.respondJson(table)
+            }
+        }
+
+        // Sec18.7 tela Economia (docs/telas-admin-web.md): livro-razao de uma conta, so LEITURA.
+        get("/admin/accounts/{id}/ledger") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val id = call.parameters["id"].orEmpty()
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { economy.ledger(id, limit, offset) }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/accounts/{{id}}/ledger): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                } ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Conta não encontrada.", 404)
+                call.respondJson(LedgerPageResponse(page.entries, page.total, limit, offset))
+            }
+        }
+        // "Ajustar saldo ou booster": operador+, motivo e chave de idempotencia obrigatorios (a chave e gerada
+        // pelo admin-web, como nas outras acoes de escrita). Validacoes de FORMATO (motivo, pelo menos um ajuste
+        // real, booster e quantidade sempre juntos) sao conferidas aqui, pra nao gastar uma chamada de rede com
+        // um pedido obviamente invalido; a validacao de NEGOCIO (saldo/quantidade nunca negativos) so o
+        // economy-service sabe responder, por isso nao e repetida aqui (ver EconomyAdjustRejected).
+        post("/admin/accounts/{id}/adjust") {
+            call.authenticated(Role.OPERADOR) { actor ->
+                val id = call.parameters["id"].orEmpty()
+                val req = call.receiveLimited<AdminAdjustRequest>()
+                validateReason(req.reason)
+                if (req.operationId.isBlank() || req.operationId.length > AdminLimits.MAX_OPERATION_ID) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Identificador de operação inválido.", 400)
+                }
+                if ((req.boosterId == null) != (req.quantityDelta == null)) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Informe o booster e a quantidade juntos.", 400)
+                }
+                val coinsDelta = req.coinsDelta ?: 0L
+                val quantityDelta = req.quantityDelta ?: 0
+                if (coinsDelta == 0L && (req.boosterId == null || quantityDelta == 0)) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Informe ao menos um ajuste de moedas ou de booster.", 400)
+                }
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val wallet = try {
+                    withContext(Dispatchers.IO) { economy.adjust(id, req) }
+                } catch (e: EconomyAdjustRejected) {
+                    gatewayLog.warn("ajuste recusado pelo economy-service (conta {}): {} {}", id, e.code, e.message)
+                    val msg = e.message ?: "O economy-service recusou o ajuste."
+                    if (e.code == EconomyErrorCode.SALDO_INSUFICIENTE) {
+                        adminError(ErrorCode.SALDO_INSUFICIENTE, msg, 409)
+                    } else {
+                        adminError(ErrorCode.REQUISICAO_INVALIDA, msg, 400)
+                    }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (POST /admin/accounts/{{id}}/adjust): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                val detail = buildString {
+                    if (coinsDelta != 0L) append("moedas: ${if (coinsDelta > 0) "+" else ""}$coinsDelta")
+                    if (req.boosterId != null && quantityDelta != 0) {
+                        if (isNotEmpty()) append("; ")
+                        append("${req.boosterId}: ${if (quantityDelta > 0) "+" else ""}$quantityDelta")
+                    }
+                }
+                deps.recordAudit(
+                    req.operationId, Actor(actor.id, actor.email), "AJUSTAR_CARTEIRA", id, req.reason,
+                    resultado = json.encodeToString(AdminWalletDto.serializer(), wallet), detail = detail,
+                )
+                call.respondJson(wallet)
+            }
+        }
+        // Migracoes de carteira local JA feitas (Sec18.6), de TODAS as contas - lista GLOBAL, nao de uma conta so.
+        get("/admin/migrations") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { economy.migrations(limit, offset) }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/migrations): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                call.respondJson(MigrationsPageResponse(page.migrations, page.total, limit, offset))
+            }
+        }
+
+        // Sec17.10/18.7 "Loja e configuracao": preco/quantidade das 9 ofertas e o ganho diario, versionados com
+        // historico (append-only no economy-service). Leitura: leitor+ (como as demais telas). Escrita: so
+        // ADMINISTRADOR, igual a "Equipe" (nao operador) - mexe com dinheiro de TODOS os jogadores de uma vez, nao
+        // so de uma conta. O catalogo de boosters (quais existem) e o presente diario NAO estao aqui (fora do
+        // alcance combinado: ver docs/telas-admin-web.md e o relatorio desta etapa).
+        get("/admin/shop-config") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val config = try {
+                    withContext(Dispatchers.IO) { economy.shopConfig() }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/shop-config): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                call.respondJson(config)
+            }
+        }
+        get("/admin/shop-config/history") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val page = try {
+                    withContext(Dispatchers.IO) { economy.shopConfigHistory(limit, offset) }
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (GET /admin/shop-config/history): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                call.respondJson(page)
+            }
+        }
+        post("/admin/shop-config/offer/{index}") {
+            call.authenticated(Role.ADMINISTRADOR) { actor ->
+                val index = call.parameters["index"]?.toIntOrNull()
+                    ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Oferta inválida.", 400)
+                val req = call.receiveLimited<AdminShopOfferAdjustRequest>()
+                validateReason(req.reason)
+                if (req.operationId.isBlank() || req.operationId.length > AdminLimits.MAX_OPERATION_ID) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Identificador de operação inválido.", 400)
+                }
+                if (req.price == null && req.quantity == null) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Informe o preço ou a quantidade.", 400)
+                }
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val offer = try {
+                    withContext(Dispatchers.IO) { economy.adjustOffer(index, req) }
+                } catch (e: EconomyAdjustRejected) {
+                    gatewayLog.warn("ajuste de oferta recusado pelo economy-service (oferta {}): {} {}", index, e.code, e.message)
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, e.message ?: "O economy-service recusou o ajuste.", 400)
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (POST /admin/shop-config/offer/{{index}}): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                val detail = buildString {
+                    if (req.price != null) append("preço: ${req.price}")
+                    if (req.quantity != null) {
+                        if (isNotEmpty()) append("; ")
+                        append("quantidade: ${req.quantity}")
+                    }
+                }
+                deps.recordAudit(
+                    req.operationId, Actor(actor.id, actor.email), "AJUSTAR_OFERTA_LOJA", "oferta-$index", req.reason,
+                    resultado = json.encodeToString(AdminShopOfferConfigDto.serializer(), offer), detail = detail,
+                )
+                call.respondJson(offer)
+            }
+        }
+        post("/admin/shop-config/daily-gain") {
+            call.authenticated(Role.ADMINISTRADOR) { actor ->
+                val req = call.receiveLimited<AdminShopGainAdjustRequest>()
+                validateReason(req.reason)
+                if (req.operationId.isBlank() || req.operationId.length > AdminLimits.MAX_OPERATION_ID) {
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, "Identificador de operação inválido.", 400)
+                }
+                val economy = deps.economyAdmin
+                    ?: adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                val field = try {
+                    withContext(Dispatchers.IO) { economy.adjustDailyGain(req) }
+                } catch (e: EconomyAdjustRejected) {
+                    gatewayLog.warn("ajuste do ganho diario recusado pelo economy-service: {} {}", e.code, e.message)
+                    adminError(ErrorCode.REQUISICAO_INVALIDA, e.message ?: "O economy-service recusou o ajuste.", 400)
+                } catch (e: EconomyAdminGatewayException) {
+                    gatewayLog.warn("economy-service indisponivel (POST /admin/shop-config/daily-gain): {}", e.message)
+                    adminError(ErrorCode.SERVICO_INDISPONIVEL, "Economia indisponível agora. Tente de novo.", 503)
+                }
+                deps.recordAudit(
+                    req.operationId, Actor(actor.id, actor.email), "AJUSTAR_GANHO_DIARIO", "ganho-diario", req.reason,
+                    resultado = json.encodeToString(AdminConfigFieldDto.serializer(), field), detail = "novo valor: ${req.amount}",
+                )
+                call.respondJson(field)
+            }
+        }
+
         // Sec18.7 "Equipe": leitor consulta; so administrador cadastra, altera e remove (sem autocadastro).
         get("/admin/team") {
             call.authenticated(Role.LEITOR) { _ ->
@@ -266,6 +786,21 @@ fun Application.adminModule(deps: AdminDeps) {
                 validateOperationId(req.operationId)
                 withContext(Dispatchers.IO) { deps.store.remove(id, Actor(actor.id, actor.email), req.reason, req.operationId) }
                 call.respondJson(Health())
+            }
+        }
+
+        // Sec18.7 tela Auditoria: leitor+, so LEITURA (a gravacao - AuditLog.record - ja existe desde a etapa
+        // de Contas; faltava a listagem). Mais recente primeiro, nunca o `resultado` (ver AuditEntryResponse).
+        get("/admin/audit") {
+            call.authenticated(Role.LEITOR) { _ ->
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, AdminLimits.MAX_PAGE_SIZE)
+                    ?: AdminLimits.DEFAULT_PAGE_SIZE
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val (total, rows) = withContext(Dispatchers.IO) { deps.auditLog.list(limit, offset) }
+                val items = rows.map {
+                    AuditEntryResponse(it.id, it.operationId, it.whenMs, it.actorEmail, it.action, it.targetId, it.targetEmail, it.reason, it.detail)
+                }
+                call.respondJson(AuditPageResponse(items, total, limit, offset))
             }
         }
     }

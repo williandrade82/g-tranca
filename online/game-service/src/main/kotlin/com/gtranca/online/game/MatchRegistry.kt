@@ -146,6 +146,12 @@ class MatchRegistry(
     /** O anfitriao encerra a mesa em jogo (§18.4). `null` = nao ha partida com esse id neste pod. */
     suspend fun closeMatch(rawId: String, hostGuestId: String): CloseResult? = find(rawId)?.closeByHost(hostGuestId)
 
+    /**
+     * O OPERADOR (console de gerenciamento, §18.7) encerra a mesa travada - ninguem e punido, a aposta de todos
+     * os humanos volta. `null` = nao ha partida com esse id neste pod.
+     */
+    suspend fun closeMatchByOperator(rawId: String, reason: String?): CloseResult? = find(rawId)?.closeByOperator(reason)
+
     /** Avisa o lobby (fora do ator da partida) com algumas tentativas; falhou tudo = o TTL da mesa no lobby limpa depois. */
     private suspend fun notifyLobby(tableId: String, reason: GameEndReason) {
         for (attempt in 0..notifyRetryDelaysMs.size) {

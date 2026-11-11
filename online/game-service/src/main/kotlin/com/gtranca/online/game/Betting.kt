@@ -91,6 +91,7 @@ class HttpEconomyClient(private val baseUrl: String, private val secret: String?
  * - §18.4 quem abandonou: a punicao ja decidida no [AbandonEvent] (`betRefunded`: devolve; senao perde). Vale em
  *   qualquer fim (o resultado do abandono nao muda depois).
  * - §18.4 mesa encerrada pelo anfitriao: os demais recebem a aposta de volta. Todos desconectados: todos devolvidos.
+ * - §18.4/§18.7 mesa encerrada pelo OPERADOR (console de gerenciamento): ninguem abandona, todos recebem a aposta de volta.
  * - §14.6/§16.13 fim por pontuacao ou por abandono (1×1, ultimo humano): o pote (aposta × assentos, robos apostam
  *   virtualmente) e dividido igualmente entre os assentos vencedores; o humano vencedor recebe a parte do assento dele;
  *   a parte de robo (de origem ou substituto) se perde. Perdedor: perde a aposta.
@@ -111,7 +112,7 @@ fun settleBets(end: MatchEnd, held: Set<String>, bet: Long): List<BetPayout> {
                 end.seatSides[seat] -> BetPayout(guestId, PayoutKind.PREMIO, share)
                 else -> lost
             }
-            else -> refund // ANFITRIAO_ENCERROU (os demais), TODOS_DESCONECTADOS, ERRO, INATIVIDADE
+            else -> refund // ANFITRIAO_ENCERROU (os demais), ENCERRADO_PELO_OPERADOR (todos), TODOS_DESCONECTADOS, ERRO, INATIVIDADE
         }
     }
 }

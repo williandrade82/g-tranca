@@ -9,6 +9,8 @@ import com.gtranca.online.client.EconomyApi
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
 import com.gtranca.online.contracts.EconomyErrorCode
+import com.gtranca.online.contracts.ShopConfigDto
+import com.gtranca.online.contracts.ShopOfferDto
 import com.gtranca.ui.shop.ShopItem
 import com.gtranca.ui.shop.ShopNotice
 import com.gtranca.ui.shop.ShopUi
@@ -23,18 +25,24 @@ enum class OnlineShopStatus { LOADING, READY, ERROR }
 
 /**
  * Estado da Loja online (docs/telas.md 3.20a). [shop] é o mesmo painel/modal da Loja (3.20, [com.gtranca.ui.shop.ShopUi]);
- * [problem] é o aviso de rede/servidor fora na própria tela — nunca fecha a loja (§17.10/§18.5).
+ * [problem] é o aviso de rede/servidor fora na própria tela — nunca fecha a loja (§17.10/§18.5). [staleOffers] avisa
+ * que o preço/quantidade mostrados são o padrão do `:core-engine` porque a configuração do servidor ([EconomyApi.shopConfig])
+ * não pôde ser lida agora: a COMPRA em si nunca cobra esse valor desatualizado (o servidor sempre decide pelo preço
+ * atual dentro da própria transação, §18.7) — isto é só para o jogador não confiar demais no número mostrado.
  */
 data class OnlineShopUi(
     val status: OnlineShopStatus = OnlineShopStatus.LOADING,
     val problem: OnlineProblem? = null,
     val shop: ShopUi = ShopUi(),
+    val staleOffers: Boolean = false,
 )
 
 /**
- * §17.10/§18.5 Loja online (docs/telas.md 3.20a): as mesmas nove ofertas de [offers] (= [Shop.OFFERS], o índice que o
- * `economy-service` usa em `Shop.OFFERS.getOrNull(offerIndex)` — mesma fonte, nenhuma lista espelhada à mão), lendo e
- * gravando a carteira e o inventário ONLINE pela [economy] (nunca os do aparelho).
+ * §17.10/§18.5/§18.7 Loja online (docs/telas.md 3.20a): as nove ofertas com o preço/quantidade ATUAL do servidor
+ * ([EconomyApi.shopConfig], nunca `Shop.OFFERS` isolado do app — ver `docs/seguranca-pendencias.md`, 2026-11-08),
+ * lendo e gravando a carteira e o inventário ONLINE pela [economy] (nunca os do aparelho). Falha ao buscar a
+ * configuração não derruba a tela: mostra o padrão do `:core-engine` com [OnlineShopUi.staleOffers] — a compra
+ * continua correta porque o servidor sempre cobra pelo preço de verdade dentro da própria transação.
  *
  * A chave de compra ([newKey]) é gerada **uma vez por intenção de compra** e **repetida** se a tentativa falhar por
  * rede/servidor fora: nunca gera uma chave nova para a mesma intenção, senão a compra seria cobrada duas vezes (o
@@ -44,12 +52,10 @@ data class OnlineShopUi(
 class OnlineShopViewModel(
     private val account: OnlineAccount,
     private val economy: EconomyApi,
-    catalog: List<BoosterDef>,
-    private val offers: List<ShopOffer> = Shop.OFFERS,
+    private val catalog: List<BoosterDef>,
     private val newKey: () -> String = { UUID.randomUUID().toString() },
 ) : ViewModel() {
-    private val items = offers.mapNotNull { offer -> catalog.firstOrNull { it.id == offer.boosterId }?.let { ShopItem(offer, it) } }
-    private val _uiState = MutableStateFlow(OnlineShopUi(shop = ShopUi(items = items)))
+    private val _uiState = MutableStateFlow(OnlineShopUi(shop = ShopUi(items = buildItems(defaultOffers()))))
     val uiState: StateFlow<OnlineShopUi> = _uiState.asStateFlow()
 
     /** Compra pendente (item + chave) enquanto a falha de rede/servidor não foi resolvida; [retry] repete com a
@@ -58,7 +64,8 @@ class OnlineShopViewModel(
 
     init { load() }
 
-    /** *Tentar de novo*: repete a compra pendente com a mesma chave, ou relê a carteira se a falha foi ao abrir a loja. */
+    /** *Tentar de novo*: repete a compra pendente com a mesma chave, ou relê a carteira e a configuração se a falha
+     * foi ao abrir a loja. */
     fun retry() {
         _uiState.update { it.copy(problem = null) }
         val pending = pendingBuy
@@ -69,10 +76,28 @@ class OnlineShopViewModel(
         _uiState.update { it.copy(status = OnlineShopStatus.LOADING, problem = null) }
         viewModelScope.launch {
             runCatching { account.callWith(economy) { api, guest -> api.economyState(guest.token, guest.id) } }.fold(
-                onSuccess = { dto -> _uiState.update { it.copy(status = OnlineShopStatus.READY, shop = it.shop.copy(balance = dto.balance.toShopBalance())) } },
+                onSuccess = { dto ->
+                    // §17.10/§18.7: busca o preço/quantidade ATUAL antes de publicar READY — nunca mostra o padrão
+                    // fixo por um instante e troca depois (a mesma divergência que este trabalho corrige).
+                    val (items, stale) = loadShopConfig()
+                    _uiState.update {
+                        it.copy(status = OnlineShopStatus.READY, staleOffers = stale, shop = it.shop.copy(balance = dto.balance.toShopBalance(), items = items))
+                    }
+                },
                 onFailure = { e -> _uiState.update { it.copy(status = OnlineShopStatus.ERROR, problem = e.economyProblem()) } },
             )
         }
+    }
+
+    /**
+     * §17.10/§18.7: preço/quantidade atuais. Uma falha aqui (rede, servidor fora, ou uma resposta que não bate com
+     * o padrão esperado) nunca tranca a tela: cai no padrão fixo do `:core-engine` com [OnlineShopUi.staleOffers] —
+     * a compra em si é sempre validada pelo servidor, então o pior caso é mostrar o preço errado, nunca cobrar errado.
+     */
+    private suspend fun loadShopConfig(): Pair<List<ShopItem>, Boolean> {
+        val config = runCatching { economy.shopConfig() }.getOrNull()
+        val (offers, stale) = offersOf(config)
+        return buildItems(offers) to stale
     }
 
     /** Relê só o saldo (sem passar por LOADING): usado depois de um `SALDO_INSUFICIENTE` do servidor, para corrigir
@@ -108,7 +133,9 @@ class OnlineShopViewModel(
         pendingBuy = item to key
         _uiState.update { it.copy(problem = null, shop = it.shop.copy(selected = item, buying = true, notice = null)) }
         viewModelScope.launch {
-            runCatching { account.callWith(economy) { api, guest -> api.buyOffer(guest.token, guest.id, offers.indexOf(item.offer), key) } }.fold(
+            // §18.7: o índice vem do próprio item (o do servidor, ShopOfferDto.index), NUNCA de offers.indexOf(item.offer) —
+            // um override do administrador pode deixar duas ofertas iguais em (boosterId, quantity, price).
+            runCatching { account.callWith(economy) { api, guest -> api.buyOffer(guest.token, guest.id, item.offerIndex, key) } }.fold(
                 onSuccess = { dto ->
                     pendingBuy = null
                     _uiState.update {
@@ -139,6 +166,41 @@ class OnlineShopViewModel(
             // Mantém a chave; fecha só o modal e avisa na própria tela — a loja continua aberta (não fecha sozinha).
             _uiState.update { it.copy(shop = it.shop.copy(buying = false, selected = null), problem = oe?.economyProblem() ?: OnlineProblem.UNEXPECTED) }
         }
+    }
+
+    /** As nove ofertas do padrão fixo do `:core-engine` (mesma ordem/índice de `Shop.OFFERS`), para antes da 1ª
+     * resposta do servidor e para o retorno (fallback) de uma falha ao buscar [ShopConfigDto]. */
+    private fun defaultOffers(): List<ShopOfferDto> =
+        Shop.OFFERS.mapIndexed { index, offer -> ShopOfferDto(index, offer.boosterId, offer.price.toLong(), offer.quantity.toLong()) }
+
+    /**
+     * As ofertas de [config] ([staleOffers][OnlineShopUi.staleOffers] = `true` se [config] for `null` — a busca
+     * falhou — OU se qualquer posição não bater com o esperado: índice fora de ordem, `boosterId` trocado,
+     * preço/quantidade zerados ou negativos (nunca esperado do servidor, mas um JSON corrompido ou uma versão
+     * incompatível não pode derrubar a tela) — essa posição usa o padrão fixo do `:core-engine`.
+     */
+    private fun offersOf(config: ShopConfigDto?): Pair<List<ShopOfferDto>, Boolean> {
+        if (config == null) return defaultOffers() to true
+        var stale = false
+        val offers = defaultOffers().mapIndexed { index, fallback ->
+            val dto = config.offers.getOrNull(index)
+            if (dto != null && dto.index == index && dto.boosterId == fallback.boosterId &&
+                dto.price in 1..Int.MAX_VALUE.toLong() && dto.quantity in 1..Int.MAX_VALUE.toLong()
+            ) {
+                dto
+            } else {
+                stale = true
+                fallback
+            }
+        }
+        return offers to stale
+    }
+
+    /** Junta cada oferta com o booster do catálogo que ela vende (uma oferta sem booster correspondente não aparece —
+     * nunca deveria faltar, mas não é motivo para quebrar a tela). */
+    private fun buildItems(offers: List<ShopOfferDto>): List<ShopItem> = offers.mapNotNull { dto ->
+        val def = catalog.firstOrNull { it.id == dto.boosterId } ?: return@mapNotNull null
+        ShopItem(ShopOffer(dto.boosterId, dto.quantity.toInt(), dto.price.toInt()), def, dto.index)
     }
 }
 

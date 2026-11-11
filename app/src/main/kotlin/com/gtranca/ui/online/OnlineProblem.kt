@@ -54,6 +54,10 @@ enum class OnlineProblem {
 
     /** §18.1: muitas tentativas erradas de login com o mesmo e-mail; aguarde antes de tentar de novo. */
     LOGIN_LOCKED,
+
+    /** §18.7: o operador do console bloqueou esta conta. Só impede login/entrar numa mesa nova; nunca aparece
+     * durante uma partida em andamento (bloquear não ejeta ninguém). */
+    ACCOUNT_BLOCKED,
     UNEXPECTED,
 }
 
@@ -81,6 +85,10 @@ fun OnlineException.toProblem(): OnlineProblem = when (kind) {
         ErrorCode.LOGIN_INDISPONIVEL -> OnlineProblem.MAINTENANCE
         ErrorCode.EMAIL_JA_CADASTRADO -> OnlineProblem.EMAIL_ALREADY_REGISTERED
         ErrorCode.LOGIN_BLOQUEADO -> OnlineProblem.LOGIN_LOCKED
+        ErrorCode.CONTA_BLOQUEADA -> OnlineProblem.ACCOUNT_BLOCKED
+        // §18.7: código genérico de 503 do lobby/economy; reaproveita o texto de manutenção (já é "serviço fora
+        // do ar, tente depois"), sem precisar de string nova.
+        ErrorCode.SERVICO_INDISPONIVEL -> OnlineProblem.MAINTENANCE
         ErrorCode.ASSENTO_ABANDONADO, null -> OnlineProblem.UNEXPECTED
     }
 }
@@ -98,6 +106,9 @@ enum class OnlineAccountProblem {
     /** §18.5: cadastro feito, mas a carteira não migrou agora (economia fora do ar) — a tela orienta a tentar Entrar. */
     WALLET_PENDING,
     LOGIN_LOCKED,
+
+    /** §18.7: o operador do console bloqueou esta conta — diferente de [INVALID_CREDENTIALS] (senha errada). */
+    ACCOUNT_BLOCKED,
     INVALID_REQUEST,
     NETWORK,
     MAINTENANCE,
@@ -109,6 +120,7 @@ fun OnlineException.toAccountProblem(signup: Boolean): OnlineAccountProblem = wh
     code == ErrorCode.NAO_AUTENTICADO -> OnlineAccountProblem.INVALID_CREDENTIALS
     code == ErrorCode.EMAIL_JA_CADASTRADO -> OnlineAccountProblem.EMAIL_ALREADY_REGISTERED
     code == ErrorCode.LOGIN_BLOQUEADO -> OnlineAccountProblem.LOGIN_LOCKED
+    code == ErrorCode.CONTA_BLOQUEADA -> OnlineAccountProblem.ACCOUNT_BLOCKED
     code == ErrorCode.LOGIN_INDISPONIVEL && signup -> OnlineAccountProblem.WALLET_PENDING
     code == ErrorCode.REQUISICAO_INVALIDA -> OnlineAccountProblem.INVALID_REQUEST
     kind == OnlineErrorKind.NETWORK -> OnlineAccountProblem.NETWORK

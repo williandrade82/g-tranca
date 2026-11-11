@@ -175,6 +175,30 @@ class OnlineViewModelsTest {
         vm.viewModelScope.cancel()
     }
 
+    // §14.6/§18.7: fecha o descompasso de docs/seguranca-pendencias.md (2026-11-08) — o rótulo do botão mostra o
+    // MESMO valor que um override do administrador credita de verdade, não a constante fixa do :core-engine.
+    @Test
+    fun `mostra o ganho diario configurado pelo administrador, nao o padrao fixo`() = runTest(dispatcher) {
+        val economy = FakeEconomy(initialBalance = 300)
+        economy.shopConfigValue = economy.shopConfigValue.copy(dailyGain = 777)
+        val vm = homeWithEconomy(economy)
+        runCurrent()
+        vm.uiState.value.dailyGain shouldBe 777L
+        vm.viewModelScope.cancel()
+    }
+
+    // §14.6/§18.7: falha ao buscar a configuração não derruba a tela nem o saldo — mantém o padrão fixo.
+    @Test
+    fun `falha ao buscar o ganho diario mantem o padrao fixo`() = runTest(dispatcher) {
+        val economy = FakeEconomy(initialBalance = 300)
+        economy.failShopConfig = OnlineException(OnlineErrorKind.NETWORK)
+        val vm = homeWithEconomy(economy)
+        runCurrent()
+        vm.uiState.value.dailyGain shouldBe com.gtranca.engine.Coins.DAILY_GAIN.toLong()
+        vm.uiState.value.balance shouldBe 300
+        vm.viewModelScope.cancel()
+    }
+
     // §18.5 saldo não impede a lista de mesas de funcionar quando a economia falha
     @Test
     fun `falha da economia nao derruba a lista de mesas`() = runTest(dispatcher) {
@@ -585,6 +609,20 @@ class OnlineViewModelsTest {
         vm.onLogin()
         advanceUntilIdle()
         vm.uiState.value.problem shouldBe OnlineAccountProblem.LOGIN_LOCKED
+    }
+
+    // §18.7 conta bloqueada pelo operador do console: texto diferente de senha errada
+    @Test
+    fun `conta bloqueada avisa para falar com o suporte`() = runTest(dispatcher) {
+        val acc = account("Ana")
+        acc.guest() // materializa o convidado antes de falhar a próxima chamada (loginEmail)
+        lobby.failNext = OnlineException(OnlineErrorKind.API, ErrorCode.CONTA_BLOQUEADA, 403)
+        val vm = OnlineAccountViewModel(acc, lobby)
+        vm.onEmail("ana@example.com")
+        vm.onPassword("segredo1")
+        vm.onLogin()
+        advanceUntilIdle()
+        vm.uiState.value.problem shouldBe OnlineAccountProblem.ACCOUNT_BLOCKED
     }
 
     // §18.1 senha curta nem chama o servidor (evita gastar uma chamada de rede à toa, como no Perfil)

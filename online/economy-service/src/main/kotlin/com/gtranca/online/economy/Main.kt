@@ -1,5 +1,22 @@
 package com.gtranca.online.economy
 
+import com.gtranca.online.contracts.ADMIN_API_VERSION
+import com.gtranca.online.contracts.ADMIN_API_VERSION_HEADER
+import com.gtranca.online.contracts.ADMIN_SECRET_HEADER
+import com.gtranca.online.contracts.AdminAdjustRequest
+import com.gtranca.online.contracts.AdminConfigFieldDto
+import com.gtranca.online.contracts.AdminConfigSource
+import com.gtranca.online.contracts.AdminLedgerEntryDto
+import com.gtranca.online.contracts.AdminLedgerPage
+import com.gtranca.online.contracts.AdminMigrationDto
+import com.gtranca.online.contracts.AdminMigrationsPage
+import com.gtranca.online.contracts.AdminShopConfigDto
+import com.gtranca.online.contracts.AdminShopConfigHistoryEntryDto
+import com.gtranca.online.contracts.AdminShopConfigHistoryPage
+import com.gtranca.online.contracts.AdminShopGainAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferAdjustRequest
+import com.gtranca.online.contracts.AdminShopOfferConfigDto
+import com.gtranca.online.contracts.AdminWalletDto
 import com.gtranca.online.contracts.AdoptWalletRequest
 import com.gtranca.online.contracts.AdoptWalletResponse
 import com.gtranca.engine.Loadout
@@ -13,6 +30,8 @@ import com.gtranca.online.contracts.BoosterDebitResponse
 import com.gtranca.online.contracts.INTERNAL_SECRET_HEADER
 import com.gtranca.online.contracts.BuyRequest
 import com.gtranca.online.contracts.DailyClaimRequest
+import com.gtranca.online.contracts.ShopConfigDto
+import com.gtranca.online.contracts.ShopOfferDto
 import com.gtranca.online.contracts.MigrateLocalWalletRequest
 import com.gtranca.online.contracts.EconomyError
 import com.gtranca.online.contracts.EconomyErrorCode
@@ -60,9 +79,23 @@ fun main() {
     val appKey = System.getenv("APP_SIGNING_KEY")?.takeIf { it.isNotBlank() }
         ?: null.also { System.err.println("AVISO: APP_SIGNING_KEY ausente; a economia aceita pedidos sem assinatura do app") }
     val secret = required("INTERNAL_SECRET")
+    // §18.7: segredo PROPRIO do console de gerenciamento, nunca o INTERNAL_SECRET (servico a servico, que tambem
+    // abre rotas sensiveis entre lobby/game/economy). Igual ao INTERNAL_SECRET = erro de configuracao: as rotas
+    // /internal/admin ficam desativadas em vez de aceitar o segredo errado.
+    val adminSecretEnv = System.getenv("ADMIN_INTERNAL_SECRET")?.takeIf { it.isNotBlank() }
+    val adminSecret = when {
+        adminSecretEnv == null -> null.also { System.err.println("AVISO: ADMIN_INTERNAL_SECRET ausente; rotas /internal/admin (console de gerenciamento) desativadas.") }
+        adminSecretEnv == secret -> null.also { System.err.println("ERRO: ADMIN_INTERNAL_SECRET nao pode ser igual a INTERNAL_SECRET; rotas /internal/admin desativadas.") }
+        else -> adminSecretEnv
+    }
     val lobbyUrl = System.getenv("LOBBY_URL")?.takeIf { it.isNotBlank() } ?: "http://lobby-service"
     embeddedServer(Netty, port = port, host = "0.0.0.0") {
-        economyModule(EconomyDeps(EconomyStore(db), appKey, internalSecret = secret, guests = CachedGuestResolver(HttpGuestResolver(lobbyUrl, secret))))
+        economyModule(
+            EconomyDeps(
+                EconomyStore(db), appKey, internalSecret = secret, adminSecret = adminSecret,
+                guests = CachedGuestResolver(HttpGuestResolver(lobbyUrl, secret)),
+            ),
+        )
     }.start(wait = true)
 }
 
@@ -75,6 +108,8 @@ class EconomyDeps(
     val internalSecret: String? = null,
     /** Dono do token do jogador (o lobby). `null` = rotas publicas FECHADAS (falha fechada). */
     val guests: GuestResolver? = null,
+    /** Segredo do console de gerenciamento (§18.7). `null` = rotas `/internal/admin/...` FECHADAS. Nunca igual a [internalSecret]. */
+    val adminSecret: String? = null,
 )
 
 private class HttpFail(val status: Int, val code: EconomyErrorCode, message: String) : RuntimeException(message)
@@ -98,6 +133,22 @@ private suspend inline fun <reified T> ApplicationCall.receiveLimited(): T {
 }
 
 private fun EconomyState.toDto() = EconomyStateDto(balance, inventory, lastDailyClaim, migratedLocal)
+private fun EconomyState.toAdminDto() = AdminWalletDto(balance, inventory, migratedLocal)
+private fun LedgerEntry.toDto() = AdminLedgerEntryDto(reason, coins, boosterId, quantity, reference, detail, key, createdAtMs)
+private fun MigrationEntry.toDto() = AdminMigrationDto(accountId, coins, createdAtMs)
+private fun ConfigField.toDto() = AdminConfigFieldDto(value, if (isOverride) AdminConfigSource.OVERRIDE else AdminConfigSource.DEFAULT, sinceMs)
+private fun OfferConfig.toDto() = AdminShopOfferConfigDto(index, boosterId, price.toDto(), quantity.toDto())
+private fun ShopConfigSnapshot.toDto() = AdminShopConfigDto(offers.map { it.toDto() }, dailyGain.toDto())
+private fun ConfigHistoryEntry.toDto() = AdminShopConfigHistoryEntryDto(field, value, previousValue, reason, operationId, createdAtMs)
+
+/**
+ * §17.10/§14.6: versao PUBLICA do snapshot (ao contrario de [ShopConfigSnapshot.toDto] em [AdminShopConfigDto],
+ * sem a origem nem desde quando — isso e so da tela do operador).
+ */
+private fun ShopConfigSnapshot.toPublicDto() = ShopConfigDto(
+    offers.map { ShopOfferDto(it.index, it.boosterId, it.price.value, it.quantity.value) },
+    dailyGain.value,
+)
 
 private fun EconomyException.status(): Int = when (code) {
     EconomyException.Code.SALDO_INSUFICIENTE, EconomyException.Code.JA_RESGATADO -> 409
@@ -159,6 +210,16 @@ fun Application.economyModule(deps: EconomyDeps) {
         get("/economy/{guestId}") {
             call.guarded { id -> withContext(Dispatchers.IO) { store.ensureAccount(id) } }
         }
+        // §17.10/§14.6: rota PUBLICA (sem o segredo do console) com o MESMO valor que buy()/claimDaily() usam de
+        // verdade - a causa raiz do descompasso registrado em docs/seguranca-pendencias.md (2026-11-08): sem isto,
+        // o app so tinha as constantes fixas do :core-engine pra mostrar preco/ganho diario, divergindo de um
+        // override do administrador (§18.7). Sem token de jogador (decisao desta etapa, ver relatorio): e dado
+        // publico do servidor, igual ao catalogo de boosters, que qualquer jogador autenticado ja veria ao
+        // comprar - exigir um Bearer aqui so andaria a mesma verificacao sem ganhar nada em seguranca. Continua
+        // sob a assinatura do app (EconomyAppSignature, instalada para todo "/economy/...").
+        get("/economy/shop-config") {
+            call.respondJson(withContext(Dispatchers.IO) { store.shopConfig() }.toPublicDto())
+        }
         post("/economy/{guestId}/daily") {
             call.guarded { id ->
                 val req = call.receiveLimited<DailyClaimRequest>()
@@ -183,6 +244,141 @@ fun Application.economyModule(deps: EconomyDeps) {
         }
 
         internalEconomyRoutes(deps)
+        adminEconomyRoutes(deps)
+    }
+}
+
+/**
+ * Console de gerenciamento (admin-api), so LEITURA (§18.7): a carteira e o inventario de uma conta, sem criar
+ * nada (nunca [EconomyStore.ensureAccount] aqui: um id de teste/erro do operador nao pode nascer com 1.000 moedas).
+ * Segredo PROPRIO: ver [adminAllowed].
+ */
+private fun io.ktor.server.routing.Routing.adminEconomyRoutes(deps: EconomyDeps) {
+    val store = deps.store
+    get("/internal/admin/accounts/{guestId}/wallet") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        try {
+            val id = call.parameters["guestId"].orEmpty()
+            if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+            val state = withContext(Dispatchers.IO) { store.state(id) }
+            call.respondJson(state.toAdminDto())
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+
+    // §18.5/§18.7: o livro-razao de uma conta, so leitura (nunca cria a conta - CONTA_INEXISTENTE para quem nao existe).
+    get("/internal/admin/accounts/{guestId}/ledger") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        try {
+            val id = call.parameters["guestId"].orEmpty()
+            if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val (total, entries) = withContext(Dispatchers.IO) { store.ledger(id, limit, offset) }
+            call.respondJson(AdminLedgerPage(total, entries.map { it.toDto() }))
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+
+    // §18.7 "ajustar saldo ou booster": motivo e chave de idempotencia obrigatorios; ao menos um ajuste real
+    // (moedas e/ou booster, nunca os dois vazios); nunca deixa saldo nem quantidade negativos.
+    post("/internal/admin/accounts/{guestId}/adjust") {
+        if (!call.adminAllowed(deps.adminSecret)) return@post
+        try {
+            val id = call.parameters["guestId"].orEmpty()
+            if (!GUEST_ID.matches(id)) throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Jogador inválido.")
+            val req = call.receiveLimited<AdminAdjustRequest>()
+            if (req.reason.isBlank() || req.reason.length > EconomyLimits.MAX_ADJUST_REASON) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe um motivo (até ${EconomyLimits.MAX_ADJUST_REASON} caracteres).")
+            }
+            if (req.operationId.isBlank() || req.operationId.length > EconomyLimits.MAX_OPERATION_ID) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Pedido inválido.")
+            }
+            if ((req.boosterId == null) != (req.quantityDelta == null)) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe o booster e a quantidade juntos.")
+            }
+            val coinsDelta = req.coinsDelta ?: 0L
+            val quantityDelta = req.quantityDelta ?: 0
+            if (coinsDelta == 0L && (req.boosterId == null || quantityDelta == 0)) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe ao menos um ajuste de moedas ou de booster.")
+            }
+            val state = withContext(Dispatchers.IO) { store.adjustWallet(id, req.reason, req.operationId, coinsDelta, req.boosterId, quantityDelta) }
+            call.respondJson(state.toAdminDto())
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+
+    // §18.6/§18.7: migracoes de carteira local JA feitas, de TODAS as contas (ver docs/seguranca-pendencias.md).
+    get("/internal/admin/migrations") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+        val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+        val (total, migrations) = withContext(Dispatchers.IO) { store.migrations(limit, offset) }
+        call.respondJson(AdminMigrationsPage(total, migrations.map { it.toDto() }))
+    }
+
+    // §17.10/§14.6/§18.7 "Loja e configuracao": preco/quantidade de cada oferta e o ganho diario, com historico
+    // (append-only). O presente diario (§17.5) nao esta aqui: nao existe hoje como rota online, ver relatorio.
+    get("/internal/admin/shop-config") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        call.respondJson(withContext(Dispatchers.IO) { store.shopConfig() }.toDto())
+    }
+
+    get("/internal/admin/shop-config/history") {
+        if (!call.adminAllowed(deps.adminSecret)) return@get
+        val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+        val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+        val (total, entries) = withContext(Dispatchers.IO) { store.shopConfigHistory(limit, offset) }
+        call.respondJson(AdminShopConfigHistoryPage(total, entries.map { it.toDto() }))
+    }
+
+    post("/internal/admin/shop-config/offer/{index}") {
+        if (!call.adminAllowed(deps.adminSecret)) return@post
+        try {
+            val index = call.parameters["index"]?.toIntOrNull()
+                ?: throw HttpFail(400, EconomyErrorCode.OFERTA_INEXISTENTE, "Oferta inexistente.")
+            val req = call.receiveLimited<AdminShopOfferAdjustRequest>()
+            if (req.reason.isBlank() || req.reason.length > EconomyLimits.MAX_ADJUST_REASON) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe um motivo (até ${EconomyLimits.MAX_ADJUST_REASON} caracteres).")
+            }
+            if (req.operationId.isBlank() || req.operationId.length > EconomyLimits.MAX_OPERATION_ID) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Pedido inválido.")
+            }
+            val entry = withContext(Dispatchers.IO) { store.adjustOfferConfig(index, req.price, req.quantity, req.reason, req.operationId) }
+            call.respondJson(entry.toDto())
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
+    }
+
+    post("/internal/admin/shop-config/daily-gain") {
+        if (!call.adminAllowed(deps.adminSecret)) return@post
+        try {
+            val req = call.receiveLimited<AdminShopGainAdjustRequest>()
+            if (req.reason.isBlank() || req.reason.length > EconomyLimits.MAX_ADJUST_REASON) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Informe um motivo (até ${EconomyLimits.MAX_ADJUST_REASON} caracteres).")
+            }
+            if (req.operationId.isBlank() || req.operationId.length > EconomyLimits.MAX_OPERATION_ID) {
+                throw HttpFail(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Pedido inválido.")
+            }
+            val field = withContext(Dispatchers.IO) { store.adjustDailyGainConfig(req.amount, req.reason, req.operationId) }
+            call.respondJson(field.toDto())
+        } catch (e: HttpFail) {
+            call.respondError(e.status, e.code, e.message.orEmpty())
+        } catch (e: EconomyException) {
+            call.respondError(e.status(), EconomyErrorCode.valueOf(e.code.name), e.message.orEmpty())
+        }
     }
 }
 
@@ -194,6 +390,30 @@ private suspend fun ApplicationCall.internalAllowed(expected: String?): Boolean 
         !MessageDigest.isEqual(expected.toByteArray(), given.toByteArray()) ->
             respondError(401, EconomyErrorCode.NAO_AUTENTICADO, "Não autorizado.")
         else -> return true
+    }
+    return false
+}
+
+/**
+ * §18.7: confere o segredo do console de gerenciamento (admin-api) e a versao dos contratos `/internal/admin/...`
+ * ([ADMIN_API_VERSION], §18.8). Cabecalho e valor do segredo PROPRIOS, diferentes de
+ * [internalAllowed]/[INTERNAL_SECRET_HEADER]: nunca aceita o segredo servico a servico aqui, nem o contrario.
+ */
+private suspend fun ApplicationCall.adminAllowed(expected: String?): Boolean {
+    val given = request.headers[ADMIN_SECRET_HEADER] ?: ""
+    when {
+        expected == null -> respondError(503, EconomyErrorCode.INDISPONIVEL, "Rotas administrativas desativadas.")
+        !MessageDigest.isEqual(expected.toByteArray(), given.toByteArray()) ->
+            respondError(401, EconomyErrorCode.NAO_AUTENTICADO, "Não autorizado.")
+        else -> {
+            val remote = request.headers[ADMIN_API_VERSION_HEADER]?.toIntOrNull()
+            if (remote == ADMIN_API_VERSION) return true
+            if (remote == null || remote < ADMIN_API_VERSION) {
+                respondError(400, EconomyErrorCode.REQUISICAO_INVALIDA, "Atualize o admin-api.")
+            } else {
+                respondError(503, EconomyErrorCode.INDISPONIVEL, "Servidor em manutenção.")
+            }
+        }
     }
     return false
 }

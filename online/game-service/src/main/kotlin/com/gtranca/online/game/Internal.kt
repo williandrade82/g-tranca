@@ -1,6 +1,7 @@
 package com.gtranca.online.game
 
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.CloseMatchByOperatorRequest
 import com.gtranca.online.contracts.CloseMatchRequest
 import com.gtranca.online.contracts.CloseMatchResponse
 import com.gtranca.online.contracts.CreateMatchRequest
@@ -33,6 +34,7 @@ fun Application.internalModule(deps: GameDeps) {
             install(internalGuard(deps))
             matchRoutes(deps)
             closeRoute(deps)
+            closeByOperatorRoute(deps)
             simRoutes()
         }
     }
@@ -73,6 +75,27 @@ private fun Route.closeRoute(deps: GameDeps) {
                 call.respond(HttpStatusCode.BadRequest, ApiError(ErrorCode.REQUISICAO_INVALIDA, "Jogador não está nesta partida."))
             CloseResult.AlreadyOver -> call.respond(HttpStatusCode.OK, CloseMatchResponse(alreadyOver = true))
             CloseResult.Closed -> call.respond(HttpStatusCode.OK, CloseMatchResponse(alreadyOver = false))
+        }
+    }
+}
+
+/**
+ * `/internal/matches/{id}/close-by-operator`: o console de gerenciamento (via lobby-service, §18.7) encerra a mesa
+ * travada que esta em jogo. Diferente de [closeRoute]: ninguem e punido, a aposta de todos os humanos volta
+ * (§18.4, decisao de 03/11/2026). Idempotente; nunca devolve [CloseResult.NotInMatch] (nao ha jogador a confirmar).
+ */
+private fun Route.closeByOperatorRoute(deps: GameDeps) {
+    post("/matches/{id}/close-by-operator") {
+        val req = try {
+            call.receive<CloseMatchByOperatorRequest>()
+        } catch (e: Exception) {
+            return@post call.respond(HttpStatusCode.BadRequest, ApiError(ErrorCode.REQUISICAO_INVALIDA, "Pedido inválido."))
+        }
+        when (deps.registry.closeMatchByOperator(call.parameters["id"].orEmpty(), req.reason)) {
+            null -> call.respond(HttpStatusCode.NotFound, ApiError(ErrorCode.MESA_INEXISTENTE, "Partida não encontrada."))
+            CloseResult.AlreadyOver -> call.respond(HttpStatusCode.OK, CloseMatchResponse(alreadyOver = true))
+            CloseResult.Closed -> call.respond(HttpStatusCode.OK, CloseMatchResponse(alreadyOver = false))
+            CloseResult.NotInMatch -> error("closeMatchByOperator nunca devolve NotInMatch")
         }
     }
 }

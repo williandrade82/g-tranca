@@ -8,6 +8,8 @@ import com.gtranca.online.contracts.EconomyErrorCode
 import com.gtranca.online.contracts.EconomyStateDto
 import com.gtranca.online.contracts.MigrateLocalWalletRequest
 import com.gtranca.online.contracts.OnlineJson
+import com.gtranca.online.contracts.ShopConfigDto
+import com.gtranca.online.contracts.ShopOfferDto
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.ktor.client.engine.mock.MockEngine
@@ -198,6 +200,49 @@ class EconomyClientTest {
         shouldThrow<OnlineException> { html.economyState("tok", "g1") }.kind shouldBe OnlineErrorKind.NETWORK
         val bad = client { respond("Fora do ar", HttpStatusCode.BadGateway) }
         shouldThrow<OnlineException> { bad.economyState("tok", "g1") }.kind shouldBe OnlineErrorKind.MAINTENANCE
+    }
+
+    // §17.10/§14.6: rota publica, sem Authorization nenhum (fecha o descompasso de docs/seguranca-pendencias.md, 2026-11-08)
+    @Test
+    fun `configuracao da loja e do ganho diario e publica, sem token`() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val config = ShopConfigDto(listOf(ShopOfferDto(0, "b1", 1, 7)), dailyGain = 999)
+        val c = client { req ->
+            seen = req
+            respond(OnlineJson.encodeToString(ShopConfigDto.serializer(), config), HttpStatusCode.OK, json)
+        }
+        c.shopConfig() shouldBe config
+        seen!!.url.encodedPath shouldBe "/economy/shop-config"
+        seen!!.method shouldBe HttpMethod.Get
+        seen!!.headers[HttpHeaders.Authorization] shouldBe null
+    }
+
+    // §18.2: a assinatura do app cobre o caminho da loja mesmo sem token de jogador
+    @Test
+    fun `configuracao da loja assina o pedido com token nulo`() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val config = ShopConfigDto(emptyList(), dailyGain = 50)
+        val http = OnlineClient.newHttpClient(
+            MockEngine { req ->
+                seen = req
+                respond(OnlineJson.encodeToString(ShopConfigDto.serializer(), config), HttpStatusCode.OK, json)
+            },
+        )
+        val c = OnlineClient(OnlineEndpoint.parse("192.0.2.1:8080", cleartext = true)!!, http, appKey = "chave", clock = { 1_000_000L })
+        c.shopConfig()
+        val h = seen!!.headers
+        AppSignature.verify(
+            "chave", "GET", "/economy/shop-config", h[AppSignature.TIME_HEADER], h[AppSignature.SIGNATURE_HEADER], null, 1_000_000L,
+        ) shouldBe true
+    }
+
+    // §17.10/§14.6: a configuração reflete um erro do servidor (ex.: manutenção) como as demais rotas de economia
+    @Test
+    fun `falha ao buscar a configuracao da loja vira economyFailure`() = runBlocking<Unit> {
+        val c = client { error(HttpStatusCode.ServiceUnavailable, EconomyErrorCode.INDISPONIVEL) }
+        val e = shouldThrow<OnlineException> { c.shopConfig() }
+        e.kind shouldBe OnlineErrorKind.MAINTENANCE
+        e.retryable shouldBe true
     }
 
     // id de conta invalido nunca vira um caminho de requisicao

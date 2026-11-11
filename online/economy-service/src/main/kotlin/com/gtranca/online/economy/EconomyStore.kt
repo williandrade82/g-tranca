@@ -7,12 +7,47 @@ import com.gtranca.engine.Loadout
 import com.gtranca.engine.Shop
 import com.gtranca.online.contracts.AccountLimits
 import com.gtranca.online.contracts.BetPayout
+import com.gtranca.online.contracts.EconomyLimits
 import com.gtranca.online.contracts.PayoutKind
 import java.sql.Connection
 import javax.sql.DataSource
 
 /** Saldo e inventário de uma conta (§18.5). [migratedLocal]: a conta já trouxe a carteira do aparelho (§18.6). */
 data class EconomyState(val balance: Long, val inventory: Map<String, Int>, val lastDailyClaim: Long?, val migratedLocal: Boolean = false)
+
+/** Uma linha do livro-razão (§18.7), como gravada em `lancamento`. */
+data class LedgerEntry(
+    val reason: String,
+    val coins: Long,
+    val boosterId: String?,
+    val quantity: Int,
+    val reference: String?,
+    val detail: String?,
+    val key: String,
+    val createdAtMs: Long,
+)
+
+/** Uma migração de carteira local já feita (§18.6/§18.7): só a linha de moedas (sem os boosters da mesma operação). */
+data class MigrationEntry(val accountId: String, val coins: Long, val createdAtMs: Long)
+
+/** Um campo configurável da loja/ganho diário (§18.7): o valor atual, se veio do `:core-engine` ou de um override, e desde quando. */
+data class ConfigField(val value: Long, val isOverride: Boolean, val sinceMs: Long?)
+
+/** Preço e quantidade atuais de uma oferta da loja (§17.10/§18.7). [boosterId] é fixo (vem do catálogo). */
+data class OfferConfig(val index: Int, val boosterId: String, val price: ConfigField, val quantity: ConfigField)
+
+/** O snapshot inteiro de GET /internal/admin/shop-config (§18.7). */
+data class ShopConfigSnapshot(val offers: List<OfferConfig>, val dailyGain: ConfigField)
+
+/** Uma linha do histórico de `config_loja` (§18.7), como gravada (append-only, nunca `UPDATE`). */
+data class ConfigHistoryEntry(
+    val field: String,
+    val value: Long,
+    val previousValue: Long?,
+    val reason: String,
+    val operationId: String,
+    val createdAtMs: Long,
+)
 
 /** Recusa de uma operação da economia, com o motivo em pt-BR. */
 class EconomyException(val code: Code, message: String) : RuntimeException(message) {
@@ -31,6 +66,9 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
 
     companion object {
         private const val MILLIS_PER_DAY = 86_400_000L
+
+        /** §14.6/§18.7: chave de `config_loja` do ganho diário (único campo que não é por oferta). */
+        private const val DAILY_GAIN_KEY = "ganho-diario"
 
         /**
          * §18.6 não impõe teto de produto ("sem teto"): isto só evita overflow/estouro, no limite do que a carteira
@@ -136,9 +174,10 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
      */
     fun claimDaily(accountId: String, today: Long): EconomyState = tx { c ->
         val day = serverDay()
+        val gain = configField(c, DAILY_GAIN_KEY, Coins.DAILY_GAIN.toLong()).value
         val last = lockWallet(c, accountId).second
         if (last != null && day <= last) throw EconomyException(EconomyException.Code.JA_RESGATADO, "O ganho de hoje já foi resgatado.")
-        if (!apply(c, accountId, "GANHO_DIARIO", "ganho-diario-$day", coins = Coins.DAILY_GAIN.toLong())) {
+        if (!apply(c, accountId, "GANHO_DIARIO", "ganho-diario-$day", coins = gain)) {
             throw EconomyException(EconomyException.Code.JA_RESGATADO, "O ganho de hoje já foi resgatado.")
         }
         c.prepareStatement("UPDATE carteira SET ultimo_resgate = ? WHERE conta_id = ?").use {
@@ -159,11 +198,15 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
     fun buy(accountId: String, offerIndex: Int, key: String): EconomyState = tx { c ->
         val offer = Shop.OFFERS.getOrNull(offerIndex)
             ?: throw EconomyException(EconomyException.Code.OFERTA_INEXISTENTE, "Oferta inexistente.")
+        // §18.7 "Loja e configuracao": preco e quantidade podem ter sido mudados pelo administrador; sem override,
+        // valem os mesmos de Shop.OFFERS (nunca uma copia desatualizada: le dentro da mesma transacao da compra).
+        val price = configField(c, offerPriceKey(offerIndex), offer.price.toLong()).value
+        val quantity = configField(c, offerQuantityKey(offerIndex), offer.quantity.toLong()).value
         val balance = lockWallet(c, accountId).first
         if (alreadyApplied(c, accountId, "compra-$key")) return@tx read(c, accountId)
-        if (balance < offer.price) throw EconomyException(EconomyException.Code.SALDO_INSUFICIENTE, "Saldo insuficiente para esta compra.")
-        apply(c, accountId, "COMPRA", "compra-$key", coins = -offer.price.toLong(), reference = "oferta-$offerIndex")
-        apply(c, accountId, "COMPRA", "compra-$key-booster", boosterId = offer.boosterId, quantity = offer.quantity, reference = "oferta-$offerIndex")
+        if (balance < price) throw EconomyException(EconomyException.Code.SALDO_INSUFICIENTE, "Saldo insuficiente para esta compra.")
+        apply(c, accountId, "COMPRA", "compra-$key", coins = -price, reference = "oferta-$offerIndex")
+        apply(c, accountId, "COMPRA", "compra-$key-booster", boosterId = offer.boosterId, quantity = quantity.toInt(), reference = "oferta-$offerIndex")
         read(c, accountId)
     }
 
@@ -312,6 +355,220 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
         }
     }
 
+    /**
+     * §18.7 "ajustar saldo ou booster": o operador soma (negativo para subtrair) moedas e/ou a quantidade de UM
+     * booster, sempre com [reason] (texto livre, gravado como [LedgerEntry.detail], motivo fixo `AJUSTE`) e
+     * idempotente por [operationId] (repetir a mesma chamada — retry de rede do admin-api — nunca ajusta duas
+     * vezes). Mesma regra de sempre: saldo e quantidade NUNCA ficam negativos, mesmo sendo o operador — valida
+     * ANTES de aplicar (como [buy]/[debitBoosters]), nunca deixa o `CHECK` do banco ser a única defesa.
+     */
+    fun adjustWallet(accountId: String, reason: String, operationId: String, coinsDelta: Long, boosterId: String?, quantityDelta: Int): EconomyState {
+        if (boosterId != null && !BoosterCatalog.DEFAULT.any { it.id == boosterId }) {
+            throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Booster inválido.")
+        }
+        ensureAccount(accountId)
+        val key = "ajuste-$operationId"
+        return tx { c ->
+            if (alreadyApplied(c, accountId, key)) return@tx read(c, accountId)
+            if (coinsDelta < 0) {
+                val balance = lockWallet(c, accountId).first
+                if (balance + coinsDelta < 0) throw EconomyException(EconomyException.Code.SALDO_INSUFICIENTE, "O ajuste deixaria o saldo negativo.")
+            }
+            if (boosterId != null && quantityDelta < 0) {
+                val quantity = lockBoosterQuantity(c, accountId, boosterId)
+                if (quantity + quantityDelta < 0) {
+                    throw EconomyException(EconomyException.Code.SALDO_INSUFICIENTE, "O ajuste deixaria a quantidade do booster negativa.")
+                }
+            }
+            // A linha de moedas e sempre gravada primeiro (mesmo com coinsDelta = 0): e ela que marca a
+            // idempotencia do ajuste inteiro, inclusive quando so o booster muda.
+            apply(c, accountId, "AJUSTE", key, coins = coinsDelta, detail = reason)
+            if (boosterId != null && quantityDelta != 0) {
+                apply(c, accountId, "AJUSTE", "$key-booster", boosterId = boosterId, quantity = quantityDelta, detail = reason)
+            }
+            read(c, accountId)
+        }
+    }
+
+    /**
+     * §18.5/§18.7: o livro-razão de UMA conta, mais recente primeiro (usa o índice `lancamento_conta`). Só
+     * leitura: nunca cria a conta (ao contrário de [ensureAccount]) — conta inexistente é [EconomyException.Code.CONTA_INEXISTENTE].
+     * @return (total sem paginar, a página pedida).
+     */
+    fun ledger(accountId: String, limit: Int, offset: Int): Pair<Int, List<LedgerEntry>> = tx { c ->
+        requireAccountExists(c, accountId)
+        val total = c.prepareStatement("SELECT count(*) FROM lancamento WHERE conta_id = ?").use { st ->
+            st.setString(1, accountId)
+            st.executeQuery().use { rs -> rs.next(); rs.getInt(1) }
+        }
+        val entries = c.prepareStatement(
+            "SELECT motivo, moedas, booster_id, quantidade, referencia, detalhe, chave, criado_em FROM lancamento " +
+                "WHERE conta_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+        ).use { st ->
+            st.setString(1, accountId)
+            st.setInt(2, limit.coerceIn(1, EconomyLimits.MAX_ADMIN_PAGE_LIMIT))
+            st.setInt(3, offset.coerceAtLeast(0))
+            st.executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add(
+                            LedgerEntry(
+                                reason = rs.getString(1), coins = rs.getLong(2), boosterId = rs.getString(3),
+                                quantity = rs.getInt(4), reference = rs.getString(5), detail = rs.getString(6),
+                                key = rs.getString(7), createdAtMs = rs.getTimestamp(8).time,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        total to entries
+    }
+
+    /**
+     * §18.6/§18.7: migrações de carteira local JÁ feitas (motivo `MIGRACAO_CARTEIRA_LOCAL`), de TODAS as contas,
+     * mais recente primeiro — para o operador revisar (§18.6 "o operador pode revisar migrações"; é a pendência
+     * de detectar migrações suspeitas registrada em `docs/seguranca-pendencias.md`). Só a linha de MOEDAS de cada
+     * migração ([booster_id IS NULL]): os boosters migrados na mesma operação têm o mesmo motivo com outra
+     * chave (ver [migrateLocalWallet]: `$key-$boosterId`).
+     */
+    fun migrations(limit: Int, offset: Int): Pair<Int, List<MigrationEntry>> = tx { c ->
+        val total = c.prepareStatement(
+            "SELECT count(*) FROM lancamento WHERE motivo = 'MIGRACAO_CARTEIRA_LOCAL' AND booster_id IS NULL",
+        ).use { st -> st.executeQuery().use { rs -> rs.next(); rs.getInt(1) } }
+        val entries = c.prepareStatement(
+            "SELECT conta_id, moedas, criado_em FROM lancamento WHERE motivo = 'MIGRACAO_CARTEIRA_LOCAL' AND booster_id IS NULL " +
+                "ORDER BY id DESC LIMIT ? OFFSET ?",
+        ).use { st ->
+            st.setInt(1, limit.coerceIn(1, EconomyLimits.MAX_ADMIN_PAGE_LIMIT))
+            st.setInt(2, offset.coerceAtLeast(0))
+            st.executeQuery().use { rs ->
+                buildList { while (rs.next()) add(MigrationEntry(rs.getString(1), rs.getLong(2), rs.getTimestamp(3).time)) }
+            }
+        }
+        total to entries
+    }
+
+    /**
+     * §17.10/§14.6/§18.7 "Loja e configuração": o preço/quantidade ATUAL de cada oferta (default do `:core-engine`
+     * ou override do administrador) e o valor atual do ganho diário. Só leitura.
+     */
+    fun shopConfig(): ShopConfigSnapshot = tx { c ->
+        val offers = Shop.OFFERS.mapIndexed { index, offer ->
+            OfferConfig(
+                index, offer.boosterId,
+                price = configField(c, offerPriceKey(index), offer.price.toLong()),
+                quantity = configField(c, offerQuantityKey(index), offer.quantity.toLong()),
+            )
+        }
+        ShopConfigSnapshot(offers, configField(c, DAILY_GAIN_KEY, Coins.DAILY_GAIN.toLong()))
+    }
+
+    /** §18.7: histórico de `config_loja`, mais recente primeiro, de TODOS os campos (para o operador revisar). */
+    fun shopConfigHistory(limit: Int, offset: Int): Pair<Int, List<ConfigHistoryEntry>> = tx { c ->
+        val total = c.prepareStatement("SELECT count(*) FROM config_loja").use { st ->
+            st.executeQuery().use { rs -> rs.next(); rs.getInt(1) }
+        }
+        val entries = c.prepareStatement(
+            "SELECT chave, valor, valor_anterior, motivo, operacao_id, criado_em FROM config_loja ORDER BY id DESC LIMIT ? OFFSET ?",
+        ).use { st ->
+            st.setInt(1, limit.coerceIn(1, EconomyLimits.MAX_ADMIN_PAGE_LIMIT))
+            st.setInt(2, offset.coerceAtLeast(0))
+            st.executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add(
+                            ConfigHistoryEntry(
+                                field = rs.getString(1), value = rs.getLong(2),
+                                previousValue = rs.getLong(3).takeUnless { rs.wasNull() },
+                                reason = rs.getString(4), operationId = rs.getString(5), createdAtMs = rs.getTimestamp(6).time,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        total to entries
+    }
+
+    /**
+     * §17.10/§18.7: muda o preço e/ou a quantidade da oferta [index]. Nunca aceita valor zero ou negativo (mesma
+     * regra do catálogo fixo, [ShopOffer.init]). Idempotente por [operationId] (por campo: repetir não grava de
+     * novo nenhum dos dois).
+     */
+    fun adjustOfferConfig(index: Int, price: Int?, quantity: Int?, reason: String, operationId: String): OfferConfig {
+        val offer = Shop.OFFERS.getOrNull(index) ?: throw EconomyException(EconomyException.Code.OFERTA_INEXISTENTE, "Oferta inexistente.")
+        if (price == null && quantity == null) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "Informe o preço ou a quantidade.")
+        if (price != null && price <= 0) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "O preço deve ser maior que zero.")
+        if (quantity != null && quantity <= 0) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "A quantidade deve ser maior que zero.")
+        return tx { c ->
+            price?.let { writeConfig(c, offerPriceKey(index), it.toLong(), offer.price.toLong(), reason, operationId) }
+            quantity?.let { writeConfig(c, offerQuantityKey(index), it.toLong(), offer.quantity.toLong(), reason, operationId) }
+            OfferConfig(
+                index, offer.boosterId,
+                price = configField(c, offerPriceKey(index), offer.price.toLong()),
+                quantity = configField(c, offerQuantityKey(index), offer.quantity.toLong()),
+            )
+        }
+    }
+
+    /** §14.6/§18.7: muda o ganho diário (`Coins.DAILY_GAIN`). Nunca aceita valor zero ou negativo. */
+    fun adjustDailyGainConfig(amount: Long, reason: String, operationId: String): ConfigField {
+        if (amount <= 0) throw EconomyException(EconomyException.Code.REQUISICAO_INVALIDA, "O ganho diário deve ser maior que zero.")
+        return tx { c ->
+            writeConfig(c, DAILY_GAIN_KEY, amount, Coins.DAILY_GAIN.toLong(), reason, operationId)
+            configField(c, DAILY_GAIN_KEY, Coins.DAILY_GAIN.toLong())
+        }
+    }
+
+    private fun offerPriceKey(index: Int) = "oferta-$index-preco"
+    private fun offerQuantityKey(index: Int) = "oferta-$index-quantidade"
+
+    /** (valor, quando) da linha mais recente de [key] em `config_loja`, ou `null` sem nenhuma (default do core-engine). */
+    private fun latestConfig(c: Connection, key: String): Pair<Long, Long>? =
+        c.prepareStatement("SELECT valor, criado_em FROM config_loja WHERE chave = ? ORDER BY id DESC LIMIT 1").use { st ->
+            st.setString(1, key)
+            st.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) to rs.getTimestamp(2).time else null }
+        }
+
+    /** O valor atual de [key]: a linha mais recente de `config_loja`, ou [default] (constante do `:core-engine`). */
+    private fun configField(c: Connection, key: String, default: Long): ConfigField =
+        latestConfig(c, key)?.let { (value, sinceMs) -> ConfigField(value, isOverride = true, sinceMs = sinceMs) }
+            ?: ConfigField(default, isOverride = false, sinceMs = null)
+
+    /**
+     * Grava uma nova linha de [key] em `config_loja` (nunca `UPDATE`): [previousValueDefault] é o default do
+     * core-engine, usado como "valor anterior" só quando esta é a 1ª mudança de [key] (sem override anterior).
+     * `pg_advisory_xact_lock` serializa duas chamadas concorrentes para a MESMA [key] (lê o valor anterior e grava
+     * o novo como uma única operação logicamente atômica, mesmo sem `UPDATE`/`FOR UPDATE` numa tabela append-only).
+     * Idempotente por (chave, operacao_id): repetir não grava de novo.
+     */
+    private fun writeConfig(c: Connection, key: String, newValue: Long, previousValueDefault: Long, reason: String, operationId: String): Boolean {
+        c.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?)::bigint)").use { st ->
+            st.setString(1, key)
+            st.executeQuery().use { it.next() }
+        }
+        val previous = latestConfig(c, key)?.first ?: previousValueDefault
+        return c.prepareStatement(
+            "INSERT INTO config_loja (chave, valor, valor_anterior, motivo, operacao_id) VALUES (?, ?, ?, ?, ?) " +
+                "ON CONFLICT (chave, operacao_id) DO NOTHING",
+        ).use { st ->
+            st.setString(1, key)
+            st.setLong(2, newValue)
+            st.setLong(3, previous)
+            st.setString(4, reason)
+            st.setString(5, operationId)
+            st.executeUpdate() == 1
+        }
+    }
+
+    private fun requireAccountExists(c: Connection, accountId: String) {
+        c.prepareStatement("SELECT 1 FROM conta WHERE id = ?").use { st ->
+            st.setString(1, accountId)
+            st.executeQuery().use { rs -> if (!rs.next()) throw EconomyException(EconomyException.Code.CONTA_INEXISTENTE, "Conta não encontrada.") }
+        }
+    }
+
     /** Trava a linha do inventario (`FOR UPDATE`); sem linha ainda (nunca debitado) vale 0. */
     private fun lockBoosterQuantity(c: Connection, accountId: String, boosterId: String): Int =
         c.prepareStatement("SELECT quantidade FROM inventario WHERE conta_id = ? AND booster_id = ? FOR UPDATE").use { st ->
@@ -348,14 +605,15 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
 
     /**
      * Um lançamento: grava no livro-razão e aplica ao saldo ou ao inventário. Chave repetida = já aplicado, nada muda.
-     * O `CHECK` do banco recusa saldo ou quantidade negativos (a transação inteira volta).
+     * O `CHECK` do banco recusa saldo ou quantidade negativos (a transação inteira volta). [detail] é o texto livre
+     * do operador (§18.7 "ajustar saldo ou booster"); `null` em todo lançamento automático (nunca usado antes de AJUSTE).
      */
     private fun apply(
         c: Connection, accountId: String, reason: String, key: String,
-        coins: Long = 0, boosterId: String? = null, quantity: Int = 0, reference: String? = null,
+        coins: Long = 0, boosterId: String? = null, quantity: Int = 0, reference: String? = null, detail: String? = null,
     ): Boolean {
         val inserted = c.prepareStatement(
-            "INSERT INTO lancamento (conta_id, motivo, moedas, booster_id, quantidade, referencia, chave) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+            "INSERT INTO lancamento (conta_id, motivo, moedas, booster_id, quantidade, referencia, detalhe, chave) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT (conta_id, chave) DO NOTHING",
         ).use {
             it.setString(1, accountId)
@@ -364,7 +622,8 @@ class EconomyStore(private val db: DataSource, private val clock: () -> Long = S
             it.setString(4, boosterId)
             it.setInt(5, quantity)
             it.setString(6, reference)
-            it.setString(7, key)
+            it.setString(7, detail)
+            it.setString(8, key)
             it.executeUpdate() == 1
         }
         if (!inserted) return false

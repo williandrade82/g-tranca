@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.gtranca.data.InventoryRepository
 import com.gtranca.data.SettingsRepository
 import com.gtranca.data.WalletRepository
+import com.gtranca.engine.Coins
 import com.gtranca.online.client.EconomyApi
 import com.gtranca.online.client.LobbyApi
 import com.gtranca.online.client.OnlineException
@@ -89,6 +90,12 @@ data class OnlineHomeUiState(
     val canClaimDaily: Boolean = false,
     /** Resgatando o ganho diário agora (evita toque duplo). */
     val claimingDaily: Boolean = false,
+    /**
+     * §14.6/§18.7 o ganho diário ATUAL do servidor ([EconomyApi.shopConfig], nunca `Coins.DAILY_GAIN` isolado do
+     * app — ver `docs/seguranca-pendencias.md`, 2026-11-08); o padrão fixo do `:core-engine` até a 1ª resposta, ou
+     * para sempre se a busca falhar (o resgate em si sempre credita o valor certo, decidido pelo servidor).
+     */
+    val dailyGain: Long = Coins.DAILY_GAIN.toLong(),
     /** §18.6 a conta já trouxe a carteira local (`true` por padrão até a economia carregar, para o botão não pipocar
      * na tela antes da 1ª leitura). */
     val migratedLocal: Boolean = true,
@@ -170,8 +177,14 @@ class OnlineHomeViewModel(
                 return@launch
             }
             _uiState.value = OnlineHomeUiState(OnlineHomeStatus.READY, name = guest.name, myId = guest.id)
-            // §18.5: saldo e ganho diário, uma vez (não entra no polling da lista de mesas).
-            economy?.let { eco -> loadEconomy(acc, eco) }
+            // §18.5: saldo e se já resgatou hoje, uma vez (não entra no polling da lista de mesas).
+            economy?.let { eco ->
+                // §14.6/§18.7: o valor ATUAL do ganho diário ANTES de publicar `canClaimDaily` (loadEconomy) — nunca
+                // mostra o padrão fixo no rótulo do botão por um instante e troca depois; falha fica em silêncio,
+                // com o padrão fixo do :core-engine já publicado no estado inicial.
+                loadDailyGain(eco)
+                loadEconomy(acc, eco)
+            }
             // §18.2: a foto do Perfil vai ao servidor (melhor esforço: sem ela, os outros veem a inicial).
             attempt { acc.call { api, g -> api.setPhoto(g.token, myPhoto()) } }
             val cache = OnlinePhotos(acc).also { photoCache = it }
@@ -203,6 +216,16 @@ class OnlineHomeViewModel(
             },
             onFailure = {},
         )
+    }
+
+    /**
+     * §14.6/§18.7: o valor ATUAL do ganho diário ([EconomyApi.shopConfig], a MESMA fonte que `claimDaily` credita de
+     * verdade no servidor), para o rótulo do botão não mostrar um número diferente do que o resgate credita — a
+     * causa raiz de `docs/seguranca-pendencias.md` (2026-11-08). Rota pública (sem token): falha fica em silêncio,
+     * com o padrão fixo do `:core-engine` ([Coins.DAILY_GAIN]) já publicado desde o estado inicial.
+     */
+    private suspend fun loadDailyGain(eco: EconomyApi) {
+        attempt { eco.shopConfig() }.onSuccess { config -> _uiState.update { it.copy(dailyGain = config.dailyGain) } }
     }
 
     /** §14.6 resgata o ganho diário online (um por dia, pelo relógio do servidor); o saldo e o botão se atualizam. */

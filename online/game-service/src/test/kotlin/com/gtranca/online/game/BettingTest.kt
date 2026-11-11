@@ -152,6 +152,16 @@ class BettingTest {
         settleBets(end(GameEndReason.ERRO, null, h), h.keys, bet).map { it.kind }.toSet() shouldBe setOf(DEVOLUCAO)
     }
 
+    @Test
+    fun `18_7 operador encerra a mesa travada, todos os humanos recebem a aposta de volta, nenhum e punido`() {
+        val h = mapOf("a" to 0, "b" to 2, "c" to 1)
+        // Sem abandonments: ninguem foi "culpado" pelo fechamento (diferente de ANFITRIAO_ENCERROU, que registra um).
+        val p = settleBets(end(GameEndReason.ENCERRADO_PELO_OPERADOR, null, h), h.keys, bet)
+        p.of("a") shouldBe (DEVOLUCAO to 50L)
+        p.of("b") shouldBe (DEVOLUCAO to 50L)
+        p.of("c") shouldBe (DEVOLUCAO to 50L)
+    }
+
     // ------------------------------------------------------------------------------------------ registro + economia
 
     private class FakeEconomy(@Volatile var down: Boolean = false) : EconomyClient {
@@ -230,6 +240,34 @@ class BettingTest {
         val payouts = eco.settles.single().second.associate { it.accountId to (it.kind to it.amount) }
         payouts[if (winner == 0) "ga" else "gb"] shouldBe (PREMIO to 100L)
         payouts[if (winner == 0) "gb" else "ga"] shouldBe (PERDA to 0L)
+        reg.close()
+    }
+
+    @Test
+    fun `18_7 operador encerra mesa travada em jogo de verdade, a economia devolve a aposta aos dois humanos`() = runBlocking {
+        val eco = FakeEconomy()
+        val reg = MatchRegistry(FAST, economy = eco, settleRetryDelaysMs = listOf(10))
+        val seats = listOf(SeatSpec.Human("ga", "Ana"), SeatSpec.Human("gb", "Beto"))
+        val (session, _) = reg.createWithBets(request(seats))
+        val a = TestPlayer(session, "ga")
+        val b = TestPlayer(session, "gb")
+        a.attach()
+        b.attach()
+        session.inspect()
+        a.drain()
+        b.drain()
+
+        reg.closeMatchByOperator("ABC234", "mesa travada ha 2 horas") shouldBe CloseResult.Closed
+
+        a.drain()
+        b.drain()
+        a.received.filterIsInstance<com.gtranca.online.contracts.TableClosed>().single().message shouldBe "A mesa foi encerrada pelo suporte."
+        a.received.none { it is com.gtranca.online.contracts.SeatsChanged && it.change == com.gtranca.online.contracts.SeatChange.RESIGNED } shouldBe true
+
+        withTimeout(5_000) { while (eco.settles.isEmpty()) delay(10) }
+        val payouts = eco.settles.single().second.associate { it.accountId to (it.kind to it.amount) }
+        payouts["ga"] shouldBe (DEVOLUCAO to 50L)
+        payouts["gb"] shouldBe (DEVOLUCAO to 50L)
         reg.close()
     }
 }

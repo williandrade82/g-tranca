@@ -452,7 +452,9 @@ class GameController(
      * segue depois do tempo da animação mais uma folga (rede de segurança para quem não avisa).
      */
     private suspend fun awaitDealAnimation(roundNumber: Int) {
-        withTimeoutOrNull((dealDelayMillis * dealDelayScale).toLong() + DEAL_SIGNAL_GRACE_MILLIS) {
+        // Na 1ª partida a distribuição só começa depois do "Prepare-se!" sobre a mesa.
+        val opening = if (roundNumber == 1) com.gtranca.net.PREPARE_MILLIS else 0
+        withTimeoutOrNull((dealDelayMillis * dealDelayScale).toLong() + opening + DEAL_SIGNAL_GRACE_MILLIS) {
             while (dealAnimationSignal.receive() != roundNumber) Unit
         }
     }

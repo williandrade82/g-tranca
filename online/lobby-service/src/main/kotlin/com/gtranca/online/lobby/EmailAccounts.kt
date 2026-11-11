@@ -109,7 +109,10 @@ class EmailAccountRegistry(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     // passwordHash e lido fora de bloco sincronizado em login(); volatile garante que o reset (noutra thread) seja visto.
-    private class Entry(val id: String, val email: String, @Volatile var passwordHash: String, val name: String)
+    private class Entry(val id: String, val email: String, @Volatile var passwordHash: String, val name: String, val createdMs: Long)
+
+    /** Resumo publico de uma conta (§18.7, console de gerenciamento): nunca o hash da senha. */
+    data class Snapshot(val id: String, val email: String, val name: String, val createdMs: Long)
 
     private val byEmail = HashMap<String, Entry>()
     private val secure = SecureRandom()
@@ -120,7 +123,7 @@ class EmailAccountRegistry(
 
     init {
         persistence?.loadAll()?.forEach { stored ->
-            byEmail[stored.email] = Entry(stored.id, stored.email, stored.passwordHash, stored.name)
+            byEmail[stored.email] = Entry(stored.id, stored.email, stored.passwordHash, stored.name, stored.createdMs)
         }
     }
 
@@ -138,17 +141,22 @@ class EmailAccountRegistry(
         val id = randomAccountId()
         val name = accountName(rawName)
         val hash = PasswordHashing.hash(rawPassword, passwordCost)
-        val stored = EmailAccountPersistence.StoredAccount(id, email, hash, name, clock())
+        val createdMs = clock()
+        val stored = EmailAccountPersistence.StoredAccount(id, email, hash, name, createdMs)
         synchronized(this) {
             if (byEmail.containsKey(email)) lobbyError(ErrorCode.EMAIL_JA_CADASTRADO, "Esse e-mail já tem uma conta.", 409)
             if (persistence?.insert(stored) == false) {
                 // Corrida: outro pedido com o mesmo e-mail gravou primeiro no banco (outro pod, por exemplo).
                 lobbyError(ErrorCode.EMAIL_JA_CADASTRADO, "Esse e-mail já tem uma conta.", 409)
             }
-            byEmail[email] = Entry(id, email, hash, name)
+            byEmail[email] = Entry(id, email, hash, name, createdMs)
         }
         return id to name
     }
+
+    /** §18.7: todas as contas de e-mail, para o console de gerenciamento buscar e listar. Nunca o hash da senha. */
+    @Synchronized
+    fun snapshot(): List<Snapshot> = byEmail.values.map { Snapshot(it.id, it.email, it.name, it.createdMs) }
 
     /**
      * §18.1 login: credenciais erradas e e-mail inexistente dao o mesmo erro, com o mesmo tempo de resposta. O

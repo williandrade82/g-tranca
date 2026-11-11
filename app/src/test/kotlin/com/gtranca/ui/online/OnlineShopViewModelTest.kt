@@ -5,6 +5,8 @@ import com.gtranca.engine.BoosterCatalog
 import com.gtranca.engine.Shop
 import com.gtranca.online.client.OnlineErrorKind
 import com.gtranca.online.client.OnlineException
+import com.gtranca.online.contracts.ShopConfigDto
+import com.gtranca.online.contracts.ShopOfferDto
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -147,5 +149,84 @@ class OnlineShopViewModelTest {
         advanceUntilIdle()
         vm.uiState.value.status shouldBe OnlineShopStatus.READY
         vm.uiState.value.shop.balance shouldBe 100
+    }
+
+    // §17.10/§18.7: fecha o descompasso de docs/seguranca-pendencias.md (2026-11-08) — o app mostra o MESMO
+    // preço/quantidade que o administrador configurou pelo console, não a constante fixa do :core-engine.
+    @Test
+    fun `mostra o preco e a quantidade configurados pelo administrador, nao o padrao fixo`() = runTest(dispatcher) {
+        val economy = FakeEconomy(initialBalance = 100)
+        economy.shopConfigValue = ShopConfigDto(
+            Shop.OFFERS.mapIndexed { i, o -> if (i == 0) ShopOfferDto(i, o.boosterId, price = 1, quantity = 7) else ShopOfferDto(i, o.boosterId, o.price.toLong(), o.quantity.toLong()) },
+            dailyGain = 999,
+        )
+        val vm = newVm(economy)
+        advanceUntilIdle()
+        val item = vm.uiState.value.shop.items[0]
+        item.offer.price shouldBe 1
+        item.offer.quantity shouldBe 7
+        vm.uiState.value.staleOffers shouldBe false
+    }
+
+    // §18.7: a compra usa o ÍNDICE do servidor (ShopOfferDto.index), nunca offers.indexOf(item.offer) — um override
+    // pode deixar duas ofertas iguais em (boosterId, quantity, price) e indexOf acharia a primeira (errada).
+    @Test
+    fun `compra usa o indice do servidor mesmo quando duas ofertas ficam iguais apos um override`() = runTest(dispatcher) {
+        val economy = FakeEconomy(initialBalance = 100)
+        // Oferta 0 (b1 x10 por 50) passa a valer o mesmo que a oferta 1 (b1 x5 por 30) virou: ambas b1 x5 por 30.
+        economy.shopConfigValue = ShopConfigDto(
+            Shop.OFFERS.mapIndexed { i, o ->
+                when (i) {
+                    0 -> ShopOfferDto(0, o.boosterId, price = 30, quantity = 5)
+                    else -> ShopOfferDto(i, o.boosterId, o.price.toLong(), o.quantity.toLong())
+                }
+            },
+            dailyGain = com.gtranca.engine.Coins.DAILY_GAIN.toLong(),
+        )
+        val vm = newVm(economy)
+        advanceUntilIdle()
+        val first = vm.uiState.value.shop.items[0] // índice 0, agora igual ao 1 em (boosterId, quantity, price)
+        val second = vm.uiState.value.shop.items[1]
+        second.offer shouldBe first.offer
+        vm.onOffer(second)
+        vm.onBuy()
+        advanceUntilIdle()
+        // Mesmo com os dois exibindo o mesmo preço/quantidade, o pedido leva o índice de QUEM foi tocado (1), nunca
+        // o primeiro que bateria por igualdade de valor (0) — a gravação seria creditada à oferta errada no livro-razão.
+        economy.buyOfferIndexAttempts shouldBe listOf(1)
+        vm.uiState.value.shop.balance shouldBe 70
+
+        vm.onOffer(first)
+        vm.onBuy()
+        advanceUntilIdle()
+        economy.buyOfferIndexAttempts shouldBe listOf(1, 0)
+        vm.uiState.value.shop.balance shouldBe 40
+    }
+
+    // §17.10: falha ao buscar a configuração não derruba a tela — mostra o padrão fixo com o aviso, a carteira
+    // continua funcionando normalmente.
+    @Test
+    fun `falha ao buscar a configuracao mantem a loja aberta com o padrao e avisa que pode estar desatualizado`() = runTest(dispatcher) {
+        val economy = FakeEconomy(initialBalance = 100)
+        economy.failShopConfig = OnlineException(OnlineErrorKind.NETWORK)
+        val vm = newVm(economy)
+        advanceUntilIdle()
+        vm.uiState.value.status shouldBe OnlineShopStatus.READY
+        vm.uiState.value.shop.items.size shouldBe 9
+        vm.uiState.value.shop.balance shouldBe 100
+        vm.uiState.value.staleOffers shouldBe true
+    }
+
+    // *Tentar de novo* sem compra pendente relê a carteira e a configuração.
+    @Test
+    fun `tentar de novo sem compra pendente rele a configuracao tambem`() = runTest(dispatcher) {
+        val economy = FakeEconomy(initialBalance = 100)
+        economy.failShopConfig = OnlineException(OnlineErrorKind.NETWORK)
+        val vm = newVm(economy)
+        advanceUntilIdle()
+        vm.uiState.value.staleOffers shouldBe true
+        vm.retry()
+        advanceUntilIdle()
+        vm.uiState.value.staleOffers shouldBe false
     }
 }

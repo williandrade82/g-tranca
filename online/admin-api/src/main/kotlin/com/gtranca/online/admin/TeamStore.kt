@@ -21,9 +21,12 @@ data class TeamLogin(val id: String, val email: String, val role: Role)
  * repetir a mesma operacao devolve o resultado gravado da primeira vez, sem duplicar o membro nem o registro.
  */
 class TeamStore(
-    private val db: DataSource,
+    /** Nao mais privado: [AdminDeps] reusa o mesmo banco para o [AuditLog] das acoes sobre conta de jogador. */
+    val db: DataSource,
     private val passwordCost: Int = 12,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Compartilhavel com outros stores (ver [AuditLog]); por padrao, um proprio sobre o mesmo banco. */
+    private val auditLog: AuditLog = AuditLog(db, clock),
 ) {
     private val secure = SecureRandom()
 
@@ -73,7 +76,7 @@ class TeamStore(
                     st.executeUpdate()
                 }
                 val member = TeamMember(id, email, role, now)
-                insertAudit(c, operationId, actor, "CRIAR_MEMBRO", id, email, reason, member, null)
+                auditLog.insert(c, operationId, actor, "CRIAR_MEMBRO", id, email, reason, json.encodeToString(TeamMember.serializer(), member), null)
                 member
             }
         }
@@ -114,7 +117,7 @@ class TeamStore(
                     if (newRole != null) add("papel: ${current.role} -> $finalRole")
                     if (newPassword != null) add("senha redefinida")
                 }.joinToString("; ").ifBlank { null }
-                insertAudit(c, operationId, actor, "ALTERAR_MEMBRO", id, current.email, reason, member, detail)
+                auditLog.insert(c, operationId, actor, "ALTERAR_MEMBRO", id, current.email, reason, json.encodeToString(TeamMember.serializer(), member), detail)
                 member
             }
         }
@@ -123,14 +126,14 @@ class TeamStore(
     fun remove(id: String, actor: Actor, reason: String, operationId: String?) {
         withIdempotentRetryUnit(operationId) {
             tx { c ->
-                if (operationId != null && hasAuditOperation(c, operationId)) return@tx
+                if (operationId != null && auditLog.hasOperation(c, operationId)) return@tx
                 val adminIds = lockAdministratorIds(c)
                 val current = lockMember(c, id) ?: adminError(ErrorCode.REQUISICAO_INVALIDA, "Membro não encontrado.", 404)
                 if (current.role == Role.ADMINISTRADOR && adminIds.size <= 1) {
                     adminError(ErrorCode.REQUISICAO_INVALIDA, "Não é possível remover o último administrador.", 409)
                 }
                 c.prepareStatement("DELETE FROM admin.membro WHERE id = ?").use { st -> st.setString(1, id); st.executeUpdate() }
-                insertAudit(c, operationId, actor, "REMOVER_MEMBRO", id, current.email, reason, null, null)
+                auditLog.insert(c, operationId, actor, "REMOVER_MEMBRO", id, current.email, reason, null, null)
             }
         }
     }
@@ -157,9 +160,10 @@ class TeamStore(
             st.executeUpdate()
         }
         val member = TeamMember(id, email, Role.ADMINISTRADOR, now)
-        insertAudit(
+        auditLog.insert(
             c, null, Actor("sistema", "sistema"), "SEMEAR_ADMINISTRADOR", id, email,
-            "Primeiro administrador semeado no arranque (ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD).", member, null,
+            "Primeiro administrador semeado no arranque (ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD).",
+            json.encodeToString(TeamMember.serializer(), member), null,
         )
         true
     }
@@ -192,7 +196,7 @@ class TeamStore(
             if (operationId == null || !isUniqueViolation(e)) throw e
             // A outra chamada ja removeu (ou nao: REMOVER_MEMBRO nao grava `resultado`); so confere que a
             // operacao existe para nao propagar um erro de banco por uma repeticao legitima.
-            val exists = db.connection.use { c -> hasAuditOperation(c, operationId) }
+            val exists = db.connection.use { c -> auditLog.hasOperation(c, operationId) }
             if (!exists) throw e
         }
     }
@@ -227,35 +231,6 @@ class TeamStore(
             st.setString(1, operationId)
             st.executeQuery().use { rs -> if (rs.next()) rs.getString(1)?.let { json.decodeFromString(TeamMember.serializer(), it) } else null }
         }
-
-    private fun hasAuditOperation(c: Connection, operationId: String): Boolean =
-        c.prepareStatement("SELECT 1 FROM admin.auditoria WHERE operacao_id = ?").use { st ->
-            st.setString(1, operationId)
-            st.executeQuery().use { it.next() }
-        }
-
-    private fun insertAudit(
-        c: Connection, operationId: String?, actor: Actor, action: String, targetId: String?, targetEmail: String?,
-        reason: String, member: TeamMember?, detail: String?,
-    ) {
-        val resultado = member?.let { json.encodeToString(TeamMember.serializer(), it) }
-        c.prepareStatement(
-            "INSERT INTO admin.auditoria (operacao_id, quando_ms, ator_id, ator_email, acao, alvo_id, alvo_email, motivo, detalhe, resultado) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ).use { st ->
-            st.setString(1, operationId)
-            st.setLong(2, clock())
-            st.setString(3, actor.id)
-            st.setString(4, actor.email)
-            st.setString(5, action)
-            st.setString(6, targetId)
-            st.setString(7, targetEmail)
-            st.setString(8, reason)
-            st.setString(9, detail)
-            st.setString(10, resultado)
-            st.executeUpdate()
-        }
-    }
 
     private fun randomId(): String {
         val bytes = ByteArray(16)

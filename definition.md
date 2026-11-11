@@ -815,6 +815,7 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - **Fim do jogo:** todos veem a **tela final**; a mesa guarda o resultado por **10 minutos** para quem estava fora e então é apagada. Não há "nova partida" na mesma mesa: para jogar de novo, entra-se noutra mesa da lista.
 - **Queda de conexão:** o jogador tem de **voltar** pelo mesmo assento (reentrando na mesa com a mesma conta). Se a mesa tem tempo de jogada, a **vez** dele continua contando e o esgotar é abandono; no **indeterminado** a mesa **espera** e o anfitrião pode **substituí-lo por um robô** (conta como abandono).
 - **Mesa encerrada durante o jogo:** se o anfitrião da mesa a **encerra** com o jogo em andamento, conta como **abandono do anfitrião** (a punição escolhida vale para ele) e os **demais jogadores humanos recebem a aposta de volta**; nenhum robô assume uma mesa encerrada.
+- **Mesa encerrada pelo operador** (console de gerenciamento, §18.7, decisão de 03/11/2026): diferente de um anfitrião encerrando, é o suporte fechando uma mesa **travada**; **ninguém perde a aposta** — **todos os jogadores humanos recebem a aposta de volta**, sem punir nenhum deles. Os conectados veem um aviso honesto (algo como "A mesa foi encerrada pelo suporte."), nunca a mensagem de "o anfitrião encerrou".
 - **Boosters de skill:** a mesa os **permite ou não** (a mesma escolha de §17.9); não há escolha por tipo.
 - Os critérios aparecem na **lista de mesas** (§18.2), junto da aposta, antes de o jogador ocupar um assento; ocupar o assento é aceitar.
 
@@ -835,6 +836,8 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 - Uma **interface web separada** administra o serviço (contas, mesas, economia, configurações). Só entra quem tem o **e-mail numa lista permitida** e um **papel**: **leitor** (só consulta), **operador** (consulta e ações do dia a dia: bloquear conta, encerrar mesa, ajustar saldo ou booster **com motivo**) e **administrador** (tudo, inclusive a lista de e-mails e os papéis, as configurações do serviço e o catálogo e as ofertas da loja).
 - **Entra-se com e-mail e senha** (mesmo mecanismo do §18.1, aplicado à equipe do console: hash nunca em texto puro, sem recuperação pela própria pessoa — a redefinição é feita por quem já é administrador). *Login Google fica no backlog, como no app (§18.1).* Cada membro da equipe é cadastrado pelo administrador (e-mail, senha inicial e papel), não há autocadastro.
 - Toda ação do operador é **registrada** (quem, quando, o quê e por quê) e o registro **não se altera**.
+- **Bloquear conta** (decisão de 03/11/2026): impede a conta de **logar de novo** e de **entrar em mesa nova**; não afeta uma partida já em andamento (quem está jogando segue até o fim, mesmo bloqueado durante o jogo — o bloqueio só vale a partir da próxima vez que a conta tentar entrar). Desbloquear reverte, sem efeito retroativo.
+- **Encerrar sessões** é uma ação **independente** do bloqueio: invalida os tokens válidos da conta (força logar de novo), sem impedir logins futuros. Útil, por exemplo, quando se suspeita de um token roubado sem banir o jogador.
 
 ### **18.8. Versões**
 - O protocolo online tem **versão**. App e servidor de versões incompatíveis recusam a conexão com a mensagem "Atualize o aplicativo" (ou "servidor em manutenção"), sem afetar o jogo offline.

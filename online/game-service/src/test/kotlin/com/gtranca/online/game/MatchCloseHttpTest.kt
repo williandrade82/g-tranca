@@ -1,6 +1,7 @@
 package com.gtranca.online.game
 
 import com.gtranca.online.contracts.ApiError
+import com.gtranca.online.contracts.CloseMatchByOperatorRequest
 import com.gtranca.online.contracts.CloseMatchRequest
 import com.gtranca.online.contracts.CloseMatchResponse
 import com.gtranca.online.contracts.CreateMatchRequest
@@ -76,6 +77,13 @@ class MatchCloseHttpTest {
             setBody(OnlineJson.encodeToString(CloseMatchRequest.serializer(), CloseMatchRequest(host)))
         }
 
+    private suspend fun HttpClient.closeByOperator(id: String, reason: String? = null, secret: String? = TEST_SECRET): HttpResponse =
+        post("/internal/matches/$id/close-by-operator") {
+            if (secret != null) header(INTERNAL_SECRET_HEADER, secret)
+            contentType(ContentType.Application.Json)
+            setBody(OnlineJson.encodeToString(CloseMatchByOperatorRequest.serializer(), CloseMatchByOperatorRequest(reason)))
+        }
+
     private fun deps(notifier: LobbyNotifier) = GameDeps(
         FAST, MatchRegistry(FAST, notifier = notifier, notifyRetryDelaysMs = listOf(1, 1, 1)), resolver,
     )
@@ -124,6 +132,46 @@ class MatchCloseHttpTest {
         // O lobby e avisado (fora do ator, com tentativas) de que o jogo foi encerrado.
         withTimeout(5_000) { while (notifier.calls.isEmpty()) delay(10) }
         notifier.calls.toList() shouldContainExactly listOf("ABC234" to GameEndReason.ANFITRIAO_ENCERROU)
+    }
+
+    @Test
+    fun `18_7 a rota do operador exige o segredo, encerra sem conhecer jogador nenhum e avisa com o motivo certo`() = testApplication {
+        val notifier = RecordingNotifier()
+        application { gameModule(deps(notifier)) }
+        val api = createClient { }
+        val ws = createClient { install(WebSockets) }
+        api.create(request()).status shouldBe HttpStatusCode.Created
+
+        api.closeByOperator("ABC234", secret = null).status shouldBe HttpStatusCode.Unauthorized
+        api.closeByOperator("ZZZ999").status shouldBe HttpStatusCode.NotFound
+
+        val seen = CopyOnWriteArrayList<ServerMessage>()
+        val connected = CompletableDeferred<Unit>()
+        ws.webSocket("/ws/match/ABC234", request = {
+            header(PROTOCOL_HEADER, ONLINE_PROTOCOL_VERSION.toString())
+            header(HttpHeaders.Authorization, "Bearer tok-ga")
+        }) {
+            for (frame in incoming) {
+                if (frame !is Frame.Text) continue
+                val m = OnlineJson.decodeFromString(ServerMessage.serializer(), frame.readText())
+                seen += m
+                if (m is Welcome && !connected.isCompleted) {
+                    connected.complete(Unit)
+                    // Nenhum id de jogador no corpo: so o operador decidindo, nao um jogador sentado.
+                    val r = api.closeByOperator("ABC234", reason = "mesa travada")
+                    r.status shouldBe HttpStatusCode.OK
+                    OnlineJson.decodeFromString(CloseMatchResponse.serializer(), r.bodyAsText()).alreadyOver shouldBe false
+                }
+            }
+        }
+        val closed = seen.last().shouldBeInstanceOf<TableClosed>()
+        closed.message shouldBe "A mesa foi encerrada pelo suporte." // nunca "o anfitriao encerrou"
+
+        withTimeout(5_000) { while (notifier.calls.isEmpty()) delay(10) }
+        notifier.calls.toList() shouldContainExactly listOf("ABC234" to GameEndReason.ENCERRADO_PELO_OPERADOR)
+        // Idempotencia de verdade (chamar de novo sem dar erro nem punir ninguem) e testada no nivel da sessao em
+        // MatchClockTest - aqui, depois do fim, o ator ja pode ter se removido do registro (AlreadyOver ou 404,
+        // ambos corretos; a mesma corrida existe no caminho do anfitriao, nao e nova desta rota).
     }
 
     @Test

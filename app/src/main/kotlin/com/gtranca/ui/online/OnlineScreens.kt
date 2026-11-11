@@ -102,6 +102,7 @@ fun OnlineProblem.textRes(): Int = when (this) {
     OnlineProblem.INVALID_TARGET -> R.string.online_problem_invalid_target
     OnlineProblem.EMAIL_ALREADY_REGISTERED -> R.string.online_problem_email_already_registered
     OnlineProblem.LOGIN_LOCKED -> R.string.online_problem_login_locked
+    OnlineProblem.ACCOUNT_BLOCKED -> R.string.online_problem_account_blocked
     OnlineProblem.WALLET_NOT_YOURS -> R.string.online_problem_wallet_not_yours
     OnlineProblem.SHOP_INVALID_REQUEST -> R.string.online_problem_shop_invalid
     OnlineProblem.UNEXPECTED -> R.string.online_problem_unexpected
@@ -126,6 +127,7 @@ private fun OnlineAccountProblem.textRes(): Int = when (this) {
     OnlineAccountProblem.EMAIL_ALREADY_REGISTERED -> R.string.online_account_problem_email_registered
     OnlineAccountProblem.WALLET_PENDING -> R.string.online_account_problem_wallet_pending
     OnlineAccountProblem.LOGIN_LOCKED -> R.string.online_problem_login_locked
+    OnlineAccountProblem.ACCOUNT_BLOCKED -> R.string.online_problem_account_blocked
     OnlineAccountProblem.INVALID_REQUEST -> R.string.online_account_problem_invalid_request
     OnlineAccountProblem.NETWORK -> R.string.online_problem_network
     OnlineAccountProblem.MAINTENANCE -> R.string.online_problem_maintenance
@@ -233,7 +235,7 @@ fun OnlineHomeScreen(
                                 enabled = !state.claimingDaily,
                                 kind = GButtonKind.Secondary,
                             ) {
-                                Text(stringResource(R.string.home_daily_claim, com.gtranca.engine.Coins.DAILY_GAIN), style = MaterialTheme.typography.labelLarge)
+                                Text(stringResource(R.string.home_daily_claim, state.dailyGain), style = MaterialTheme.typography.labelLarge)
                             }
                         }
                     }

@@ -253,7 +253,15 @@
         <item quantity="one">+%1$d ponto na mesa</item>
         <item quantity="other">+%1$d pontos na mesa</item>
     </plurals>
-    <string name="plan_choice_hint">Ou selecione as cartas da mão antes de tocar no lixo.</string>
+    <string name="plan_choice_hint">Da próxima vez, toque no jogo da mesa e/ou nas cartas da mão antes de tocar no descarte.</string>
+    <string name="take_mistake_title">Não dá para pegar assim</string>
+    <string name="take_mistake_no_indication">Para pegar o descarte, toque no jogo da mesa e/ou nas cartas da mão que vão com ele e depois na carta do descarte ou em Pegar.</string>
+    <string name="take_mistake_tip">Confira o jogo e as cartas que você marcou, ou veja as opções possíveis.</string>
+    <string name="take_mistake_options">Ver opções</string>
+    <string name="booster_strip_description">Seus boosters: %1$s. Toque para ver o que fazem.</string>
+    <string name="boosters_info_title">Seus boosters</string>
+    <string name="boosters_info_reactions_left">Reações que sobram: %1$d</string>
+    <string name="boosters_info_whole_game">Valem até o fim do jogo.</string>
     <string name="decline_title">Recusar a compra?</string>
     <string name="decline_text">O monte acabou e não há morto disponível. Recusar a compra encerra a partida sem batida.</string>
     <string name="decline_confirm">Recusar e encerrar</string>
@@ -827,6 +835,9 @@
     <!-- 3.20a Loja online: §18.5 -->
     <string name="online_problem_wallet_not_yours">Esta carteira não é sua.</string>
     <string name="online_problem_shop_invalid">Não foi possível completar esta compra. Tente de novo.</string>
+    <!-- §17.10/§18.7: aviso quando a Loja online não conseguiu confirmar o preço/quantidade atual com o servidor
+         (docs/seguranca-pendencias.md, 2026-11-08) — a compra em si nunca cobra o valor desatualizado. -->
+    <string name="online_shop_stale_offers">Preço pode estar desatualizado. A compra sempre confere o valor certo com o servidor.</string>
     <!-- 3.21 lista de mesas do servidor (§18.2) -->
     <plurals name="online_players_count">
         <item quantity="one">%1$d jogador online</item>
@@ -881,6 +892,7 @@
     <string name="online_problem_invalid_target">Informe uma pontuação-alvo inteira e positiva.</string>
     <string name="online_problem_email_already_registered">Esse e-mail já tem uma conta.</string>
     <string name="online_problem_login_locked">Muitas tentativas erradas. Tente de novo em alguns minutos.</string>
+    <string name="online_problem_account_blocked">Esta conta foi bloqueada. Fale com o suporte.</string>
     <string name="online_problem_unexpected">Algo deu errado. Tente de novo.</string>
 
     <!-- 3.22 Conta online: entrar ou criar conta por e-mail e senha (§18.1) -->

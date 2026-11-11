@@ -1,0 +1,277 @@
+/* Console de gerenciamento: pensado para notebook, teclado e contraste adequado (docs/telas-admin-web.md). */
+:root {
+  color-scheme: light;
+  --cor-texto: #1a1a1a;
+  --cor-fundo: #f5f5f5;
+  --cor-destaque: #1f4fa3;
+  --cor-erro: #8a1f1f;
+  --cor-erro-fundo: #fdeaea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: var(--cor-texto);
+  background: var(--cor-fundo);
+}
+
+a,
+button,
+input,
+select {
+  font-size: 1rem;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--cor-destaque);
+  outline-offset: 2px;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-page form {
+  background: #fff;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  width: min(360px, 90vw);
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.campo label {
+  font-weight: 600;
+}
+
+.campo input {
+  padding: 0.5rem;
+  border: 1px solid #888;
+  border-radius: 4px;
+}
+
+.erro {
+  color: var(--cor-erro);
+  background: var(--cor-erro-fundo);
+  border: 1px solid var(--cor-erro);
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+
+button[type='submit'] {
+  width: 100%;
+  padding: 0.6rem;
+  background: var(--cor-destaque);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button[type='submit']:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dashboard-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.app-header {
+  margin-bottom: 1.5rem;
+}
+
+.app-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-header-session {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 0.5rem;
+}
+
+.app-header nav a {
+  color: var(--cor-texto);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+}
+
+.app-header nav a.active {
+  font-weight: 700;
+  border-bottom: 2px solid var(--cor-destaque);
+}
+
+.accounts-page,
+.account-detail-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.accounts-page section,
+.account-detail-page section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.accounts-busca {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.accounts-busca input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #888;
+  border-radius: 4px;
+}
+
+table.accounts-tabela {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.accounts-tabela th,
+table.accounts-tabela td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.paginacao {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.acoes-futuras {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.acoes-futuras button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Dialogo de confirmacao (bloquear/desbloquear/encerrar sessoes): ocupa a tela inteira por cima do resto,
+   sempre pede o motivo antes de confirmar (docs/telas-admin-web.md: "ação destrutiva pede confirmação e motivo"). */
+.dialogo-confirmacao {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.dialogo-confirmacao form {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  width: min(420px, 90vw);
+}
+
+.dialogo-confirmacao textarea {
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.5rem;
+  border: 1px solid #888;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.dialogo-botoes {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.dashboard-page section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.dashboard-page section[aria-label='Contagens'] {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.contagem {
+  display: flex;
+  flex-direction: column;
+}
+
+.contagem-rotulo {
+  font-size: 0.85rem;
+  color: #444;
+}
+
+/* Verde/amarelo/vermelho com texto redundante (STATUS_LABEL), nao so cor: acessibilidade para quem nao distingue cor. */
+.servico-verde::before {
+  content: '● ';
+  color: #1a7a33;
+}
+
+.servico-amarelo::before {
+  content: '● ';
+  color: #8a6d00;
+}
+
+.servico-vermelho::before {
+  content: '● ';
+  color: var(--cor-erro);
+}
+
+/* Estado da mesa (tela Mesas): cor so de apoio, o rotulo em texto (TABLE_STATE_LABEL) sempre aparece junto. */
+.estado-mesa-ABERTA {
+  color: #1a7a33;
+  font-weight: 600;
+}
+
+.estado-mesa-EM_JOGO {
+  color: #8a6d00;
+  font-weight: 600;
+}
+
+.estado-mesa-ENCERRADA {
+  color: #555;
+}
