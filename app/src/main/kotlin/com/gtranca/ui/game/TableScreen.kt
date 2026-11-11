@@ -447,7 +447,14 @@ private fun TableScreenContent(
                             Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
                             // §17.11.1 barra de progressão do b4: fixa sob o cabeçalho, fora da rolagem da mesa (e, como
                             // ele, à frente dos voos e dos fogos).
-                            if (com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters) TableScoreBar(state)
+                            // Com o b4, substitui a pílula "Nós × Eles" (§17.11.1) e, como ela, abre as informações do jogo.
+                            if (com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters) {
+                                TableScoreBar(
+                                    state,
+                                    Modifier.clickable(onClickLabel = stringResource(R.string.match_info_open), role = Role.Button) { showMatchInfo = true }
+                                        .testTag("score").tourTarget("score"),
+                                )
+                            }
                         }
                     }
                     // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
@@ -702,7 +709,8 @@ private fun Header(
         // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
         OptionsMenu(events, extra, onLegend)
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // Com o b4, o placar do b4 (sob o cabeçalho) toma o lugar desta pílula (§17.11.1).
+    if (com.gtranca.engine.BoosterCatalog.SCOREBOARD !in state.boosters) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(
             Modifier.weight(1f)
                 .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo),
@@ -1131,7 +1139,7 @@ private fun settledValue(value: Int, settled: Boolean, key: Any? = null): Int? {
  * vive no [LocalScoreBar] (sobrevive à troca para a mesa final); sem ele, numa barra local.
  */
 @Composable
-private fun TableScoreBar(state: GameUiState) {
+private fun TableScoreBar(state: GameUiState, modifier: Modifier = Modifier) {
     val view = state.snapshot.view
     val rules = LocalTableRules.current
     val landing = LocalLanding.current
@@ -1151,6 +1159,16 @@ private fun TableScoreBar(state: GameUiState) {
         val seats = view.mode.seatsOf(side).sortedBy { if (it == view.seat) 0 else 1 }
         return seats.mapNotNull { state.personas.getOrNull(it.index) }
     }
+    val snapshot = state.snapshot
+    // §17.11.2 placar do jogo e o acumulado ao fim de cada partida terminada.
+    val rows = MatchInfo.rows(snapshot.history)
+    val game = GameBarData(
+        own = snapshot.totals[view.side.index],
+        opponent = snapshot.totals[opponentSide.index],
+        target = snapshot.config.targetScore,
+        ownMarks = rows.map { it.cumulative[view.side.index] },
+        opponentMarks = rows.map { it.cumulative[opponentSide.index] },
+    )
     ScoreBar(
         holder = holder,
         ownSide = view.side.index,
@@ -1159,8 +1177,11 @@ private fun TableScoreBar(state: GameUiState) {
         opponentTotal = total(opponentSide),
         ownPersonas = personas(view.side),
         opponentPersonas = personas(opponentSide),
+        ownLabel = shortSideName(view.mode, view.side, view.side),
+        opponentLabel = shortSideName(view.mode, opponentSide, view.side),
+        game = game,
         animationMillis = state.animationMillis,
-        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = 2.dp),
+        modifier = modifier.padding(horizontal = Spacing.sm, vertical = 2.dp),
     )
 }
 

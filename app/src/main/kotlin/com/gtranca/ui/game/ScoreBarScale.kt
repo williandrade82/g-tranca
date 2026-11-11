@@ -44,6 +44,10 @@ data class ScoreBarScale(val level: Int = 0, val peak: Int = 0, val sideLevels: 
     fun markFraction(mark: Int): Float = (mark.toFloat() / max).coerceIn(0f, 1f)
 
     companion object {
+        /** §17.11.2 fração (0 a 1) da metade da barra do jogo: de 0 ao alvo, negativo vazio, acima do alvo cheia. */
+        fun gameFraction(points: Int, target: Int): Float =
+            if (target <= 0) 0f else (points.coerceAtLeast(0).toFloat() / target).coerceIn(0f, 1f)
+
         /** Marcos da escala: 500, 750 e 1000. */
         val MARKS: List<Int> = listOf(500, 750, 1000)
 

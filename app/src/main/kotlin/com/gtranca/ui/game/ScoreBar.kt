@@ -139,10 +139,13 @@ val LocalScoreBar = staticCompositionLocalOf<ScoreBarHolder?> { null }
 /** Vermelho da barra e dos totais negativos (o mesmo do b4, §17.11). */
 internal val ScoreBarRed = Color(0xFFFF8A80)
 
+/** §17.11.2 dados da barra do jogo: placar acumulado de cada lado, o alvo e o acumulado ao fim de cada partida. */
+data class GameBarData(val own: Int, val opponent: Int, val target: Int, val ownMarks: List<Int>, val opponentMarks: List<Int>)
+
 /**
- * §17.11.1 barra de progressão do b4: zero no meio, o adversário à esquerda e o jogador à direita, arte e número nas
- * pontas. [ownTotal]/[opponentTotal] são os totais da mesa ao vivo (`null` até a primeira jogada pousar); a pontuação
- * final do [holder], quando existe, toma o lugar deles.
+ * §17.11.1 placar do b4, no estilo "Nós × Eles" (o próprio lado à esquerda): linha 1 a apresentação dos lados, linha 2
+ * a barra do jogo (§17.11.2), linha 3 a barra da partida. [ownTotal]/[opponentTotal] são os totais da mesa ao vivo
+ * (`null` até a primeira jogada pousar: a linha 3 espera); a pontuação final do [holder], quando existe, toma o lugar deles.
  */
 @Composable
 fun ScoreBar(
@@ -153,12 +156,15 @@ fun ScoreBar(
     opponentTotal: Int?,
     ownPersonas: List<Persona>,
     opponentPersonas: List<Persona>,
+    ownLabel: String,
+    opponentLabel: String,
+    game: GameBarData,
     animationMillis: Long,
     modifier: Modifier = Modifier,
 ) {
     val finals = holder.finals
-    val own = finals?.getOrNull(ownSide) ?: ownTotal ?: return
-    val opponent = finals?.getOrNull(opponentSide) ?: opponentTotal ?: return
+    val own = finals?.getOrNull(ownSide) ?: ownTotal
+    val opponent = finals?.getOrNull(opponentSide) ?: opponentTotal
     val animate = animationMillis > 0
     val duration = when {
         !animate -> 0
@@ -167,6 +173,7 @@ fun ScoreBar(
     }
     // A escala sobe quando o valor aparece; no fim, depois do giro e do destaque.
     LaunchedEffect(own, opponent, finals != null) {
+        if (own == null || opponent == null) return@LaunchedEffect
         if (finals != null && animate) delay((ScoreBarTiming.FINAL_ROLL_MILLIS + ScoreBarTiming.HIGHLIGHT_MILLIS).toLong())
         holder.see(List(maxOf(ownSide, opponentSide) + 1) { i -> if (i == ownSide) own else if (i == opponentSide) opponent else 0 })
     }
@@ -201,26 +208,42 @@ fun ScoreBar(
         modifier.fillMaxWidth().zIndex(2f).testTag("score-bar")
             .graphicsLayer { translationX = shake * density },
     ) {
-        Row(
+        androidx.compose.foundation.layout.Column(
             Modifier.fillMaxWidth()
                 .background(GColors.Midnight.copy(alpha = 0.72f), RoundedCornerShape(12.dp))
                 .border(1.dp, GColors.Gold.copy(alpha = 0.35f + 0.65f * glow(p, level)), RoundedCornerShape(12.dp))
                 .padding(horizontal = 6.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            SideArt(opponentPersonas, centerLast = true)
-            BarNumber(opponent, duration, highlight.value, Modifier.testTag("score-bar-opponent"))
-            Track(
-                scale = scale,
-                ownSide = ownSide,
-                opponentSide = opponentSide,
-                own = own,
-                opponent = opponent,
-                duration = duration,
-                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-            )
-            BarNumber(own, duration, highlight.value, Modifier.testTag("score-bar-own"))
-            SideArt(ownPersonas, centerLast = false)
+            // Linha 1: apresentação, artes nas pontas e os textos mais ao centro.
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                SideArt(ownPersonas, innerOnRight = true)
+                SideLabel(ownLabel, Modifier.weight(1f).padding(start = 6.dp), TextAlign.Start)
+                SideLabel(opponentLabel, Modifier.weight(1f).padding(end = 6.dp), TextAlign.End)
+                SideArt(opponentPersonas, innerOnRight = false)
+            }
+            // Linha 2: barra do jogo.
+            val gameDuration = if (animate) ScoreBarTiming.LIVE_MILLIS * 2 else 0
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                GameNumber(game.own, gameDuration, Modifier.testTag("game-bar-own"))
+                GameTrack(game, gameDuration, Modifier.weight(1f).padding(horizontal = 4.dp))
+                GameNumber(game.opponent, gameDuration, Modifier.testTag("game-bar-opponent"))
+            }
+            // Linha 3: barra da partida.
+            if (own != null && opponent != null) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    BarNumber(own, duration, highlight.value, Modifier.testTag("score-bar-own"))
+                    Track(
+                        scale = scale,
+                        ownSide = ownSide,
+                        opponentSide = opponentSide,
+                        own = own,
+                        opponent = opponent,
+                        duration = duration,
+                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                    )
+                    BarNumber(opponent, duration, highlight.value, Modifier.testTag("score-bar-opponent"))
+                }
+            }
         }
         if (p in 0.001f..0.999f) MilestoneEffect(level, p, Modifier.matchParentSize())
     }
@@ -235,18 +258,74 @@ private fun glow(p: Float, level: Int): Float {
 
 /** Arte de um lado; em duplas, lado a lado, a mais perto do centro cobrindo 40% da outra. */
 @Composable
-private fun SideArt(personas: List<Persona>, centerLast: Boolean) {
+private fun SideArt(personas: List<Persona>, innerOnRight: Boolean) {
     if (personas.isEmpty()) return
     val size: Dp = 26.dp
-    // A de dentro é desenhada por último (por cima). À esquerda, a de dentro fica à direita; à direita, à esquerda.
-    val ordered = if (centerLast) personas.reversed() else personas
+    // A de dentro (a primeira da lista) fica perto do centro e por cima: à esquerda, à direita da outra; e vice-versa.
+    val ordered = if (innerOnRight) personas.reversed() else personas
     Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(-(size * 0.4f))) {
         ordered.forEachIndexed { i, persona ->
-            val inner = if (centerLast) i == ordered.lastIndex else i == 0
+            val inner = if (innerOnRight) i == ordered.lastIndex else i == 0
             PersonaAvatar(
                 persona, size,
                 Modifier.zIndex(if (inner) 1f else 0f).border(1.5.dp, GColors.Gold.copy(alpha = 0.8f), CircleShape),
             )
+        }
+    }
+}
+
+/** Texto de um lado na linha de apresentação ("Nós"/"Eles"). */
+@Composable
+private fun SideLabel(text: String, modifier: Modifier, align: TextAlign) {
+    Text(
+        text, modifier,
+        color = GColors.Gold, fontWeight = FontWeight.Bold, textAlign = align, maxLines = 1,
+        style = MaterialTheme.typography.titleSmall,
+    )
+}
+
+/** Cinza bem claro da barra do jogo (§17.11.2). */
+private val GameBarGray = Color(0xFFE6E6E6)
+
+/** Placar do jogo de um lado, girando como letreiro. */
+@Composable
+private fun GameNumber(value: Int, duration: Int, modifier: Modifier) {
+    RollingNumber(value, duration, GameBarGray, modifier.widthIn(min = 38.dp).padding(horizontal = 3.dp))
+}
+
+/**
+ * §17.11.2 barra do jogo: zero no meio, o próprio lado enche para a esquerda e o adversário para a direita, de 0 ao
+ * alvo; uma marca fina no acumulado de cada lado ao fim de cada partida.
+ */
+@Composable
+private fun GameTrack(game: GameBarData, duration: Int, modifier: Modifier) {
+    val spec = tween<Float>(duration, easing = FastOutSlowInEasing)
+    val ownFill by animateFloatAsState(ScoreBarScale.gameFraction(game.own, game.target), spec, label = "game-own")
+    val oppFill by animateFloatAsState(ScoreBarScale.gameFraction(game.opponent, game.target), spec, label = "game-opp")
+    BoxWithConstraints(modifier.height(14.dp).testTag("game-bar")) {
+        val half = maxWidth / 2
+        val trackTop = 3.dp
+        val trackHeight = 8.dp
+        Box(
+            Modifier.offset(y = trackTop).fillMaxWidth().height(trackHeight)
+                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp)),
+        )
+        Box(
+            Modifier.offset(x = half - half * ownFill, y = trackTop).width(half * ownFill).height(trackHeight)
+                .background(GameBarGray, RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp)),
+        )
+        Box(
+            Modifier.offset(x = half, y = trackTop).width(half * oppFill).height(trackHeight)
+                .background(GameBarGray, RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)),
+        )
+        Box(Modifier.offset(x = half - 1.dp, y = trackTop - 2.dp).width(2.dp).height(trackHeight + 4.dp).background(GColors.Champagne))
+        game.ownMarks.forEach { m ->
+            val f = ScoreBarScale.gameFraction(m, game.target)
+            if (f > 0f) Box(Modifier.offset(x = half - half * f - 0.5.dp, y = trackTop - 2.dp).width(1.dp).height(trackHeight + 4.dp).background(GColors.Midnight))
+        }
+        game.opponentMarks.forEach { m ->
+            val f = ScoreBarScale.gameFraction(m, game.target)
+            if (f > 0f) Box(Modifier.offset(x = half + half * f - 0.5.dp, y = trackTop - 2.dp).width(1.dp).height(trackHeight + 4.dp).background(GColors.Midnight))
         }
     }
 }
@@ -320,22 +399,22 @@ private fun Track(scale: ScoreBarScale, ownSide: Int, opponentSide: Int, own: In
                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                 .border(1.dp, GColors.Gold.copy(alpha = 0.25f), RoundedCornerShape(6.dp)),
         )
-        // Adversário: do centro para a esquerda.
+        // Jogador: do centro para a esquerda ("Nós × Eles").
         Box(
-            Modifier.offset(x = half - half * oppFill, y = trackTop).width(half * oppFill).height(trackHeight)
-                .background(fillColor(opponent), RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp)),
+            Modifier.offset(x = half - half * ownFill, y = trackTop).width(half * ownFill).height(trackHeight)
+                .background(fillColor(own), RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp)),
         )
-        // Jogador: do centro para a direita.
+        // Adversário: do centro para a direita.
         Box(
-            Modifier.offset(x = half, y = trackTop).width(half * ownFill).height(trackHeight)
-                .background(fillColor(own), RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)),
+            Modifier.offset(x = half, y = trackTop).width(half * oppFill).height(trackHeight)
+                .background(fillColor(opponent), RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)),
         )
         // Zero no meio.
         Box(Modifier.offset(x = half - 1.dp, y = trackTop - 2.dp).width(2.dp).height(trackHeight + 4.dp).background(GColors.Champagne))
         // Marcações (as duas metades), escorregando quando o teto sobe.
         scale.marks.forEach { mark ->
             val f by animateFloatAsState(scale.markFraction(mark), spec, label = "mark-$mark")
-            listOf(ownSide to half + half * f, opponentSide to half - half * f).forEach { (side, x) ->
+            listOf(ownSide to half - half * f, opponentSide to half + half * f).forEach { (side, x) ->
                 val tag = if (side == ownSide) "own" else "opponent"
                 if (scale.hasStar(side, mark)) {
                     Text(

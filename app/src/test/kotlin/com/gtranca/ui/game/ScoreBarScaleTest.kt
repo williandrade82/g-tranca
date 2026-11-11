@@ -70,6 +70,13 @@ class ScoreBarScaleTest {
     }
 
     @Test
+    fun `§17_11_2 barra do jogo vai de 0 ao alvo, sem negativos, cheia acima do alvo`() {
+        ScoreBarScale.gameFraction(500, 2000) shouldBe 0.25f
+        ScoreBarScale.gameFraction(-150, 2000) shouldBe 0f
+        ScoreBarScale.gameFraction(2600, 2000) shouldBe 1f
+    }
+
+    @Test
     fun `§17_11_1 marcacoes escorregam quando o teto sobe`() {
         ScoreBarScale().advance(listOf(500, 0)).markFraction(500) shouldBe 500f / 750f
         ScoreBarScale().advance(listOf(750, 0)).markFraction(750) shouldBe 0.75f
