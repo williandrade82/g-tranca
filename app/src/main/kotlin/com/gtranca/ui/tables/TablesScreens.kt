@@ -104,24 +104,6 @@ internal fun TableFrame(
     GBackground(Modifier.fillMaxSize().testTag(tag)) {
         // Topo do salão da tela inicial, fixo atrás do conteúdo, esmaecendo para o fundo (docs/telas-app.md 3.2).
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            Image(
-                painterResource(R.drawable.lounge_header),
-                contentDescription = null,
-                modifier = Modifier.fillMaxWidth().aspectRatio(640f / 576f)
-                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                0f to androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f),
-                                0.35f to androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
-                                1f to androidx.compose.ui.graphics.Color.Transparent,
-                            ),
-                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                        )
-                    },
-                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
-            )
             com.gtranca.ui.home.HomeAmbience(motion, Modifier.fillMaxSize())
         }
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {

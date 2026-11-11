@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -230,7 +232,23 @@ fun GBackground(modifier: Modifier = Modifier, royal: Boolean = false, rays: Boo
                 }
                 drawContent()
             },
-    ) { content() }
+    ) {
+        // Topo do salão (cortinas, arco, holofotes) esmaecendo para o fundo: a identidade visual em todas as telas.
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(com.gtranca.R.drawable.lounge_header), null,
+            Modifier.fillMaxWidth().aspectRatio(640f / 576f)
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 0.35f to Color.Black.copy(alpha = 0.45f), 1f to Color.Transparent),
+                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                    )
+                },
+            contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
+        )
+        content()
+    }
 }
 
 /** Raios de luz a partir do centro superior; [alpha] ≤ 0,1. */

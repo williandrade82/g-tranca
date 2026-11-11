@@ -58,33 +58,15 @@ import com.gtranca.ui.theme.GBackground
 import com.gtranca.ui.theme.GButton
 import com.gtranca.ui.theme.GButtonKind
 import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.loungeDialog
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.aspectRatio
 import com.gtranca.ui.theme.GDialog
 import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.TabularNums
 import kotlin.math.roundToInt
-
-/**
- * Medidas do painel da loja nas peças de `docs/boosters/Loja` (em pixels da imagem do topo, 653 de largura): o corpo começa
- * quase no fim do topo, as laterais repetem de 103 em 103, o centro de 69 em 69 e o rodapé entra com as bordas alinhadas.
- */
-private object Panel {
-    const val WIDTH = 653f
-    const val BODY_Y = 227f
-    const val LEFT_X = 40f
-    const val RIGHT_X = 562f
-    const val CENTER_X = 116f
-    const val CENTER_END = 570f
-    const val FOOT_X = 37f
-    const val FOOT_VISIBLE = 113
-
-    /** Onde cabe o conteúdo (entre as molduras) e o respiro abaixo do toldo. */
-    const val CONTENT_START = 128f
-    const val CONTENT_END = 560f
-    const val CONTENT_TOP = 240f
-    const val SIDE_STEP = 103
-    const val CENTER_STEP = 69
-}
 
 /** §17.10 Loja (docs/telas.md 3.20): as nove ofertas no painel de madeira e o modal *Comprar booster*. */
 @Composable
@@ -151,84 +133,25 @@ internal fun ShopContent(
 private fun unitsText(quantity: Int): String = LocalContext.current.resources.getQuantityString(R.plurals.shop_units, quantity, quantity)
 
 /**
- * O painel: o topo (robô e toldo) e o rodapé ficam fixos; só o miolo (centro e laterais de madeira, repetidos até a altura do
- * conteúdo) rola. Tudo é desenhado em pixels inteiros (cada trecho repetido termina onde o seguinte começa, com 1 px a mais de
- * sobreposição) para não aparecerem linhas de costura.
+ * O painel da loja no estilo do salão (docs/telas-app.md 3.20): azul-noite com moldura dourada, o brasão no alto (fixo) e
+ * o miolo com as ofertas rolando.
  */
 @Composable
 private fun ShopPanel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    val top = ImageBitmap.imageResource(R.drawable.shop_top)
-    val bottom = ImageBitmap.imageResource(R.drawable.shop_bottom)
-    val center = ImageBitmap.imageResource(R.drawable.shop_center)
-    val left = ImageBitmap.imageResource(R.drawable.shop_left)
-    val right = ImageBitmap.imageResource(R.drawable.shop_right)
-    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
-        val scale = constraints.maxWidth / Panel.WIDTH
-        val density = LocalDensity.current
-        fun px(v: Float) = (v * scale).roundToInt()
-        fun dp(v: Float) = with(density) { px(v).toDp() }
-        val topH = px(Panel.BODY_Y)
-        val footH = px(Panel.FOOT_VISIBLE.toFloat())
-        Column(Modifier.fillMaxSize()) {
-            Canvas(Modifier.fillMaxWidth().height(with(density) { topH.toDp() }).testTag("shop-top")) {
-                drawImage(top, IntOffset.Zero, IntSize(top.width, Panel.BODY_Y.toInt()), IntOffset.Zero, IntSize(size.width.roundToInt(), topH), filterQuality = FilterQuality.Medium)
-            }
-            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val viewport = maxHeight
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .heightIn(min = viewport)
-                        .drawBehind { drawBody(scale, center, left, right) }
-                        .padding(
-                            start = dp(Panel.CONTENT_START),
-                            end = dp(Panel.WIDTH - Panel.CONTENT_END),
-                            top = dp(Panel.CONTENT_TOP - Panel.BODY_Y),
-                            bottom = Spacing.sm,
-                        )
-                        .testTag("shop-scroll"),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                ) { content() }
-            }
-            Canvas(Modifier.fillMaxWidth().height(with(density) { footH.toDp() }).testTag("shop-bottom")) {
-                drawImage(
-                    bottom, IntOffset.Zero, IntSize(bottom.width, Panel.FOOT_VISIBLE),
-                    IntOffset(px(Panel.FOOT_X), 0), IntSize(px(bottom.width.toFloat()), size.height.roundToInt()),
-                    filterQuality = FilterQuality.Medium,
-                )
-            }
-        }
+    val shape = RoundedCornerShape(22.dp)
+    Column(modifier.loungeDialog(shape).clip(shape), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(
+            painterResource(R.drawable.home_crest), null,
+            Modifier.padding(top = Spacing.sm).height(56.dp).aspectRatio(640f / 298f).testTag("shop-top"),
+        )
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm).testTag("shop-scroll"),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) { content() }
+        androidx.compose.foundation.layout.Spacer(Modifier.height(Spacing.sm).testTag("shop-bottom"))
     }
 }
-
-/** O miolo: centro e laterais repetidos na vertical, do começo ao fim da área desenhada (que acompanha o conteúdo). */
-private fun DrawScope.drawBody(scale: Float, center: ImageBitmap, left: ImageBitmap, right: ImageBitmap) {
-    fun px(v: Float) = (v * scale).roundToInt()
-    val end = size.height.roundToInt()
-
-    /** Repete [image] em [x]..[x]+[width], de [step] em [step] pixels da imagem. */
-    fun tile(image: ImageBitmap, x: Float, width: Float, step: Int) {
-        var i = 0
-        while (true) {
-            val y0 = px(i * step.toFloat())
-            if (y0 >= end) break
-            val y1 = minOf(px((i + 1) * step.toFloat()), end)
-            val srcH = if (y1 - y0 >= px(step.toFloat())) step else maxOf(1, ((y1 - y0) / scale).roundToInt()).coerceAtMost(step)
-            drawImage(
-                image,
-                IntOffset.Zero, IntSize(image.width, srcH),
-                IntOffset(px(x), y0), IntSize(px(width), (y1 - y0) + if (y1 < end) 1 else 0),
-                filterQuality = FilterQuality.Medium,
-            )
-            i++
-        }
-    }
-    tile(center, Panel.CENTER_X, Panel.CENTER_END - Panel.CENTER_X, Panel.CENTER_STEP)
-    tile(left, Panel.LEFT_X, left.width.toFloat(), Panel.SIDE_STEP)
-    tile(right, Panel.RIGHT_X, right.width.toFloat(), Panel.SIDE_STEP)
-}
-
 /** Uma oferta: a imagem do booster, o nome com a quantidade do pacote e o valor em moedas. */
 @Composable
 private fun OfferRow(item: ShopItem, number: Int, tagPrefix: String = "shop", onClick: () -> Unit) {
@@ -239,8 +162,8 @@ private fun OfferRow(item: ShopItem, number: Int, tagPrefix: String = "shop", on
         Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .background(GColors.Midnight.copy(alpha = 0.72f), shape)
-            .border(1.dp, GColors.Gold.copy(alpha = 0.55f), shape)
+            .background(Brush.verticalGradient(listOf(GColors.IndigoLight.copy(alpha = 0.8f), GColors.Midnight.copy(alpha = 0.85f))), shape)
+            .border(1.5.dp, Brush.verticalGradient(listOf(GColors.Champagne, GColors.GoldDeep)), shape)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
             .semantics(mergeDescendants = true) { contentDescription = description }
