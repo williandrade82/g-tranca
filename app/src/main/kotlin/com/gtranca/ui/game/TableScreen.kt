@@ -476,6 +476,7 @@ private fun TableScreenContent(
                             onMeldClick = null,
                             sideTag = "opponent",
                             scoreboard = scoreboard,
+                            mortoTaken = view.hasTakenMorto(view.mode.sides.first { it != view.side }),
                         )
                         CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
                         SideArea(
@@ -493,6 +494,7 @@ private fun TableScreenContent(
                             sideTag = "own",
                             targetMeld = state.targetMeld,
                             scoreboard = scoreboard,
+                            mortoTaken = view.hasTakenMorto(view.side),
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -931,12 +933,13 @@ private fun SideArea(
     sideTag: String,
     targetMeld: MeldId? = null,
     scoreboard: Boolean = false,
+    mortoTaken: Boolean = false,
 ) {
     val rules = LocalTableRules.current
     val landing = LocalLanding.current
     // §17.11 o total só muda quando nada do lado está voando (a jogada pousou).
     val total = if (!scoreboard) null else settledValue(
-        com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, rules),
+        com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, mortoTaken, rules),
         settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
     )
     Column(

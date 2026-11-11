@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test
 class TablePointsTest {
 
     private fun melds(state: RoundState, side: Int) = state.tableOf(Side(side)).melds.map { it.meld }
-    private fun table(state: RoundState, side: Int) = tablePoints(melds(state, side), state.redThreesOf(Side(side)).size)
+    /** Total sem a parcela do morto (lado que já pegou), para isolar conjuntos e 3 vermelhos. */
+    private fun table(state: RoundState, side: Int) = tablePoints(melds(state, side), state.redThreesOf(Side(side)).size, mortoTaken = true)
 
     @Test
     fun `§17_11 canastra limpa de 4 a 10 vale 256`() {
@@ -53,16 +54,30 @@ class TablePointsTest {
             meld(0, "4H 5H 6H 7H 8H 9H TH")
         }
         meldPoints(melds(s, 0).single(), rules) shouldBe 300 + 7 * 5
-        tablePoints(melds(s, 0), 1, rules) shouldBe 335 + 51
+        tablePoints(melds(s, 0), 1, mortoTaken = true, rules = rules) shouldBe 335 + 51
     }
 
     @Test
-    fun `§17_11 mesa vazia vale 0`() {
+    fun `§17_11 mesa vazia vale 0 depois de pegar o morto`() {
         table(round { }, 0) shouldBe 0
     }
 
     @Test
-    fun `§17_11 total da mesa e a parte mesa da pontuacao final, sem batida, morto nem mao`() {
+    fun `§17_11 sem pegar o morto o lado comeca em menos 100 e pegar soma 100`() {
+        val s = round { meld(0, "4H 5H 6H") }
+        tablePoints(emptyList(), 0, mortoTaken = false) shouldBe -100
+        tablePoints(melds(s, 0), 0, mortoTaken = false) shouldBe 24 - 100
+        tablePoints(melds(s, 0), 0, mortoTaken = true) shouldBe 24
+    }
+
+    @Test
+    fun `§17_11 morto nao pego segue o valor da regra da mesa`() {
+        val rules = RuleSet.DEFAULT.copy(mortoNotTakenPoints = -200)
+        tablePoints(emptyList(), 0, mortoTaken = false, rules = rules) shouldBe -200
+    }
+
+    @Test
+    fun `§17_11 total da mesa e a pontuacao final sem batida nem mao`() {
         val s = round(GameMode.DUPLAS) {
             redThrees(0, "3H 3D")
             meld(0, "4H 5H 6H 7H 8H 9H TH")
@@ -74,8 +89,10 @@ class TablePointsTest {
             phase = com.gtranca.engine.model.Phase.FINISHED
         }
         scoreRound(s).forEach { score ->
-            val tablePart = score.redThrees.points + score.cleanCanastas.points + score.dirtyCanastas.points + score.tableCards.points
-            table(s, score.side.index) shouldBe tablePart
+            val tablePart = score.redThrees.points + score.cleanCanastas.points + score.dirtyCanastas.points +
+                score.tableCards.points + score.mortoNotTaken
+            val side = Side(score.side.index)
+            tablePoints(melds(s, side.index), s.redThreesOf(side).size, s.hasTakenMorto(side)) shouldBe tablePart
         }
     }
 }

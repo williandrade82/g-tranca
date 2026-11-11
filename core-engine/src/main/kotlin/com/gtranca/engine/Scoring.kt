@@ -85,13 +85,14 @@ fun meldPoints(meld: Meld, rules: RuleSet = RuleSet.DEFAULT): Int {
 
 /**
  * §17.11 total da mesa de um lado, só com o que está nela: [melds] ([meldPoints]) e [redThrees] 3 vermelhos baixados
- * (+5 cada, mais ±100 conforme o lado já tenha canastra). Sem batida, morto não pego nem cartas na mão (§12.2): é a
- * parte "mesa" da pontuação de [scoreRound].
+ * (+5 cada, mais ±100 conforme o lado já tenha canastra), mais o morto não pego (§12.2) enquanto [mortoTaken] é falso.
+ * Sem batida nem cartas na mão: é a pontuação de [scoreRound] sem essas duas parcelas.
  */
-fun tablePoints(melds: List<Meld>, redThrees: Int, rules: RuleSet = RuleSet.DEFAULT): Int {
+fun tablePoints(melds: List<Meld>, redThrees: Int, mortoTaken: Boolean, rules: RuleSet = RuleSet.DEFAULT): Int {
     val hasCanasta = melds.any { it.isCleanCanasta(rules) || it.isDirtyCanasta(rules) }
     val perRedThree = rules.tableRedThreePoints + if (hasCanasta) rules.redThreePoints else rules.redThreeWithoutCanastaPoints
-    return melds.sumOf { meldPoints(it, rules) } + redThrees * perRedThree
+    val morto = if (mortoTaken) 0 else rules.mortoNotTakenPoints
+    return melds.sumOf { meldPoints(it, rules) } + redThrees * perRedThree + morto
 }
 
 /** §12.2 penalidade das cartas na mão, por categoria. */
