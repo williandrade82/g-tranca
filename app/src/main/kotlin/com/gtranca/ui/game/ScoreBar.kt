@@ -311,21 +311,21 @@ private fun GameTrack(game: GameBarData, duration: Int, modifier: Modifier) {
                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp)),
         )
         Box(
-            Modifier.offset(x = half - half * ownFill, y = trackTop).width(half * ownFill).height(trackHeight)
+            Modifier.offset(y = trackTop).width(half * ownFill).height(trackHeight)
                 .background(GameBarGray, RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp)),
         )
         Box(
-            Modifier.offset(x = half, y = trackTop).width(half * oppFill).height(trackHeight)
+            Modifier.offset(x = maxWidth - half * oppFill, y = trackTop).width(half * oppFill).height(trackHeight)
                 .background(GameBarGray, RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)),
         )
         Box(Modifier.offset(x = half - 1.dp, y = trackTop - 2.dp).width(2.dp).height(trackHeight + 4.dp).background(GColors.Champagne))
         game.ownMarks.forEach { m ->
             val f = ScoreBarScale.gameFraction(m, game.target)
-            if (f > 0f) Box(Modifier.offset(x = half - half * f - 0.5.dp, y = trackTop - 2.dp).width(1.dp).height(trackHeight + 4.dp).background(GColors.Midnight))
+            if (f > 0f) Box(Modifier.offset(x = half * f - 0.5.dp, y = trackTop - 2.dp).width(1.dp).height(trackHeight + 4.dp).background(GColors.Midnight))
         }
         game.opponentMarks.forEach { m ->
             val f = ScoreBarScale.gameFraction(m, game.target)
-            if (f > 0f) Box(Modifier.offset(x = half + half * f - 0.5.dp, y = trackTop - 2.dp).width(1.dp).height(trackHeight + 4.dp).background(GColors.Midnight))
+            if (f > 0f) Box(Modifier.offset(x = maxWidth - half * f - 0.5.dp, y = trackTop - 2.dp).width(1.dp).height(trackHeight + 4.dp).background(GColors.Midnight))
         }
     }
 }
@@ -399,14 +399,14 @@ private fun Track(scale: ScoreBarScale, ownSide: Int, opponentSide: Int, own: In
                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                 .border(1.dp, GColors.Gold.copy(alpha = 0.25f), RoundedCornerShape(6.dp)),
         )
-        // Jogador: do centro para a esquerda ("Nós × Eles").
+        // Jogador: da ponta esquerda para o centro ("Nós × Eles").
         Box(
-            Modifier.offset(x = half - half * ownFill, y = trackTop).width(half * ownFill).height(trackHeight)
+            Modifier.offset(y = trackTop).width(half * ownFill).height(trackHeight)
                 .background(fillColor(own), RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp)),
         )
-        // Adversário: do centro para a direita.
+        // Adversário: da ponta direita para o centro.
         Box(
-            Modifier.offset(x = half, y = trackTop).width(half * oppFill).height(trackHeight)
+            Modifier.offset(x = maxWidth - half * oppFill, y = trackTop).width(half * oppFill).height(trackHeight)
                 .background(fillColor(opponent), RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)),
         )
         // Zero no meio.
@@ -414,7 +414,7 @@ private fun Track(scale: ScoreBarScale, ownSide: Int, opponentSide: Int, own: In
         // Marcações (as duas metades), escorregando quando o teto sobe.
         scale.marks.forEach { mark ->
             val f by animateFloatAsState(scale.markFraction(mark), spec, label = "mark-$mark")
-            listOf(ownSide to half - half * f, opponentSide to half + half * f).forEach { (side, x) ->
+            listOf(ownSide to half * f, opponentSide to maxWidth - half * f).forEach { (side, x) ->
                 val tag = if (side == ownSide) "own" else "opponent"
                 if (scale.hasStar(side, mark)) {
                     Text(
