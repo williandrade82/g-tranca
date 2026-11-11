@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -78,8 +79,12 @@ fun DrawScope.drawCrown(gem: Color = GColors.SkyBlue) {
 @Composable
 fun BrandHeader(modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        // O brasão do salão (coroa com asas de cartas) sobre o nome.
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(R.drawable.home_crest), null,
+            Modifier.height(40.dp).aspectRatio(640f / 298f),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            CrownMark(22.dp)
             Text(
                 stringResource(R.string.brand_name),
                 style = goldTitleStyle(MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp, fontSize = 14.sp)),

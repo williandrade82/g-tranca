@@ -2251,7 +2251,7 @@ private fun Modifier.feltTable(): Modifier {
     return this
         .shadow(Elevation.dialog, shape)
         .drawBehind {
-            // De fora para dentro: filete dourado, couro azul, filete dourado, madeira, filete dourado e o feltro.
+            // De fora para dentro: filete dourado, madeira, filete dourado e o feltro.
             val r = Corner.md.toPx()
             fun layer(inset: androidx.compose.ui.unit.Dp, brush: Brush) {
                 val i = inset.toPx()
@@ -2262,9 +2262,7 @@ private fun Modifier.feltTable(): Modifier {
             }
             val gold = Brush.linearGradient(listOf(GColors.Champagne, GColors.GoldDeep, GColors.Gold, GColors.GoldDeep), Offset.Zero, Offset(size.width, size.height))
             layer(0.dp, gold)
-            layer(1.dp, Brush.verticalGradient(listOf(Color(0xFF2A4FD0), Color(0xFF12277A))))
-            layer(4.5.dp, gold)
-            layer(5.5.dp, Brush.verticalGradient(listOf(Color(0xFF8A5327), Color(0xFF5A3115))))
+            layer(1.5.dp, Brush.verticalGradient(listOf(Color(0xFF9A5E2C), Color(0xFF5A3115))))
             layer(8.dp, gold)
             layer(rim, Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f))
         }
