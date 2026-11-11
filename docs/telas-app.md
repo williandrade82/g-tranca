@@ -93,6 +93,9 @@ Voltar do jogo leva ao Início (as telas de mesa saem da pilha). Voltar da Sele�
 ### 3.1 Início (`HomeScreen`)
 **Objetivo:** ponto de entrada; continuar o jogo salvo ou começar outro. Conteúdo **centralizado na vertical** (rola se a tela for baixa).
 **Fundo:** salão de jogos art déco (`home_bg`: cortinas azuis, arco dourado, holofotes), cobrindo a tela e escurecendo para o azul-noite embaixo, onde ficam os botões.
+**Animações** (nenhuma com as animações do sistema desligadas; a tela aparece parada):
+- **Entrada**, só na primeira abertura (~1,8 s): cortinas de veludo azul se afastam, a mesa aparece, o brasão desce, os robôs sobem por trás da mesa e o logotipo, o saldo e os botões entram em sequência. Os botões já respondem ao toque durante a entrada.
+- **Contínuas:** três holofotes balançando devagar e brilhos dourados subindo e piscando sobre o salão; o brasão flutua de leve e recebe um reflexo de tempos em tempos; os robôs "respiram"; um brilho corre pela mesa.
 **De cima para baixo:**
 1. **Brasão** (`home_crest`: coroa dourada com asas de cartas) e, logo abaixo, os **quatro robôs** (`home_all_bots`) atrás da **mesa de cartas** (`home_table`, feltro verde com cartas e moedas), que cobre a base deles.
 2. **Logotipo** e a descrição ("Um jogo de tranca robotizado pra jogar entre família").
