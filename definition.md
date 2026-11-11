@@ -769,8 +769,12 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 
 #### **17.11.1. Barra de progressão**
 - Com o b4, o jogador vê também a **barra de progressão**, logo abaixo da barra de títulos, **fixa** (não rola com a mesa). Sem o b4, ela não aparece.
-- O **zero fica no meio**. Para a **direita**, o total da mesa (§17.11) do próprio lado; para a **esquerda**, o do lado adversário. Nas pontas, a arte dos jogadores: à direita o próprio, à esquerda o adversário; em duplas, os dois da dupla lado a lado, a imagem mais perto do centro cobrindo 40% da outra.
-- Cada lado tem **um só valor** (o total da mesa): positivo, a barra é **dourada**; negativo, **vermelha**. Nunca as duas no mesmo lado ao mesmo tempo. O número de cada lado fica junto da arte.
+- Com o b4, esse bloco **substitui o placar "Nós × Eles"** do cabeçalho e tem três linhas, de cima para baixo, sempre no estilo "Nós × Eles" (o próprio lado à **esquerda**, o adversário à **direita**):
+  1. **apresentação**: a arte do próprio lado encostada na ponta esquerda, seguida do texto "Nós" (no individual, o nome curto do lado, como no placar); o texto "Eles" seguido da arte do adversário, encostada na ponta direita. Os textos ficam mais ao centro. Em duplas, os dois da dupla lado a lado, a imagem mais perto do centro cobrindo 40% da outra;
+  2. **barra do jogo** (§17.11.2);
+  3. **barra da partida** (esta seção).
+- **Barra da partida**: o **zero fica no meio**. Para a **esquerda**, o total da mesa (§17.11) do próprio lado; para a **direita**, o do lado adversário. O número de cada lado fica na ponta do seu lado.
+- Cada lado tem **um só valor** (o total da mesa): positivo, a barra é **dourada**; negativo, **vermelha**. Nunca as duas no mesmo lado ao mesmo tempo.
 - **Escala** (igual para os dois lados, começa em **500** a cada partida e **nunca diminui** dentro dela):
   - quando um lado chega a **500**: animação empolgante e a escala vai a **750**;
   - quando um lado chega a **750**: animação mais emocionante e a escala vai a **1000**;
@@ -780,6 +784,13 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 - **Toda** mudança de valor é animada: a barra cresce ou diminui até o novo valor e o número gira como um letreiro. O valor muda quando a jogada pousa (§17.11).
 - **Fim da partida**: depois dos fogos de artifício, a barra recebe a **pontuação final da partida** de cada lado (§12, com batida e cartas na mão). Os dois números giram juntos em **0,5 s** e o novo valor aparece com um destaque; se um marco foi alcançado, toca a animação dele; só então aparece a arte de bateu ou perdeu e o fim de partida segue como antes.
 - Só usa informação visível (§16.4). Não é jogada, não muda `legalActions` nem a pontuação oficial (§12).
+
+#### **17.11.2. Barra do jogo**
+- Linha 2 do bloco do §17.11.1, semelhante à barra da partida, mas com os **pontos do jogo** (o placar acumulado das partidas já terminadas, §13), não só os da partida.
+- Também com o zero no meio, o próprio lado para a **esquerda** e o adversário para a **direita**, o número de cada lado na ponta. A escala vai de **0** à **pontuação-alvo** da mesa (`targetScore`) e não muda; acima do alvo a barra fica cheia.
+- A barra é **cinza bem claro** e **não marca valores negativos**: com placar negativo ela fica vazia (o número mostra o valor real).
+- O placar de cada lado **ao fim de cada partida** fica marcado na metade daquele lado (uma marca fina por partida terminada).
+- Muda com animação (a barra cresce ou diminui e o número gira como letreiro) quando uma partida termina e o placar do jogo muda.
 
 # **18. Jogo online**
 
