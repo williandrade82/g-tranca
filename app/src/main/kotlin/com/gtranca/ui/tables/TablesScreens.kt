@@ -50,6 +50,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gtranca.R
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.drawWithContent
+import com.gtranca.ui.home.homeCrest
+import com.gtranca.ui.home.homeEnter
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -96,12 +100,41 @@ internal fun TableFrame(
     titleExtra: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val motion = com.gtranca.ui.home.rememberHomeMotion()
     GBackground(Modifier.fillMaxSize().testTag(tag)) {
+        // Topo do salão da tela inicial, fixo atrás do conteúdo, esmaecendo para o fundo (docs/telas-app.md 3.2).
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Image(
+                painterResource(R.drawable.lounge_header),
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().aspectRatio(640f / 576f)
+                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                0f to androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f),
+                                0.35f to androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f),
+                                1f to androidx.compose.ui.graphics.Color.Transparent,
+                            ),
+                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                        )
+                    },
+                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
+            )
+            com.gtranca.ui.home.HomeAmbience(motion, Modifier.fillMaxSize())
+        }
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             Column(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.lg),
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
+                Image(
+                    painterResource(R.drawable.home_crest),
+                    contentDescription = null,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).width(120.dp).aspectRatio(640f / 298f)
+                        .homeCrest(motion),
+                )
                 if (titleExtra == null) {
                     GTitle(title, Modifier.semantics { heading() })
                 } else {
@@ -110,10 +143,11 @@ internal fun TableFrame(
                         titleExtra()
                     }
                 }
-                content()
+                // O conteúdo entra subindo de leve (uma vez).
+                Column(Modifier.fillMaxWidth().homeEnter(motion, 0.15f), verticalArrangement = Arrangement.spacedBy(Spacing.md), content = content)
             }
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                Modifier.fillMaxWidth().homeEnter(motion, 0.4f).padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 content = bottom,
             )
