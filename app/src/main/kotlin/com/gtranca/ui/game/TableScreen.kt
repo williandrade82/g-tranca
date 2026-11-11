@@ -443,7 +443,12 @@ private fun TableScreenContent(
                     // cortar os voos e os fogos ali, de modo que passem por baixo.
                     val headerBottom = LocalTableHeaderBottom.current
                     Box(Modifier.onGloballyPositioned { headerHeightPx = it.size.height; headerBottom?.value = it.positionInRoot().y + it.size.height }) {
-                        Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                        Column {
+                            Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                            // §17.11.1 barra de progressão do b4: fixa sob o cabeçalho, fora da rolagem da mesa (e, como
+                            // ele, à frente dos voos e dos fogos).
+                            if (com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters) TableScoreBar(state)
+                        }
                     }
                     // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
                     // pelo menos o espaço livre e cresce com o conteúdo, nunca cortando cartas (telas baixas, fonte grande).
@@ -1119,6 +1124,44 @@ private fun settledValue(value: Int, settled: Boolean, key: Any? = null): Int? {
     var shown by remember(key) { mutableStateOf<Int?>(null) }
     if (settled && shown != value) shown = value
     return shown
+}
+
+/**
+ * §17.11.1 a barra de progressão com os totais da mesa (§17.11) de cada lado, que mudam quando a jogada pousa. A escala
+ * vive no [LocalScoreBar] (sobrevive à troca para a mesa final); sem ele, numa barra local.
+ */
+@Composable
+private fun TableScoreBar(state: GameUiState) {
+    val view = state.snapshot.view
+    val rules = LocalTableRules.current
+    val landing = LocalLanding.current
+    val holder = LocalScoreBar.current ?: remember { ScoreBarHolder() }
+    val opponentSide = view.mode.sides.first { it != view.side }
+    @Composable
+    fun total(side: com.gtranca.engine.model.Side): Int? {
+        val melds = view.tables[side.index].melds
+        val redThrees = state.redThrees[side.index]
+        return settledValue(
+            com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, view.hasTakenMorto(side), rules),
+            settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
+        )
+    }
+    fun personas(side: com.gtranca.engine.model.Side): List<com.gtranca.game.Persona> {
+        // O jogador (ou o adversário mais próximo na vez) primeiro: é a imagem de dentro, perto do centro.
+        val seats = view.mode.seatsOf(side).sortedBy { if (it == view.seat) 0 else 1 }
+        return seats.mapNotNull { state.personas.getOrNull(it.index) }
+    }
+    ScoreBar(
+        holder = holder,
+        ownSide = view.side.index,
+        opponentSide = opponentSide.index,
+        ownTotal = total(view.side),
+        opponentTotal = total(opponentSide),
+        ownPersonas = personas(view.side),
+        opponentPersonas = personas(opponentSide),
+        animationMillis = state.animationMillis,
+        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = 2.dp),
+    )
 }
 
 /** Cartas pequenas sobrepostas, cada uma deslocada [step] para a direita (o índice de cada uma fica visível). */

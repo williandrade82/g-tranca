@@ -192,7 +192,15 @@ fun GoOutFireworks(win: Boolean, modifier: Modifier = Modifier) {
  * animações do sistema ([animate] falso): sem movimento.
  */
 @Composable
-fun RoundEndOverlay(end: RoundEnd, mode: GameMode, animate: Boolean, onDone: () -> Unit, modifier: Modifier = Modifier) {
+fun RoundEndOverlay(
+    end: RoundEnd,
+    mode: GameMode,
+    animate: Boolean,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** §17.11.1 com o b4: mostra a pontuação final na barra de progressão; devolve se alcança um marco. */
+    showFinalScore: (() -> Boolean)? = null,
+) {
     val sound = LocalSound.current
     val scope = rememberCoroutineScope()
     val collapse = remember { Animatable(0f) }
@@ -207,13 +215,22 @@ fun RoundEndOverlay(end: RoundEnd, mode: GameMode, animate: Boolean, onDone: () 
         }
     }
     // Dramatização (docs/telas.md 3.9): fogos de artifício por 1,5 s (um toque pula) e só então o banner.
-    var phase by remember { mutableStateOf(GoOutDrama.startPhase(end, animate)) }
+    val scoreBar = showFinalScore != null
+    var phase by remember { mutableStateOf(GoOutDrama.startPhase(end, animate, scoreBar)) }
     LaunchedEffect(phase) {
         if (phase == GoOutDrama.OverlayPhase.FIREWORKS) {
             delay(Fireworks.TOTAL_MILLIS)
-            phase = GoOutDrama.next(phase)
+            phase = GoOutDrama.next(phase, scoreBar)
             return@LaunchedEffect
         }
+        if (phase == GoOutDrama.OverlayPhase.SCOREBAR) {
+            // §17.11.1 a barra recebe a pontuação final; o banner espera o giro, o destaque e o marco.
+            val milestone = showFinalScore?.invoke() ?: false
+            delay(GoOutDrama.scoreBarMillis(milestone))
+            phase = GoOutDrama.next(phase, scoreBar)
+            return@LaunchedEffect
+        }
+        showFinalScore?.invoke()
         when (end) {
             RoundEnd.YOU, RoundEnd.PARTNER -> sound.play(SoundEffect.WIN)
             RoundEnd.OPPONENT -> sound.play(SoundEffect.LOSE)
@@ -223,13 +240,22 @@ fun RoundEndOverlay(end: RoundEnd, mode: GameMode, animate: Boolean, onDone: () 
         finish()
     }
     val fireworks = phase == GoOutDrama.OverlayPhase.FIREWORKS
+    if (phase == GoOutDrama.OverlayPhase.SCOREBAR) {
+        // Só a barra anima (sem escurecer a mesa); um toque pula para o banner.
+        Box(
+            modifier.fillMaxSize().zIndex(10f)
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = { phase = GoOutDrama.next(phase, scoreBar) })
+                .testTag("go-out-overlay"),
+        )
+        return
+    }
     val fade = 1f - collapse.value
     BoxWithConstraints(
         modifier
             .fillMaxSize()
             .zIndex(10f)
             .background(Color.Black.copy(alpha = if (fireworks) 0f else 0.4f * fade))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = { if (fireworks) phase = GoOutDrama.next(phase) else finish() })
+            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = { if (fireworks) phase = GoOutDrama.next(phase, scoreBar) else finish() })
             .testTag("go-out-overlay"),
         contentAlignment = Alignment.Center,
     ) {
