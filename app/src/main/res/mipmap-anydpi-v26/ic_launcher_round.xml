@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Arte do ícone (Tranca Bots) a 70% da tela de 108 dp; fundo verde do feltro. O monocromático (ícones temáticos)
-     continua com a coroa, que é só um contorno. -->
+<!-- Ícone na identidade do salão: coroa dourada com cartas (ic_launcher_art, dentro da zona segura) sobre o fundo azul
+     royal com raios de holofote (ic_launcher_bg_art). O monocromático (ícones temáticos) continua com a coroa de contorno. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_bg" />
+    <background android:drawable="@drawable/ic_launcher_bg_art" />
     <foreground android:drawable="@drawable/ic_launcher_art" />
     <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>
