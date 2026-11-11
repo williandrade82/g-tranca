@@ -99,6 +99,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -497,8 +499,8 @@ private fun TableScreenContent(
                     // §17.11 b4 Placar: só com o b4 entre os boosters deste jogador.
                     val scoreboard = com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters
                     Column(
-                        Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
-                            .padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-felt"),
+                        Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = 4.dp, vertical = 2.dp).feltTable()
+                            .padding(horizontal = 5.dp, vertical = 6.dp).testTag("table-felt"),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         SideArea(
@@ -711,14 +713,23 @@ private fun Header(
     // valor em jogo, saldo, Wi-Fi, tour, som e engrenagem. Embaixo, o placar.
     Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        com.gtranca.ui.theme.FitText(
-            stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
-            MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
+        // O brasão do salão sobre "Partida N · alvo X" (cabe na altura dos ícones, sem aumentar o cabeçalho).
+        Column(
             Modifier.weight(1f)
                 .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo)
                 .testTag("match-info-open"),
-            minFontSp = 8,
-        )
+        ) {
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(R.drawable.home_crest), null,
+                Modifier.height(22.dp).aspectRatio(640f / 298f).testTag("header-crest"),
+            )
+            com.gtranca.ui.theme.FitText(
+                stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
+                MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
+                Modifier.fillMaxWidth(),
+                minFontSp = 8,
+            )
+        }
         // §14.6, §16.13 total em jogo: a aposta de todos os assentos.
         val seats = view.mode.seatsInPlayOrder(snapshot.viewerSeat).size
         if (snapshot.config.stake > 0) {
@@ -1438,9 +1449,7 @@ private fun ReviewContinueBar(onContinue: () -> Unit, banner: (@Composable () ->
     Box(
         Modifier
             .fillMaxWidth()
-            .shadow(Elevation.dialog, shape)
-            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), shape)
-            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), shape)
+            .loungePanel(shape)
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = Spacing.sm),
     ) {
@@ -1496,9 +1505,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     Column(
         Modifier
             .fillMaxWidth()
-            .shadow(Elevation.dialog, RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
-            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
-            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
+            .loungePanel(RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .testTag("action-bar").tourTarget("action-bar"),
@@ -1586,7 +1593,13 @@ internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection:
 
 @Composable
 private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
+    val handShape = RoundedCornerShape(Corner.sm)
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)
+            .background(Brush.verticalGradient(listOf(GColors.Indigo.copy(alpha = 0.7f), GColors.Midnight.copy(alpha = 0.7f))), handShape)
+            .border(1.dp, GColors.Gold.copy(alpha = 0.35f), handShape)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // §14.1 seu avatar; tocar nele abre a própria última jogada (no mesmo formato do detalhe dos outros).
             val ownLastText = stringResource(R.string.own_last_play)
@@ -2234,12 +2247,36 @@ private fun DeckStack(count: Int, anchor: AnimAnchor) {
 /** Feltro esmeralda da mesa (quase oval: cantos bem grandes) com a moldura dourada biselada. */
 private fun Modifier.feltTable(): Modifier {
     val shape = RoundedCornerShape(Corner.md)
+    val rim = 9.dp
     return this
         .shadow(Elevation.dialog, shape)
-        .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f), shape)
-        .goldFrame(Corner.md, 3.dp)
-        .clip(shape)
+        .drawBehind {
+            // De fora para dentro: filete dourado, couro azul, filete dourado, madeira, filete dourado e o feltro.
+            val r = Corner.md.toPx()
+            fun layer(inset: androidx.compose.ui.unit.Dp, brush: Brush) {
+                val i = inset.toPx()
+                drawRoundRect(
+                    brush, Offset(i, i), androidx.compose.ui.geometry.Size(size.width - 2 * i, size.height - 2 * i),
+                    androidx.compose.ui.geometry.CornerRadius((r - i).coerceAtLeast(0f)),
+                )
+            }
+            val gold = Brush.linearGradient(listOf(GColors.Champagne, GColors.GoldDeep, GColors.Gold, GColors.GoldDeep), Offset.Zero, Offset(size.width, size.height))
+            layer(0.dp, gold)
+            layer(1.dp, Brush.verticalGradient(listOf(Color(0xFF2A4FD0), Color(0xFF12277A))))
+            layer(4.5.dp, gold)
+            layer(5.5.dp, Brush.verticalGradient(listOf(Color(0xFF8A5327), Color(0xFF5A3115))))
+            layer(8.dp, gold)
+            layer(rim, Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f))
+        }
+        .padding(rim)
+        .clip(RoundedCornerShape((Corner.md - rim).coerceAtLeast(0.dp)))
 }
+
+/** Painel no estilo do salão (o do seletor de boosters): azul-noite em degradê com o filete dourado biselado. */
+private fun Modifier.loungePanel(shape: androidx.compose.ui.graphics.Shape): Modifier = this
+    .shadow(Elevation.dialog, shape)
+    .background(Brush.verticalGradient(listOf(GColors.Indigo, GColors.Midnight)), shape)
+    .border(2.dp, Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep.copy(alpha = 0.3f))), shape)
 
 /** Nome de quem pegou o morto ("Você" para o próprio jogador); `null` sem o assento (partida salva antiga). */
 @Composable
