@@ -56,8 +56,8 @@ data class HardBotConfig(
     val rewardScale: Double = 600.0,
     val treeDepth: Int = 1,
     val overrideMargin: Double = 0.01,
-    val minVisitsToOverride: Int = 5,
-    val overrideConfidence: Double = 1.0,
+    val minVisitsToOverride: Int = 8,
+    val overrideConfidence: Double = 1.5,
 ) {
     init {
         require(iterations > 0) { "iterations deve ser positivo: $iterations" }
