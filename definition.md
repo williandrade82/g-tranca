@@ -773,7 +773,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
   1. **apresentação**: a arte do próprio lado encostada na ponta esquerda, seguida do texto "Nós" (no individual, o nome curto do lado, como no placar); o texto "Eles" seguido da arte do adversário, encostada na ponta direita. Os textos ficam mais ao centro. Em duplas, os dois da dupla lado a lado, a imagem mais perto do centro cobrindo 40% da outra;
   2. **barra do jogo** (§17.11.2);
   3. **barra da partida** (esta seção).
-- **Barra da partida**: o **zero fica no meio**. Para a **esquerda**, o total da mesa (§17.11) do próprio lado; para a **direita**, o do lado adversário. O número de cada lado fica na ponta do seu lado.
+- **Barra da partida**: o **zero fica nas pontas** e cada metade cresce **da ponta para o centro** (o centro é o teto da escala). Na metade **esquerda**, o total da mesa (§17.11) do próprio lado; na **direita**, o do lado adversário. O número de cada lado fica na ponta do seu lado.
 - Cada lado tem **um só valor** (o total da mesa): positivo, a barra é **dourada**; negativo, **vermelha**. Nunca as duas no mesmo lado ao mesmo tempo.
 - **Escala** (igual para os dois lados, começa em **500** a cada partida e **nunca diminui** dentro dela):
   - quando um lado chega a **500**: animação empolgante e a escala vai a **750**;
@@ -787,7 +787,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 
 #### **17.11.2. Barra do jogo**
 - Linha 2 do bloco do §17.11.1, semelhante à barra da partida, mas com os **pontos do jogo** (o placar acumulado das partidas já terminadas, §13), não só os da partida.
-- Também com o zero no meio, o próprio lado para a **esquerda** e o adversário para a **direita**, o número de cada lado na ponta. A escala vai de **0** à **pontuação-alvo** da mesa (`targetScore`) e não muda; acima do alvo a barra fica cheia.
+- Também crescendo **da ponta para o centro** (zero nas pontas, o alvo no centro), o próprio lado na metade **esquerda** e o adversário na **direita**, o número de cada lado na ponta. A escala vai de **0** à **pontuação-alvo** da mesa (`targetScore`) e não muda; acima do alvo a barra fica cheia.
 - A barra é **cinza bem claro** e **não marca valores negativos**: com placar negativo ela fica vazia (o número mostra o valor real).
 - O placar de cada lado **ao fim de cada partida** fica marcado na metade daquele lado (uma marca fina por partida terminada).
 - Muda com animação (a barra cresce ou diminui e o número gira como letreiro) quando uma partida termina e o placar do jogo muda.
