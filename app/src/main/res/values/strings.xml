@@ -220,8 +220,6 @@
     <string name="canasta_plain">Canastra</string>
     <string name="canasta_dirty">Canastra suja</string>
     <string name="new_meld_slot">Novo jogo</string>
-    <string name="add_to_meld_hint">Toque num dos seus jogos para acrescentar as cartas selecionadas</string>
-    <string name="add_to_meld_hint_team">Toque num jogo da sua dupla para acrescentar as cartas selecionadas</string>
     <string name="action_draw">Comprar</string>
     <string name="action_take_discard">Pegar</string>
     <string name="action_decline">Recusar compra</string>

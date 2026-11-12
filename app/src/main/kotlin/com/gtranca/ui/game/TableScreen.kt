@@ -1547,14 +1547,6 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
             ) { Text("✕", fontWeight = FontWeight.Bold) }
         }
-        // Fixo durante a vez (não depende da seleção) para os botões não pularem ao tocar nas cartas.
-        if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
-            Text(
-                stringResource(if (snapshot.view.mode == GameMode.DUPLAS) R.string.add_to_meld_hint_team else R.string.add_to_meld_hint),
-                color = GColors.Steel,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
     }
 }
 
