@@ -508,13 +508,13 @@ class TableAnimationsTest {
         // Só as cartas do humano voam abertas, na ordem da mão; as dos outros assentos e dos mortos, viradas.
         flights.filter { it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe hand
         flights.filter { it.to != AnimAnchor.OwnHand }.all { it.card == null } shouldBe true
-        // O lote do assento 1 só começa depois que o do humano termina de pousar (3ª carta + a duração do voo).
+        // O lote do assento 1 só começa quando o do humano chega à metade do caminho (3ª carta + metade da duração do voo).
         val seat1Start = flights.first { it.to == AnimAnchor.SeatHand(1) }.delayMillis
         val ownLast = flights.filter { it.to == AnimAnchor.OwnHand }.maxOf { it.delayMillis }
-        (seat1Start >= ownLast + dur) shouldBe true
-        // Os mortos só começam depois que o lote do último assento termina de pousar.
+        (seat1Start >= ownLast + dur / 2) shouldBe true
+        // Os mortos só começam quando o lote do último assento chega à metade do caminho.
         val seat3Last = flights.filter { it.to == AnimAnchor.SeatHand(3) }.maxOf { it.delayMillis }
-        (mortoFlights.first().delayMillis >= seat3Last + dur) shouldBe true
+        (mortoFlights.first().delayMillis >= seat3Last + dur / 2) shouldBe true
         flights.map { it.id }.toSet().size shouldBe flights.size
     }
 
@@ -541,13 +541,13 @@ class TableAnimationsTest {
         mortoFlights.take(4).map { it.to } shouldBe listOf(AnimAnchor.Morto(0), AnimAnchor.Morto(1), AnimAnchor.Morto(0), AnimAnchor.Morto(1))
         flights.filter { it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe hand
         flights.filter { it.to != AnimAnchor.OwnHand }.all { it.card == null } shouldBe true
-        // A leva seguinte (2ª dos assentos) só começa depois que a 1ª leva termina de pousar.
+        // A leva seguinte (2ª dos assentos) só começa quando a 1ª leva chega à metade do caminho.
         val wave1End = flights.take(4).maxOf { it.delayMillis }
         val wave2Start = flights[4].delayMillis
-        (wave2Start >= wave1End + dur) shouldBe true
-        // Os mortos só começam depois que a última leva dos assentos termina de pousar.
+        (wave2Start >= wave1End + dur / 2) shouldBe true
+        // Os mortos só começam quando a última leva dos assentos chega à metade do caminho.
         val lastSeatWaveEnd = flights.take(12).maxOf { it.delayMillis }
-        (mortoFlights.first().delayMillis >= lastSeatWaveEnd + dur) shouldBe true
+        (mortoFlights.first().delayMillis >= lastSeatWaveEnd + dur / 2) shouldBe true
         flights.map { it.id }.toSet().size shouldBe flights.size
     }
 

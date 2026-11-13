@@ -104,11 +104,11 @@ object TableAnimations {
     /** Dois jeitos de distribuir em avaliação (telas.md ainda não documenta: nenhum foi escolhido). */
     enum class DealStyle {
         /** Rodízio em lotes de [DEAL_GROUP_SIZE]: [DEAL_GROUP_SIZE] cartas para o 1º lugar, depois o 2º, o 3º... até
-         * esvaziar todos (volta ao 1º lugar para o lote seguinte); o lote seguinte só começa quando o atual pousa. */
+         * esvaziar todos (volta ao 1º lugar para o lote seguinte); o lote seguinte começa na metade do caminho do atual. */
         GROUPS_OF_THREE,
 
         /** Rodízio carta a carta: uma carta de cada lugar a cada leva (todos os lugares ainda com cartas, até 4 numa
-         * mesa de duplas), voando juntas; a leva seguinte só começa quando a atual pousa por inteiro. */
+         * mesa de duplas), voando juntas; a leva seguinte começa na metade do caminho da atual. */
         WAVES
     }
 
@@ -158,10 +158,10 @@ object TableAnimations {
 
     /**
      * Distribuição do início da partida: primeiro os assentos (em ordem a partir de quem começa), depois os mortos,
-     * sempre em **lotes** que voam juntos e nunca se sobrepõem (um lote só começa quando o anterior termina de
-     * pousar), no estilo [style] (telas.md ainda não documenta: por padrão sorteia entre os dois a cada partida,
-     * para comparar com o usuário). As cartas do humano voam abertas ([ownCards]: a mão visível); as dos outros
-     * assentos e dos mortos, viradas (informação oculta).
+     * sempre em **lotes** que voam juntos; o próximo lote começa quando o atual chega à metade do caminho (não
+     * espera ele pousar — mais ágil sem perder a leitura de "lote por lote"), no estilo [style] (telas.md ainda não
+     * documenta: por padrão sorteia entre os dois a cada partida, para comparar com o usuário). As cartas do humano
+     * voam abertas ([ownCards]: a mão visível); as dos outros assentos e dos mortos, viradas (informação oculta).
      */
     fun deal(
         snapshot: GameSnapshot,
@@ -185,7 +185,9 @@ object TableAnimations {
             group.forEachIndexed { i, (target, card) ->
                 flights += CardFlight(nextId(), AnimAnchor.Stock, target, card, cursor + STAGGER_MILLIS * i)
             }
-            cursor += STAGGER_MILLIS * (group.size - 1) + durationMillis
+            // O próximo lote já começa na metade do caminho do atual (não espera ele pousar): mais ágil sem perder
+            // a leitura de "lote por lote", para os dois estilos, assentos e mortos.
+            cursor += STAGGER_MILLIS * (group.size - 1) + durationMillis / 2
         }
         return flights
     }
