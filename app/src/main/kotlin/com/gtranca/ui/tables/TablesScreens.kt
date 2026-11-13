@@ -90,6 +90,7 @@ import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.Spacing
+import com.gtranca.ui.theme.loungeDialog
 
 /** Moldura das telas de mesa: fundo, título, conteúdo rolável e barra de botões fixa embaixo. */
 @Composable
@@ -311,7 +312,12 @@ fun RefreshButton(tag: String, onRefresh: () -> Unit) {
 /** §14.4 quadro de opções: modo, dificuldade dos robôs, aposta, regras (com "Ver detalhes da regra") e pontuação-alvo. */
 @Composable
 private fun TableOptions(state: TableSetupUiState, viewModel: TablesViewModel, onCustomize: () -> Unit, onShowDetails: () -> Unit) {
-    GPanel(Modifier.fillMaxWidth().tourTarget("table-options-panel")) {
+    val shape = RoundedCornerShape(Corner.md)
+    Column(
+        Modifier.fillMaxWidth().tourTarget("table-options-panel")
+            .loungeDialog(shape).clip(shape).padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
         Section(stringResource(R.string.home_mode)) {
             ModeChoice(stringResource(R.string.mode_individual), state.mode == GameMode.INDIVIDUAL, "mode-individual") { viewModel.onModeChange(GameMode.INDIVIDUAL) }
             ModeChoice(stringResource(R.string.mode_duplas_short), state.mode == GameMode.DUPLAS, "mode-duplas") { viewModel.onModeChange(GameMode.DUPLAS) }
