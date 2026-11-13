@@ -54,6 +54,12 @@ enum class GameMode(val seatCount: Int) {
         return Seat((seat.index + 1) % seatCount)
     }
 
+    /** §3.6 / §4.2 assento anterior no sentido anti-horário (o jogador à esquerda); inverso de [nextSeat]. */
+    fun previousSeat(seat: Seat): Seat {
+        requireSeat(seat)
+        return Seat((seat.index - 1 + seatCount) % seatCount)
+    }
+
     /** Todos os assentos na ordem de jogada, começando por [first]. */
     fun seatsInPlayOrder(first: Seat): List<Seat> =
         generateSequence(first) { nextSeat(it) }.take(seatCount).toList().also { requireSeat(first) }

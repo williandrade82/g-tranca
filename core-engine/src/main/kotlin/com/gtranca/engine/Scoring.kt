@@ -42,8 +42,22 @@ fun scoreRound(state: RoundState, rules: RuleSet = RuleSet.DEFAULT): List<SideSc
             mortoNotTaken = if (state.hasTakenMorto(side)) 0 else rules.mortoNotTakenPoints,
             hand = handPenalty(handCards, rules),
             tableCards = tableCardPoints(state, side, rules),
+            dealGuessBonus = dealGuessBonus(state, side, rules),
         )
     }
+}
+
+/**
+ * §3.6 / §12.1 bônus da distribuição certeira para o [side]: `rules.dealGuessBonusPoints` por palpite certo (mão
+ * ou morto) de quem palpitou e é deste lado. Zero se o parâmetro estiver desligado ([RoundState.dealGuess] é
+ * `null` nesse caso) ou se nenhum dos dois palpites certos caiu neste lado.
+ */
+private fun dealGuessBonus(state: RoundState, side: Side, rules: RuleSet): Int {
+    val guess = state.dealGuess ?: return 0
+    var bonus = 0
+    if (guess.hand?.correct == true && state.mode.sideOf(guess.dealerSeat) == side) bonus += rules.dealGuessBonusPoints
+    if (guess.morto?.correct == true && state.mode.sideOf(guess.mortoDealerSeat) == side) bonus += rules.dealGuessBonusPoints
+    return bonus
 }
 
 /**

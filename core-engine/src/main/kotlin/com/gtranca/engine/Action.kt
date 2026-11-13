@@ -40,6 +40,16 @@ sealed interface Action {
     @Serializable
     @SerialName("declineDraw")
     data object DeclineDraw : Action
+
+    /**
+     * §3.6 palpite da largura (fim − início) numa barra de estágios, antes da 1ª vez da partida: só válido nas
+     * fases [com.gtranca.engine.model.Phase.DEAL_GUESS_HAND] / [com.gtranca.engine.model.Phase.DEAL_GUESS_MORTO],
+     * para o assento indicado em [com.gtranca.engine.model.RoundState.dealGuess]. O motor normaliza [start]/[end]
+     * (o menor vira início) e só exige `0 <= start, end <= total de estágios` daquela fase.
+     */
+    @Serializable
+    @SerialName("guessDealRange")
+    data class GuessDealRange(val start: Int, val end: Int) : Action
 }
 
 /** Como o topo do lixo vai à mesa ao pegar o lixo (§5.1). */

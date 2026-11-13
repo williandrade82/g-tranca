@@ -2,6 +2,7 @@ package com.gtranca.engine
 
 import com.gtranca.engine.model.ActionError
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RedThreeLaid
@@ -12,6 +13,8 @@ import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.SideTable
+import com.gtranca.engine.model.dealGuessHandStages
+import com.gtranca.engine.model.dealGuessMortoStages
 
 /**
  * Máquina de estados da partida (§4.3, §5, §6.5, §8–§11). Funções puras sobre [RoundState].
@@ -64,6 +67,10 @@ object RoundEngine {
     internal fun step(state: RoundState, seat: Seat, action: Action, rules: RuleSet): RuleResult<RoundState> {
         if (state.phase == Phase.FINISHED) return fail(ActionError.ROUND_FINISHED)
         if (seat != state.currentSeat) return fail(ActionError.NOT_YOUR_TURN)
+        val isGuessPhase = state.phase == Phase.DEAL_GUESS_HAND || state.phase == Phase.DEAL_GUESS_MORTO
+        // §3.6 só se joga GuessDealRange nas fases de palpite, e só se joga outra coisa fora delas: o palpite
+        // pendente precisa ser resolvido antes de comprar, baixar ou descartar.
+        if (isGuessPhase != (action is Action.GuessDealRange)) return fail(ActionError.NOT_GUESS_PHASE)
         val result = when (action) {
             Action.DrawFromStock -> drawFromStock(state, seat, rules)
             Action.DeclineDraw -> declineDraw(state, rules)
@@ -72,6 +79,7 @@ object RoundEngine {
             is Action.AddToMeld ->
                 meldFromHand(state, seat, action.cards, rules) { it.addToMeld(action.meldId, action.cards, rules) }
             is Action.Discard -> discard(state, seat, action.card, rules)
+            is Action.GuessDealRange -> guessDealRange(state, seat, action.start, action.end, rules)
         }
         return result
     }
@@ -165,6 +173,51 @@ object RoundEngine {
         }
         if (resolved.phase == Phase.FINISHED) return RuleResult.Ok(resolved)
         return RuleResult.Ok(passTurn(resolved, seat, rules))
+    }
+
+    /**
+     * §3.6 resolve o palpite da mão ([Phase.DEAL_GUESS_HAND]) ou do morto ([Phase.DEAL_GUESS_MORTO]). O motor só
+     * exige `0 <= start, end <= totalStages` (quem resolve a dinâmica de toque de "o menor vira início" é a UI);
+     * aqui normaliza-se o par e compara-se a largura normalizada com o alvo (44/22 cartas na mão, conforme o modo;
+     * 22 no morto). O palpite da mão passa a vez para quem palpita o morto; o do morto resolve, e então começa de
+     * verdade a vez do [RoundState.firstSeat] ([beginTurn], §3.5) — nenhuma carta troca de lugar neste passo.
+     */
+    private fun guessDealRange(state: RoundState, seat: Seat, start: Int, end: Int, rules: RuleSet): RuleResult<RoundState> {
+        val guess = state.dealGuess ?: return fail(ActionError.NOT_GUESS_PHASE)
+        val totalStages = when (state.phase) {
+            Phase.DEAL_GUESS_HAND -> dealGuessHandStages(rules)
+            Phase.DEAL_GUESS_MORTO -> {
+                val handWidth = guess.hand?.width ?: return fail(ActionError.NOT_GUESS_PHASE)
+                dealGuessMortoStages(state.mode, rules, handWidth)
+            }
+            else -> return fail(ActionError.NOT_GUESS_PHASE)
+        }
+        if (start < 0 || start > totalStages || end < 0 || end > totalStages) return fail(ActionError.GUESS_RANGE_OUT_OF_BOUNDS)
+        val lo = minOf(start, end)
+        val hi = maxOf(start, end)
+        return when (state.phase) {
+            Phase.DEAL_GUESS_HAND -> {
+                val target = rules.cardsPerHand * state.mode.seatCount
+                val resolved = Guess(lo, hi, hi - lo == target)
+                RuleResult.Ok(
+                    state.copy(
+                        dealGuess = guess.copy(hand = resolved),
+                        phase = Phase.DEAL_GUESS_MORTO,
+                        currentSeat = guess.mortoDealerSeat,
+                    ),
+                )
+            }
+            Phase.DEAL_GUESS_MORTO -> {
+                val target = rules.cardsPerMorto * rules.mortoCount
+                val resolved = Guess(lo, hi, hi - lo == target)
+                val afterGuess = state.copy(
+                    dealGuess = guess.copy(morto = resolved),
+                    phase = Phase.AWAITING_DRAW,
+                    currentSeat = state.firstSeat,
+                )
+                RuleResult.Ok(beginTurn(afterGuess, state.firstSeat, rules))
+            }
+        }
     }
 
     // ---------- efeitos automáticos ----------

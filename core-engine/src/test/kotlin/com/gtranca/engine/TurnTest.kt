@@ -127,7 +127,7 @@ class TurnTest {
     @Test
     fun `estado inicial da distribuicao aguarda a compra do primeiro jogador`() {
         // §3.4 / §4.1 o primeiro jogador começa comprando
-        val s = dealRound(GameMode.DUPLAS, Random(4))
+        val s = dealRound(GameMode.DUPLAS, Random(4), NO_DEAL_GUESS)
         s.phase shouldBe Phase.AWAITING_DRAW
         s.result shouldBe null
         RoundEngine.validate(s, s.currentSeat, Action.DrawFromStock).shouldBeOk()

@@ -69,7 +69,7 @@ class DeterminizationTest {
     /** Estados de uma partida real (distribuição + jogadas aleatórias até o fim), um a cada [every]. */
     private fun trajectory(mode: GameMode, seed: Long, every: Int): List<RoundState> {
         val random = Random(seed)
-        var state = dealRound(mode, random)
+        var state = dealRound(mode, random, NO_DEAL_GUESS)
         val states = mutableListOf(state)
         var count = 0
         while (state.phase != Phase.FINISHED && count < 5_000) {
@@ -126,6 +126,29 @@ class DeterminizationTest {
         playedOut shouldBeGreaterThan 20
     }
 
+    @Test
+    fun `determinizacao preserva o dealGuess durante a fase de palpite do morto`() {
+        // §3.6 o dealGuess é inteiramente público: o mundo sorteado tem o mesmo, inclusive durante a fase de
+        // palpite do morto, cujo número de estágios depende da largura já resolvida do palpite da mão
+        for (mode in GameMode.entries) {
+            for (seed in 0L until 10L) {
+                val dealt = dealRound(mode, Random(seed))
+                val afterHand = RoundEngine.apply(dealt, dealt.currentSeat, Action.GuessDealRange(0, 10))
+                afterHand.phase shouldBe Phase.DEAL_GUESS_MORTO
+                for (seat in mode.seats) {
+                    val view = afterHand.viewFor(seat)
+                    view.dealGuess shouldBe afterHand.dealGuess
+                    val sampled = view.determinize(Random(seed * 10 + seat.index))
+                    withClue("$mode semente $seed assento ${seat.index}") {
+                        sampled.dealGuess shouldBe afterHand.dealGuess
+                        sampled.viewFor(seat) shouldBe view
+                        RoundEngine.legalActions(sampled, seat) shouldBe RoundEngine.legalActions(afterHand, seat)
+                    }
+                }
+            }
+        }
+    }
+
     // ---------- determinismo e variação ----------
 
     @Test
@@ -175,7 +198,7 @@ class DeterminizationTest {
     fun `3 vermelho oculto cai no monte, nos mortos ou na mao de quem ainda nao comecou`() {
         // §3.5 / §6.5 os 3 vermelhos são trocados só na vez do dono: o assento 2 (que vê a partida logo após o
         // início da vez do primeiro jogador) sabe que só quem ainda não começou pode ter 3 vermelho na mão
-        val state = dealRound(GameMode.DUPLAS, Random(11))
+        val state = dealRound(GameMode.DUPLAS, Random(11), NO_DEAL_GUESS)
         val viewer = state.mode.nextSeat(state.mode.nextSeat(state.firstSeat)) // ainda não começou
         val view = state.viewFor(viewer)
         val begun = state.mode.seats.filter { view.hasBegunFirstTurn(it) }
@@ -207,7 +230,7 @@ class DeterminizationTest {
     @Test
     fun `depois que todos comecaram os 3 vermelhos ocultos so caem no monte ou nos mortos`() {
         // §3.5 com os dois assentos já tendo começado a vez, 3 vermelho na mão alheia é impossível
-        val start = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }.first { s ->
+        val start = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it), NO_DEAL_GUESS) }.first { s ->
             val view = s.viewFor(s.firstSeat)
             (Deck.standard().filter { it.isRedThree } - view.redThrees.flatten().toSet() - view.hand.toSet()).isNotEmpty()
         }
@@ -277,7 +300,7 @@ class DeterminizationTest {
     @Test
     fun `3 vermelho na propria mao de quem ja trocou os seus e uma vista incoerente`() {
         // §3.5 / §6.5 a própria mão só tem 3 vermelho se o assento ainda não começou (ou tem morto indireto pendente)
-        val state = dealRound(GameMode.INDIVIDUAL, Random(5))
+        val state = dealRound(GameMode.INDIVIDUAL, Random(5), NO_DEAL_GUESS)
         val begunSeat = state.firstSeat
         val view = state.viewFor(begunSeat)
         val someRed = (Deck.standard().filter { it.isRedThree } - view.redThrees.flatten().toSet() - view.hand.toSet()).first()
@@ -332,7 +355,7 @@ class DeterminizationTest {
             view.determinize(Random(1), mapOf(Seat(1) to listOf(visible)))
         }.message shouldContain "visível"
         // §6.5 3 vermelho baixado na mesa também é visível
-        val dealtWithRed = (0L until 50L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }
+        val dealtWithRed = (0L until 50L).map { dealRound(GameMode.INDIVIDUAL, Random(it), NO_DEAL_GUESS) }
             .first { it.redThrees.flatten().isNotEmpty() }
         val red = dealtWithRed.redThrees.flatten().first()
         shouldThrow<IllegalArgumentException> {
@@ -367,7 +390,7 @@ class DeterminizationTest {
     @Test
     fun `3 vermelho conhecido em mao so e aceito de assento que ainda nao comecou`() {
         // §3.5 3 vermelho só fica na mão até o início da vez do dono: o primeiro jogador já trocou os seus
-        val state = (0L until 50L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }
+        val state = (0L until 50L).map { dealRound(GameMode.INDIVIDUAL, Random(it), NO_DEAL_GUESS) }
             .first { (it.stock + it.mortos.flatten()).any(Card::isRedThree) }
         val red = (state.stock + state.mortos.flatten()).first { it.isRedThree }
         val begun = state.firstSeat
@@ -470,7 +493,7 @@ class DeterminizationTest {
 
     /** Estado recém-distribuído com algum 3 vermelho na mesa do lado 0 (§3.5/§6.5). */
     private fun dealtWithRedThreeOnSide0(): RoundState =
-        (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }.first { it.redThrees[0].isNotEmpty() }
+        (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it), NO_DEAL_GUESS) }.first { it.redThrees[0].isNotEmpty() }
 
     @Test
     fun `lado diferente do lado do assento e uma vista incoerente`() {

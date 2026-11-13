@@ -190,7 +190,7 @@ class RedThreeLogTest {
 
     @Test
     fun `estado com registro faz ida e volta em JSON`() {
-        val state = (0L until 200L).map { dealRound(GameMode.DUPLAS, Random(it)) }.first { it.redThreeLog.size >= 2 }
+        val state = (0L until 200L).map { dealRound(GameMode.DUPLAS, Random(it), NO_DEAL_GUESS) }.first { it.redThreeLog.size >= 2 }
         val json = Json.encodeToString(RoundState.serializer(), state)
         json shouldContain "redThreeLog"
         Json.decodeFromString(RoundState.serializer(), json) shouldBe state
@@ -199,7 +199,7 @@ class RedThreeLogTest {
     @Test
     fun `JSON antigo sem o registro e lido com registro vazio`() {
         // compatibilidade: partidas salvas antes do registro existir
-        val state = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }.first { it.redThreeLog.isNotEmpty() }
+        val state = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it), NO_DEAL_GUESS) }.first { it.redThreeLog.isNotEmpty() }
         val old = withoutLog(Json.encodeToString(RoundState.serializer(), state))
         old shouldNotContain "redThreeLog"
         val decoded = Json.decodeFromString(RoundState.serializer(), old)
@@ -217,7 +217,7 @@ class RedThreeLogTest {
     fun `determinizacao preserva o registro publico`() {
         // §3.5 o registro é público: o mundo sorteado tem o mesmo registro da vista
         for (mode in GameMode.entries) {
-            val state = (0L until 200L).map { dealRound(mode, Random(it)) }.first { it.redThreeLog.isNotEmpty() }
+            val state = (0L until 200L).map { dealRound(mode, Random(it), NO_DEAL_GUESS) }.first { it.redThreeLog.isNotEmpty() }
             mode.seats.forEach { seat ->
                 val view = state.viewFor(seat)
                 val sampled = view.determinize(Random(seat.index.toLong()))
@@ -230,7 +230,7 @@ class RedThreeLogTest {
     @Test
     fun `vista sem registro de partida salva antiga continua determinizavel`() {
         // compatibilidade: registro vazio (JSON antigo) com 3 vermelhos na mesa
-        val state = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }.first { it.redThreeLog.isNotEmpty() }
+        val state = (0L until 200L).map { dealRound(GameMode.INDIVIDUAL, Random(it), NO_DEAL_GUESS) }.first { it.redThreeLog.isNotEmpty() }
         val view = state.viewFor(Seat(0)).copy(redThreeLog = emptyList())
         view.determinize(Random(1)).viewFor(Seat(0)) shouldBe view
     }
@@ -238,7 +238,7 @@ class RedThreeLogTest {
     @Test
     fun `registro que nao bate com os 3 vermelhos da mesa e uma vista incoerente`() {
         // §3.5 / §6.5 cada 3 vermelho do registro está na área do lado de quem o baixou
-        val state = (0L until 200L).map { dealRound(GameMode.DUPLAS, Random(it)) }.first { it.redThreeLog.isNotEmpty() }
+        val state = (0L until 200L).map { dealRound(GameMode.DUPLAS, Random(it), NO_DEAL_GUESS) }.first { it.redThreeLog.isNotEmpty() }
         val view = state.viewFor(Seat(0))
         val first = view.redThreeLog.first()
         val otherSideSeat = Seat((first.seat.index + 1) % 4)
@@ -251,7 +251,7 @@ class RedThreeLogTest {
     @Test
     fun `troca atDeal de JSON antigo depois de uma troca da jogada e uma vista incoerente`() {
         // compatibilidade: no JSON antigo as trocas da distribuição (atDeal) vinham antes de todas as da jogada
-        val state = (0L until 500L).map { dealRound(GameMode.INDIVIDUAL, Random(it)) }.first { it.redThreeLog.size >= 2 }
+        val state = (0L until 500L).map { dealRound(GameMode.INDIVIDUAL, Random(it), NO_DEAL_GUESS) }.first { it.redThreeLog.size >= 2 }
         val view = state.viewFor(Seat(0))
         val swapped = view.copy(redThreeLog = view.redThreeLog.dropLast(1) + view.redThreeLog.last().copy(atDeal = true))
         shouldThrow<IllegalArgumentException> { swapped.determinize(Random(1)) }.message shouldContain "registro"

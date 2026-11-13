@@ -19,6 +19,7 @@ class ActionSerializationTest {
             Action.CreateMeld(cards("5H 6H 2C")),
             Action.AddToMeld(MeldId(0), cards("8H")),
             Action.Discard(c("3S")),
+            Action.GuessDealRange(3, 25), // §3.6
         )
         actions.forEach { action ->
             val json = Json.encodeToString(Action.serializer(), action)

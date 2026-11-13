@@ -1,6 +1,7 @@
 package com.gtranca.engine
 
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.DealGuess
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
@@ -35,6 +36,8 @@ import kotlinx.serialization.Serializable
  *   não começou a primeira vez pode ter 3 vermelho (só trocado na vez do jogador). Padrão: todos já começaram (JSON antigo).
  * @property unsettledMortoSeats assentos que pegaram o morto indireto (§9.3) e ainda não tiveram o início da vez seguinte:
  *   a mão deles pode ter 3 vermelho do morto (§9.4). Igual ao [RoundState.unsettledMortoSeats] (público).
+ * @property dealGuess §3.6 estado público do minijogo da distribuição certeira; igual ao [RoundState.dealGuess]
+ *   (inteiramente público, sem carta nenhuma: nenhuma informação fica de fora).
  */
 @Serializable
 data class PlayerView(
@@ -58,6 +61,7 @@ data class PlayerView(
     val unsettledMortoSeats: List<Seat> = emptyList(),
     /** §14.4 perfil de regras da mesa (público: todos aceitaram as mesmas regras). JSON antigo: Clássica. */
     val rules: RuleSet = RuleSet.DEFAULT,
+    val dealGuess: DealGuess? = null,
 ) {
     /** §3.5 o [seat] já teve o início da sua primeira vez nesta partida. */
     fun hasBegunFirstTurn(seat: Seat): Boolean = hasBegunFirstTurn(mode, firstSeat, turnsBegun, seat)
@@ -95,6 +99,7 @@ fun RoundState.viewFor(seat: Seat, rules: RuleSet = RuleSet.DEFAULT): PlayerView
     turnsBegun = turnsBegun,
     unsettledMortoSeats = unsettledMortoSeats.toList(),
     rules = rules,
+    dealGuess = dealGuess,
 )
 
 /** Cópia de [SideTable] sem compartilhar nenhuma lista com o original. */

@@ -9,6 +9,8 @@ import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Suit
+import com.gtranca.engine.model.dealGuessHandStages
+import com.gtranca.engine.model.dealGuessMortoStages
 
 /**
  * Enumeração COMPLETA, a menos de cartas idênticas, das ações válidas (ver [RoundEngine.legalActions]).
@@ -22,6 +24,11 @@ import com.gtranca.engine.model.Suit
  * - acréscimo/plano de lixo: idem, com o resultado contendo o conjunto existente (e o topo do lixo);
  * - coringa no topo do lixo (§5.4): ele ocupa a vaga do coringa, e a mão entra só com naturais.
  * Cada candidato é então conferido por [RoundEngine.step]; só os aceitos são devolvidos.
+ *
+ * §3.6 nas fases de palpite da distribuição certeira ([Phase.DEAL_GUESS_HAND] / [Phase.DEAL_GUESS_MORTO]), a única
+ * classe de ação é [Action.GuessDealRange]: como o resultado (acerto ou erro) só depende da **largura** (`end -
+ * start`), a equivalência de classe aqui é "mesma largura" (em vez de "mesma cópia do baralho"), representada por
+ * um candidato `GuessDealRange(0, width)` por largura possível (`0..totalStages`).
  */
 internal object LegalActions {
 
@@ -30,6 +37,8 @@ internal object LegalActions {
     fun generate(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
         if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
         val candidates: Sequence<Action> = when (state.phase) {
+            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandStages(rules))
+            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(mortoGuessStages(state, rules))
             Phase.AWAITING_DRAW ->
                 sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
             Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
@@ -46,6 +55,8 @@ internal object LegalActions {
     fun generateReference(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
         if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
         val candidates: Sequence<Action> = when (state.phase) {
+            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandStages(rules))
+            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(mortoGuessStages(state, rules))
             Phase.AWAITING_DRAW ->
                 sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
             Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
@@ -53,6 +64,18 @@ internal object LegalActions {
         }
         return candidates.distinct().filter { isValid(state, seat, it, rules) }.toList()
     }
+
+    /** §3.6 estágios da barra do palpite do morto, a partir da largura já resolvida do palpite da mão. */
+    private fun mortoGuessStages(state: RoundState, rules: RuleSet): Int {
+        val handWidth = checkNotNull(state.dealGuess?.hand?.width) {
+            "Fase DEAL_GUESS_MORTO sem palpite da mão resolvido: ${state.dealGuess}"
+        }
+        return dealGuessMortoStages(state.mode, rules, handWidth)
+    }
+
+    /** §3.6 um [Action.GuessDealRange] por largura possível (`0..totalStages`); ver KDoc da classe. */
+    private fun dealGuessCandidates(totalStages: Int): Sequence<Action> =
+        (0..totalStages).asSequence().map { width -> Action.GuessDealRange(0, width) }
 
     /**
      * Validação rápida dos candidatos de baixar, acrescentar e pegar o lixo, com o mesmo resultado de [RoundEngine.step]

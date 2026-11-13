@@ -85,6 +85,10 @@ data class RuleSet(
     val handWildPoints: Int = -10,
     /** §13 / §14.2 pontuação-alvo do perfil (a mesa pode ajustá-la ao iniciar o jogo, §14). */
     val targetScore: Int = 3000,
+    /** §3.6 / §12.1 / §14.2 `dealGuessBonusEnabled`: minijogo de palpite da distribuição certeira antes da 1ª vez. */
+    val dealGuessBonusEnabled: Boolean = true,
+    /** §3.6 / §12.1 bônus por palpite certo (mão ou morto); fixo, não exposto ao jogador (ver [dealGuessBonusEnabled]). */
+    val dealGuessBonusPoints: Int = 100,
 ) {
     init {
         // O posicionamento do coringa na sequência (§6.3) só é definido para no máximo 1 coringa.

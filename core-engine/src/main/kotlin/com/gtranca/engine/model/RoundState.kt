@@ -37,6 +37,8 @@ import kotlinx.serialization.Serializable
  * @property unsettledMortoSeats **público**: assentos que pegaram o morto de forma **indireta** (§9.3) e ainda não tiveram
  *   o início da vez seguinte; o morto na mão deles pode ter 3 vermelho, trocado só nesse início de vez (§9.4). Independe
  *   do conteúdo do morto (para não vazar informação).
+ * @property dealGuess §3.6 estado público do minijogo da distribuição certeira, antes da 1ª vez da partida.
+ *   `null` com `RuleSet.dealGuessBonusEnabled` desligado (padrão também para o JSON salvo antes da regra existir).
  */
 @Serializable
 data class RoundState(
@@ -56,6 +58,7 @@ data class RoundState(
     val dealReplacements: List<List<Card>> = List(mode.seatCount) { emptyList() },
     val turnsBegun: Int = mode.seatCount,
     val unsettledMortoSeats: List<Seat> = emptyList(),
+    val dealGuess: DealGuess? = null,
 ) {
     init {
         require(dealReplacements.size == mode.seatCount) {
