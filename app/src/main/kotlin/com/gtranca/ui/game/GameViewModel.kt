@@ -1150,8 +1150,9 @@ class GameViewModel(
     }
 
     /** Tempo da animação de distribuição (pior caso entre os dois estilos em avaliação, [TableAnimations.worstCaseDealMillis]). */
-    private fun dealAnimationMillis(config: GameConfig): Long =
-        TableAnimations.worstCaseDealMillis(config.mode.seatCount, animationMillis) + EXPIRY_MARGIN_MILLIS
+    private fun dealAnimationMillis(config: GameConfig): Long = TableAnimations.worstCaseDealMillis(
+        config.mode.seatCount, config.rules.cardsPerHand, config.rules.mortoCount, config.rules.cardsPerMorto, animationMillis,
+    ) + EXPIRY_MARGIN_MILLIS
 
     companion object {
         /** Folga para a limpeza de uma animação depois do fim do desenho. */

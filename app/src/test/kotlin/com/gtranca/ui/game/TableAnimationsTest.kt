@@ -477,60 +477,77 @@ class TableAnimationsTest {
     }
 
     @Test
-    fun `distribuicao - estilo lotes de 3 - toda a mao do jogador antes do proximo, mortos no fim, so a propria mao aberta`() {
+    fun `distribuicao - estilo lotes de 3 - rodizio em lotes entre os assentos, depois os mortos por completo no mesmo estilo`() {
         val hand = listOf(c("4S"), c("7H"), c("KD"))
-        val view = view(hand).copy(handSizes = listOf(3, 3, 3, 3))
+        val view = view(hand).copy(handSizes = listOf(3, 3, 3, 3)) // mortoSizes padrão de view(): 11 e 11.
         var id = 0L
         val dur = TableAnimations.DEFAULT_FLIGHT_MILLIS
         val flights = TableAnimations.deal(
             snapshot(view, List(4) { emptyList() }), hand, { id++ }, style = TableAnimations.DealStyle.GROUPS_OF_THREE,
         )
 
-        // 4 assentos × 3 cartas + 1 por morto.
-        flights.size shouldBe 4 * 3 + 2
+        // 4 assentos × 3 cartas + 2 mortos × 11 cartas: os mortos são distribuídos por completo, não só 1 carta.
+        flights.size shouldBe 4 * 3 + 2 * 11
         flights.all { it.from == AnimAnchor.Stock } shouldBe true
-        // Toda a mão de um jogador (3 cartas, um lote só) antes de o próximo começar.
-        flights.map { it.to } shouldBe listOf(
+        // Lote de 3 para cada assento, em rodízio a partir de quem começa.
+        flights.take(12).map { it.to } shouldBe listOf(
             AnimAnchor.OwnHand, AnimAnchor.OwnHand, AnimAnchor.OwnHand,
             AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(1),
             AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(2),
             AnimAnchor.SeatHand(3), AnimAnchor.SeatHand(3), AnimAnchor.SeatHand(3),
-            AnimAnchor.Morto(0), AnimAnchor.Morto(1),
         )
-        // Só as cartas do humano voam abertas, na ordem da mão; as dos outros, viradas.
+        // Depois, os mortos no mesmo rodízio de lotes de 3 (3 para o 1º, 3 para o 2º, e por aí vai) até esvaziar os 11 de cada um.
+        val mortoFlights = flights.drop(12)
+        mortoFlights.size shouldBe 22
+        mortoFlights.take(6).map { it.to } shouldBe listOf(
+            AnimAnchor.Morto(0), AnimAnchor.Morto(0), AnimAnchor.Morto(0),
+            AnimAnchor.Morto(1), AnimAnchor.Morto(1), AnimAnchor.Morto(1),
+        )
+        mortoFlights.count { it.to == AnimAnchor.Morto(0) } shouldBe 11
+        mortoFlights.count { it.to == AnimAnchor.Morto(1) } shouldBe 11
+        // Só as cartas do humano voam abertas, na ordem da mão; as dos outros assentos e dos mortos, viradas.
         flights.filter { it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe hand
         flights.filter { it.to != AnimAnchor.OwnHand }.all { it.card == null } shouldBe true
-        // O lote do assento 1 só começa depois que o lote do humano termina de pousar (3ª carta + a duração do voo).
+        // O lote do assento 1 só começa depois que o do humano termina de pousar (3ª carta + a duração do voo).
         val seat1Start = flights.first { it.to == AnimAnchor.SeatHand(1) }.delayMillis
         val ownLast = flights.filter { it.to == AnimAnchor.OwnHand }.maxOf { it.delayMillis }
         (seat1Start >= ownLast + dur) shouldBe true
+        // Os mortos só começam depois que o lote do último assento termina de pousar.
+        val seat3Last = flights.filter { it.to == AnimAnchor.SeatHand(3) }.maxOf { it.delayMillis }
+        (mortoFlights.first().delayMillis >= seat3Last + dur) shouldBe true
         flights.map { it.id }.toSet().size shouldBe flights.size
     }
 
     @Test
-    fun `distribuicao - estilo levas - uma carta por assento por leva, leva seguinte espera a atual pousar`() {
+    fun `distribuicao - estilo levas - uma carta por assento por leva, depois os mortos por completo no mesmo estilo`() {
         val hand = listOf(c("4S"), c("7H"), c("KD"))
-        val view = view(hand).copy(handSizes = listOf(3, 3, 3, 3))
+        val view = view(hand).copy(handSizes = listOf(3, 3, 3, 3)) // mortoSizes padrão de view(): 11 e 11.
         var id = 0L
         val dur = TableAnimations.DEFAULT_FLIGHT_MILLIS
         val flights = TableAnimations.deal(
             snapshot(view, List(4) { emptyList() }), hand, { id++ }, style = TableAnimations.DealStyle.WAVES,
         )
 
-        // 4 assentos × 3 cartas + 1 por morto.
-        flights.size shouldBe 4 * 3 + 2
+        // 4 assentos × 3 cartas + 2 mortos × 11 cartas: os mortos são distribuídos por completo, não só 1 carta.
+        flights.size shouldBe 4 * 3 + 2 * 11
         flights.all { it.from == AnimAnchor.Stock } shouldBe true
-        // Rodízio a partir de quem começa: você, assento 1, 2, 3, e de novo (como antes), mas agora em levas.
-        flights.take(8).map { it.to } shouldBe List(2) {
+        // Rodízio a partir de quem começa: você, assento 1, 2, 3, e de novo (3 levas, a mão é de 3 cartas).
+        flights.take(12).map { it.to } shouldBe List(3) {
             listOf(AnimAnchor.OwnHand, AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(3))
         }.flatten()
+        // Depois, os mortos em levas de 1 carta cada (11 levas, os 11 de cada morto).
+        val mortoFlights = flights.drop(12)
+        mortoFlights.size shouldBe 22
+        mortoFlights.take(4).map { it.to } shouldBe listOf(AnimAnchor.Morto(0), AnimAnchor.Morto(1), AnimAnchor.Morto(0), AnimAnchor.Morto(1))
         flights.filter { it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe hand
         flights.filter { it.to != AnimAnchor.OwnHand }.all { it.card == null } shouldBe true
-        flights.takeLast(2).map { it.to } shouldBe listOf(AnimAnchor.Morto(0), AnimAnchor.Morto(1))
-        // A leva seguinte (assento 3 da 1ª leva → humano da 2ª) só começa depois que a 1ª leva termina de pousar.
+        // A leva seguinte (2ª dos assentos) só começa depois que a 1ª leva termina de pousar.
         val wave1End = flights.take(4).maxOf { it.delayMillis }
         val wave2Start = flights[4].delayMillis
         (wave2Start >= wave1End + dur) shouldBe true
+        // Os mortos só começam depois que a última leva dos assentos termina de pousar.
+        val lastSeatWaveEnd = flights.take(12).maxOf { it.delayMillis }
+        (mortoFlights.first().delayMillis >= lastSeatWaveEnd + dur) shouldBe true
         flights.map { it.id }.toSet().size shouldBe flights.size
     }
 
