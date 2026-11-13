@@ -54,6 +54,15 @@
 - **Encenação na interface (não muda regra):** quando um jogador baixa **dois ou mais** 3 vermelhos de uma vez (os da mão no início da vez, §3.5, ou os que vieram no morto, §9.4), a troca é mostrada **de uma só vez**: os 3 vermelhos saem juntos da mão (ou do morto) para a área dos 3 vermelhos do lado, a segunda carta um pouco depois da primeira, e em seguida as reposições saem juntas do monte para a mão, também com a segunda um pouco depois. Um 3 vermelho que chega como reposição em cadeia (§6.5) é uma troca seguinte. A troca do **próprio jogador** é só um **aviso**, como a dos demais jogadores (sem botões nem confirmação), e fecha sozinha.
 - **Histórico da vez:** os 3 vermelhos que um jogador baixou na sua vez mais recente (no início dela ou durante a jogada, inclusive os do morto e as reposições em cadeia) aparecem **em primeiro lugar** no resumo da última jogada dele na pílula do jogador (símbolo ♥ com as cartas) e no detalhe que abre ao tocar no jogador, antes das demais ações da vez.
 
+### **3.6. Distribuição certeira** *(parâmetro `dealGuessBonusEnabled`; base: sim)*
+- Antes da distribuição, dois assentos **palpitam** a quantidade certa de cartas, por um jogo de pontaria numa barra; **o palpite não altera em nada** a distribuição real (ela continua exatamente como em §3.1/§3.2, sempre 11 cartas por mão e 11 por morto). Acertar só rende um **bônus de pontos** (§12.1).
+- **Quem palpita:** o jogador que distribui a mão é o **anterior** (sentido anti-horário, §4.2) ao jogador que abre a partida (§4.1); o jogador que distribui o morto é o **anterior** a esse. No modo individual (2 assentos), "o anterior ao anterior" é o próprio jogador que abre a partida: ele acumula os dois palpites (mão e morto).
+- **Palpite da mão:** o jogador escolhe, numa barra com um estágio para **cada carta do baralho embaralhado** (104, ou 96 com `maxWildsPerMeld` = 0, §1), uma faixa (início e fim). Acerta e ganha o bônus se a largura da faixa (fim − início) for exatamente **44** (modo duplas) ou **22** (modo individual) — o total de cartas que as mãos de fato recebem (§3.1).
+- **Palpite do morto:** feito **depois** do palpite da mão, numa barra com um estágio para cada carta ainda disponível para esse papel: o **total do baralho menos a largura escolhida no palpite da mão**, limitado entre **22** (mínimo) e **60** no modo duplas ou **82** no modo individual (máximo). Acerta e ganha o bônus se a largura escolhida for exatamente **22** — o total de cartas que os dois mortos de fato recebem (§3.2).
+- A distribuição do morto só começa depois de resolvido o palpite do morto; a da mão, depois de resolvido o palpite da mão. Nenhuma carta do monte é mostrada antes disso (§3.3).
+- **Jogadores virtuais:** participam do palpite com uma taxa de acerto pelo seu nível (§14.5): Fácil 5%, Médio 15%, Difícil 25%. Quando não acertam, a largura escolhida é qualquer outra dentro da faixa disponível.
+- Com o parâmetro desligado, a fase de palpite não acontece: a distribuição começa direto, como hoje.
+
 ---
 
 # **4. Ordem de Jogada**
@@ -295,6 +304,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
   - Não há 3 preto na mesa (nenhum 3 compõe conjuntos, §6.2).
   - Contam todas as cartas de todos os conjuntos do lado (canastras ou não) e os 3 vermelhos baixados, sempre (com ou sem vencedor, com ou sem canastra).
   - Exemplo: canastra limpa 4-5-6-7-8-9-10 de copas = 200 (canastra limpa) + 7 × 8 (cartas) = **256**.
+- **Distribuição certeira** (§3.6): **+100** para o lado de quem acertou o palpite da mão, e mais **+100** para o lado de quem acertou o palpite do morto (podem ser o mesmo lado ou lados diferentes) *(parâmetro `dealGuessBonusEnabled`; base: sim)*.
 
 ### **12.2. Penalidades (negativas)**
 - **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto — inclusive o lado que bate quando não havia mais morto disponível (§9.5).
@@ -358,6 +368,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 | `goOutRequiresCleanCanasta` — bater exige canastra limpa | §11.1 | sim / não | não |
 | `handBlackThreePoints` — cada 3 preto na mão no fim da partida | §12.2 | inteiro ≤ 0 | –5 |
 | `targetScore` — pontuação-alvo | §13, §14 | inteiro > 0 | 3.000 |
+| `dealGuessBonusEnabled` — palpite da distribuição certeira | §3.6, §12.1 | sim / não | sim |
 
 - Um perfil com valor **fora das faixas** da tabela não pode ser salvo nem usado numa mesa. Qualquer combinação de valores dentro das faixas é válida (ex.: grupos proibidos e 0 coringas = só sequências naturais).
 - Todas as demais regras deste documento são **fixas** em qualquer perfil (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de conjunto = 3 e de canastra = 7, demais valores de pontuação etc.). No código, ficam no `RuleSet` com os valores-base e não são expostas ao jogador.
@@ -376,6 +387,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 | `goOutRequiresCleanCanasta` | não | **sim** |
 | `handBlackThreePoints` | –5 | **–100** |
 | `targetScore` | 3.000 | 3.000 |
+| `dealGuessBonusEnabled` | sim | sim |
 
 - **Perfis personalizados:** o jogador pode **duplicar** qualquer perfil (da casa ou personalizado), dar um nome e alterar os parâmetros de §14.2. A origem fica registrada, e o app mostra o que difere dela.
 - No editor das regras personalizadas, o jogador pode **começar a partir** dos valores de qualquer perfil da casa e ajustá-los (os perfis da casa em si não mudam).
@@ -408,7 +420,7 @@ Os jogadores virtuais são **4 perfis de robô**, cada um com **visual**, **esti
 
 - **Nome e bordão:** cada perfil tem **um nome único e fixo**, o mesmo em qualquer nível, e um **bordão** exibido como texto decorativo: **Jovem — Bolt** ("Bora fechar essa mesa!"), **Sóbrio — Domino** ("Cada carta tem seu propósito."), **Atleta — Turbo** ("Agora é pra valer!"), **Alternativo — Zen** ("Calma parceiro! A próxima carta pode mudar tudo!"). O modelo de identidade (nome, sobrenome, abreviação, posição) **continua previsto** para os jogadores online futuros, mas **não é sorteado** para os robôs.
 
-- **Níveis:** **Iniciante** (dificuldade Fácil), **Maduro** (Médio) e **Sênior** (Difícil). Todos os personagens de uma mesa têm o nível da **dificuldade dos robôs** escolhida na montagem (§14.4). O nível aparece como insígnia de 1, 2 ou 3 estrelas junto da imagem.
+- **Níveis:** **Iniciante** (dificuldade Fácil), **Maduro** (Médio) e **Sênior** (Difícil). Todos os personagens de uma mesa têm o nível da **dificuldade dos robôs** escolhida na montagem (§14.4). O nível aparece como insígnia de 1, 2 ou 3 estrelas junto da imagem. A dificuldade também define a taxa de acerto no palpite da distribuição certeira (§3.6).
 - **Estilo × nível:** o nível define a força do jogador virtual; o estilo só muda **preferências entre jogadas legais** (por exemplo, quando pegar o lixo ou bater). **Nenhum estilo altera regra**, e o jogador virtual continua vendo apenas a informação visível a um jogador.
 - **Escolha e sorteio ao formar a mesa:** os personagens da mesa têm **perfis diferentes entre si**. Os que o jogador **escolhe** na seleção de jogadores (§14.4) ocupam o lugar escolhido; **Completar com robôs** sorteia, com a semente da mesa, personagens entre os **não usados** para os lugares VAGO. Quem recusa o convite, sai da mesa ou some **deixa o lugar VAGO** (não entra robô sorteado sozinho). O nome do personagem é o do seu perfil (acima), então não há nomes repetidos na mesa; o nome do jogador não influencia o sorteio. O perfil vale durante todo o jogo, e iniciar o jogo **não sorteia de novo**.
 - **Como são chamados:** na **comunicação** do jogo (avisos, janelas de decisão, "Vez de", detalhe da última jogada, tela de pontos, declaração do vencedor), pelo **nome** com a **imagem** do personagem. Em todos os modos (individual e duplas) o jogador virtual é chamado **só pelo nome**, **sem** a posição em relação ao jogador (não há mais `(dir)` nem `(esq)`). O jogador é "Você". Na **montagem da mesa**, cada personagem aparece com o retrato e o **nome**. Na **mesa de jogo** (o personagem já está sentado na sua posição), o nome vem **sem** a posição; só o parceiro leva a legenda "Parceiro". No **detalhe da última jogada** (o modal que abre ao tocar no jogador), o personagem aparece **inteiro** (sem recorte em círculo), na mesma imagem de **apresentação** da lista de robôs da seleção de jogadores, com o **bordão** logo abaixo da imagem e, depois, o nome.
