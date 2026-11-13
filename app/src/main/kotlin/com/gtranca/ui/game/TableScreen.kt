@@ -1618,7 +1618,14 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
         }
         // 7 cartas de 48dp por linha em 360dp; 2 linhas à vista (sobra mesa para os jogos), o resto rola. A margem
         // dentro da rolagem deixa a carta marcada crescer sem ser cortada pela borda.
-        val custom = state.customHand
+        // Na distribuição, a coluna dos 3 pretos/coringas não reserva lugar para os que ainda não chegaram: o split
+        // usa só as cartas já na mão (mesmo filtro de CardFlow), então a coluna só aparece (e só cresce) quando um
+        // deles pousa de verdade.
+        val custom = if (state.dealPending && state.customHand != null) {
+            HandOrder.split(state.hand.filterNot { it in LocalLanding.current }, state.sort)
+        } else {
+            state.customHand
+        }
         Box(
             Modifier.fillMaxWidth().heightIn(max = 74.dp * 2 + HandGrowMargin * 2).anchor(AnimAnchor.OwnHand)
                 .verticalScroll(rememberScrollState()).padding(vertical = HandGrowMargin, horizontal = 3.dp)
