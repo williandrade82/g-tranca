@@ -2200,7 +2200,9 @@ private fun FlyingCard(
         }
     }
     if (phase == FlightPhase.BEFORE || overlayGone) return
-    val size = CardSize.SMALL
+    // A carta real da própria mão é CardSize.MEDIUM (os outros destinos — mesa, lixo, mortos, 3 vermelhos — são
+    // todos SMALL); sem isso a carta voando ficava menor que a carta real no pouso, visível na sobreposição.
+    val size = if (flight.to == AnimAnchor.OwnHand) CardSize.MEDIUM else CardSize.SMALL
     val density = LocalDensity.current
     val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
     val arcPx = with(density) { 36.dp.toPx() }

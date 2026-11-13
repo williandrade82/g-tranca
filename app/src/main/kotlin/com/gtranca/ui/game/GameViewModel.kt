@@ -711,7 +711,11 @@ class GameViewModel(
             // então vão à área de 3 vermelhos, na confirmação.
             val dealt = snapshot.view.hand.filter { it !in hiddenCards } +
                 fresh.filter { it.seat == snapshot.viewerSeat && it.atTurnStart && !it.chained }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
-            TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet, durationMillis = animationMillis)
+            // Sorteado a partir da semente do jogo e do número da partida (não do Random global): reproduzível, e as
+            // duas instâncias de um mesmo teste com a mesma semente comparam o mesmo estilo.
+            val dealStyleOptions = TableAnimations.DealStyle.entries
+            val dealStyle = dealStyleOptions[Random(gameSeed xor snapshot.roundNumber.toLong()).nextInt(dealStyleOptions.size)]
+            TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet, durationMillis = animationMillis, style = dealStyle)
                 .map { it.scaled(state.animationScale) }
                 .map { if (state.opening) it.copy(delayMillis = it.delayMillis + com.gtranca.net.PREPARE_MILLIS) else it }
         } else {
