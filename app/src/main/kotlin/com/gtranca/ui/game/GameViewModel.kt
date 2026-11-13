@@ -711,7 +711,7 @@ class GameViewModel(
             // então vão à área de 3 vermelhos, na confirmação.
             val dealt = snapshot.view.hand.filter { it !in hiddenCards } +
                 fresh.filter { it.seat == snapshot.viewerSeat && it.atTurnStart && !it.chained }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
-            TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet)
+            TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet, durationMillis = animationMillis)
                 .map { it.scaled(state.animationScale) }
                 .map { if (state.opening) it.copy(delayMillis = it.delayMillis + com.gtranca.net.PREPARE_MILLIS) else it }
         } else {
@@ -1149,9 +1149,9 @@ class GameViewModel(
             .map { it.scaled(state.animationScale) }
     }
 
-    /** Tempo da animação de distribuição (cartas dos assentos e dos mortos, escalonadas, mais um voo). */
+    /** Tempo da animação de distribuição (pior caso entre os dois estilos em avaliação, [TableAnimations.worstCaseDealMillis]). */
     private fun dealAnimationMillis(config: GameConfig): Long =
-        (config.mode.seatCount * 11 + 2) * TableAnimations.DEAL_STAGGER_MILLIS + animationMillis + EXPIRY_MARGIN_MILLIS
+        TableAnimations.worstCaseDealMillis(config.mode.seatCount, animationMillis) + EXPIRY_MARGIN_MILLIS
 
     companion object {
         /** Folga para a limpeza de uma animação depois do fim do desenho. */

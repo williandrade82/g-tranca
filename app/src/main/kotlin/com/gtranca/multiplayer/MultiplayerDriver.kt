@@ -209,7 +209,7 @@ class MultiplayerDriver private constructor(
 
     companion object {
         /** Duração base da distribuição na tela (a mesma conta do jogo local, 4 assentos). */
-        private const val DEAL_MILLIS: Long = (4 * 11 + 2) * TableAnimations.DEAL_STAGGER_MILLIS + GameViewModel.DEFAULT_ANIMATION_MILLIS
+        private val DEAL_MILLIS: Long = TableAnimations.worstCaseDealMillis(4, GameViewModel.DEFAULT_ANIMATION_MILLIS)
 
         /** Folga das esperas pela tela (rede de segurança, como no jogo local). */
         // Inclui o "Prepare-se!" de 1,5 s que antecede a distribuição da 1ª partida.

@@ -477,26 +477,60 @@ class TableAnimationsTest {
     }
 
     @Test
-    fun `distribuicao - do monte, uma carta por assento por vez, mortos no fim, so a propria mao aberta`() {
+    fun `distribuicao - estilo lotes de 3 - toda a mao do jogador antes do proximo, mortos no fim, so a propria mao aberta`() {
         val hand = listOf(c("4S"), c("7H"), c("KD"))
         val view = view(hand).copy(handSizes = listOf(3, 3, 3, 3))
         var id = 0L
-        val flights = TableAnimations.deal(snapshot(view, List(4) { emptyList() }), hand) { id++ }
+        val dur = TableAnimations.DEFAULT_FLIGHT_MILLIS
+        val flights = TableAnimations.deal(
+            snapshot(view, List(4) { emptyList() }), hand, { id++ }, style = TableAnimations.DealStyle.GROUPS_OF_THREE,
+        )
 
         // 4 assentos × 3 cartas + 1 por morto.
         flights.size shouldBe 4 * 3 + 2
         flights.all { it.from == AnimAnchor.Stock } shouldBe true
-        // Rodízio a partir de quem começa: você, assento 1, 2, 3, e de novo.
-        flights.take(8).map { it.to } shouldBe List(2) {
-            listOf(AnimAnchor.OwnHand, AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(3))
-        }.flatten()
+        // Toda a mão de um jogador (3 cartas, um lote só) antes de o próximo começar.
+        flights.map { it.to } shouldBe listOf(
+            AnimAnchor.OwnHand, AnimAnchor.OwnHand, AnimAnchor.OwnHand,
+            AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(1),
+            AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(2),
+            AnimAnchor.SeatHand(3), AnimAnchor.SeatHand(3), AnimAnchor.SeatHand(3),
+            AnimAnchor.Morto(0), AnimAnchor.Morto(1),
+        )
         // Só as cartas do humano voam abertas, na ordem da mão; as dos outros, viradas.
         flights.filter { it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe hand
         flights.filter { it.to != AnimAnchor.OwnHand }.all { it.card == null } shouldBe true
-        // Mortos por último, cada um com uma carta.
+        // O lote do assento 1 só começa depois que o lote do humano termina de pousar (3ª carta + a duração do voo).
+        val seat1Start = flights.first { it.to == AnimAnchor.SeatHand(1) }.delayMillis
+        val ownLast = flights.filter { it.to == AnimAnchor.OwnHand }.maxOf { it.delayMillis }
+        (seat1Start >= ownLast + dur) shouldBe true
+        flights.map { it.id }.toSet().size shouldBe flights.size
+    }
+
+    @Test
+    fun `distribuicao - estilo levas - uma carta por assento por leva, leva seguinte espera a atual pousar`() {
+        val hand = listOf(c("4S"), c("7H"), c("KD"))
+        val view = view(hand).copy(handSizes = listOf(3, 3, 3, 3))
+        var id = 0L
+        val dur = TableAnimations.DEFAULT_FLIGHT_MILLIS
+        val flights = TableAnimations.deal(
+            snapshot(view, List(4) { emptyList() }), hand, { id++ }, style = TableAnimations.DealStyle.WAVES,
+        )
+
+        // 4 assentos × 3 cartas + 1 por morto.
+        flights.size shouldBe 4 * 3 + 2
+        flights.all { it.from == AnimAnchor.Stock } shouldBe true
+        // Rodízio a partir de quem começa: você, assento 1, 2, 3, e de novo (como antes), mas agora em levas.
+        flights.take(8).map { it.to } shouldBe List(2) {
+            listOf(AnimAnchor.OwnHand, AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(3))
+        }.flatten()
+        flights.filter { it.to == AnimAnchor.OwnHand }.map { it.card } shouldBe hand
+        flights.filter { it.to != AnimAnchor.OwnHand }.all { it.card == null } shouldBe true
         flights.takeLast(2).map { it.to } shouldBe listOf(AnimAnchor.Morto(0), AnimAnchor.Morto(1))
-        // Uma de cada vez: atrasos crescentes e ids únicos.
-        flights.map { it.delayMillis }.zipWithNext().all { (a, b) -> b > a } shouldBe true
+        // A leva seguinte (assento 3 da 1ª leva → humano da 2ª) só começa depois que a 1ª leva termina de pousar.
+        val wave1End = flights.take(4).maxOf { it.delayMillis }
+        val wave2Start = flights[4].delayMillis
+        (wave2Start >= wave1End + dur) shouldBe true
         flights.map { it.id }.toSet().size shouldBe flights.size
     }
 
