@@ -14,7 +14,9 @@ import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.SideTable
 import com.gtranca.engine.model.dealGuessHandStages
+import com.gtranca.engine.model.dealGuessHandTarget
 import com.gtranca.engine.model.dealGuessMortoStages
+import com.gtranca.engine.model.dealGuessMortoTarget
 
 /**
  * Máquina de estados da partida (§4.3, §5, §6.5, §8–§11). Funções puras sobre [RoundState].
@@ -197,7 +199,7 @@ object RoundEngine {
         val hi = maxOf(start, end)
         return when (state.phase) {
             Phase.DEAL_GUESS_HAND -> {
-                val target = rules.cardsPerHand * state.mode.seatCount
+                val target = dealGuessHandTarget(state.mode, rules)
                 val resolved = Guess(lo, hi, hi - lo == target)
                 RuleResult.Ok(
                     state.copy(
@@ -208,7 +210,7 @@ object RoundEngine {
                 )
             }
             Phase.DEAL_GUESS_MORTO -> {
-                val target = rules.cardsPerMorto * rules.mortoCount
+                val target = dealGuessMortoTarget(rules)
                 val resolved = Guess(lo, hi, hi - lo == target)
                 val afterGuess = state.copy(
                     dealGuess = guess.copy(morto = resolved),
