@@ -1661,17 +1661,13 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     val hasSelection = state.selected.isNotEmpty()
     val greenLed = com.gtranca.engine.BoosterCatalog.GREEN_LED in state.boosters
     val landing = LocalLanding.current
-    // Na distribuição, a mão só mostra o que já chegou (sem reservar o lugar das cartas a caminho): ela cresce a
-    // cada lote, em vez de abrir já com os 11 lugares da mão final. Fora da distribuição (ex.: comprar do monte),
-    // o lugar de uma carta a caminho continua reservado (alpha 0 abaixo), para não embaralhar o resto da mão.
-    val shown = if (state.dealPending) cards.filterNot { it in landing } else cards
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         maxItemsInEachRow = maxPerRow,
     ) {
-        shown.forEach { card ->
+        cards.forEach { card ->
             val selected = card in state.selected
             val isNew = card in state.newCards
             val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
