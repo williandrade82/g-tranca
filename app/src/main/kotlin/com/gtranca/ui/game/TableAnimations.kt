@@ -80,11 +80,11 @@ data class CanastaFlash(val id: Long, val side: Int, val meldId: Int, val clean:
  */
 object TableAnimations {
 
-    /** Espaço entre cartas do mesmo movimento. */
+    /** Espaço entre cartas do mesmo movimento (e entre as de um mesmo lote da distribuição). */
     const val STAGGER_MILLIS: Long = 70
 
-    /** Espaço entre cartas na distribuição (são muitas: 11 por jogador). */
-    const val DEAL_STAGGER_MILLIS: Long = 40
+    /** Tamanho do lote da distribuição no estilo [DealStyle.GROUPS_OF_THREE] (a última mão do jogador fecha menor). */
+    const val DEAL_GROUP_SIZE: Int = 3
 
     /** Máximo de cartas animadas num movimento (o lixo pode ter muitas; as demais chegam sem voo). */
     const val MAX_CARDS_PER_MOVE: Int = 5
@@ -101,28 +101,93 @@ object TableAnimations {
     /** Duração de um voo quando quem chama não informa (a do jogo: GameViewModel.DEFAULT_ANIMATION_MILLIS). */
     const val DEFAULT_FLIGHT_MILLIS = 450L
 
+    /** Dois jeitos de distribuir em avaliação (telas.md ainda não documenta: nenhum foi escolhido). */
+    enum class DealStyle {
+        /** Rodízio em lotes de [DEAL_GROUP_SIZE]: [DEAL_GROUP_SIZE] cartas para o 1º lugar, depois o 2º, o 3º... até
+         * esvaziar todos (volta ao 1º lugar para o lote seguinte); o lote seguinte começa na metade do caminho do atual. */
+        GROUPS_OF_THREE,
+
+        /** Rodízio carta a carta: uma carta de cada lugar a cada leva (todos os lugares ainda com cartas, até 4 numa
+         * mesa de duplas), voando juntas; a leva seguinte começa na metade do caminho da atual. */
+        WAVES
+    }
+
+    /** Um "lugar" para onde a distribuição voa: um assento ou um morto, com quantas cartas ele recebe no total. */
+    private class DealPlace(val anchor: AnimAnchor, val count: Int, val cardAt: (Int) -> Card?)
+
+    /** Rodízio em lotes de [chunk] entre [places]: todo o lote do 1º lugar, depois o do 2º... até esvaziar todos. */
+    private fun dealGroupsOf(places: List<DealPlace>, chunk: Int): List<List<Pair<AnimAnchor, Card?>>> {
+        val remaining = IntArray(places.size) { places[it].count }
+        val delivered = IntArray(places.size)
+        val groups = mutableListOf<List<Pair<AnimAnchor, Card?>>>()
+        while (remaining.any { it > 0 }) {
+            places.forEachIndexed { p, place ->
+                val take = minOf(chunk, remaining[p])
+                if (take > 0) {
+                    groups += (delivered[p] until delivered[p] + take).map { place.anchor to place.cardAt(it) }
+                    delivered[p] += take
+                    remaining[p] -= take
+                }
+            }
+        }
+        return groups
+    }
+
+    /** Rodízio carta a carta: cada leva é uma carta de cada lugar que ainda tiver, todas no mesmo lote. */
+    private fun dealWaves(places: List<DealPlace>): List<List<Pair<AnimAnchor, Card?>>> {
+        val rounds = places.maxOfOrNull { it.count } ?: 0
+        return (0 until rounds).map { i -> places.filter { i < it.count }.map { it.anchor to it.cardAt(i) } }
+    }
+
+    private fun dealGroups(places: List<DealPlace>, style: DealStyle): List<List<Pair<AnimAnchor, Card?>>> = when (style) {
+        DealStyle.GROUPS_OF_THREE -> dealGroupsOf(places, DEAL_GROUP_SIZE)
+        DealStyle.WAVES -> dealWaves(places)
+    }
+
     /**
-     * Distribuição do início da partida: uma carta por vez, do monte a cada assento (em ordem a partir de quem
-     * começa) e, no fim, uma carta virada a cada morto. As do humano voam abertas ([ownCards]: a mão visível); as
-     * dos outros assentos, viradas (informação oculta).
+     * Pior caso do tempo da distribuição entre os dois estilos em avaliação ([DealStyle]), para quem precisa de um
+     * tempo de espera antes dela (multijogador, local ou online).
      */
-    fun deal(snapshot: GameSnapshot, ownCards: List<Card>, nextId: () -> Long): List<CardFlight> {
+    fun worstCaseDealMillis(seats: Int, handSize: Int, mortoCount: Int, mortoSize: Int, durationMillis: Long): Long {
+        fun groupMillis(size: Int) = STAGGER_MILLIS * (size - 1) + durationMillis
+        fun ceilDiv(a: Int, b: Int) = (a + b - 1) / b
+        val groupsOfThree = (seats * ceilDiv(handSize, DEAL_GROUP_SIZE) + mortoCount * ceilDiv(mortoSize, DEAL_GROUP_SIZE)) * groupMillis(DEAL_GROUP_SIZE)
+        val waves = handSize.toLong() * groupMillis(seats) + mortoSize.toLong() * groupMillis(mortoCount)
+        return maxOf(groupsOfThree, waves)
+    }
+
+    /**
+     * Distribuição do início da partida: primeiro os assentos (em ordem a partir de quem começa), depois os mortos,
+     * sempre em **lotes** que voam juntos; o próximo lote começa quando o atual chega à metade do caminho (não
+     * espera ele pousar — mais ágil sem perder a leitura de "lote por lote"), no estilo [style] (telas.md ainda não
+     * documenta: por padrão sorteia entre os dois a cada partida, para comparar com o usuário). As cartas do humano
+     * voam abertas ([ownCards]: a mão visível); as dos outros assentos e dos mortos, viradas (informação oculta).
+     */
+    fun deal(
+        snapshot: GameSnapshot,
+        ownCards: List<Card>,
+        nextId: () -> Long,
+        durationMillis: Long = DEFAULT_FLIGHT_MILLIS,
+        style: DealStyle = DealStyle.entries.random(),
+    ): List<CardFlight> {
         val view = snapshot.view
         val viewer = snapshot.viewerSeat
         val order = view.mode.seatsInPlayOrder(view.firstSeat)
-        val flights = mutableListOf<CardFlight>()
-        var k = 0L
-        val rounds = order.maxOf { seat -> if (seat == viewer) ownCards.size else view.handSizes[seat.index] }
-        for (i in 0 until rounds) {
-            for (seat in order) {
-                val mine = seat == viewer
-                val count = if (mine) ownCards.size else view.handSizes[seat.index]
-                if (i >= count) continue
-                flights += CardFlight(nextId(), AnimAnchor.Stock, holder(seat, viewer), if (mine) ownCards[i] else null, DEAL_STAGGER_MILLIS * k++)
-            }
+        val seatPlaces = order.map { seat ->
+            val count = if (seat == viewer) ownCards.size else view.handSizes[seat.index]
+            DealPlace(holder(seat, viewer), count) { i -> if (seat == viewer) ownCards[i] else null }
         }
-        view.mortoSizes.indices.forEach { m ->
-            flights += CardFlight(nextId(), AnimAnchor.Stock, AnimAnchor.Morto(m), null, DEAL_STAGGER_MILLIS * k++)
+        val mortoPlaces = view.mortoSizes.indices.map { m -> DealPlace(AnimAnchor.Morto(m), view.mortoSizes[m]) { null } }
+
+        val flights = mutableListOf<CardFlight>()
+        var cursor = 0L
+        (dealGroups(seatPlaces, style) + dealGroups(mortoPlaces, style)).forEach { group ->
+            group.forEachIndexed { i, (target, card) ->
+                flights += CardFlight(nextId(), AnimAnchor.Stock, target, card, cursor + STAGGER_MILLIS * i)
+            }
+            // O próximo lote já começa na metade do caminho do atual (não espera ele pousar): mais ágil sem perder
+            // a leitura de "lote por lote", para os dois estilos, assentos e mortos.
+            cursor += STAGGER_MILLIS * (group.size - 1) + durationMillis / 2
         }
         return flights
     }

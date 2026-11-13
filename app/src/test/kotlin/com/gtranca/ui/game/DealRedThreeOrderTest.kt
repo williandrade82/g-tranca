@@ -73,6 +73,10 @@ class DealRedThreeOrderTest {
                         val scale = GameViewModel.speedFor(slow)
                         val dealEnd = initial.flights.maxOf { it.delayMillis } + (ANIMATION * scale).toLong()
                         val signalAt = dealEnd + screenLateBy
+                        // Folga depois do sinal para o aviso, o voo da troca e a jogada do bot (a distribuição em si
+                        // já está contada em signalAt; os dois estilos em avaliação podem distribuir os mortos
+                        // inteiros, não só 1 carta, então a distribuição pode demorar bem mais que antes).
+                        val budget = signalAt + 30_000
 
                         var t = 0L
                         var signalTime: Long? = null
@@ -81,7 +85,7 @@ class DealRedThreeOrderTest {
                         var botPlayedAt: Long? = null
                         var humanAt: Long? = null
                         withClue("modo $mode, bot $botSeat, semente $seed, lenta=$slow, tela atrasa $screenLateBy ms") {
-                            while (t < 30_000 && humanAt == null) {
+                            while (t < budget && humanAt == null) {
                                 val state = vm.uiState.value
                                 if (signalTime == null && t >= signalAt) {
                                     vm.onDealAnimationFinished()

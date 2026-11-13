@@ -71,7 +71,7 @@ class BoosterSelectorViewModelTest {
         vm.confirm { delivered = it }
         advanceUntilIdle()
         delivered shouldBe listOf("b3")
-        repo.stock.value.quantities shouldBe mapOf("b1" to 5, "b2" to 5, "b3" to 4)
+        repo.stock.value.quantities shouldBe mapOf("b1" to 5, "b2" to 5, "b3" to 4, "b4" to 5)
     }
 
     @Test
@@ -83,7 +83,7 @@ class BoosterSelectorViewModelTest {
         vm.confirm { delivered = it }
         advanceUntilIdle()
         delivered shouldBe listOf("b1", "b2")
-        repo.stock.value.quantities shouldBe mapOf("b1" to 4, "b2" to 4, "b3" to 5)
+        repo.stock.value.quantities shouldBe mapOf("b1" to 4, "b2" to 4, "b3" to 5, "b4" to 5)
     }
 
     @Test

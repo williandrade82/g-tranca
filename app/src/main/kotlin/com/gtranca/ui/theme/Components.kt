@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -117,16 +119,20 @@ fun GButton(
     val surface: Modifier = when (kind) {
         GButtonKind.Primary -> Modifier
             .shadow(Elevation.button, shape, ambientColor = GColors.GoldDeep, spotColor = GColors.GoldDeep)
-            .background(GoldBrush, shape)
-            .border(1.dp, GColors.Champagne.copy(alpha = 0.8f), shape)
+            .background(Brush.verticalGradient(listOf(Color(0xFFFFE89A), GColors.Gold, GColors.GoldDeep)), shape)
+            .bevel(GColors.Champagne, Color(0xFF7A5410))
+            .border(1.5.dp, Brush.verticalGradient(listOf(Color(0xFFFFF4C8), GColors.GoldDeep)), shape)
             .sheen(enabled)
         GButtonKind.Secondary -> Modifier
             .shadow(Elevation.button, shape)
-            .background(GColors.Indigo, shape)
-            .border(1.5.dp, GColors.RoyalBlue, shape)
+            .background(Brush.verticalGradient(listOf(GColors.RoyalBlue, GColors.Indigo, GColors.Midnight)), shape)
+            .bevel(Color(0xFF8FB0FF), Color.Black)
+            .border(1.5.dp, Brush.verticalGradient(listOf(GColors.Champagne, GColors.GoldDeep)), shape)
         GButtonKind.Danger -> Modifier
             .shadow(Elevation.button, shape)
             .background(Brush.verticalGradient(listOf(GColors.Ruby, GColors.Bordeaux)), shape)
+            .bevel(Color(0xFFFF9C9C), Color.Black)
+            .border(1.5.dp, Brush.verticalGradient(listOf(GColors.Champagne, GColors.GoldDeep)), shape)
         GButtonKind.DangerOutline -> Modifier
             .background(GColors.Indigo, shape)
             .border(1.5.dp, GColors.Ruby, shape)
@@ -148,6 +154,33 @@ fun GButton(
         )
     }
 }
+
+/**
+ * Bisel do botão em cápsula: um filete claro ([light]) no alto, por dentro, e uma faixa escura ([dark]) na base, que dão
+ * o volume de botão de jogo.
+ */
+private fun Modifier.bevel(light: Color, dark: Color): Modifier = drawWithContent {
+    drawContent()
+    val h = size.height
+    val r = CornerRadius(h / 2)
+    val inset = 2.dp.toPx()
+    // Brilho no terço de cima.
+    drawRoundRect(
+        Brush.verticalGradient(listOf(light.copy(alpha = 0.55f), Color.Transparent), startY = 0f, endY = h * 0.5f),
+        Offset(inset * 2, inset), Size(size.width - inset * 4, h * 0.45f), CornerRadius(h * 0.25f),
+    )
+    // Sombra na base.
+    drawRoundRect(
+        Brush.verticalGradient(listOf(Color.Transparent, dark.copy(alpha = 0.35f)), startY = h * 0.6f, endY = h),
+        Offset.Zero, size, r,
+    )
+}
+
+/** Painel dos modais no estilo do salão: azul-noite em degradê com moldura dourada biselada. */
+fun Modifier.loungeDialog(shape: androidx.compose.ui.graphics.Shape): Modifier = this
+    .shadow(Elevation.dialog, shape, ambientColor = GColors.RoyalEnd, spotColor = Color.Black)
+    .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo, GColors.Midnight)), shape)
+    .border(2.dp, Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep)), shape)
 
 /** Faixa de luz que varre o componente a cada poucos segundos (parada sem animações do sistema). */
 @Composable
@@ -199,7 +232,23 @@ fun GBackground(modifier: Modifier = Modifier, royal: Boolean = false, rays: Boo
                 }
                 drawContent()
             },
-    ) { content() }
+    ) {
+        // Topo do salão (cortinas, arco, holofotes) esmaecendo para o fundo: a identidade visual em todas as telas.
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(com.gtranca.R.drawable.lounge_header), null,
+            Modifier.fillMaxWidth().aspectRatio(640f / 576f)
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 0.35f to Color.Black.copy(alpha = 0.45f), 1f to Color.Transparent),
+                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                    )
+                },
+            contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
+        )
+        content()
+    }
 }
 
 /** Raios de luz a partir do centro superior; [alpha] ≤ 0,1. */
@@ -319,14 +368,14 @@ fun GDialog(
     AlertDialog(
         onDismissRequest = onDismissRequest,
         confirmButton = confirmButton,
-        modifier = modifier.border(1.dp, GColors.Gold.copy(alpha = 0.5f), MaterialTheme.shapes.extraLarge),
+        modifier = modifier.loungeDialog(MaterialTheme.shapes.extraLarge),
         dismissButton = dismissButton,
         title = { Column { BrandHeader(); title?.invoke() } },
         text = text,
         properties = properties,
         shape = MaterialTheme.shapes.extraLarge,
-        tonalElevation = Elevation.dialog,
-        containerColor = GColors.Indigo,
+        tonalElevation = 0.dp,
+        containerColor = Color.Transparent,
         titleContentColor = GColors.Gold,
         textContentColor = GColors.Ivory,
     )

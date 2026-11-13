@@ -102,6 +102,19 @@ class HardBotTest {
         action.card.rank.symbol shouldNotBe 'J'
     }
 
+    @Test
+    fun `§9_2 com 6-6-6-coringa na mao baixa tudo e pega o morto direto, sem trocar por 6-6-coringa e descarte`() {
+        // Caso relatado (Dominó, Difícil): baixou 6+6+coringa e descartou o 6 (morto indireto, §9.3). A preferida
+        // do Médio esvazia a mão (morto direto, §9.2) e só pode perder para outra que também esvazie, mesmo com a
+        // busca livre para trocar ([small], sem travas).
+        val state = fullScenario(hand = "6S 6D 6C 2H")
+        (1L..20L).forEach { seed ->
+            val action = HardBot(Random(seed), small).decide(state)
+            action.shouldBeInstanceOf<Action.CreateMeld>()
+            action.cards.size shouldBe 4
+        }
+    }
+
     // ---------- orçamento e determinismo ----------
 
     @Test

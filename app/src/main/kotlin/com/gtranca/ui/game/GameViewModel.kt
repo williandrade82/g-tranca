@@ -194,6 +194,12 @@ data class GameUiState(
     /** "Baixar" só quando a seleção forma conjunto novo ou completa um conjunto da mesa (em `legalActions`). */
     val canMeld: Boolean get() = playing && HumanTurnResolver.canMeld(legal, selected)
 
+    /** Jogos do lado que recebem todas as cartas selecionadas de uma vez (destacados na mesa). */
+    val addableMelds: Set<MeldId> get() = if (playing) HumanTurnResolver.addTargets(legal, selected) else emptySet()
+
+    /** As cartas selecionadas formam um conjunto novo: a mesa mostra o conjunto vazio. */
+    val canCreateNew: Boolean get() = playing && HumanTurnResolver.canCreateNew(legal, selected)
+
     val canDiscard: Boolean get() = playing && selected.size == 1
 
     /** A carta selecionada pode ser descartada agora (há um `Discard` dela em `legalActions`). */
@@ -705,7 +711,11 @@ class GameViewModel(
             // então vão à área de 3 vermelhos, na confirmação.
             val dealt = snapshot.view.hand.filter { it !in hiddenCards } +
                 fresh.filter { it.seat == snapshot.viewerSeat && it.atTurnStart && !it.chained }.flatMap { it.cards }.filter { it !in snapshot.view.hand }
-            TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet)
+            // Sorteado a partir da semente do jogo e do número da partida (não do Random global): reproduzível, e as
+            // duas instâncias de um mesmo teste com a mesma semente comparam o mesmo estilo.
+            val dealStyleOptions = TableAnimations.DealStyle.entries
+            val dealStyle = dealStyleOptions[Random(gameSeed xor snapshot.roundNumber.toLong()).nextInt(dealStyleOptions.size)]
+            TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet, durationMillis = animationMillis, style = dealStyle)
                 .map { it.scaled(state.animationScale) }
                 .map { if (state.opening) it.copy(delayMillis = it.delayMillis + com.gtranca.net.PREPARE_MILLIS) else it }
         } else {
@@ -883,6 +893,7 @@ class GameViewModel(
     }
 
     override fun onCreateMeld() = play(PlayIntent.CreateMeld)
+    override fun onNewMeld() = play(PlayIntent.NewMeld)
 
     override fun onAddToMeld(meldId: MeldId) = play(PlayIntent.AddToMeld(meldId))
 
@@ -1142,9 +1153,10 @@ class GameViewModel(
             .map { it.scaled(state.animationScale) }
     }
 
-    /** Tempo da animação de distribuição (cartas dos assentos e dos mortos, escalonadas, mais um voo). */
-    private fun dealAnimationMillis(config: GameConfig): Long =
-        (config.mode.seatCount * 11 + 2) * TableAnimations.DEAL_STAGGER_MILLIS + animationMillis + EXPIRY_MARGIN_MILLIS
+    /** Tempo da animação de distribuição (pior caso entre os dois estilos em avaliação, [TableAnimations.worstCaseDealMillis]). */
+    private fun dealAnimationMillis(config: GameConfig): Long = TableAnimations.worstCaseDealMillis(
+        config.mode.seatCount, config.rules.cardsPerHand, config.rules.mortoCount, config.rules.cardsPerMorto, animationMillis,
+    ) + EXPIRY_MARGIN_MILLIS
 
     companion object {
         /** Folga para a limpeza de uma animação depois do fim do desenho. */

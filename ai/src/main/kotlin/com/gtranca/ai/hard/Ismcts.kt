@@ -102,8 +102,13 @@ internal class Ismcts(
         events: List<PublicEvent>,
     ): Result {
         rules = view.rules
-        val rootCandidates = scorer.rankedCandidates(view, legal, config.candidatesPerKind)
-        val baseline = rootCandidates.first()
+        val ranked = scorer.rankedCandidates(view, legal, config.candidatesPerKind)
+        val baseline = ranked.first()
+        // §8/§9.2/§11.1 se a preferida do Médio esvazia a mão (o motor só oferece isso quando leva ao morto direto ou
+        // à batida), só disputam desafiantes que também a esvaziam: trocar por uma jogada que guarda carta para
+        // descartar perde a vez de vantagem (e os pontos das cartas que ficariam na mão) e o ruído das poucas
+        // simulações não deve decidir isso.
+        val rootCandidates = if (emptiesHand(baseline, view)) ranked.filter { emptiesHand(it, view) } else ranked
         if (rootCandidates.size == 1) return Result(baseline, 0, baseline)
 
         val root = Node()
@@ -116,6 +121,13 @@ internal class Ismcts(
         }
         val hitTimeLimit = iterations < config.iterations && deadline != null && clock() >= deadline
         return Result(finalChoice(root, rootCandidates), iterations, baseline, hitTimeLimit)
+    }
+
+    /** A [action] baixa todas as cartas da mão da [view] (conjunto novo ou acréscimo). */
+    private fun emptiesHand(action: Action, view: PlayerView): Boolean = when (action) {
+        is Action.CreateMeld -> action.cards.size == view.hand.size
+        is Action.AddToMeld -> action.cards.size == view.hand.size
+        else -> false
     }
 
     /** Escolha final conservadora (ver a documentação da classe). */

@@ -29,6 +29,11 @@ import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.Spacing
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.res.painterResource
+import com.gtranca.ui.home.homeCrest
+import com.gtranca.ui.home.rememberHomeMotion
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -117,11 +122,16 @@ fun StatsScreen(viewModel: StatsViewModel, onBack: () -> Unit) {
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val coins by viewModel.coins.collectAsStateWithLifecycle()
     var confirmReset by rememberSaveable { mutableStateOf(false) }
+    val motion = rememberHomeMotion()
     GBackground(Modifier.fillMaxSize().testTag("stats-screen")) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
+            Image(
+                painterResource(R.drawable.home_crest), null,
+                Modifier.align(Alignment.CenterHorizontally).width(120.dp).aspectRatio(640f / 298f).homeCrest(motion),
+            )
             GTitle(stringResource(R.string.stats_title), Modifier.semantics { heading() })
             // §14.6 moedas: saldo e resultado de todos os jogos apostados (zerar as estatísticas não mexe na carteira)
             GPanel(Modifier.fillMaxWidth().testTag("stats-coins")) {

@@ -99,6 +99,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -138,8 +140,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
@@ -169,6 +174,9 @@ import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MeldId
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.paint
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
@@ -206,6 +214,9 @@ interface TableEvents {
     fun onTakeDiscardPile()
     fun onDiscardPileClick()
     fun onCreateMeld()
+
+    /** Toque no conjunto vazio da mesa: baixar a seleção só como conjunto novo. */
+    fun onNewMeld() = onCreateMeld()
     fun onAddToMeld(meldId: MeldId)
     fun onDiscard()
     fun onDeclineDraw()
@@ -420,7 +431,24 @@ private fun TableScreenContent(
     com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.TABLE, com.gtranca.ui.tour.Tours.tableSteps, autoStart = tourReady) { startTour ->
     Scaffold(
         modifier = modifier
-            .background(Brush.verticalGradient(listOf(GColors.Midnight, GColors.Indigo, GColors.Midnight)))
+            // Salão da tela inicial ao fundo (docs/telas-app.md 3.8), escurecido para o cabeçalho, as pílulas e a mão
+            // continuarem legíveis; o feltro verde da mesa fica por cima. Parado: nada de animação contínua durante o jogo.
+            .background(GColors.Midnight)
+            .paint(
+                androidx.compose.ui.res.painterResource(R.drawable.home_bg),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                alignment = Alignment.TopCenter,
+            )
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to GColors.Midnight.copy(alpha = 0.62f),
+                        0.3f to GColors.Midnight.copy(alpha = 0.5f),
+                        0.6f to GColors.Midnight.copy(alpha = 0.8f),
+                        1f to GColors.Midnight.copy(alpha = 0.9f),
+                    ),
+                )
+            }
             .testTag("table-screen")
             // Registra a altura do último toque (sem consumir o evento) para o aviso discreto aparecer ali.
             .pointerInput(Unit) {
@@ -443,7 +471,19 @@ private fun TableScreenContent(
                     // cortar os voos e os fogos ali, de modo que passem por baixo.
                     val headerBottom = LocalTableHeaderBottom.current
                     Box(Modifier.onGloballyPositioned { headerHeightPx = it.size.height; headerBottom?.value = it.positionInRoot().y + it.size.height }) {
-                        Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                        Column {
+                            Header(state, events, headerExtra, startTour, onMatchInfo = { showMatchInfo = true }) { showLegend = true }
+                            // §17.11.1 barra de progressão do b4: fixa sob o cabeçalho, fora da rolagem da mesa (e, como
+                            // ele, à frente dos voos e dos fogos).
+                            // Com o b4, substitui a pílula "Nós × Eles" (§17.11.1) e, como ela, abre as informações do jogo.
+                            if (com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters) {
+                                TableScoreBar(
+                                    state,
+                                    Modifier.clickable(onClickLabel = stringResource(R.string.match_info_open), role = Role.Button) { showMatchInfo = true }
+                                        .testTag("score").tourTarget("score"),
+                                )
+                            }
+                        }
                     }
                     // Jogadores no alto e a mesa (monte, mortos, lixo e os jogos dos dois lados) rolam juntos: o feltro ocupa
                     // pelo menos o espaço livre e cresce com o conteúdo, nunca cortando cartas (telas baixas, fonte grande).
@@ -459,9 +499,11 @@ private fun TableScreenContent(
                             .onGloballyPositioned { seatsHeight = it.size.height },
                     ) { SeatsPanel(state) { detailSeat = it } }
                     val feltMin = (available - with(LocalDensity.current) { seatsHeight.toDp() } - 4.dp).coerceAtLeast(0.dp)
+                    // §17.11 b4 Placar: só com o b4 entre os boosters deste jogador.
+                    val scoreboard = com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters
                     Column(
-                        Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = Spacing.sm, vertical = 2.dp).feltTable()
-                            .padding(horizontal = 10.dp, vertical = 10.dp).testTag("table-felt"),
+                        Modifier.fillMaxWidth().heightIn(min = feltMin).padding(horizontal = 4.dp, vertical = 2.dp).feltTable()
+                            .padding(horizontal = 5.dp, vertical = 6.dp).testTag("table-felt"),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         SideArea(
@@ -473,6 +515,8 @@ private fun TableScreenContent(
                             redThrees = state.redThrees[view.mode.sides.first { it != view.side }.index],
                             onMeldClick = null,
                             sideTag = "opponent",
+                            scoreboard = scoreboard,
+                            mortoTaken = view.hasTakenMorto(view.mode.sides.first { it != view.side }),
                         )
                         CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
                         SideArea(
@@ -489,6 +533,10 @@ private fun TableScreenContent(
                             },
                             sideTag = "own",
                             targetMeld = state.targetMeld,
+                            addable = state.addableMelds,
+                            onNewMeld = if (state.canCreateNew) events::onNewMeld else null,
+                            scoreboard = scoreboard,
+                            mortoTaken = view.hasTakenMorto(view.side),
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -668,14 +716,23 @@ private fun Header(
     // valor em jogo, saldo, Wi-Fi, tour, som e engrenagem. Embaixo, o placar.
     Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        com.gtranca.ui.theme.FitText(
-            stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
-            MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
+        // O brasão do salão sobre "Partida N · alvo X" (cabe na altura dos ícones, sem aumentar o cabeçalho).
+        Column(
             Modifier.weight(1f)
                 .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo)
                 .testTag("match-info-open"),
-            minFontSp = 8,
-        )
+        ) {
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(R.drawable.home_crest), null,
+                Modifier.height(22.dp).aspectRatio(640f / 298f).testTag("header-crest"),
+            )
+            com.gtranca.ui.theme.FitText(
+                stringResource(R.string.table_round, snapshot.roundNumber) + " · " + stringResource(R.string.table_target, snapshot.config.targetScore),
+                MaterialTheme.typography.labelMedium.copy(color = OnTable.copy(alpha = 0.85f)),
+                Modifier.fillMaxWidth(),
+                minFontSp = 8,
+            )
+        }
         // §14.6, §16.13 total em jogo: a aposta de todos os assentos.
         val seats = view.mode.seatsInPlayOrder(snapshot.viewerSeat).size
         if (snapshot.config.stake > 0) {
@@ -691,7 +748,8 @@ private fun Header(
         // Opções (engrenagem): velocidade, legenda, desistir e, no anfitrião, o menu dele; só o som fica fora.
         OptionsMenu(events, extra, onLegend)
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // Com o b4, o placar do b4 (sob o cabeçalho) toma o lugar desta pílula (§17.11.1).
+    if (com.gtranca.engine.BoosterCatalog.SCOREBOARD !in state.boosters) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(
             Modifier.weight(1f)
                 .clickable(onClickLabel = matchInfoText, role = Role.Button, onClick = onMatchInfo),
@@ -926,7 +984,23 @@ private fun SideArea(
     onMeldClick: ((MeldId) -> Unit)?,
     sideTag: String,
     targetMeld: MeldId? = null,
+    addable: Set<MeldId> = emptySet(),
+    onNewMeld: (() -> Unit)? = null,
+    scoreboard: Boolean = false,
+    mortoTaken: Boolean = false,
 ) {
+    // Destaque pulsante dos jogos que recebem a seleção (e do conjunto vazio).
+    val glow = if (addable.isEmpty() && onNewMeld == null) 0f else {
+        val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "addable")
+        t.animateFloat(0.35f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(600), androidx.compose.animation.core.RepeatMode.Reverse), label = "addable-glow").value
+    }
+    val rules = LocalTableRules.current
+    val landing = LocalLanding.current
+    // §17.11 o total só muda quando nada do lado está voando (a jogada pousou).
+    val total = if (!scoreboard) null else settledValue(
+        com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, mortoTaken, rules),
+        settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
+    )
     Column(
         Modifier.fillMaxWidth()
             .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
@@ -957,24 +1031,73 @@ private fun SideArea(
                     }
                 }
             }
+            total?.let { points ->
+                Text(
+                    signedPoints(points),
+                    Modifier.padding(start = 6.dp)
+                        .background(GColors.Midnight.copy(alpha = 0.7f), RoundedCornerShape(50))
+                        .border(1.dp, GColors.Gold, RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 1.dp)
+                        .testTag("table-score-$sideTag"),
+                    color = if (points < 0) NegativePoints else GColors.Gold,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
-        if (melds.isEmpty()) {
+        if (melds.isEmpty() && onNewMeld == null) {
             Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
         } else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 melds.forEach { meld ->
+                    val canAdd = meld.id in addable
                     MeldView(
                         side,
                         meld,
                         onMeldClick,
-                        Modifier.anchor(AnimAnchor.Meld(side, meld.id.value)).testTag("meld-$sideTag-${meld.id.value}"),
+                        Modifier.anchor(AnimAnchor.Meld(side, meld.id.value)).testTag("meld-$sideTag-${meld.id.value}")
+                            .then(if (canAdd) Modifier.testTag("meld-addable-${meld.id.value}") else Modifier),
                         flash = flashes.lastOrNull { it.side == side && it.meldId == meld.id.value },
                         animationMillis = animationMillis,
                         targeted = meld.id == targetMeld,
+                        addGlow = if (canAdd) glow else 0f,
+                        points = if (!scoreboard) null else settledValue(
+                            com.gtranca.engine.meldPoints(meld.meld, rules),
+                            settled = meld.meld.cards.none { it in landing },
+                            key = meld.id,
+                        ),
+                        scoreTag = "meld-score-${meld.id.value}",
                     )
                 }
+                onNewMeld?.let { NewMeldSlot(glow, it) }
             }
         }
+    }
+}
+
+/** Conjunto vazio (contorno tracejado): tocar baixa a seleção como conjunto novo, nesta posição. */
+@Composable
+private fun NewMeldSlot(glow: Float, onClick: () -> Unit) {
+    val label = stringResource(R.string.new_meld_slot)
+    val color = GColors.Gold.copy(alpha = glow)
+    Box(
+        Modifier
+            .size(width = 96.dp, height = 70.dp)
+            .drawBehind {
+                drawRoundRect(
+                    color,
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 2.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
+                    ),
+                )
+            }
+            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+            .testTag("new-meld-slot"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = GColors.Gold, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -987,6 +1110,9 @@ private fun MeldView(
     flash: CanastaFlash? = null,
     animationMillis: Long = 0,
     targeted: Boolean = false,
+    addGlow: Float = 0f,
+    points: Int? = null,
+    scoreTag: String = "",
 ) {
     // §7 canastra fechada agora: pulso curto (limpa em dourado, suja em bronze). [animationMillis] já vem
     // escalado; se o destaque for removido no meio, o pulso volta a 0 (nunca fica preso maior/colorido).
@@ -1014,6 +1140,7 @@ private fun MeldView(
     }
     val borderColor = when {
         targeted -> GColors.Gold // indicado para receber o topo do lixo
+        addGlow > 0f -> GColors.Gold.copy(alpha = addGlow) // recebe todas as cartas selecionadas
         canasta && meld.isClean -> GColors.CanastraClean
         canasta -> GColors.CanastraDirty
         onClick != null -> OnTable.copy(alpha = 0.6f) // tocável para acrescentar
@@ -1023,6 +1150,7 @@ private fun MeldView(
     val description = stringResource(R.string.meld_description, descriptions.joinToString(", ")) +
         (label?.let { ". $it" } ?: "")
     val flashColor = if (flash?.clean == true) GColors.Gold else GColors.CanastraDirtyFlash
+    Box {
     Column(
         modifier
             .graphicsLayer {
@@ -1033,7 +1161,7 @@ private fun MeldView(
             .semantics { canastaPulse = pulse.value }
             .heightIn(min = 48.dp)
             .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(Corner.xs))
-            .border(BorderStroke(if (targeted) 3.dp else 2.dp, borderColor), RoundedCornerShape(Corner.xs))
+            .border(BorderStroke(if (targeted || addGlow > 0f) 3.dp else 2.dp, borderColor), RoundedCornerShape(Corner.xs))
             .then(if (onClick != null) Modifier.clickable { onClick(tableMeld.id) } else Modifier)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
@@ -1049,6 +1177,90 @@ private fun MeldView(
             }
         }
     }
+    // §17.11 b4 Placar: o valor do conjunto no canto superior direito.
+    points?.let {
+        Text(
+            "$it",
+            Modifier.align(Alignment.TopEnd)
+                .offset(x = 4.dp, y = (-6).dp)
+                .background(GColors.Midnight, RoundedCornerShape(6.dp))
+                .border(1.dp, GColors.Gold.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 3.dp)
+                .testTag(scoreTag),
+            color = GColors.Champagne,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    }
+}
+
+/** Vermelho-claro dos totais negativos do placar (§17.11). */
+private val NegativePoints = Color(0xFFFF8A80)
+
+/** "−95" com o sinal de menos tipográfico; positivos sem sinal. */
+private fun signedPoints(points: Int): String = if (points < 0) "−${-points}" else "$points"
+
+/**
+ * §17.11 o último [value] visto com [settled] (nada voando); `null` até a primeira vez, para um conjunto novo não mostrar
+ * o valor antes de as cartas pousarem.
+ */
+@Composable
+private fun settledValue(value: Int, settled: Boolean, key: Any? = null): Int? {
+    var shown by remember(key) { mutableStateOf<Int?>(null) }
+    if (settled && shown != value) shown = value
+    return shown
+}
+
+/**
+ * §17.11.1 a barra de progressão com os totais da mesa (§17.11) de cada lado, que mudam quando a jogada pousa. A escala
+ * vive no [LocalScoreBar] (sobrevive à troca para a mesa final); sem ele, numa barra local.
+ */
+@Composable
+private fun TableScoreBar(state: GameUiState, modifier: Modifier = Modifier) {
+    val view = state.snapshot.view
+    val rules = LocalTableRules.current
+    val landing = LocalLanding.current
+    val holder = LocalScoreBar.current ?: remember { ScoreBarHolder() }
+    val opponentSide = view.mode.sides.first { it != view.side }
+    @Composable
+    fun total(side: com.gtranca.engine.model.Side): Int? {
+        val melds = view.tables[side.index].melds
+        val redThrees = state.redThrees[side.index]
+        return settledValue(
+            com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, view.hasTakenMorto(side), rules),
+            settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
+        )
+    }
+    fun personas(side: com.gtranca.engine.model.Side): List<com.gtranca.game.Persona> {
+        // O jogador (ou o adversário mais próximo na vez) primeiro: é a imagem de dentro, perto do centro.
+        val seats = view.mode.seatsOf(side).sortedBy { if (it == view.seat) 0 else 1 }
+        return seats.mapNotNull { state.personas.getOrNull(it.index) }
+    }
+    val snapshot = state.snapshot
+    // §17.11.2 placar do jogo e o acumulado ao fim de cada partida terminada.
+    val rows = MatchInfo.rows(snapshot.history)
+    val game = GameBarData(
+        own = snapshot.totals[view.side.index],
+        opponent = snapshot.totals[opponentSide.index],
+        target = snapshot.config.targetScore,
+        ownMarks = rows.map { it.cumulative[view.side.index] },
+        opponentMarks = rows.map { it.cumulative[opponentSide.index] },
+    )
+    ScoreBar(
+        holder = holder,
+        ownSide = view.side.index,
+        opponentSide = opponentSide.index,
+        ownTotal = total(view.side),
+        opponentTotal = total(opponentSide),
+        ownPersonas = personas(view.side),
+        opponentPersonas = personas(opponentSide),
+        ownLabel = shortSideName(view.mode, view.side, view.side),
+        opponentLabel = shortSideName(view.mode, opponentSide, view.side),
+        game = game,
+        animationMillis = state.animationMillis,
+        modifier = modifier.padding(horizontal = Spacing.sm, vertical = 2.dp),
+    )
 }
 
 /** Cartas pequenas sobrepostas, cada uma deslocada [step] para a direita (o índice de cada uma fica visível). */
@@ -1240,9 +1452,7 @@ private fun ReviewContinueBar(onContinue: () -> Unit, banner: (@Composable () ->
     Box(
         Modifier
             .fillMaxWidth()
-            .shadow(Elevation.dialog, shape)
-            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), shape)
-            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), shape)
+            .loungePanel(shape)
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = Spacing.sm),
     ) {
@@ -1298,9 +1508,7 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
     Column(
         Modifier
             .fillMaxWidth()
-            .shadow(Elevation.dialog, RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
-            .background(Brush.verticalGradient(listOf(GColors.IndigoLight, GColors.Indigo)), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
-            .border(1.dp, GColors.Gold.copy(alpha = 0.45f), RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
+            .loungePanel(RoundedCornerShape(topStart = Corner.md, topEnd = Corner.md))
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .testTag("action-bar").tourTarget("action-bar"),
@@ -1342,14 +1550,6 @@ private fun StatusAndActions(state: GameUiState, events: TableEvents) {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
             ) { Text("✕", fontWeight = FontWeight.Bold) }
         }
-        // Fixo durante a vez (não depende da seleção) para os botões não pularem ao tocar nas cartas.
-        if (state.playing && snapshot.view.tables[snapshot.view.side.index].melds.isNotEmpty()) {
-            Text(
-                stringResource(if (snapshot.view.mode == GameMode.DUPLAS) R.string.add_to_meld_hint_team else R.string.add_to_meld_hint),
-                color = GColors.Steel,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
     }
 }
 
@@ -1388,7 +1588,13 @@ internal fun handEmphasis(selected: Boolean, highlighted: Boolean, hasSelection:
 
 @Composable
 private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
+    val handShape = RoundedCornerShape(Corner.sm)
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)
+            .background(Brush.verticalGradient(listOf(GColors.Indigo.copy(alpha = 0.7f), GColors.Midnight.copy(alpha = 0.7f))), handShape)
+            .border(1.dp, GColors.Gold.copy(alpha = 0.35f), handShape)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // §14.1 seu avatar; tocar nele abre a própria última jogada (no mesmo formato do detalhe dos outros).
             val ownLastText = stringResource(R.string.own_last_play)
@@ -1412,7 +1618,14 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
         }
         // 7 cartas de 48dp por linha em 360dp; 2 linhas à vista (sobra mesa para os jogos), o resto rola. A margem
         // dentro da rolagem deixa a carta marcada crescer sem ser cortada pela borda.
-        val custom = state.customHand
+        // Na distribuição, a coluna dos 3 pretos/coringas não reserva lugar para os que ainda não chegaram: o split
+        // usa só as cartas já na mão (mesmo filtro de CardFlow), então a coluna só aparece (e só cresce) quando um
+        // deles pousa de verdade.
+        val custom = if (state.dealPending && state.customHand != null) {
+            HandOrder.split(state.hand.filterNot { it in LocalLanding.current }, state.sort)
+        } else {
+            state.customHand
+        }
         Box(
             Modifier.fillMaxWidth().heightIn(max = 74.dp * 2 + HandGrowMargin * 2).anchor(AnimAnchor.OwnHand)
                 .verticalScroll(rememberScrollState()).padding(vertical = HandGrowMargin, horizontal = 3.dp)
@@ -1455,13 +1668,17 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     val hasSelection = state.selected.isNotEmpty()
     val greenLed = com.gtranca.engine.BoosterCatalog.GREEN_LED in state.boosters
     val landing = LocalLanding.current
+    // Na distribuição, a mão só mostra as cartas já chegadas (reorganiza e alinha à esquerda a cada lote que pousa),
+    // em vez de reservar desde já os 11 lugares da mão final. Fora da distribuição (ex.: comprar do monte), o lugar
+    // de uma carta a caminho continua reservado (alpha 0 abaixo), pra não embaralhar o resto da mão por 1 carta.
+    val shown = if (state.dealPending) cards.filterNot { it in landing } else cards
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         maxItemsInEachRow = maxPerRow,
     ) {
-        cards.forEach { card ->
+        shown.forEach { card ->
             val selected = card in state.selected
             val isNew = card in state.newCards
             val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
@@ -1875,6 +2092,11 @@ private fun Modifier.anchor(key: AnimAnchor): Modifier = composed {
 /**
  * Camada por cima da mesa com as cartas voando ([CardFlight]). Não recebe toques nem aparece para o leitor de tela;
  * com animações desligadas (duração 0 ou escala do sistema 0) não desenha nada.
+ *
+ * Um único relógio (ms desde que a camada ganhou voos) toca todas as cartas: cada [FlyingCard] só lê o valor dele e
+ * deriva o próprio progresso (ancorado em quando ficou pronta e no seu atraso de escalonamento), em vez de cada
+ * carta rodar a própria animação. Antes, a distribuição (até ~44 cartas em duplas) chegava a rodar outras tantas
+ * animações em paralelo; agora roda uma só, mais barata e sem travar em aparelhos mais fracos.
  */
 @Composable
 private fun FlightsLayer(
@@ -1887,6 +2109,16 @@ private fun FlightsLayer(
     // [durationMillis] e os atrasos dos voos já vêm escalados pelo ViewModel (escala 0 = nenhum voo).
     if (durationMillis <= 0 || flights.isEmpty()) return
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var startNanos = -1L
+        while (true) {
+            withFrameNanos { now ->
+                if (startNanos < 0L) startNanos = now
+                clock.floatValue = (now - startNanos) / 1_000_000f
+            }
+        }
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -1895,7 +2127,7 @@ private fun FlightsLayer(
             .testTag("flights-layer"),
     ) {
         flights.forEach { flight ->
-            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, { isReady(flight.id) }, onArrived) }
+            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, { isReady(flight.id) }, clock, onArrived) }
         }
     }
 }
@@ -1927,6 +2159,17 @@ private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect
     else -> this[anchor]
 }
 
+/** Fase de um voo no relógio compartilhado: antes do seu atraso, voando, ou já pousado. */
+private enum class FlightPhase { BEFORE, FLYING, ARRIVED }
+
+/**
+ * Folga que a carta some depois de pousar (docs: a piscada ao chegar). [onArrived] avisa o pouso por um estado à
+ * parte (`arrived`, lá na tela), que só troca a carta real de invisível para visível numa recomposição separada;
+ * sem essa folga, um quadro em que a voando já sumiu mas a real ainda não apareceu pisca. Com ela, as duas ficam
+ * sobrepostas por pouco tempo (imperceptível, paradas no mesmo lugar) em vez de haver um buraco sem nenhuma.
+ */
+private const val OVERLAY_LINGER_MILLIS = 120L
+
 @Composable
 private fun FlyingCard(
     flight: CardFlight,
@@ -1935,50 +2178,78 @@ private fun FlyingCard(
     durationMillis: Long,
     delayMillis: Long,
     isReady: () -> Boolean,
+    clock: androidx.compose.runtime.MutableFloatState,
     onArrived: (Long) -> Unit,
 ) {
-    val progress = remember { Animatable(0f) }
-    var visible by remember { mutableStateOf(false) }
+    // Instante do relógio compartilhado em que esta carta ficou liberada para voar (-1 enquanto não chegou a vez dela).
+    var readyAtMillis by remember { mutableFloatStateOf(-1f) }
     LaunchedEffect(Unit) {
-        // Espera a mesa mostrar o destino (rolagem até os jogos do lado).
+        // Espera a mesa mostrar o destino (rolagem até os jogos do lado), depois ancora no relógio compartilhado.
         snapshotFlow { isReady() }.first { it }
-        delay(delayMillis)
-        visible = true
-        // A batida (última jogada) voa em câmera lenta (docs/telas.md 3.9).
-        progress.animateTo(1f, tween((durationMillis * flight.durationFactor).toInt().coerceAtLeast(1), easing = FastOutSlowInEasing))
-        onArrived(flight.id)
-        visible = false
+        readyAtMillis = clock.floatValue
     }
-    if (!visible) return
-    val size = CardSize.SMALL
+    // A batida (última jogada) voa em câmera lenta (docs/telas.md 3.9).
+    val cardDurationMillis = (durationMillis * flight.durationFactor).coerceAtLeast(1f)
+    val phase by remember {
+        derivedStateOf {
+            when {
+                readyAtMillis < 0f -> FlightPhase.BEFORE
+                clock.floatValue - readyAtMillis - delayMillis < 0f -> FlightPhase.BEFORE
+                clock.floatValue - readyAtMillis - delayMillis < cardDurationMillis -> FlightPhase.FLYING
+                else -> FlightPhase.ARRIVED
+            }
+        }
+    }
+    var overlayGone by remember { mutableStateOf(false) }
+    LaunchedEffect(phase) {
+        if (phase == FlightPhase.ARRIVED) {
+            onArrived(flight.id)
+            delay(OVERLAY_LINGER_MILLIS)
+            overlayGone = true
+        } else {
+            overlayGone = false
+        }
+    }
+    if (phase == FlightPhase.BEFORE || overlayGone) return
+    // A carta real da própria mão é CardSize.MEDIUM (os outros destinos — mesa, lixo, mortos, 3 vermelhos — são
+    // todos SMALL); sem isso a carta voando ficava menor que a carta real no pouso, visível na sobreposição.
+    val size = if (flight.to == AnimAnchor.OwnHand) CardSize.MEDIUM else CardSize.SMALL
     val density = LocalDensity.current
     val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
     val arcPx = with(density) { 36.dp.toPx() }
     val flips = flight.card != null && flight.from == AnimAnchor.Stock
+    // Progresso (0..1) desta carta a cada quadro: derivado do relógio compartilhado, nunca da sua própria animação.
+    fun t(): Float = FastOutSlowInEasing.transform(((clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis).coerceIn(0f, 1f))
     Box(
         Modifier
             .offset {
                 // Lido a cada quadro: acompanha rolagem e o conjunto novo que aparece no destino.
                 val from = anchors.resolve(flight.from, flight.card)?.center ?: return@offset IntOffset(-10_000, -10_000)
                 val to = anchors.resolve(flight.to, flight.card)?.center ?: from
-                val t = progress.value
+                val t = t()
                 // Trajeto em curva: sobe um pouco no meio do caminho.
                 val arc = Offset(0f, -arcPx * sin(PI.toFloat() * t))
                 val point = from + (to - from) * t + arc - origin() - half
                 IntOffset(point.x.roundToInt(), point.y.roundToInt())
             }
             .graphicsLayer {
+                val t = t()
                 // Batida: cresce até 1,4x em 40% do trajeto, fica grande por 20% e volta ao normal ao pousar.
-                val lift = if (flight.finale) GoOutDrama.flightScale(progress.value) else 1f + 0.18f * sin(PI.toFloat() * progress.value)
+                val lift = if (flight.finale) GoOutDrama.flightScale(t) else 1f + 0.18f * sin(PI.toFloat() * t)
                 scaleX = lift
                 scaleY = lift
                 shadowElevation = 6f
                 // Compra do monte: a carta vira no meio do voo (verso → face).
-                if (flips) rotationY = if (progress.value < 0.5f) 180f * progress.value else 180f * progress.value - 180f
+                if (flips) rotationY = if (t < 0.5f) 180f * t else 180f * t - 180f
                 cameraDistance = 12f * density.density
             },
     ) {
-        val showFace = flight.card != null && (!flips || progress.value >= 0.5f)
+        // Derivado à parte: só recompõe quando o booleano muda (no cruzamento dos 50%), não a cada quadro.
+        val showFace by remember {
+            derivedStateOf {
+                flight.card != null && (!flips || (clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis >= 0.5f)
+            }
+        }
         if (showFace) PlayingCard(flight.card!!, size = size, describe = false) else CardBack(size = size, describe = false)
     }
 }
@@ -2036,12 +2307,34 @@ private fun DeckStack(count: Int, anchor: AnimAnchor) {
 /** Feltro esmeralda da mesa (quase oval: cantos bem grandes) com a moldura dourada biselada. */
 private fun Modifier.feltTable(): Modifier {
     val shape = RoundedCornerShape(Corner.md)
+    val rim = 9.dp
     return this
         .shadow(Elevation.dialog, shape)
-        .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f), shape)
-        .goldFrame(Corner.md, 3.dp)
-        .clip(shape)
+        .drawBehind {
+            // De fora para dentro: filete dourado, madeira, filete dourado e o feltro.
+            val r = Corner.md.toPx()
+            fun layer(inset: androidx.compose.ui.unit.Dp, brush: Brush) {
+                val i = inset.toPx()
+                drawRoundRect(
+                    brush, Offset(i, i), androidx.compose.ui.geometry.Size(size.width - 2 * i, size.height - 2 * i),
+                    androidx.compose.ui.geometry.CornerRadius((r - i).coerceAtLeast(0f)),
+                )
+            }
+            val gold = Brush.linearGradient(listOf(GColors.Champagne, GColors.GoldDeep, GColors.Gold, GColors.GoldDeep), Offset.Zero, Offset(size.width, size.height))
+            layer(0.dp, gold)
+            layer(1.5.dp, Brush.verticalGradient(listOf(Color(0xFF9A5E2C), Color(0xFF5A3115))))
+            layer(8.dp, gold)
+            layer(rim, Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f))
+        }
+        .padding(rim)
+        .clip(RoundedCornerShape((Corner.md - rim).coerceAtLeast(0.dp)))
 }
+
+/** Painel no estilo do salão (o do seletor de boosters): azul-noite em degradê com o filete dourado biselado. */
+private fun Modifier.loungePanel(shape: androidx.compose.ui.graphics.Shape): Modifier = this
+    .shadow(Elevation.dialog, shape)
+    .background(Brush.verticalGradient(listOf(GColors.Indigo, GColors.Midnight)), shape)
+    .border(2.dp, Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep.copy(alpha = 0.3f))), shape)
 
 /** Nome de quem pegou o morto ("Você" para o próprio jogador); `null` sem o assento (partida salva antiga). */
 @Composable
