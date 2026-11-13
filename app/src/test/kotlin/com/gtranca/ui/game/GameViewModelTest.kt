@@ -9,6 +9,7 @@ import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.HandOrder
 import com.gtranca.game.HandSort
 import com.gtranca.game.HumanTurnResolver
@@ -66,7 +67,7 @@ class GameViewModelTest {
         boosters: List<String> = emptyList(),
     ): GameViewModel {
         val vm = GameViewModel(
-            GameConfig(mode, Difficulty.FACIL, target),
+            GameConfig(mode, Difficulty.FACIL, target, rules = NO_DEAL_GUESS),
             gameSeed = seed,
             computeDispatcher = dispatcher,
             botDelayMillis = botDelayMillis,
@@ -420,7 +421,7 @@ class GameViewModelTest {
         var checked = 0
         for (seed in 1L..80L) {
             val vm = GameViewModel(
-                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
                 gameSeed = seed,
                 computeDispatcher = dispatcher,
                 botDelayMillis = 0,
@@ -464,7 +465,7 @@ class GameViewModelTest {
             for (mode in GameMode.entries) {
                 for (seed in 1L..120L) {
                     val vm = GameViewModel(
-                        GameConfig(mode, Difficulty.FACIL, 3000),
+                        GameConfig(mode, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
                         gameSeed = seed,
                         computeDispatcher = dispatcher,
                         botDelayMillis = 0,
@@ -545,7 +546,7 @@ class GameViewModelTest {
         normal.uiState.value.animationMillis shouldBe 0L
         // Os atrasos dos voos da distribuição também crescem 30%.
         fun delays(slow: Boolean): List<Long> = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 7, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 7, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450, slowAnimations = slow,
         ).uiState.value.flights.map { it.delayMillis - com.gtranca.net.PREPARE_MILLIS }
         val fast = delays(false)
@@ -558,7 +559,7 @@ class GameViewModelTest {
     @Test
     fun `Prepare-se sobre a mesa dura 1,5 s e a distribuicao da 1a partida so comeca depois`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 5, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 5, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450,
         )
         val start = vm.uiState.value
@@ -579,7 +580,7 @@ class GameViewModelTest {
         for (seed in 1L..60L) {
             // Sem avançar o tempo antes de começar a observar (as animações dos bots duram 1 s cada).
             val vm = GameViewModel(
-                GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+                GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
                 gameSeed = seed,
                 computeDispatcher = dispatcher,
                 botDelayMillis = 0,
@@ -754,7 +755,7 @@ class GameViewModelTest {
 
     private fun TestScope.gameWithSwaps(seed: Long, source: RedThreeSwapSource, swapMillis: Long): GameViewModel {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
             gameSeed = seed,
             computeDispatcher = dispatcher,
             botDelayMillis = 0,

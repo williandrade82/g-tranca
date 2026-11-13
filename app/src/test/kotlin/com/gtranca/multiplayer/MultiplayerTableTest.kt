@@ -8,6 +8,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Persona
 import com.gtranca.game.Stage
 import com.gtranca.net.MemoryNetwork
@@ -88,7 +89,7 @@ class MultiplayerTableTest {
         val network = MemoryNetwork()
         val dispatcher = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(dispatcher + Job())
-        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = targetScore, stake = stake)
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = targetScore, stake = stake, rules = NO_DEAL_GUESS)
         val rules = TableRules("Mesa da família", GameMode.DUPLAS, config.rules, targetScore, stake, Difficulty.FACIL.id, robots)
         val hostCoins = FakeCoins()
         val guestCoins = FakeCoins()
@@ -668,7 +669,7 @@ class MultiplayerTableTest {
                 override suspend fun saveHandSort(id: String) = Unit
                 override suspend fun discard() { discarded++ }
             }
-            val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000, stake = 50)
+            val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000, stake = 50, rules = NO_DEAL_GUESS)
             val robots = mapOf(1 to "alternativo", 2 to "jovem", 3 to "atleta")
             val vm = com.gtranca.ui.game.GameViewModel(
                 config, gameSeed = 7, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,

@@ -88,6 +88,8 @@ object HumanTurnResolver {
         }
         is Action.Discard -> listOf(action.card)
         Action.DrawFromStock, Action.DeclineDraw -> emptyList()
+        // §3.6 o palpite da distribuição certeira não usa cartas da mão (não é seleção de cartas).
+        is Action.GuessDealRange -> emptyList()
     }
 
     /** "Baixar" tem efeito: a [selection] forma um conjunto novo ou completa algum conjunto do lado em [legal]. */

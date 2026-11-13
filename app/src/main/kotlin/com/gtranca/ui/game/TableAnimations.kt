@@ -280,6 +280,8 @@ object TableAnimations {
                 is Action.AddToMeld -> action.cards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
                     flights += CardFlight(nextId(), from, AnimAnchor.Meld(side, action.meldId.value), card, STAGGER_MILLIS * i)
                 }
+                // §3.6 o palpite nunca aparece em `turnEvents` (GameController.recordEvent o descarta): sem voo.
+                is Action.GuessDealRange -> Unit
             }
         }
         // Batida: as cartas que saem da mão na última ação voam em câmera lenta e crescendo (docs/telas.md 3.9).
@@ -357,6 +359,8 @@ object TableAnimations {
                     }
                     event.takenFromDiscard.size - handCards.size
                 }
+                // §3.6 nunca aparece aqui (filtrado em `GameController.recordEvent`).
+                is Action.GuessDealRange -> 0
             }
             if (size <= 0) return index
         }

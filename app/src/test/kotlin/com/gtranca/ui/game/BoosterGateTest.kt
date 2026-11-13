@@ -10,6 +10,7 @@ import com.gtranca.engine.Inventory
 import com.gtranca.engine.Loadout
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Stage
 import com.gtranca.game.cardClass
 import io.kotest.matchers.shouldBe
@@ -50,7 +51,7 @@ class BoosterGateTest {
 
     private fun TestScope.vm(inventory: InventoryRepository?, boosters: List<String> = emptyList()): GameViewModel {
         val game = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000),
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000, rules = NO_DEAL_GUESS),
             gameSeed = 9,
             computeDispatcher = dispatcher,
             botDelayMillis = 0,

@@ -6,6 +6,7 @@ import com.gtranca.engine.OpponentFit
 import com.gtranca.engine.RedLed
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Stage
 import com.gtranca.game.cardClass
 import io.kotest.matchers.shouldBe
@@ -34,7 +35,7 @@ class RedLedViewModelTest {
 
     private fun TestScope.vm(boosters: List<String>): GameViewModel {
         val game = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000),
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000, rules = NO_DEAL_GUESS),
             gameSeed = 9, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
             initialBoosters = boosters,
         )

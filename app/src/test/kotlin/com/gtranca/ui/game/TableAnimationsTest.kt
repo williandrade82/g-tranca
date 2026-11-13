@@ -20,6 +20,7 @@ import com.gtranca.game.BotSeatPlayer
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameSnapshot
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Stage
 import com.gtranca.game.botSeed
 import com.gtranca.game.cardClass
@@ -59,7 +60,7 @@ class TableAnimationsTest {
         val mode = GameMode.DUPLAS
         val seed = 21L
         val controller = GameController(
-            GameConfig(mode, Difficulty.MEDIO, targetScore = 1000), seed,
+            GameConfig(mode, Difficulty.MEDIO, targetScore = 1000, rules = NO_DEAL_GUESS), seed,
             mode.seats.map { BotSeatPlayer(createBot(Difficulty.MEDIO, Random(botSeed(seed, it.index)))) },
             // Pausa de 1 ms: o laço suspende a cada jogada e o coletor vê cada snapshot (o StateFlow é conflado).
             computeDispatcher = dispatcher, botDelayMillis = 1,
@@ -122,7 +123,7 @@ class TableAnimationsTest {
     @Test
     fun `§4_3 compra do humano voa do monte para a mao com a carta comprada e a animacao some sozinha`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 3, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 3, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 400,
         )
         advanceUntilIdle()
@@ -147,7 +148,7 @@ class TableAnimationsTest {
     @Test
     fun `animacoes desligadas nao geram voos`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 3, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 3, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
         )
         advanceUntilIdle()
@@ -290,7 +291,7 @@ class TableAnimationsTest {
     @Test
     fun `escala do sistema - expiracao acompanha a escala e escala 0 nao gera voos`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 3, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 3, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 400,
         )
         advanceUntilIdle()
@@ -329,7 +330,7 @@ class TableAnimationsTest {
         // Jogo só de bots: acha um destaque de canastra e confere que ele some do estado depois da duração.
         // Com a canastra de 7 cartas (§7.1) nem toda semente fecha uma: procura uma que feche.
         var vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000), gameSeed = 1, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, rules = NO_DEAL_GUESS), gameSeed = 1, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 300,
         )
         var seen = false
@@ -340,7 +341,7 @@ class TableAnimationsTest {
                 seed++
                 guard = 0
                 vm = GameViewModel(
-                    GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000), gameSeed = seed, computeDispatcher = dispatcher,
+                    GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, rules = NO_DEAL_GUESS), gameSeed = seed, computeDispatcher = dispatcher,
                     botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 300,
                 )
                 continue
@@ -428,7 +429,7 @@ class TableAnimationsTest {
         var checked = false
         seeds@ for (seed in 1L..150L) {
             val vm = GameViewModel(
-                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000), gameSeed = seed, computeDispatcher = dispatcher,
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000, rules = NO_DEAL_GUESS), gameSeed = seed, computeDispatcher = dispatcher,
                 botDelayMillis = 0, swapAnimationMillis = 1_000, animationMillis = 300,
             )
             // Voos na ordem em que aparecem na tela.

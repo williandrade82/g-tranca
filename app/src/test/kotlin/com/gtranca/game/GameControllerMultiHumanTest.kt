@@ -59,7 +59,7 @@ class GameControllerMultiHumanTest {
         "DUPLAS, 22, '0 2'",
     )
     fun `humanos remotos jogando o que os bots jogariam reproduzem o jogo so de bots`(mode: GameMode, seed: Long, humanSeats: String) = runTest {
-        val config = GameConfig(mode, Difficulty.FACIL, targetScore = 1000)
+        val config = GameConfig(mode, Difficulty.FACIL, targetScore = 1000, rules = NO_DEAL_GUESS)
         val reference = GameController(config, seed, botsOnly(mode, seed), computeDispatcher = StandardTestDispatcher(testScheduler), botDelayMillis = 0)
         reference.run()
 
@@ -85,7 +85,7 @@ class GameControllerMultiHumanTest {
     @Test
     fun `§16_4 cada humano recebe so a propria mao e o pedido e so de quem tem a vez`() = runTest {
         val seed = 7L
-        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = 3000)
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = 3000, rules = NO_DEAL_GUESS)
         val humans = GameController.playersForTable(config, seed, config.mode.seats.associateWith { HumanPlayer() })
         val controller = GameController(
             config, seed, humans, computeDispatcher = StandardTestDispatcher(testScheduler), pacing = PacingPolicy.FREE,
@@ -116,7 +116,7 @@ class GameControllerMultiHumanTest {
     @Test
     fun `§16_1 jogada de assento sem o pedido em aberto e recusada e explain e por assento`() = runTest {
         val seed = 9L
-        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = 3000)
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = 3000, rules = NO_DEAL_GUESS)
         val humans = GameController.playersForTable(config, seed, config.mode.seats.associateWith { HumanPlayer() })
         val controller = GameController(
             config, seed, humans, computeDispatcher = StandardTestDispatcher(testScheduler), pacing = PacingPolicy.FREE,
@@ -144,7 +144,7 @@ class GameControllerMultiHumanTest {
     @Test
     fun `§16_6 cada jogada processada sai uma vez no fluxo de eventos, em ordem`() = runTest {
         val seed = 3L
-        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 1000)
+        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 1000, rules = NO_DEAL_GUESS)
         val controller = GameController(
             config, seed, botsOnly(config.mode, seed), computeDispatcher = StandardTestDispatcher(testScheduler), pacing = PacingPolicy.FREE,
         )
@@ -165,7 +165,7 @@ class GameControllerMultiHumanTest {
     @Test
     fun `§16_9 trocar o humano da vez por um robo abandona o pedido dele e o jogo continua ate o fim`() = runTest {
         val seed = 5L
-        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 1000)
+        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 1000, rules = NO_DEAL_GUESS)
         val humans = GameController.playersForTable(config, seed, config.mode.seats.associateWith { HumanPlayer() })
         val controller = GameController(
             config, seed, humans, computeDispatcher = StandardTestDispatcher(testScheduler), pacing = PacingPolicy.FREE,
@@ -200,7 +200,7 @@ class GameControllerMultiHumanTest {
     @Test
     fun `§16_7 um humano pode ocupar o assento de um robo no meio da partida`() = runTest {
         val seed = 13L
-        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 3000)
+        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 3000, rules = NO_DEAL_GUESS)
         val human = HumanPlayer()
         val controller = GameController(
             config, seed, GameController.playersForTable(config, seed, mapOf(Seat(0) to human)),

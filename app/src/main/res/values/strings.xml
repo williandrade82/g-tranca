@@ -962,4 +962,20 @@
     <string name="profile_online_server">Servidor online</string>
     <string name="profile_online_server_hint">Temporário, só neste aparelho. Endereço (IP ou nome) do servidor do jogo online, com porta se houver (ex.: 192.168.0.10:8080). Vazio desliga o online.</string>
     <string name="profile_online_server_invalid">Endereço inválido. Use IP ou nome, com :porta se houver.</string>
+
+    <!-- §3.6, 3.8.2 docs/telas-app.md: minijogo "distribuição certeira" -->
+    <string name="deal_guess_title_hand">Cartas para a distribuição</string>
+    <string name="deal_guess_title_morto">Cartas para o Morto</string>
+    <string name="deal_guess_instructions">Toque uma vez para iniciar a seleção, toque a segunda vez para definir as cartas. Chance única!</string>
+    <string name="deal_guess_start_label">Início</string>
+    <string name="deal_guess_end_label">Fim</string>
+    <string name="deal_guess_total_label">Total</string>
+    <string name="deal_guess_win_you">Você acertou em cheio!</string>
+    <string name="deal_guess_win_partner_hand">O seu parceiro acertou em cheio o número de cartas para a distribuição!</string>
+    <string name="deal_guess_win_partner_morto">O seu parceiro acertou em cheio o número de cartas para o Morto!</string>
+    <string name="deal_guess_miss_you_hand">Você não acertou o número de cartas para a distribuição.</string>
+    <string name="deal_guess_miss_you_morto">Você não acertou o número de cartas para o Morto.</string>
+    <string name="deal_guess_miss_partner_hand">O seu parceiro não acertou o número de cartas para a distribuição.</string>
+    <string name="deal_guess_miss_partner_morto">O seu parceiro não acertou o número de cartas para o Morto.</string>
+    <string name="deal_guess_tap_to_close">Toque na tela para fechar.</string>
 </resources>

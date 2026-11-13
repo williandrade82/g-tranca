@@ -31,6 +31,13 @@ interface TableDriver {
 
     fun dealAnimationDone(roundNumber: Int) {}
 
+    /**
+     * §3.6 a interface reconheceu a reação (pílula ou tela cheia) do palpite resolvido da partida [roundNumber]
+     * ([hand] = mão, `false` = morto): libera o próximo pedido do jogo local. Sem efeito na mesa multijogador (a
+     * sincronização do palpite entre aparelhos é uma fase futura separada).
+     */
+    fun guessRevealDone(roundNumber: Int, hand: Boolean) {}
+
     /** Escala da pausa da distribuição (só o jogo local espera a animação). */
     var dealDelayScale: Double
 
@@ -92,6 +99,10 @@ class LocalTableDriver(val controller: GameController, private val human: HumanP
     }
 
     override fun dealAnimationDone(roundNumber: Int) = controller.dealAnimationDone(roundNumber)
+
+    override fun guessRevealDone(roundNumber: Int, hand: Boolean) {
+        controller.guessRevealDone(roundNumber, hand)
+    }
 
     override var dealDelayScale: Double
         get() = controller.dealDelayScale

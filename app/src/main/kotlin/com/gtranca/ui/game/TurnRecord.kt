@@ -32,6 +32,8 @@ fun PublicEvent.record(): List<RecordEntry> = when (val a = action) {
             RecordEntry(ActionKind.TAKE, takenFromDiscard),
         )
     }
+    // §3.6 nunca aparece aqui (filtrado em `GameController.recordEvent`): o palpite não é jogada da vez.
+    is Action.GuessDealRange -> emptyList()
 }
 
 fun List<PublicEvent>.record(): List<RecordEntry> = flatMap { it.record() }

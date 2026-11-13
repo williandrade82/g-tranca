@@ -6,6 +6,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.game.BotSeatPlayer
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.botSeed
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -21,7 +22,7 @@ class ScoreBreakdownTest {
         var checked = 0
         for ((mode, seed) in listOf(GameMode.INDIVIDUAL to 11L, GameMode.INDIVIDUAL to 12L, GameMode.DUPLAS to 21L)) {
             val controller = GameController(
-                GameConfig(mode, Difficulty.MEDIO, targetScore = 3000), seed,
+                GameConfig(mode, Difficulty.MEDIO, targetScore = 3000, rules = NO_DEAL_GUESS), seed,
                 mode.seats.map { BotSeatPlayer(createBot(Difficulty.MEDIO, Random(botSeed(seed, it.index)))) },
                 computeDispatcher = StandardTestDispatcher(testScheduler), botDelayMillis = 0,
             )

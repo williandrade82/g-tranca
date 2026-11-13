@@ -32,8 +32,10 @@ class PresentationWaitTest {
     private fun TestScope.untilBotSwap(seed: Long): Waiting? {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val human = HumanPlayer()
+        // §3.6 este teste não dirige o palpite da distribuição certeira (não chama `guessRevealDone`, só
+        // `presentationDone`): desligado, para não travar esperando uma confirmação que nunca chega.
         val controller = GameController(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000), seed,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000, rules = NO_DEAL_GUESS), seed,
             listOf(human, BotSeatPlayer(createBot(Difficulty.FACIL, Random(seed)))),
             computeDispatcher = dispatcher, botDelayMillis = 0,
         )

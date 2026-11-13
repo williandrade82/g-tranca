@@ -83,6 +83,25 @@ sealed interface UiMessage {
  */
 data class RedThreeReveal(val notice: RedThreeNotice, val hiddenHandCards: Set<Card>)
 
+/** §3.6 qual palpite do minijogo "distribuição certeira" (§3.8.2 do telas-app.md) acabou de resolver. */
+enum class DealGuessStage { HAND, MORTO }
+
+/**
+ * §3.6 é a vez do humano palpitar: a tela mostra o modal "Cartas para a distribuição"/"Cartas para o Morto". A
+ * largura certa (o alvo) nunca aparece aqui — só o motor sabe; a tela só sabe o total de estágios da barra.
+ */
+data class DealGuessPrompt(val stage: DealGuessStage, val totalStages: Int)
+
+/**
+ * §3.6 reação em tela cheia a um palpite resolvido (próprio jogador ou parceiro, §14.5): fica até o toque
+ * ([TableEvents.onDealGuessRevealDismissed]), que libera a próxima jogada do motor (o palpite seguinte, ou a 1ª
+ * jogada de verdade). [roundNumber] e [stage] identificam, para o motor, qual espera reconhecer.
+ */
+data class DealGuessReveal(val stage: DealGuessStage, val partner: Boolean, val correct: Boolean, val roundNumber: Int, val id: Long)
+
+/** §3.6 reação reduzida (pílula) de quem palpitou: confete/borda dourada no acerto, tremor no erro; some sozinha. */
+data class DealGuessPillReaction(val correct: Boolean, val id: Long)
+
 /** Telas depois de uma partida: anúncio do resultado, pontos (§12), anúncio do fim do jogo e tela final (§13). */
 /** Etapas do fim da partida (docs/telas.md 3.9–3.12): mesa final com "Seguir", pontos da partida e, no fim do jogo, o resultado. */
 enum class EndScreen { FINAL_TABLE, ROUND_POINTS, FINAL }
@@ -181,12 +200,45 @@ data class GameUiState(
      * "Aguardando <nome> escolher os boosters" no lugar do texto de vez de sempre (telas.md 3.19 "Online"/"Multijogador").
      */
     val boostersAwaitingSeat: Seat? = null,
+    /** §3.6 reação em tela cheia do palpite resolvido (próprio jogador ou parceiro), até o toque fechar. */
+    val dealGuessReveal: DealGuessReveal? = null,
+    /** §3.6 reação reduzida (pílula) por assento (índice), enquanto estiver à vista. */
+    val dealGuessPills: Map<Int, DealGuessPillReaction> = emptyMap(),
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
     private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
+    /** §3.6 fases de palpite da distribuição certeira (não são "jogar", "comprar" etc.: nenhum outro controle vale). */
+    private val dealGuessPhase: Boolean get() = snapshot.view.phase == Phase.DEAL_GUESS_HAND || snapshot.view.phase == Phase.DEAL_GUESS_MORTO
     val awaitingDraw: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW
     val playing: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.PLAYING
     val canDraw: Boolean get() = Action.DrawFromStock in legal
+
+    /**
+     * §3.6 é a vez do humano palpitar e o modal deve aparecer: `null` fora dessa vez, enquanto a reação em tela cheia
+     * do palpite anterior ainda não fechou (individual: o mesmo jogador palpita a mão e, depois, o morto) ou durante
+     * o "Prepare-se!" (que cobriria o modal). O monte some da mesa no mesmo intervalo (fora daqui: ver [isDealGuessing]).
+     */
+    val dealGuessPrompt: DealGuessPrompt?
+        get() {
+            if (!isHumanTurn || dealGuessReveal != null || opening) return null
+            val view = snapshot.view
+            return when (view.phase) {
+                Phase.DEAL_GUESS_HAND -> DealGuessPrompt(DealGuessStage.HAND, com.gtranca.engine.model.dealGuessHandStages(view.rules))
+                Phase.DEAL_GUESS_MORTO -> {
+                    val handWidth = view.dealGuess?.hand?.width ?: return null
+                    DealGuessPrompt(DealGuessStage.MORTO, com.gtranca.engine.model.dealGuessMortoStages(view.mode, view.rules, handWidth))
+                }
+                else -> null
+            }
+        }
+
+    /**
+     * §3.6 o monte fica escondido (em qualquer lugar da mesa que o desenha) enquanto o palpite não termina. O
+     * palpite do morto já resolve o motor para [Phase.AWAITING_DRAW] (nenhuma carta troca de lugar com o palpite em
+     * si, §3.6): o monte continua escondido até o toque fechar a reação (`dealGuessReveal`), para a distribuição
+     * (escondida atrás da reação em tela cheia) nunca aparecer antes dela.
+     */
+    val isDealGuessing: Boolean get() = dealGuessPhase || dealGuessReveal != null
 
     /** §5.3/§5.5 só com algum plano de pegar o lixo em `legalActions`. */
     val canTakeDiscardPile: Boolean get() = legal.any { it is Action.TakeDiscardPile }
@@ -379,6 +431,10 @@ class GameViewModel(
         val ownReaction: com.gtranca.engine.Reaction? = null,
         val ownReactionId: Long = 0,
         val lastReaction: ReactionEvent? = null,
+        /** §3.6 reação em tela cheia do palpite resolvido, até o toque ([onDealGuessRevealDismissed]) reconhecer o motor. */
+        val dealGuessReveal: DealGuessReveal? = null,
+        /** §3.6 reação reduzida (pílula) por assento (índice), enquanto estiver à vista. */
+        val dealGuessPills: Map<Int, DealGuessPillReaction> = emptyMap(),
     )
 
     private val human = HumanPlayer()
@@ -475,7 +531,9 @@ class GameViewModel(
         }
         viewModelScope.launch {
             controller.state.collect { snapshot ->
+                val beforeGuess = local.value.snapshot
                 local.update { absorb(it, snapshot, it.snapshot) }
+                handleDealGuessTransition(beforeGuess, snapshot)
                 // §13/§13.1 fim do jogo: estatística (uma vez) e o jogo salvo apagado.
                 if (snapshot.stage == Stage.GAME_OVER && persistence != null && finishSent.compareAndSet(false, true)) {
                     val result = when {
@@ -623,6 +681,45 @@ class GameViewModel(
     /** A troca é do próprio humano: encenação com o botão "Baixar 3 vermelho". */
     private fun isOwn(notice: RedThreeNotice, snapshot: GameSnapshot): Boolean = notice.seat == snapshot.viewerSeat
 
+    /**
+     * §3.6 [before] e [after] são snapshots consecutivos: se algum palpite (mão e/ou morto) resolveu entre eles
+     * (`dealGuess.hand`/`.morto` passou de `null` a não-`null`), aciona a reação dele. Comparar contra [before] (e não
+     * contra algum "já visto" guardado em [Local]) garante que um jogo retomado no meio da partida, já com o palpite
+     * resolvido antes de existir esta tela, nunca reencena a reação (ver `absorb`, mesma ideia das trocas de 3 vermelho).
+     */
+    private fun handleDealGuessTransition(before: GameSnapshot, after: GameSnapshot) {
+        if (before.roundNumber != after.roundNumber) return
+        val oldGuess = before.view.dealGuess
+        val newGuess = after.view.dealGuess ?: return
+        val hand = newGuess.hand
+        if (oldGuess?.hand == null && hand != null) reactToGuess(DealGuessStage.HAND, newGuess.dealerSeat, hand.correct, after)
+        val morto = newGuess.morto
+        if (oldGuess?.morto == null && morto != null) reactToGuess(DealGuessStage.MORTO, newGuess.mortoDealerSeat, morto.correct, after)
+    }
+
+    /**
+     * §3.6 reage ao palpite de [seat] resolvido ([correct] vem só do motor, nunca calculado aqui): a pílula (telas.md
+     * 3.8.2 `deal-guess-pill-burst`/`-shake`) sempre aparece, em qualquer aparelho; a reação em tela cheia só para o
+     * próprio jogador ou o parceiro dele (duplas) — os demais acionam [GameController.guessRevealDone] na hora, sem
+     * esperar toque nenhum (não há nada para o jogador fechar).
+     */
+    private fun reactToGuess(stage: DealGuessStage, seat: Seat, correct: Boolean, snapshot: GameSnapshot) {
+        val id = animationIds.incrementAndGet()
+        local.update { it.copy(dealGuessPills = it.dealGuessPills + (seat.index to DealGuessPillReaction(correct, id))) }
+        viewModelScope.launch {
+            delay(DEAL_GUESS_PILL_MILLIS)
+            local.update { state -> if (state.dealGuessPills[seat.index]?.id == id) state.copy(dealGuessPills = state.dealGuessPills - seat.index) else state }
+        }
+        val role = com.gtranca.game.SeatRole.of(snapshot.view.mode, seat, snapshot.viewerSeat)
+        if (role == com.gtranca.game.SeatRole.YOU || role == com.gtranca.game.SeatRole.PARTNER) {
+            local.update {
+                it.copy(dealGuessReveal = DealGuessReveal(stage, partner = role == com.gtranca.game.SeatRole.PARTNER, correct = correct, roundNumber = snapshot.roundNumber, id = id))
+            }
+        } else {
+            controller.guessRevealDone(snapshot.roundNumber, stage == DealGuessStage.HAND)
+        }
+    }
+
     // ---------- derivação ----------
 
     /**
@@ -661,7 +758,15 @@ class GameViewModel(
         // mesma partida) as reposições são as últimas cartas da mão: o motor as acrescenta ao fim.
         val ownSwaps = fresh.filter { it.seat == snapshot.viewerSeat && it !in fromMorto }
         val ownMorto = fresh.filter { it.seat == snapshot.viewerSeat && it in fromMorto }
-        val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING && (previous == null || !sameRound)
+        // §3.6 com a distribuição certeira ligada, a partida nova começa numa fase de palpite (a mão do motor já está
+        // completa desde o início: o palpite não muda cartas, §3.6) — a animação da distribuição só deve começar depois
+        // dos dois palpites resolvidos, não no 1º snapshot da partida. `old.view.phase` nas fases de palpite identifica
+        // exatamente essa transição (sai da última fase de palpite para `AWAITING_DRAW`); sem a regra, o 1º snapshot já
+        // chega em `AWAITING_DRAW`, e o comportamento é o de sempre.
+        val dealingGuessPhases = snapshot.view.phase == Phase.DEAL_GUESS_HAND || snapshot.view.phase == Phase.DEAL_GUESS_MORTO
+        val leavingGuessPhases = old.view.phase == Phase.DEAL_GUESS_HAND || old.view.phase == Phase.DEAL_GUESS_MORTO
+        val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING && !dealingGuessPhases &&
+            (previous == null || !sameRound || leavingGuessPhases)
         var delivers = if (sameRound) state.delivers else emptyMap()
         if (ownSwaps.isNotEmpty()) {
             val fromDeal = !(sameRound && previous != null)
@@ -835,6 +940,8 @@ class GameViewModel(
             ownReaction = state.ownReaction,
             ownReactionId = state.ownReactionId,
             opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
+            dealGuessReveal = state.dealGuessReveal,
+            dealGuessPills = state.dealGuessPills,
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
             opening = state.opening,
@@ -883,12 +990,35 @@ class GameViewModel(
 
     override fun onTakeDiscardPile() = play(PlayIntent.TakeDiscardPile)
 
+    /**
+     * §3.6 o jogador marcou [start] (1º toque) e [end] (2º toque, que também resolve Início/Fim, §3.8.2 do
+     * telas-app.md). A largura (`end - start`, já normalizada) escolhe a ação representativa de `legalActions`
+     * (§1/`LegalActions`: um `GuessDealRange(0, largura)` por largura possível) — como em qualquer outra jogada, a
+     * tela nunca decide sozinha se acertou: só o motor sabe (`Guess.correct`, que chega no próximo `dealGuess`).
+     */
+    override fun onGuessDealRange(start: Int, end: Int) {
+        val snapshot = controller.state.value
+        if (!snapshot.isHumanTurn || !controller.awaitingHuman() || turnHeld(local.value)) return
+        val width = kotlin.math.abs(end - start)
+        val action = snapshot.humanLegal.filterIsInstance<Action.GuessDealRange>().firstOrNull { it.end - it.start == width } ?: return
+        submit(action, snapshot.humanRequestId)
+    }
+
+    /** §3.6 toque que fecha a reação em tela cheia do palpite: libera o próximo pedido do motor (§3.6, `GameController`). */
+    override fun onDealGuessRevealDismissed() {
+        val reveal = local.value.dealGuessReveal ?: return
+        local.update { it.copy(dealGuessReveal = null) }
+        controller.guessRevealDone(reveal.roundNumber, reveal.stage == DealGuessStage.HAND)
+    }
+
     /** Toque no lixo: antes de comprar, pegar o lixo; depois, descartar a carta selecionada (§4.3, §8). */
     override fun onDiscardPileClick() {
         when (controller.state.value.view.phase) {
             Phase.AWAITING_DRAW -> play(PlayIntent.TakeDiscardPile)
             Phase.PLAYING -> play(PlayIntent.Discard)
             Phase.FINISHED -> Unit
+            // §3.6 o lixo nem aparece durante o palpite (o monte é que fica escondido, mas o toque no lixo não faz nada aqui).
+            Phase.DEAL_GUESS_HAND, Phase.DEAL_GUESS_MORTO -> Unit
         }
     }
 
@@ -1176,6 +1306,9 @@ class GameViewModel(
 
         /** §17.8 quanto tempo a reação enviada fica à vista (*provisório, revisar com produto*). */
         const val REACTION_SHOW_MILLIS: Long = 3_000
+
+        /** §3.6 quanto tempo a pílula de quem palpitou mostra a reação reduzida (confete/tremor). */
+        const val DEAL_GUESS_PILL_MILLIS: Long = 1_600
 
         /** Fator de duração da velocidade "lenta" (30% mais lenta). */
         const val SLOW_FACTOR: Float = 1.3f

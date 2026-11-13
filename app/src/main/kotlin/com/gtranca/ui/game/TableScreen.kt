@@ -238,6 +238,12 @@ interface TableEvents {
     fun onResign()
     fun onConfirmResign()
     fun onDismissResign()
+
+    /** §3.6 o jogador tocou duas vezes na barra: [start] e [end] são os estágios marcados (a tela normaliza). */
+    fun onGuessDealRange(start: Int, end: Int) = Unit
+
+    /** §3.6 toque que fecha a reação em tela cheia do palpite resolvido (vitória ou "não foi dessa vez"). */
+    fun onDealGuessRevealDismissed() = Unit
 }
 
 /** Texto claro para controles desabilitados sobre o verde (contraste ≥ 4,5:1 com o verde escuro e o da mesa). */
@@ -307,8 +313,10 @@ private fun TableScreenContent(
     val turnSound = LocalSound.current
     val turnGate = remember { com.gtranca.ui.sound.TurnSoundGate() }
     val turnNumber = state.snapshot.view.turnsBegun
-    LaunchedEffect(state.isHumanTurn, state.snapshot.roundNumber, turnNumber) {
-        if (onReviewContinue == null && turnGate.shouldPlay(state.isHumanTurn, state.snapshot.roundNumber, turnNumber)) {
+    // §3.6 o palpite da distribuição certeira não é "a vez" de jogar (§4.3): sem o som nem o aviso de vez de sempre.
+    val isHumanPlayTurn = state.isHumanTurn && !state.isDealGuessing
+    LaunchedEffect(isHumanPlayTurn, state.snapshot.roundNumber, turnNumber) {
+        if (onReviewContinue == null && turnGate.shouldPlay(isHumanPlayTurn, state.snapshot.roundNumber, turnNumber)) {
             turnSound.play(com.gtranca.ui.sound.SoundEffect.TURN)
         }
     }
@@ -422,7 +430,7 @@ private fun TableScreenContent(
 
     // Tour guiado (docs/telas.md 3.16): sozinho só na 1ª vez em que é a vez do jogador, depois das animações iniciais.
     val tourReady = onReviewContinue == null && com.gtranca.ui.tour.Tours.tableReady(
-        isHumanTurn = state.isHumanTurn,
+        isHumanTurn = isHumanPlayTurn,
         dealPending = state.dealPending,
         animating = state.flights.isNotEmpty(),
         swapShowing = state.banner != null || state.reveal != null || state.ownSwapPending,
@@ -593,6 +601,12 @@ private fun TableScreenContent(
     }
     // "Prepare-se!" (docs/telas-app.md): 1,5 s sobre a mesa já montada, antes da distribuição da 1ª partida.
     if (state.opening) com.gtranca.ui.selection.GetReadyOverlay()
+    // §3.6 minijogo "distribuição certeira" (telas-app.md 3.8.2): o modal de seleção, só na tela de quem palpita, e a
+    // reação em tela cheia do palpite resolvido (própria ou do parceiro), por cima de tudo o mais da mesa.
+    if (onReviewContinue == null) {
+        state.dealGuessPrompt?.let { prompt -> DealGuessModal(prompt, events::onGuessDealRange) }
+        state.dealGuessReveal?.let { reveal -> DealGuessRevealOverlay(reveal, events::onDealGuessRevealDismissed) }
+    }
     }
 
     if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }
@@ -868,13 +882,23 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     val events = snapshot.shownTurnEvents(seat.index)
     val shape = RoundedCornerShape(Corner.sm)
     val detailHint = stringResource(R.string.seat_detail_hint)
+    // §3.6 reação reduzida do palpite da distribuição certeira (telas-app.md 3.8.2): confete + borda dourada no acerto,
+    // tremor curto no erro; também aparece no próprio aparelho (feedback geral, "não custa mostrar sempre").
+    val dealGuessReaction = state.dealGuessPills[seat.index]
+    val dealGuessShake = dealGuessShakeOffset(dealGuessReaction)
+    Box(modifier) {
     Column(
-        modifier
+        Modifier
             .heightIn(min = minHeight)
             .clip(shape)
             .clickable(enabled = events.isNotEmpty() || snapshot.turnRedThrees.getOrNull(seat.index).orEmpty().isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
-            .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
+            .border(
+                if (thinking || dealGuessReaction?.correct == true) 2.dp else 1.dp,
+                if (dealGuessReaction?.correct == true) GColors.Gold else if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f),
+                shape,
+            )
+            .graphicsLayer { translationX = dealGuessShake }
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .anchor(AnimAnchor.SeatPill(seat.index))
             .testTag("seat-${seat.index}"),
@@ -950,6 +974,43 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), turnReds, snapshot.turnRedThreeAfter.getOrNull(seat.index).orEmpty())
         }
     }
+    // §3.6 confete reduzido sobre a pílula, só no acerto (telas-app.md 3.8.2): reaproveita o padrão pequeno de CharacterPortrait.kt.
+    if (dealGuessReaction?.correct == true) {
+        com.gtranca.ui.persona.PoseEffectOverlay(
+            com.gtranca.ui.persona.PoseEffect.CONFETTI,
+            cycleMillis = 1200,
+            modifier = Modifier.matchParentSize().clip(shape).testTag("deal-guess-pill-burst"),
+        )
+    }
+    if (dealGuessReaction?.correct == false) {
+        Box(Modifier.matchParentSize().testTag("deal-guess-pill-shake"))
+    }
+    }
+}
+
+/** §3.6 deslocamento horizontal (px) do tremor da pílula no erro do palpite (telas-app.md 3.8.2): curto, amortecido. */
+@Composable
+private fun dealGuessShakeOffset(reaction: DealGuessPillReaction?): Float {
+    val offset = remember { androidx.compose.animation.core.Animatable(0f) }
+    val amplitude = with(LocalDensity.current) { 6.dp.toPx() }
+    LaunchedEffect(reaction?.id) {
+        if (reaction != null && !reaction.correct) {
+            offset.snapTo(0f)
+            offset.animateTo(
+                0f,
+                animationSpec = androidx.compose.animation.core.keyframes {
+                    durationMillis = 400
+                    0f at 0
+                    amplitude at 60
+                    -amplitude at 140
+                    (amplitude * 0.5f) at 220
+                    (-amplitude * 0.5f) at 300
+                    0f at 400
+                },
+            )
+        }
+    }
+    return offset.value
 }
 
 /** Nome curto do assento para a pílula (cabe em um terço da largura). */
@@ -1288,8 +1349,9 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // Monte à esquerda; os dois mortos agrupados à direita, afastados do monte.
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // §3.6 o monte fica escondido durante o palpite da distribuição certeira (nenhuma carta à vista, §3.3).
             val stockCount = countText(R.plurals.card_count, R.string.card_count_zero, view.stockSize)
-            val stockLabel = stringResource(R.string.stock) + ", " + stockCount
+            val stockLabel = stringResource(R.string.stock) + (if (state.isDealGuessing) "" else ", $stockCount")
             Row(
                 Modifier
                     .heightIn(min = 48.dp)
@@ -1301,10 +1363,15 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (view.stockSize > 0) DeckStack(view.stockSize, AnimAnchor.Stock) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
-                Column {
+                if (state.isDealGuessing) {
+                    Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
                     Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
-                    GCounterPill(view.stockSize.toString(), icon = { CardsGlyph(TableAccent) })
+                } else {
+                    if (view.stockSize > 0) DeckStack(view.stockSize, AnimAnchor.Stock) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
+                    Column {
+                        Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
+                        GCounterPill(view.stockSize.toString(), icon = { CardsGlyph(TableAccent) })
+                    }
                 }
             }
             Spacer(Modifier.width(12.dp))

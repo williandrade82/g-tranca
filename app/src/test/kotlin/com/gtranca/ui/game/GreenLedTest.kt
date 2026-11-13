@@ -3,6 +3,7 @@ package com.gtranca.ui.game
 import com.gtranca.ai.Difficulty
 import com.gtranca.engine.model.GameMode
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.ui.cards.CardEmphasis
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
@@ -31,7 +32,7 @@ class GreenLedTest {
 
     private fun TestScope.vm(boosters: List<String>): GameViewModel {
         val game = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
             gameSeed = 9, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
             initialBoosters = boosters,
         )
