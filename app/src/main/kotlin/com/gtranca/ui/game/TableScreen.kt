@@ -2151,6 +2151,14 @@ private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect
 /** Fase de um voo no relógio compartilhado: antes do seu atraso, voando, ou já pousado. */
 private enum class FlightPhase { BEFORE, FLYING, ARRIVED }
 
+/**
+ * Folga que a carta some depois de pousar (docs: a piscada ao chegar). [onArrived] avisa o pouso por um estado à
+ * parte (`arrived`, lá na tela), que só troca a carta real de invisível para visível numa recomposição separada;
+ * sem essa folga, um quadro em que a voando já sumiu mas a real ainda não apareceu pisca. Com ela, as duas ficam
+ * sobrepostas por pouco tempo (imperceptível, paradas no mesmo lugar) em vez de haver um buraco sem nenhuma.
+ */
+private const val OVERLAY_LINGER_MILLIS = 120L
+
 @Composable
 private fun FlyingCard(
     flight: CardFlight,
@@ -2181,8 +2189,17 @@ private fun FlyingCard(
             }
         }
     }
-    LaunchedEffect(phase) { if (phase == FlightPhase.ARRIVED) onArrived(flight.id) }
-    if (phase != FlightPhase.FLYING) return
+    var overlayGone by remember { mutableStateOf(false) }
+    LaunchedEffect(phase) {
+        if (phase == FlightPhase.ARRIVED) {
+            onArrived(flight.id)
+            delay(OVERLAY_LINGER_MILLIS)
+            overlayGone = true
+        } else {
+            overlayGone = false
+        }
+    }
+    if (phase == FlightPhase.BEFORE || overlayGone) return
     val size = CardSize.SMALL
     val density = LocalDensity.current
     val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
