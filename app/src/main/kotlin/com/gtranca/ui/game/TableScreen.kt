@@ -140,8 +140,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
@@ -2078,6 +2081,11 @@ private fun Modifier.anchor(key: AnimAnchor): Modifier = composed {
 /**
  * Camada por cima da mesa com as cartas voando ([CardFlight]). Não recebe toques nem aparece para o leitor de tela;
  * com animações desligadas (duração 0 ou escala do sistema 0) não desenha nada.
+ *
+ * Um único relógio (ms desde que a camada ganhou voos) toca todas as cartas: cada [FlyingCard] só lê o valor dele e
+ * deriva o próprio progresso (ancorado em quando ficou pronta e no seu atraso de escalonamento), em vez de cada
+ * carta rodar a própria animação. Antes, a distribuição (até ~44 cartas em duplas) chegava a rodar outras tantas
+ * animações em paralelo; agora roda uma só, mais barata e sem travar em aparelhos mais fracos.
  */
 @Composable
 private fun FlightsLayer(
@@ -2090,6 +2098,16 @@ private fun FlightsLayer(
     // [durationMillis] e os atrasos dos voos já vêm escalados pelo ViewModel (escala 0 = nenhum voo).
     if (durationMillis <= 0 || flights.isEmpty()) return
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var startNanos = -1L
+        while (true) {
+            withFrameNanos { now ->
+                if (startNanos < 0L) startNanos = now
+                clock.floatValue = (now - startNanos) / 1_000_000f
+            }
+        }
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -2098,7 +2116,7 @@ private fun FlightsLayer(
             .testTag("flights-layer"),
     ) {
         flights.forEach { flight ->
-            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, { isReady(flight.id) }, onArrived) }
+            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, { isReady(flight.id) }, clock, onArrived) }
         }
     }
 }
@@ -2130,6 +2148,9 @@ private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect
     else -> this[anchor]
 }
 
+/** Fase de um voo no relógio compartilhado: antes do seu atraso, voando, ou já pousado. */
+private enum class FlightPhase { BEFORE, FLYING, ARRIVED }
+
 @Composable
 private fun FlyingCard(
     flight: CardFlight,
@@ -2138,50 +2159,67 @@ private fun FlyingCard(
     durationMillis: Long,
     delayMillis: Long,
     isReady: () -> Boolean,
+    clock: androidx.compose.runtime.MutableFloatState,
     onArrived: (Long) -> Unit,
 ) {
-    val progress = remember { Animatable(0f) }
-    var visible by remember { mutableStateOf(false) }
+    // Instante do relógio compartilhado em que esta carta ficou liberada para voar (-1 enquanto não chegou a vez dela).
+    var readyAtMillis by remember { mutableFloatStateOf(-1f) }
     LaunchedEffect(Unit) {
-        // Espera a mesa mostrar o destino (rolagem até os jogos do lado).
+        // Espera a mesa mostrar o destino (rolagem até os jogos do lado), depois ancora no relógio compartilhado.
         snapshotFlow { isReady() }.first { it }
-        delay(delayMillis)
-        visible = true
-        // A batida (última jogada) voa em câmera lenta (docs/telas.md 3.9).
-        progress.animateTo(1f, tween((durationMillis * flight.durationFactor).toInt().coerceAtLeast(1), easing = FastOutSlowInEasing))
-        onArrived(flight.id)
-        visible = false
+        readyAtMillis = clock.floatValue
     }
-    if (!visible) return
+    // A batida (última jogada) voa em câmera lenta (docs/telas.md 3.9).
+    val cardDurationMillis = (durationMillis * flight.durationFactor).coerceAtLeast(1f)
+    val phase by remember {
+        derivedStateOf {
+            when {
+                readyAtMillis < 0f -> FlightPhase.BEFORE
+                clock.floatValue - readyAtMillis - delayMillis < 0f -> FlightPhase.BEFORE
+                clock.floatValue - readyAtMillis - delayMillis < cardDurationMillis -> FlightPhase.FLYING
+                else -> FlightPhase.ARRIVED
+            }
+        }
+    }
+    LaunchedEffect(phase) { if (phase == FlightPhase.ARRIVED) onArrived(flight.id) }
+    if (phase != FlightPhase.FLYING) return
     val size = CardSize.SMALL
     val density = LocalDensity.current
     val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
     val arcPx = with(density) { 36.dp.toPx() }
     val flips = flight.card != null && flight.from == AnimAnchor.Stock
+    // Progresso (0..1) desta carta a cada quadro: derivado do relógio compartilhado, nunca da sua própria animação.
+    fun t(): Float = FastOutSlowInEasing.transform(((clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis).coerceIn(0f, 1f))
     Box(
         Modifier
             .offset {
                 // Lido a cada quadro: acompanha rolagem e o conjunto novo que aparece no destino.
                 val from = anchors.resolve(flight.from, flight.card)?.center ?: return@offset IntOffset(-10_000, -10_000)
                 val to = anchors.resolve(flight.to, flight.card)?.center ?: from
-                val t = progress.value
+                val t = t()
                 // Trajeto em curva: sobe um pouco no meio do caminho.
                 val arc = Offset(0f, -arcPx * sin(PI.toFloat() * t))
                 val point = from + (to - from) * t + arc - origin() - half
                 IntOffset(point.x.roundToInt(), point.y.roundToInt())
             }
             .graphicsLayer {
+                val t = t()
                 // Batida: cresce até 1,4x em 40% do trajeto, fica grande por 20% e volta ao normal ao pousar.
-                val lift = if (flight.finale) GoOutDrama.flightScale(progress.value) else 1f + 0.18f * sin(PI.toFloat() * progress.value)
+                val lift = if (flight.finale) GoOutDrama.flightScale(t) else 1f + 0.18f * sin(PI.toFloat() * t)
                 scaleX = lift
                 scaleY = lift
                 shadowElevation = 6f
                 // Compra do monte: a carta vira no meio do voo (verso → face).
-                if (flips) rotationY = if (progress.value < 0.5f) 180f * progress.value else 180f * progress.value - 180f
+                if (flips) rotationY = if (t < 0.5f) 180f * t else 180f * t - 180f
                 cameraDistance = 12f * density.density
             },
     ) {
-        val showFace = flight.card != null && (!flips || progress.value >= 0.5f)
+        // Derivado à parte: só recompõe quando o booleano muda (no cruzamento dos 50%), não a cada quadro.
+        val showFace by remember {
+            derivedStateOf {
+                flight.card != null && (!flips || (clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis >= 0.5f)
+            }
+        }
         if (showFace) PlayingCard(flight.card!!, size = size, describe = false) else CardBack(size = size, describe = false)
     }
 }
