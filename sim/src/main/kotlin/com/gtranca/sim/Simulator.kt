@@ -238,7 +238,10 @@ class Simulator internal constructor(
                     if (state.hasBegunFirstTurn(s) && s !in state.unsettledMortoSeats) {
                         return "3 vermelho na mão do assento $seat, que já trocou os seus"
                     }
-                    if (s == state.currentSeat) return "3 vermelho na mão do assento da vez ($seat)"
+                    // §3.6 nas fases de palpite, o assento da vez é quem palpita (não quem vai jogar): ele
+                    // ainda não começou a própria 1ª vez, então pode ter 3 vermelho normalmente.
+                    val isGuessPhase = state.phase == Phase.DEAL_GUESS_HAND || state.phase == Phase.DEAL_GUESS_MORTO
+                    if (s == state.currentSeat && !isGuessPhase) return "3 vermelho na mão do assento da vez ($seat)"
                 }
             }
         }

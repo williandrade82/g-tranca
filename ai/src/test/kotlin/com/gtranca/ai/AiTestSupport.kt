@@ -77,6 +77,20 @@ private fun table(melds: List<String>): SideTable =
 private fun RoundState.withEmptyTakenMortos(): RoundState =
     copy(mortos = mortos.mapIndexed { i, morto -> if (mortoStatus[i] == MortoStatus.Available) morto else emptyList() })
 
+/**
+ * Resolve as fases de palpite da distribuição certeira (§3.6), se houver, com qualquer largura válida (a
+ * primeira ação legal de cada fase). Útil em testes escritos antes da regra existir, que esperam o estado
+ * logo após a distribuição já na fase [Phase.AWAITING_DRAW] (início da 1ª vez, §3.5).
+ */
+fun RoundState.pastDealGuess(): RoundState {
+    var state = this
+    while (state.phase == Phase.DEAL_GUESS_HAND || state.phase == Phase.DEAL_GUESS_MORTO) {
+        val legal = RoundEngine.legalActions(state, state.currentSeat)
+        state = RoundEngine.apply(state, state.currentSeat, legal.first())
+    }
+    return state
+}
+
 /** Escolha do [bot] para o assento da vez em [state], a partir da vista e das ações legais do motor. */
 fun BotPlayer.decide(state: RoundState): Action {
     val seat = state.currentSeat

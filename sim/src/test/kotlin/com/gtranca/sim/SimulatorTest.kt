@@ -13,6 +13,7 @@ import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
+import com.gtranca.engine.RuleSet
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -227,7 +228,9 @@ class SimulatorTest {
     @Test
     fun `3 vermelho na mao e morto pego com cartas violam invariantes`() {
         val sim = simulator(SimConfig(checkInvariants = true))
-        val dealt = dealRound(GameMode.INDIVIDUAL, Random(3))
+        // §3.6 este teste é sobre a vez normal de jogo (§3.5), não sobre o palpite da distribuição certeira:
+        // com o parâmetro desligado, `currentSeat` já é quem vai jogar, como antes da regra existir.
+        val dealt = dealRound(GameMode.INDIVIDUAL, Random(3), RuleSet.DEFAULT.copy(dealGuessBonusEnabled = false))
         // §3.5 / §6.5 o 3 vermelho só fica na mão de quem ainda não começou a 1ª vez (ou com morto indireto pendente)
         val redThree = dealt.allCards().first { it.isRedThree }
         // base: nenhum 3 vermelho em mão (movidos para o monte), todos já começaram a 1ª vez

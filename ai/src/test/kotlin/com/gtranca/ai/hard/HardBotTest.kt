@@ -188,7 +188,11 @@ class HardBotTest {
             candidates.isEmpty() shouldBe false
             candidates.all { it in legal } shouldBe true
             candidates.toSet().size shouldBe candidates.size
-            (candidates.size <= 3 + 3 + 2) shouldBe true
+            // §3.6 nas fases de palpite da distribuição certeira, rankedCandidates não ranqueia nada (a busca do
+            // Difícil não entra nessa fase, ver HardBot.chooseAction): cai no `ifEmpty { legal }`, sem o teto de
+            // candidatas por tipo que vale para compra/baixa/descarte.
+            val isDealGuess = s.phase == Phase.DEAL_GUESS_HAND || s.phase == Phase.DEAL_GUESS_MORTO
+            if (isDealGuess) candidates shouldBe legal else (candidates.size <= 3 + 3 + 2) shouldBe true
             if (s.phase == Phase.AWAITING_DRAW) candidates.first() shouldBe scorer.chooseAction(view, legal)
             if (s.phase == Phase.PLAYING) {
                 // §4.3 etapas 2 e 3: no máximo 3 baixas e 3 descartes, e a ordem segue a decisão do Médio

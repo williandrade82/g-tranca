@@ -54,6 +54,19 @@ fun dealGuessSeats(mode: GameMode, firstSeat: Seat): Pair<Seat, Seat> {
 fun dealGuessHandStages(rules: RuleSet): Int = Deck.size(rules)
 
 /**
+ * §3.6 alvo (largura certa) do palpite da mão: total de cartas distribuídas às mãos (§3.1) — `cardsPerHand`
+ * vezes o número de assentos do [mode] (44 em duplas, 22 em individual, com os valores-padrão de [rules]).
+ * Usado pelo motor ([com.gtranca.engine.RoundEngine]) e pelos robôs (`:ai`, §14.5) para saber se um palpite acertou.
+ */
+fun dealGuessHandTarget(mode: GameMode, rules: RuleSet): Int = rules.cardsPerHand * mode.seatCount
+
+/**
+ * §3.6 alvo (largura certa) do palpite do morto: total de cartas dos mortos (§3.2) — `cardsPerMorto` vezes
+ * `mortoCount` (22 com os valores-padrão de [rules], em qualquer modo). Usado pelo motor e pelos robôs (§14.5).
+ */
+fun dealGuessMortoTarget(rules: RuleSet): Int = rules.cardsPerMorto * rules.mortoCount
+
+/**
  * §3.6 estágios da barra do palpite do morto: o total do baralho menos a largura escolhida no palpite da mão
  * ([handGuessWidth]), limitado entre **22** (mínimo) e **60** em duplas ou **82** em individual (máximo) — valores
  * fixos do documento, não derivados do tamanho do baralho do perfil.

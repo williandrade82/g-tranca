@@ -5,6 +5,8 @@ import com.gtranca.engine.model.DealGuess
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.dealGuessHandTarget
+import com.gtranca.engine.model.dealGuessMortoTarget
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
@@ -263,6 +265,31 @@ class DealGuessTest {
         val mortoDealer = afterHand.currentSeat
         RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 23)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
         RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 22)).shouldBeOk()
+    }
+
+    // ---------- §3.6 dealGuessHandTarget / dealGuessMortoTarget (helpers usados por :ai e, depois, pela UI) ----------
+
+    @ParameterizedTest
+    @EnumSource(GameMode::class)
+    fun `dealGuessHandTarget acerta a mesma largura que o motor usa para a mao`(mode: GameMode) {
+        // §3.6 confere que o helper bate com a fórmula inline de RoundEngine.guessDealRange
+        val target = dealGuessHandTarget(mode, RuleSet.DEFAULT)
+        val state = dealRound(mode, Random(9), firstSeat = Seat(0))
+        val dealer = state.dealGuess!!.dealerSeat
+        val resolved = RoundEngine.apply(state, dealer, Action.GuessDealRange(0, target))
+        resolved.dealGuess?.hand shouldBe Guess(0, target, correct = true)
+    }
+
+    @ParameterizedTest
+    @EnumSource(GameMode::class)
+    fun `dealGuessMortoTarget acerta a mesma largura que o motor usa para o morto`(mode: GameMode) {
+        // §3.6 alvo do morto é fixo (22), independente do modo ou da largura escolhida na mão
+        val target = dealGuessMortoTarget(RuleSet.DEFAULT)
+        val state = dealRound(mode, Random(9), firstSeat = Seat(0))
+        val afterHand = RoundEngine.apply(state, state.dealGuess!!.dealerSeat, Action.GuessDealRange(0, 1))
+        val mortoDealer = afterHand.dealGuess!!.mortoDealerSeat
+        val resolved = RoundEngine.apply(afterHand, mortoDealer, Action.GuessDealRange(0, target))
+        resolved.dealGuess?.morto shouldBe Guess(0, target, correct = true)
     }
 
     // ---------- §3.6 legalActions ----------

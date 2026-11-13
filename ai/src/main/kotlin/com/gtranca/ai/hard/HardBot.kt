@@ -1,14 +1,17 @@
 package com.gtranca.ai.hard
 
 import com.gtranca.ai.BotPlayer
+import com.gtranca.ai.HARD_DEAL_GUESS_ACCURACY
 import com.gtranca.ai.HardBotConfig
 import com.gtranca.ai.MediumBot
 import com.gtranca.ai.MediumWeights
+import com.gtranca.ai.chooseDealGuess
 import com.gtranca.engine.PublicEvent
 import com.gtranca.ai.PublicHistory
 import com.gtranca.engine.Action
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.Phase
 import kotlin.random.Random
 
 /**
@@ -32,6 +35,10 @@ import kotlin.random.Random
  *
  * Robustez: se a busca falhar por qualquer exceção, a decisão é a do Médio ([searchFailures] conta isso).
  * Uma decisão com uma única ação legal (ou uma única candidata) volta direto, sem busca.
+ *
+ * **Distribuição certeira** (§3.6/§14.5): nas fases de palpite, antes da 1ª vez, não há árvore nem
+ * simulação — é só um sorteio por probabilidade ([HARD_DEAL_GUESS_ACCURACY], 25%, [chooseDealGuess]),
+ * resolvido fora do ISMCTS para não gastar o orçamento de iterações/tempo com uma decisão que não é busca.
  *
  * @param clock relógio em nanossegundos (injetável nos testes do teto de tempo).
  */
@@ -89,6 +96,11 @@ class HardBot(
         lastIterations = 0
         lastOverrodeMedium = false
         if (legal.size == 1) return legal.single()
+        // §3.6 palpite da distribuição certeira: é sorteio por probabilidade (§14.5), não uma decisão de jogo
+        // com busca; resolvido direto, sem gastar o orçamento de iterações/tempo do ISMCTS.
+        if (view.phase == Phase.DEAL_GUESS_HAND || view.phase == Phase.DEAL_GUESS_MORTO) {
+            return chooseDealGuess(view, legal, random, HARD_DEAL_GUESS_ACCURACY)
+        }
         val result = try {
             val known = normalizeKnown(view, history)
             Ismcts(config, random, clock).search(view, legal, scorer, known, events.toList())

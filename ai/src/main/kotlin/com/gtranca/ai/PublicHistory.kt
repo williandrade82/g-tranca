@@ -47,6 +47,8 @@ class PublicHistory {
                 discards.getOrPut(event.seat.index) { mutableListOf() } += action.card
             }
             Action.DrawFromStock, Action.DeclineDraw -> Unit
+            // §3.6 palpite da distribuição certeira: não tem carta nenhuma (não é uma jogada de mão).
+            is Action.GuessDealRange -> Unit
         }
     }
 
