@@ -391,6 +391,10 @@ class DealGuessViewModelTest {
      * que não existe pra esse caso): o morto, perguntado a outro assento (sempre `Seat(1)`, nunca o humano) só
      * depois da mão resolver, já aparece resolvido no mesmo `runCurrent()` — se a reação do parceiro tivesse ficado
      * bloqueante (regressão para o comportamento antigo da tela cheia), o motor nunca teria perguntado o morto.
+     *
+     * §3.6 pedido do usuário (14/11/2026): o cartão ganhou um parágrafo fixo com os números de verdade — o alvo
+     * público da regra (`dealGuessHandTarget`, nunca segredo) e a largura que o parceiro realmente escolheu
+     * (`guess.width`, do motor). `PartnerGuessReaction.target`/`.guessedWidth` guardam esses dois valores.
      */
     @Test
     fun `§3_6 o palpite da mao do parceiro mostra so a reacao pequena e libera o motor sem esperar toque`() = runTest(dispatcher) {
@@ -401,6 +405,8 @@ class DealGuessViewModelTest {
         val reaction = state.partnerGuessReaction.shouldNotBeNull()
         reaction.stage shouldBe DealGuessStage.HAND
         reaction.correct shouldBe state.snapshot.view.dealGuess?.hand?.correct
+        reaction.target shouldBe dealGuessHandTarget(state.snapshot.view.mode, state.snapshot.view.rules)
+        reaction.guessedWidth shouldBe state.snapshot.view.dealGuess?.hand?.width
 
         state.snapshot.view.dealGuess?.morto.shouldNotBeNull()
 
@@ -414,6 +420,9 @@ class DealGuessViewModelTest {
      * Seat(0)` (o humano abre a partida), então `canDraw` só fica `true` se o motor já tiver avançado da fase de
      * palpite pra 1ª jogada de verdade — o que só acontece se `guessRevealDone` já tiver sido chamado pelo palpite
      * do parceiro, sem esperar nenhum toque.
+     *
+     * §3.6 pedido do usuário (14/11/2026): mesma prova de `target`/`guessedWidth` do teste da mão, aqui para o
+     * morto (`dealGuessMortoTarget`, que não depende do modo).
      */
     @Test
     fun `§3_6 o palpite do morto do parceiro tambem libera o motor sem esperar toque`() = runTest(dispatcher) {
@@ -423,6 +432,8 @@ class DealGuessViewModelTest {
         val reaction = state.partnerGuessReaction.shouldNotBeNull()
         reaction.stage shouldBe DealGuessStage.MORTO
         reaction.correct shouldBe state.snapshot.view.dealGuess?.morto?.correct
+        reaction.target shouldBe dealGuessMortoTarget(state.snapshot.view.rules)
+        reaction.guessedWidth shouldBe state.snapshot.view.dealGuess?.morto?.width
 
         state.canDraw shouldBe true
 

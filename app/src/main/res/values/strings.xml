@@ -979,4 +979,6 @@
     <string name="deal_guess_miss_partner_hand">O seu parceiro não acertou o número de cartas para a distribuição.</string>
     <string name="deal_guess_miss_partner_morto">O seu parceiro não acertou o número de cartas para o Morto.</string>
     <string name="deal_guess_tap_to_close">Toque na tela para fechar.</string>
+    <!-- Cartão pequeno do parceiro (14/11/2026): 2º parágrafo fixo com o alvo da regra e a largura que ele escolheu. -->
+    <string name="deal_guess_partner_numbers">Esperado: %1$d cartas | Palpite do parceiro: %2$d cartas.</string>
 </resources>

@@ -128,10 +128,16 @@ data class DealGuessPillReaction(val correct: Boolean, val id: Long)
  * §3.6 reação pequena, não bloqueante, do palpite do PARCEIRO (duplas): ao contrário de [DealGuessReveal] (tela
  * cheia, só do próprio jogador), esta some sozinha depois de alguns instantes e nunca espera toque — o motor já foi
  * liberado na hora ([GameController.guessRevealDone]), igual aos demais assentos que não são o próprio nem o
- * parceiro. Ancorada no canto inferior direito da mesa (telas-app.md 3.8.2), sobe a partir da borda superior
- * direita da mão do jogador ([AnimAnchor.OwnHand]).
+ * parceiro. Nasce encostada na borda esquerda da área de jogos do próprio lado (`AnimAnchor.SideArea`) e desliza
+ * para a direita (telas-app.md 3.8.2, redesenhada 14/11/2026); a UI conduz as três fases (entrada/repouso/saída)
+ * sozinha, a partir deste estado.
+ *
+ * @property target alvo (largura certa) do papel palpitado — número **público** das regras (`definition.md` §3.6:
+ *   `dealGuessHandTarget`/`dealGuessMortoTarget`), nunca segredo; mostrado no cartão junto de [guessedWidth].
+ * @property guessedWidth largura que o parceiro realmente escolheu (`Guess.width`, do motor): `correct` é
+ *   exatamente `guessedWidth == target`.
  */
-data class PartnerGuessReaction(val correct: Boolean, val stage: DealGuessStage, val id: Long)
+data class PartnerGuessReaction(val correct: Boolean, val stage: DealGuessStage, val id: Long, val target: Int, val guessedWidth: Int)
 
 /** Telas depois de uma partida: anúncio do resultado, pontos (§12), anúncio do fim do jogo e tela final (§13). */
 /** Etapas do fim da partida (docs/telas.md 3.9–3.12): mesa final com "Seguir", pontos da partida e, no fim do jogo, o resultado. */
@@ -782,7 +788,13 @@ class GameViewModel(
                 }
             }
             com.gtranca.game.SeatRole.PARTNER -> {
-                local.update { it.copy(partnerGuessReaction = PartnerGuessReaction(guess.correct, stage, id)) }
+                // §3.6 pedido do usuário (14/11/2026): o cartão mostra o alvo público da regra junto da largura que
+                // o parceiro realmente escolheu — mesmo cálculo de [DealGuessPrompt.target] (`dealGuessPrompt`, acima).
+                val target = when (stage) {
+                    DealGuessStage.HAND -> com.gtranca.engine.model.dealGuessHandTarget(snapshot.view.mode, snapshot.view.rules)
+                    DealGuessStage.MORTO -> com.gtranca.engine.model.dealGuessMortoTarget(snapshot.view.rules)
+                }
+                local.update { it.copy(partnerGuessReaction = PartnerGuessReaction(guess.correct, stage, id, target, guess.width)) }
                 controller.guessRevealDone(snapshot.roundNumber, stage == DealGuessStage.HAND)
                 viewModelScope.launch {
                     delay(PARTNER_GUESS_REACTION_MILLIS)
@@ -1394,9 +1406,14 @@ class GameViewModel(
         /** §3.6 quanto tempo a pílula de quem palpitou mostra a reação reduzida (confete/tremor). */
         const val DEAL_GUESS_PILL_MILLIS: Long = 1_600
 
-        /** §3.6 quanto tempo a reação pequena do palpite do parceiro fica no canto da mesa (um pouco mais que a
-         * pílula, §3.8.2: ainda não bloqueante, mas dá tempo da animação de entrada terminar antes de sumir). */
-        const val PARTNER_GUESS_REACTION_MILLIS: Long = 2_400
+        /**
+         * §3.6 quanto tempo este estado fica preenchido (`GameUiState.partnerGuessReaction` não-nulo), 14/11/2026:
+         * 3 s, o tempo "parado" pedido pelo usuário (telas-app.md 3.8.2). A UI (`PartnerGuessReactionOverlay`)
+         * conduz a própria animação (entrada, repouso e saída deslizando para fora da mesa) a partir da última
+         * reação não-nula recebida, então ela continua visível mesmo depois deste `delay` zerar o estado aqui —
+         * nunca bloqueia nada (o motor já foi liberado na hora, antes deste `delay` sequer começar).
+         */
+        const val PARTNER_GUESS_REACTION_MILLIS: Long = 3_000
 
         /** Fator de duração da velocidade "lenta" (30% mais lenta). */
         const val SLOW_FACTOR: Float = 1.3f
