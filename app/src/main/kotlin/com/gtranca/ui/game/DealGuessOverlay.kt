@@ -41,6 +41,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -381,8 +382,12 @@ private fun partnerGuessReactionTextRes(reaction: PartnerGuessReaction): Int = w
     else -> R.string.deal_guess_miss_partner_morto
 }
 
-/** Imagem de vitória/erro (§3.8.2) no topo do cartão, sem fundo, tamanho fixo (a largura do cartão é que varia). */
-private val PARTNER_GUESS_IMAGE_SIZE = 56.dp
+/**
+ * Imagem de vitória/erro (§3.8.2) no topo do cartão, sem fundo: 90 % da largura do CARTÃO (não um tamanho fixo —
+ * 14/11/2026, pedido do usuário: o tamanho fixo anterior ficava pequeno demais e ilegível com o cartão agora largo).
+ * A altura segue a proporção original da imagem ([aspectRatio], abaixo), nunca distorcida.
+ */
+private const val PARTNER_GUESS_IMAGE_WIDTH_FRACTION = 0.9f
 
 /** Largura do cartão de texto (telas-app.md 3.8.2, pedido do usuário 14/11/2026): 90 % da largura da MESA. */
 private const val PARTNER_GUESS_WIDTH_FRACTION = 0.9f
@@ -393,8 +398,8 @@ private val PARTNER_GUESS_FALLBACK_WIDTH = 248.dp
 /** Quanto dura a entrada (de fora da mesa, à esquerda, até a posição de repouso encostada na borda). */
 private const val PARTNER_GUESS_ENTER_MILLIS = 450
 
-/** Quanto o cartão fica parado e visível na posição de repouso, antes de começar a sair (pedido do usuário: 3 s). */
-private const val PARTNER_GUESS_REST_MILLIS = 3_000L
+/** Quanto o cartão fica parado e visível na posição de repouso, antes de começar a sair (pedido do usuário: 4 s). */
+private const val PARTNER_GUESS_REST_MILLIS = 4_000L
 
 /** Quanto dura a saída (da posição de repouso até sair da mesa pela borda direita). */
 private const val PARTNER_GUESS_EXIT_MILLIS = 450
@@ -471,7 +476,11 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
                         val x = baseX + (exitEndX - restX) * exitProgress.value
                         val areaTop = sideAreaRect?.top ?: tableRect?.top ?: 0f
                         val areaHeight = sideAreaRect?.height ?: 0f
-                        val y = areaTop + areaHeight / 2f - selfHeightPx / 2f
+                        var y = areaTop + areaHeight / 2f - selfHeightPx / 2f
+                        // §3.8.2 nunca deixa o bloco (imagem + cartão) sair da área visível da mesa (14/11/2026,
+                        // pedido do usuário: com a imagem maior o bloco ficava mais alto que a área de jogos e
+                        // acabava renderizando fora do quadro) — fica dentro de [tableRect], a janela visível.
+                        if (tableRect != null) y = y.coerceIn(tableRect.top, (tableRect.bottom - selfHeightPx).coerceAtLeast(tableRect.top))
                         val point = Offset(x, y) - origin
                         IntOffset(point.x.roundToInt(), point.y.roundToInt())
                     }
@@ -481,12 +490,16 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                // §3.8.2 a imagem não leva fundo (só o cartão do texto, abaixo); centralizada por cima.
+                // §3.8.2 a imagem não leva fundo (só o cartão do texto, abaixo); centralizada por cima, 90 % da
+                // largura do cartão (14/11/2026), com a altura seguindo a proporção original da arte (nunca
+                // distorcida) — [aspectRatio] calculado a partir do tamanho intrínseco do próprio `painter`.
+                val painter = painterResource(if (current.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss)
+                val imageRatio = painter.intrinsicSize.let { if (it.isSpecified && it.height > 0f) it.width / it.height else 1f }
                 Image(
-                    painterResource(if (current.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss),
+                    painter,
                     contentDescription = null,
-                    modifier = Modifier.size(PARTNER_GUESS_IMAGE_SIZE),
-                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth(PARTNER_GUESS_IMAGE_WIDTH_FRACTION).aspectRatio(imageRatio),
+                    contentScale = ContentScale.FillWidth,
                 )
                 Box(
                     Modifier
