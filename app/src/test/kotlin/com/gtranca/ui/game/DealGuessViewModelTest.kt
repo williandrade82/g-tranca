@@ -160,6 +160,50 @@ class DealGuessViewModelTest {
     }
 
     /**
+     * BUG (item 2 do relato 2026-11-14): o motor só guarda a largura do palpite — `legalActions` representa cada
+     * largura por um único candidato `GuessDealRange(0, width)` (`LegalActions.dealGuessCandidates`), então
+     * `dealGuess.hand.start`/`.end` chegam **sempre** `0`/`width`, nunca o par que o jogador tocou de verdade. A
+     * reação de erro (`DealGuessRevealOverlay`) precisa mostrar o que foi tocado, não o que o motor normalizou.
+     */
+    @Test
+    fun `§3_6 o motor so guarda a largura do palpite, nunca o par tocado`() = runTest(dispatcher) {
+        val vm = humanDealerGame()
+        val view0 = vm.uiState.value.snapshot.view
+        val target = dealGuessHandTarget(view0.mode, view0.rules)
+        vm.onGuessDealRange(10, 10 + target)
+        runCurrent()
+        val hand = vm.uiState.value.snapshot.view.dealGuess?.hand.shouldNotBeNull()
+        hand.start shouldBe 0
+        hand.end shouldBe target
+    }
+
+    /**
+     * §3.6 item 2: a reação de erro mostra o Início/Fim que o PRÓPRIO jogador deste aparelho tocou (não "0" e "a
+     * largura", que é tudo que `dealGuess.hand` guarda — ver teste acima). Vem de `Local.dealGuessTaps`, guardado em
+     * [GameViewModel.onGuessDealRange] no toque, não do motor.
+     */
+    @Test
+    fun `§3_6 a reacao de erro mostra o Inicio e o Fim que o proprio jogador tocou de verdade`() = runTest(dispatcher) {
+        val vm = humanDealerGame()
+        val view0 = vm.uiState.value.snapshot.view
+        val handStages = com.gtranca.engine.model.dealGuessHandStages(view0.rules)
+        val target = dealGuessHandTarget(view0.mode, view0.rules)
+        val wrongWidth = if (target + 1 <= handStages) target + 1 else target - 1
+        val tappedStart = 5
+        val tappedEnd = tappedStart + wrongWidth
+
+        vm.onGuessDealRange(tappedStart, tappedEnd)
+        runCurrent()
+
+        val reveal = vm.uiState.value.dealGuessReveal.shouldNotBeNull()
+        reveal.correct shouldBe false
+        reveal.partner shouldBe false
+        reveal.start shouldBe tappedStart
+        reveal.end shouldBe tappedEnd
+        reveal.width shouldBe wrongWidth
+    }
+
+    /**
      * BUG relatado 2026-11-14: o palpite do morto e a troca do 3 vermelho do início da vez do próprio dealer (§3.5,
      * `RoundEngine.beginTurn` roda dentro do `GuessDealRange` do morto, `RoundEngine.kt` linha ~220) resolvem na
      * MESMA ação: a reação em tela cheia do palpite e o aviso "Baixar 3 vermelho" chegam juntos. Na tela real

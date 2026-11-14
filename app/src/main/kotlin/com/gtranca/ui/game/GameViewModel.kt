@@ -7,6 +7,7 @@ import com.gtranca.ai.PlayStyle
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.MeldId
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.Phase
@@ -97,7 +98,24 @@ data class DealGuessPrompt(val stage: DealGuessStage, val totalStages: Int)
  * ([TableEvents.onDealGuessRevealDismissed]), que libera a próxima jogada do motor (o palpite seguinte, ou a 1ª
  * jogada de verdade). [roundNumber] e [stage] identificam, para o motor, qual espera reconhecer.
  */
-data class DealGuessReveal(val stage: DealGuessStage, val partner: Boolean, val correct: Boolean, val roundNumber: Int, val id: Long)
+data class DealGuessReveal(
+    val stage: DealGuessStage,
+    val partner: Boolean,
+    val correct: Boolean,
+    /**
+     * Início e fim que o jogador tocou (já normalizados, §3.8.2), mostrados de novo na reação de erro — só quando a
+     * reação é do próprio humano **deste aparelho**: o motor só guarda a largura do palpite (`Guess.start/.end` são
+     * sempre `0`/`width`, a ação representativa de `legalActions`, `LegalActions.dealGuessCandidates`), então os
+     * valores reais só existem onde o toque aconteceu. `null` na reação do parceiro (duplas): a tela mostra "—" nos
+     * campos Início/Fim (ver `DealGuessField`) e [width] no Total.
+     */
+    val start: Int?,
+    val end: Int?,
+    /** Largura do palpite (`end − start` de verdade, vem do motor): sempre conhecida, mesmo na reação do parceiro. */
+    val width: Int,
+    val roundNumber: Int,
+    val id: Long,
+)
 
 /** §3.6 reação reduzida (pílula) de quem palpitou: confete/borda dourada no acerto, tremor no erro; some sozinha. */
 data class DealGuessPillReaction(val correct: Boolean, val id: Long)
@@ -437,6 +455,12 @@ class GameViewModel(
         val dealGuessReveal: DealGuessReveal? = null,
         /** §3.6 reação reduzida (pílula) por assento (índice), enquanto estiver à vista. */
         val dealGuessPills: Map<Int, DealGuessPillReaction> = emptyMap(),
+        /**
+         * §3.6 início/fim que ESTE aparelho tocou em cada palpite ainda não encenado nesta partida (por fase): o
+         * motor só guarda a largura ([DealGuessReveal]), então os valores reais tocados só existem aqui, do lado de
+         * quem tocou. Preenchido em [onGuessDealRange]; lido (e não removido) em [reactToGuess].
+         */
+        val dealGuessTaps: Map<DealGuessStage, Pair<Int, Int>> = emptyMap(),
     )
 
     private val human = HumanPlayer()
@@ -695,28 +719,38 @@ class GameViewModel(
         val oldGuess = before.view.dealGuess
         val newGuess = after.view.dealGuess ?: return
         val hand = newGuess.hand
-        if (oldGuess?.hand == null && hand != null) reactToGuess(DealGuessStage.HAND, newGuess.dealerSeat, hand.correct, after)
+        if (oldGuess?.hand == null && hand != null) reactToGuess(DealGuessStage.HAND, newGuess.dealerSeat, hand, after)
         val morto = newGuess.morto
-        if (oldGuess?.morto == null && morto != null) reactToGuess(DealGuessStage.MORTO, newGuess.mortoDealerSeat, morto.correct, after)
+        if (oldGuess?.morto == null && morto != null) reactToGuess(DealGuessStage.MORTO, newGuess.mortoDealerSeat, morto, after)
     }
 
     /**
-     * §3.6 reage ao palpite de [seat] resolvido ([correct] vem só do motor, nunca calculado aqui): a pílula (telas.md
+     * §3.6 reage ao palpite de [seat] resolvido ([guess] vem só do motor, nunca calculado aqui): a pílula (telas.md
      * 3.8.2 `deal-guess-pill-burst`/`-shake`) sempre aparece, em qualquer aparelho; a reação em tela cheia só para o
      * próprio jogador ou o parceiro dele (duplas) — os demais acionam [GameController.guessRevealDone] na hora, sem
      * esperar toque nenhum (não há nada para o jogador fechar).
      */
-    private fun reactToGuess(stage: DealGuessStage, seat: Seat, correct: Boolean, snapshot: GameSnapshot) {
+    private fun reactToGuess(stage: DealGuessStage, seat: Seat, guess: Guess, snapshot: GameSnapshot) {
         val id = animationIds.incrementAndGet()
-        local.update { it.copy(dealGuessPills = it.dealGuessPills + (seat.index to DealGuessPillReaction(correct, id))) }
+        local.update { it.copy(dealGuessPills = it.dealGuessPills + (seat.index to DealGuessPillReaction(guess.correct, id))) }
         viewModelScope.launch {
             delay(DEAL_GUESS_PILL_MILLIS)
             local.update { state -> if (state.dealGuessPills[seat.index]?.id == id) state.copy(dealGuessPills = state.dealGuessPills - seat.index) else state }
         }
         val role = com.gtranca.game.SeatRole.of(snapshot.view.mode, seat, snapshot.viewerSeat)
         if (role == com.gtranca.game.SeatRole.YOU || role == com.gtranca.game.SeatRole.PARTNER) {
+            // §3.6 o motor só guarda a largura (`guess.start`/`.end` são sempre `0`/width, a ação representativa de
+            // `legalActions`): o par de verdade só existe aqui, do lado de quem tocou. Na reação do parceiro (duplas),
+            // ninguém tocou neste aparelho: Início/Fim ficam `null` (a tela mostra "—"), só o Total (largura) é certo.
+            val tap = local.value.dealGuessTaps[stage]?.takeIf { role == com.gtranca.game.SeatRole.YOU }
             local.update {
-                it.copy(dealGuessReveal = DealGuessReveal(stage, partner = role == com.gtranca.game.SeatRole.PARTNER, correct = correct, roundNumber = snapshot.roundNumber, id = id))
+                it.copy(
+                    dealGuessReveal = DealGuessReveal(
+                        stage, partner = role == com.gtranca.game.SeatRole.PARTNER, correct = guess.correct,
+                        start = tap?.first, end = tap?.second, width = guess.width,
+                        roundNumber = snapshot.roundNumber, id = id,
+                    ),
+                )
             }
         } else {
             controller.guessRevealDone(snapshot.roundNumber, stage == DealGuessStage.HAND)
@@ -1003,12 +1037,17 @@ class GameViewModel(
      * telas-app.md). A largura (`end - start`, já normalizada) escolhe a ação representativa de `legalActions`
      * (§1/`LegalActions`: um `GuessDealRange(0, largura)` por largura possível) — como em qualquer outra jogada, a
      * tela nunca decide sozinha se acertou: só o motor sabe (`Guess.correct`, que chega no próximo `dealGuess`).
+     * Guarda o par tocado (já normalizado) em [Local.dealGuessTaps]: o motor só recebe a largura (ação
+     * representativa), então são os únicos valores reais de onde o toque aconteceu — [reactToGuess] os usa na
+     * reação de erro deste aparelho ([DealGuessReveal.start]/[DealGuessReveal.end]).
      */
     override fun onGuessDealRange(start: Int, end: Int) {
         val snapshot = controller.state.value
         if (!snapshot.isHumanTurn || !controller.awaitingHuman() || turnHeld(local.value)) return
         val width = kotlin.math.abs(end - start)
         val action = snapshot.humanLegal.filterIsInstance<Action.GuessDealRange>().firstOrNull { it.end - it.start == width } ?: return
+        val stage = if (snapshot.view.phase == Phase.DEAL_GUESS_HAND) DealGuessStage.HAND else DealGuessStage.MORTO
+        local.update { it.copy(dealGuessTaps = it.dealGuessTaps + (stage to (minOf(start, end) to maxOf(start, end)))) }
         submit(action, snapshot.humanRequestId)
     }
 

@@ -1,11 +1,5 @@
 package com.gtranca.ui.game
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,7 +12,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,8 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -62,9 +58,6 @@ import kotlin.math.roundToInt
 
 /** Um ciclo (subida OU descida) do indicador, por padrão dentro de 2 a 4 s (§14.5), como as demais animações cíclicas. */
 private const val DEAL_GUESS_CYCLE_MILLIS = 2_600
-
-/** Âmbar da borda piscando no erro do palpite (telas-app.md 3.8.2); sem equivalente em [GColors]. */
-private val DealGuessAmber = Color(0xFFFFB300)
 
 /**
  * §3.6 estágio ao vivo do indicador (0 a [totalStages]), um relógio só (não um `Animatable` por carta): sobe e desce
@@ -96,55 +89,53 @@ private fun dealGuessLiveStage(totalStages: Int, frozen: Int?): Int {
 }
 
 /**
- * §3.6 a barra de palpite: o fundo azul ([R.drawable.deal_guess_bar_track]), o segmento verde da faixa já marcada
- * ([rangeStart] até [stage], quando o 1º toque já aconteceu) e o indicador, à esquerda da barra, na altura de
- * [stage]/[totalStages].
+ * §3.6, telas-app.md 3.8.2 (14/11/2026, reescrita em `Canvas`: a composição por `Box`es sobre a arte de fundo tinha
+ * um bug de orientação — o `Box` que cresce com `fillMaxHeight(fraction)` dentro de outro sem `contentAlignment`
+ * ancora no topo por padrão, então o indicador não acompanhava o estágio corretamente): a barra de palpite —
+ * **trilho azul sempre visível, de ponta a ponta** ([GColors.RoyalBlue]); o **segmento verde** ([GColors.Emerald])
+ * da faixa já marcada ([rangeStart] até [stage], quando o 1º toque já aconteceu); e o **indicador** (triângulo
+ * dourado), à esquerda da barra. Eixo do `Canvas`: y cresce para baixo, então o estágio 0 fica no **topo** e
+ * [totalStages] na **base** — o indicador percorre a barra de cima a baixo e de baixo para cima em ciclo contínuo
+ * (quem anima o vai-e-vem é [dealGuessLiveStage]; aqui só se desenha a posição atual).
  */
 @Composable
 private fun DealGuessGauge(stage: Int, totalStages: Int, rangeStart: Int?, modifier: Modifier = Modifier) {
-    val fraction = if (totalStages <= 0) 0f else stage.toFloat() / totalStages
-    Row(modifier, verticalAlignment = Alignment.Bottom) {
-        // O indicador sobe por uma coluna própria (a ponta fica colada na barra, à direita dela).
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            Box(Modifier.fillMaxWidth().fillMaxHeightFraction(fraction), contentAlignment = Alignment.TopEnd) {
-                Image(
-                    painterResource(R.drawable.deal_guess_indicator),
-                    contentDescription = null,
-                    modifier = Modifier.widthIn(max = 40.dp).aspectRatio(415f / 283f).offset(y = (-10).dp),
+    val fraction = if (totalStages <= 0) 0f else (stage.toFloat() / totalStages).coerceIn(0f, 1f)
+    val rangeFraction = rangeStart?.takeIf { totalStages > 0 }?.let { (it.toFloat() / totalStages).coerceIn(0f, 1f) }
+    Canvas(modifier) {
+        val barWidth = size.width * 0.5f
+        val barLeft = size.width - barWidth
+        val corner = CornerRadius(barWidth / 2f)
+        // Trilho: sempre visível, do topo à base (nunca escondido pelo preenchimento nem pelo indicador).
+        drawRoundRect(color = GColors.RoyalBlue, topLeft = Offset(barLeft, 0f), size = Size(barWidth, size.height), cornerRadius = corner)
+        // Faixa já marcada: do Início (1º toque) até a posição atual do indicador.
+        if (rangeFraction != null) {
+            val top = minOf(rangeFraction, fraction) * size.height
+            val bottom = maxOf(rangeFraction, fraction) * size.height
+            if (bottom > top) {
+                drawRoundRect(
+                    color = GColors.Emerald,
+                    topLeft = Offset(barLeft, top),
+                    size = Size(barWidth, bottom - top),
+                    cornerRadius = corner,
                 )
             }
         }
-        Spacer(Modifier.width(2.dp))
-        Box(Modifier.fillMaxHeight().width(22.dp)) {
-            Image(
-                painterResource(R.drawable.deal_guess_bar_track),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.FillBounds,
-            )
-            if (rangeStart != null && totalStages > 0) {
-                val lo = minOf(rangeStart, stage)
-                val hi = maxOf(rangeStart, stage)
-                val loFrac = lo.toFloat() / totalStages
-                val hiFrac = hi.toFloat() / totalStages
-                Box(Modifier.fillMaxWidth().fillMaxHeightFraction(hiFrac), contentAlignment = Alignment.BottomCenter) {
-                    val segFrac = if (hiFrac > 0f) (hiFrac - loFrac) / hiFrac else 0f
-                    Box(Modifier.fillMaxWidth().fillMaxHeightFraction(segFrac)) {
-                        Image(
-                            painterResource(R.drawable.deal_guess_bar_fill),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.FillBounds,
-                        )
-                    }
-                }
-            }
-        }
+        // Indicador: triângulo dourado apontando para a barra, na altura do estágio atual (0 = topo).
+        val y = fraction * size.height
+        val half = (barWidth * 0.9f).coerceAtMost(size.height / 2f)
+        val tailX = (barLeft - barWidth).coerceAtLeast(0f)
+        drawPath(
+            Path().apply {
+                moveTo(barLeft, y)
+                lineTo(tailX, y - half)
+                lineTo(tailX, y + half)
+                close()
+            },
+            color = GColors.Gold,
+        )
     }
 }
-
-/** Como `Modifier.fillMaxHeight(fraction)`, com [fraction] fora de `0f..1f` (chega assim quando `totalStages` é 0). */
-private fun Modifier.fillMaxHeightFraction(fraction: Float): Modifier = this.fillMaxHeight(fraction.coerceIn(0f, 1f))
 
 /**
  * §3.6, telas-app.md 3.8.2: modal "Cartas para a distribuição" / "Cartas para o Morto". Só aparece na tela de quem
@@ -242,8 +233,9 @@ private fun DealGuessField(label: String, value: Int?, modifier: Modifier = Modi
 
 /**
  * §3.6, telas-app.md 3.8.2: reação em tela cheia do palpite resolvido (vitória: +100 pontos, confete e som de
- * canastra; erro: "Não foi dessa vez", borda âmbar piscando) — do próprio jogador ou do parceiro dele (duplas). Fica
- * até o toque ([onDismiss], que libera o motor para o próximo palpite ou a 1ª jogada de verdade).
+ * canastra; erro, 14/11/2026 simplificada: só o banner a 75% da largura da tela e, embaixo dele, os três campos
+ * Início/Fim/Total que o jogador tocou, sem borda piscando nem outro efeito) — do próprio jogador ou do parceiro
+ * dele (duplas). Fica até o toque ([onDismiss], que libera o motor para o próximo palpite ou a 1ª jogada de verdade).
  */
 @Composable
 fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
@@ -263,23 +255,49 @@ fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
     ) {
         if (reveal.correct) {
             EndCelebration(EndOutcome.WIN, brief = false, enabled = true, playSound = false, modifier = Modifier.testTag("deal-guess-confetti"))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.widthIn(max = 420.dp).padding(24.dp).testTag("deal-guess-win"),
+            ) {
+                Image(
+                    painterResource(R.drawable.deal_guess_win),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(text, color = GColors.Ivory, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Spacer(Modifier.height(8.dp))
+                Text(closeText, color = GColors.Ivory.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+            }
         } else {
-            DealGuessAmberBorder(Modifier)
-        }
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.widthIn(max = 420.dp).padding(24.dp).testTag(if (reveal.correct) "deal-guess-win" else "deal-guess-miss"),
-        ) {
-            Image(
-                painterResource(if (reveal.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss),
-                contentDescription = null,
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth,
-            )
-            Spacer(Modifier.height(16.dp))
-            Text(text, color = GColors.Ivory, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-            Spacer(Modifier.height(8.dp))
-            Text(closeText, color = GColors.Ivory.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+            // telas-app.md 3.8.2 (14/11/2026): sem borda âmbar nem outro drama — só o banner a 75% da tela e,
+            // embaixo, os campos que o jogador tocou (mesmo visual do modal de palpite, `DealGuessField`).
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.testTag("deal-guess-miss")) {
+                Image(
+                    painterResource(R.drawable.deal_guess_miss),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth(0.75f),
+                    contentScale = ContentScale.FillWidth,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // §3.6 Início/Fim só existem quando foi este aparelho que tocou (`reveal.start`/`.end`, `null` na
+                    // reação do parceiro: a tela mostra "—", `DealGuessField` já trata isso); o Total (largura) vem
+                    // do motor e aparece sempre.
+                    DealGuessField(stringResource(R.string.deal_guess_start_label), reveal.start, Modifier.testTag("deal-guess-reveal-start"))
+                    DealGuessField(stringResource(R.string.deal_guess_end_label), reveal.end, Modifier.testTag("deal-guess-reveal-end"))
+                    DealGuessField(stringResource(R.string.deal_guess_total_label), reveal.width, Modifier.testTag("deal-guess-reveal-total"))
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text, color = GColors.Ivory, textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.widthIn(max = 420.dp).padding(horizontal = 24.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(closeText, color = GColors.Ivory.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+            }
         }
     }
 }
@@ -295,24 +313,3 @@ private fun dealGuessRevealTextRes(reveal: DealGuessReveal): Int = when {
     else -> R.string.deal_guess_miss_partner_morto
 }
 
-/** Borda da tela piscando em âmbar (erro do palpite, telas-app.md 3.8.2): mesmo padrão do pulso vermelho de [RoundEndOverlay]. */
-@Composable
-private fun DealGuessAmberBorder(modifier: Modifier = Modifier) {
-    val pulse by rememberInfiniteTransition(label = "deal-guess-amber").animateFloat(
-        0.15f, 0.7f, infiniteRepeatable(tween(1000, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "deal-guess-amber-alpha",
-    )
-    Canvas(modifier.fillMaxSize()) {
-        val edge = size.minDimension * 0.12f
-        val amber = DealGuessAmber.copy(alpha = pulse)
-        drawRect(Brush.verticalGradient(listOf(amber, Color.Transparent), 0f, edge))
-        drawRect(
-            Brush.verticalGradient(listOf(Color.Transparent, amber), size.height - edge, size.height),
-            androidx.compose.ui.geometry.Offset(0f, size.height - edge),
-        )
-        drawRect(Brush.horizontalGradient(listOf(amber, Color.Transparent), 0f, edge))
-        drawRect(
-            Brush.horizontalGradient(listOf(Color.Transparent, amber), size.width - edge, size.width),
-            androidx.compose.ui.geometry.Offset(size.width - edge, 0f),
-        )
-    }
-}
