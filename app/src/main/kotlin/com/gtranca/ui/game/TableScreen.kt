@@ -473,7 +473,9 @@ private fun TableScreenContent(
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             var headerHeightPx by remember { mutableStateOf(0) }
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            // Limites visíveis da mesa (telas.md 3.8.1): referência para o ponto de entrada da distribuição inicial
+            // (AnimAnchor.DealEntry), fora desta área.
+            Box(Modifier.fillMaxSize().padding(padding).anchor(AnimAnchor.TableBounds)) {
                 Column(Modifier.fillMaxSize()) {
                     // A barra superior fica à frente das animações da mesa (docs/telas.md 3.8, camadas): mede-se a base dela para
                     // cortar os voos e os fogos ali, de modo que passem por baixo.
@@ -2216,14 +2218,29 @@ private fun Map<AnimAnchor, Rect>.tableTarget(anchor: AnimAnchor): Rect? = when 
     else -> null
 }
 
-private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect? = when (anchor) {
+private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?, dealMarginPx: Float = 0f): Rect? = when (anchor) {
     is AnimAnchor.OwnHand -> card?.let { this[AnimAnchor.HandCard(it)] } ?: this[anchor]
     is AnimAnchor.DiscardPile -> card?.let { this[AnimAnchor.DiscardCard(it)] } ?: this[anchor]
     is AnimAnchor.Meld ->
         card?.let { this[AnimAnchor.MeldCard(anchor.side, anchor.meldId, it)] } ?: this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
     is AnimAnchor.RedThrees ->
         card?.let { this[AnimAnchor.RedThreeCard(anchor.side, it)] } ?: this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
+    // Distribuição inicial (telas.md 3.8.1): sem elemento próprio na tela, o ponto é calculado a partir dos
+    // limites da mesa, bem fora da borda pedida (a carta visivelmente entra vindo de fora).
+    is AnimAnchor.DealEntry -> this[AnimAnchor.TableBounds]?.let { bounds -> dealEntryPoint(bounds, anchor.edge, dealMarginPx) }
     else -> this[anchor]
+}
+
+/** Ponto bem fora de [bounds], pela [edge] pedida, para a origem de [AnimAnchor.DealEntry] (telas.md 3.8.1). A
+ * coordenada perpendicular à borda é o centro da mesa nessa direção: não precisa alinhar a nenhum elemento. */
+private fun dealEntryPoint(bounds: Rect, edge: TableEdge, margin: Float): Rect {
+    val point = when (edge) {
+        TableEdge.TOP -> Offset(bounds.center.x, bounds.top - margin)
+        TableEdge.BOTTOM -> Offset(bounds.center.x, bounds.bottom + margin)
+        TableEdge.LEFT -> Offset(bounds.left - margin, bounds.center.y)
+        TableEdge.RIGHT -> Offset(bounds.right + margin, bounds.center.y)
+    }
+    return Rect(point, Size.Zero)
 }
 
 /** Fase de um voo no relógio compartilhado: antes do seu atraso, voando, ou já pousado. */
@@ -2284,15 +2301,20 @@ private fun FlyingCard(
     val density = LocalDensity.current
     val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
     val arcPx = with(density) { 36.dp.toPx() }
-    val flips = flight.card != null && flight.from == AnimAnchor.Stock
+    // Margem generosa (ao menos o tamanho da carta) para AnimAnchor.DealEntry: a carta nasce visivelmente fora da
+    // mesa, não apenas encostada na borda (telas.md 3.8.1). Sem efeito nos demais tipos de âncora.
+    val dealMarginPx = with(density) { maxOf(size.width, size.height).toPx() + 24.dp.toPx() }
+    // A distribuição inicial entra de fora da mesa (AnimAnchor.DealEntry), não do monte, mas também é informação
+    // oculta virando de costas para frente (telas.md 3.8.1).
+    val flips = flight.card != null && (flight.from == AnimAnchor.Stock || flight.from is AnimAnchor.DealEntry)
     // Progresso (0..1) desta carta a cada quadro: derivado do relógio compartilhado, nunca da sua própria animação.
     fun t(): Float = FastOutSlowInEasing.transform(((clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis).coerceIn(0f, 1f))
     Box(
         Modifier
             .offset {
                 // Lido a cada quadro: acompanha rolagem e o conjunto novo que aparece no destino.
-                val from = anchors.resolve(flight.from, flight.card)?.center ?: return@offset IntOffset(-10_000, -10_000)
-                val to = anchors.resolve(flight.to, flight.card)?.center ?: from
+                val from = anchors.resolve(flight.from, flight.card, dealMarginPx)?.center ?: return@offset IntOffset(-10_000, -10_000)
+                val to = anchors.resolve(flight.to, flight.card, dealMarginPx)?.center ?: from
                 val t = t()
                 // Trajeto em curva: sobe um pouco no meio do caminho.
                 val arc = Offset(0f, -arcPx * sin(PI.toFloat() * t))

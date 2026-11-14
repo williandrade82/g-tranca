@@ -7,15 +7,30 @@ import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.dealGuessSeats
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.RedThreeNotice
+import com.gtranca.game.SeatRole
 import com.gtranca.game.cardClass
+
+/** Borda da mesa por onde uma leva da distribuição inicial entra, vinda de fora da tela (telas.md 3.8.1). */
+enum class TableEdge { TOP, LEFT, RIGHT, BOTTOM }
 
 /** Ponto lógico da mesa de onde sai ou aonde chega uma carta animada; a tela sabe onde cada um está. */
 sealed interface AnimAnchor {
     data object Stock : AnimAnchor
     data object DiscardPile : AnimAnchor
     data class Morto(val index: Int) : AnimAnchor
+
+    /**
+     * Origem da distribuição inicial da partida (telas.md 3.8.1): fora da mesa, pela borda [edge] — o lado de quem
+     * distribui aquela leva (mão ou morto), nunca o monte (`Stock`). A tela calcula o ponto geométrico a partir dos
+     * limites da mesa ([TableBounds]); não corresponde a nenhum elemento já desenhado.
+     */
+    data class DealEntry(val edge: TableEdge) : AnimAnchor
+
+    /** Limites visíveis da mesa (coordenadas da tela): referência para calcular o ponto de entrada de [DealEntry]. */
+    data object TableBounds : AnimAnchor
 
     /** Outro assento (mão representada por cartas viradas). */
     data class SeatHand(val seat: Int) : AnimAnchor
@@ -179,17 +194,37 @@ object TableAnimations {
         }
         val mortoPlaces = view.mortoSizes.indices.map { m -> DealPlace(AnimAnchor.Morto(m), view.mortoSizes[m]) { null } }
 
+        // As cartas entram de fora da mesa, pelo lado de quem distribui aquela leva (telas.md 3.8.1): a mão vem do
+        // dealerSeat, cada morto do mortoDealerSeat (os dois mortos pelo mesmo lado) — nunca do monte.
+        val (dealerSeat, mortoDealerSeat) = dealGuessSeats(view.mode, view.firstSeat)
+        val seatEntry = AnimAnchor.DealEntry(dealEntryEdge(SeatRole.of(view.mode, dealerSeat, viewer)))
+        val mortoEntry = AnimAnchor.DealEntry(dealEntryEdge(SeatRole.of(view.mode, mortoDealerSeat, viewer)))
+
         val flights = mutableListOf<CardFlight>()
         var cursor = 0L
-        (dealGroups(seatPlaces, style) + dealGroups(mortoPlaces, style)).forEach { group ->
-            group.forEachIndexed { i, (target, card) ->
-                flights += CardFlight(nextId(), AnimAnchor.Stock, target, card, cursor + STAGGER_MILLIS * i)
+        fun emit(groups: List<List<Pair<AnimAnchor, Card?>>>, entry: AnimAnchor) {
+            groups.forEach { group ->
+                group.forEachIndexed { i, (target, card) ->
+                    flights += CardFlight(nextId(), entry, target, card, cursor + STAGGER_MILLIS * i)
+                }
+                // O próximo lote já começa na metade do caminho do atual (não espera ele pousar): mais ágil sem perder
+                // a leitura de "lote por lote", para os dois estilos, assentos e mortos.
+                cursor += STAGGER_MILLIS * (group.size - 1) + durationMillis / 2
             }
-            // O próximo lote já começa na metade do caminho do atual (não espera ele pousar): mais ágil sem perder
-            // a leitura de "lote por lote", para os dois estilos, assentos e mortos.
-            cursor += STAGGER_MILLIS * (group.size - 1) + durationMillis / 2
         }
+        emit(dealGroups(seatPlaces, style), seatEntry)
+        emit(dealGroups(mortoPlaces, style), mortoEntry)
         return flights
+    }
+
+    /** Borda da tela por onde entra a leva de quem distribui, do ponto de vista de quem vê a tela (telas.md 3.8.1):
+     * parceiro ou único adversário = de cima; adversário à esquerda = da esquerda; à direita = da direita; o
+     * próprio jogador (ele sorteado para distribuir) = de baixo, perto de onde fica a própria mão. */
+    private fun dealEntryEdge(role: SeatRole): TableEdge = when (role) {
+        SeatRole.PARTNER, SeatRole.OPPONENT -> TableEdge.TOP
+        SeatRole.LEFT_OPPONENT -> TableEdge.LEFT
+        SeatRole.RIGHT_OPPONENT -> TableEdge.RIGHT
+        SeatRole.YOU -> TableEdge.BOTTOM
     }
 
     /** Eventos novos de cada assento entre [old] e [new], na mesma partida. */
