@@ -1,6 +1,32 @@
 package com.gtranca.ui.boosters
 
 import android.os.SystemClock
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.zIndex
+import com.gtranca.ui.home.HomeAmbience
+import com.gtranca.ui.home.HomeMotion
+import com.gtranca.ui.home.homeCrest
+import com.gtranca.ui.home.homeEnter
+import com.gtranca.ui.home.rememberHomeMotion
+import com.gtranca.ui.theme.goldFrame
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -243,21 +269,6 @@ class BoosterSelectorViewModel(
     }
 }
 
-/** Posição dos nichos e do botão na imagem do seletor (frações; `boosters-selector-v1.png`). */
-private object Panel {
-    const val ASPECT = 1000f / 914f
-    val nicheCenterX = listOf(0.232f, 0.499f, 0.768f)
-    const val NICHE_CENTER_Y = 0.636f
-    const val NICHE_W = 0.225f
-    const val NICHE_H = 0.235f
-    const val BUTTON_CENTER_X = 0.706f
-    const val BUTTON_CENTER_Y = 0.851f
-    const val BUTTON_W = 0.43f
-    const val BUTTON_H = 0.12f
-    const val TIMER_CENTER_X = 0.274f
-    const val TIMER_CENTER_Y = 0.877f
-}
-
 /**
  * Tela *Seletor de boosters* (docs/telas.md 3.19). [onConfirmed] recebe o que valeu na partida (já debitado).
  * [deadlineAtMs] é o instante ([SystemClock.elapsedRealtime]) em que o prazo acaba; `null` = os 30 s de sempre a partir
@@ -284,52 +295,89 @@ fun BoosterSelectorScreen(viewModel: BoosterSelectorViewModel, deadlineAtMs: Lon
             delay(250)
         }
     }
-    // O fundo é só o feltro da mesa (sem cartas, jogos nem mãos): a tela parece a mesa de jogo e só o painel do seletor aparece,
-    // antes da distribuição.
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Brush.radialGradient(listOf(GColors.Table, GColors.TableDark), radius = 1400f))
-            .safeDrawingPadding()
-            .testTag("boosters-selector"),
-        contentAlignment = Alignment.Center,
-    ) {
-        BoxWithConstraints(Modifier.fillMaxWidth().widthIn(max = 560.dp).padding(Spacing.sm)) {
-            val w = maxWidth
-            val h = w / Panel.ASPECT
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(w, h)) {
-                Image(painterResource(R.drawable.booster_selector), null, Modifier.size(w, h), contentScale = ContentScale.FillBounds)
-                ui.slots.forEachIndexed { index, id -> Niche(ui, index, id, w, h, viewModel) }
-                val buttonW = w * Panel.BUTTON_W
-                val buttonH = h * Panel.BUTTON_H
-                val go = stringResource(R.string.boosters_go)
-                // O botão verde está pintado na imagem: a área dele é o alvo do toque (só antes do 1º Seguir; depois de
-                // um erro, o botão "Tentar de novo" visível abaixo do painel é que reenvia a mesma seleção já travada).
-                Box(
-                    Modifier
-                        .offset(w * Panel.BUTTON_CENTER_X - buttonW / 2, h * Panel.BUTTON_CENTER_Y - buttonH / 2)
-                        .size(buttonW, buttonH)
-                        .clickable(enabled = ui.ready && !ui.confirmed, role = Role.Button) { viewModel.confirm(onConfirmed) }
-                        .semantics { contentDescription = go }
-                        .testTag("boosters-go"),
+    // Salão da tela inicial ao fundo, escurecido, com os holofotes e os brilhos; no centro, o painel do seletor
+    // (docs/telas-app.md 3.19). Nada da mesa aparece antes da distribuição.
+    val motion = rememberHomeMotion()
+    Box(Modifier.fillMaxSize().background(GColors.Midnight).testTag("boosters-selector"), contentAlignment = Alignment.Center) {
+        Image(
+            painterResource(R.drawable.home_bg),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize().drawWithContent {
+                drawContent()
+                drawRect(Brush.verticalGradient(listOf(GColors.Midnight.copy(alpha = 0.45f), GColors.Midnight.copy(alpha = 0.8f))))
+            },
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopCenter,
+        )
+        HomeAmbience(motion, Modifier.fillMaxSize())
+        Column(
+            Modifier.safeDrawingPadding().fillMaxWidth().widthIn(max = 560.dp).padding(Spacing.lg).homeEnter(motion, 0.1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // O brasão fica por cima da borda de cima do painel.
+            Image(
+                painterResource(R.drawable.home_crest),
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth(0.5f).aspectRatio(640f / 298f).offset(y = 18.dp).zIndex(1f).homeCrest(motion),
+            )
+            val shape = RoundedCornerShape(22.dp)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(GColors.Indigo, GColors.Midnight)), shape)
+                    .goldFrame(corner = 22.dp)
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.xl),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+            ) {
+                Text(
+                    buildAnnotatedString {
+                        append(stringResource(R.string.boosters_prompt_before))
+                        withStyle(SpanStyle(color = GColors.Gold)) { append(stringResource(R.string.boosters_prompt_highlight)) }
+                        append(stringResource(R.string.boosters_prompt_after))
+                    },
+                    color = GColors.Ivory,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
                 )
-                val timerW = w * 0.3f
-                val timerH = h * 0.06f
-                Box(
-                    Modifier
-                        .offset(w * Panel.TIMER_CENTER_X - timerW / 2, h * Panel.TIMER_CENTER_Y - timerH / 2)
-                        .size(timerW, timerH)
-                        .semantics { contentDescription = "" },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    FitText(
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    ui.slots.forEachIndexed { index, id -> Niche(ui, index, id, motion, viewModel, Modifier.weight(1f)) }
+                }
+                // Prazo: a barra dourada esvazia até o fim dos 30 s (vermelha nos últimos 5).
+                val fraction by animateFloatAsState(
+                    remaining / BoosterSelectorViewModel.DEADLINE_SECONDS.toFloat(),
+                    tween(if (motion.enabled) 300 else 0, easing = LinearEasing),
+                    label = "boosters-deadline",
+                )
+                val urgent = remaining <= 5
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Box(
+                        Modifier.weight(1f).height(8.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                            .border(1.dp, GColors.Gold.copy(alpha = 0.35f), RoundedCornerShape(4.dp)),
+                    ) {
+                        Box(
+                            Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(8.dp)
+                                .background(if (urgent) Color(0xFFFF8A80) else GColors.Gold, RoundedCornerShape(4.dp)),
+                        )
+                    }
+                    Text(
                         stringResource(R.string.boosters_timer, remaining),
-                        TextStyle(color = GColors.Ivory, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center),
-                        Modifier.testTag("boosters-timer"),
-                        minFontSp = 8,
+                        Modifier.widthIn(min = 36.dp).testTag("boosters-timer"),
+                        color = if (urgent) Color(0xFFFF8A80) else GColors.Champagne,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.End,
                     )
                 }
+                // Só antes do 1º Seguir; depois de um erro, "Tentar de novo" (abaixo do painel) reenvia a mesma seleção travada.
+                GButton(
+                    onClick = { viewModel.confirm(onConfirmed) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("boosters-go"),
+                    enabled = ui.ready && !ui.confirmed,
+                    kind = GButtonKind.Primary,
+                ) { Text(stringResource(R.string.boosters_go) + "  ▶", style = MaterialTheme.typography.titleMedium) }
             }
             // §18.3 erro de rede ou servidor fora ao confirmar: "Tentar de novo" reenvia a mesma seleção já travada.
             ui.error?.let { message ->
@@ -346,30 +394,47 @@ fun BoosterSelectorScreen(viewModel: BoosterSelectorViewModel, deadlineAtMs: Lon
                     kind = GButtonKind.Secondary,
                 ) { Text(stringResource(R.string.online_retry)) }
             }
-            }
         }
     }
     ui.picking?.let { PickerDialog(ui, viewModel) }
 }
 
+/** Um nicho: moldura dourada com o booster (ícone, nome, quantidade) ou, vazio, o "+" tracejado pulsando. */
 @Composable
-private fun Niche(ui: BoosterSelectorUi, index: Int, id: String?, w: Dp, h: Dp, viewModel: BoosterSelectorViewModel) {
-    val nicheW = w * Panel.NICHE_W
-    val nicheH = h * Panel.NICHE_H
+private fun Niche(ui: BoosterSelectorUi, index: Int, id: String?, motion: HomeMotion, viewModel: BoosterSelectorViewModel, modifier: Modifier) {
     val def = ui.catalog.firstOrNull { it.id == id }
     val description = if (def == null) stringResource(R.string.boosters_slot_empty, index + 1) else stringResource(R.string.boosters_slot_filled, def.name, ui.quantities[def.id] ?: 0)
+    val shape = RoundedCornerShape(14.dp)
     Box(
-        Modifier
-            .offset(w * Panel.nicheCenterX[index] - nicheW / 2, h * Panel.NICHE_CENTER_Y - nicheH / 2)
-            .size(nicheW, nicheH)
+        modifier
+            .aspectRatio(0.88f)
+            .background(GColors.Midnight.copy(alpha = 0.7f), shape)
+            .border(2.dp, Brush.verticalGradient(listOf(GColors.Champagne, GColors.Gold, GColors.GoldDeep)), shape)
+            .clip(shape)
             .clickable(enabled = ui.ready && !ui.confirmed, role = Role.Button) { viewModel.onSlot(index) }
             .semantics { contentDescription = description }
             .testTag("booster-pick-$index"),
         contentAlignment = Alignment.Center,
     ) {
-        if (def != null) {
-            boosterIconRes(def.id)?.let { Image(painterResource(it), null, Modifier.fillMaxSize().padding(bottom = nicheH * 0.22f, top = 2.dp), contentScale = ContentScale.Fit) }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (def == null) {
+            // "+" num círculo tracejado, pulsando de leve (parado sem animações).
+            Canvas(
+                Modifier.fillMaxSize(0.5f).aspectRatio(1f).graphicsLayer {
+                    val pulse = if (motion.enabled) (sin(motion.loop() * 2f * PI.toFloat() * 4f + index) + 1f) / 2f else 1f
+                    alpha = 0.55f + 0.45f * pulse
+                    scaleX = 0.94f + 0.08f * pulse
+                    scaleY = 0.94f + 0.08f * pulse
+                },
+            ) {
+                val stroke = 2.5.dp.toPx()
+                drawCircle(GColors.Gold, style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(stroke * 3f, stroke * 2.2f))))
+                val arm = size.minDimension * 0.22f
+                drawLine(GColors.Gold, center.copy(x = center.x - arm), center.copy(x = center.x + arm), stroke * 1.6f, StrokeCap.Round)
+                drawLine(GColors.Gold, center.copy(y = center.y - arm), center.copy(y = center.y + arm), stroke * 1.6f, StrokeCap.Round)
+            }
+        } else {
+            Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                boosterIconRes(def.id)?.let { Image(painterResource(it), null, Modifier.weight(1f).fillMaxWidth(), contentScale = ContentScale.Fit) }
                 FitText(def.name, TextStyle(color = GColors.Ivory, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center), minFontSp = 6)
                 Text(
                     "×${ui.quantities[def.id] ?: 0}",

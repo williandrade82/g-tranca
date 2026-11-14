@@ -149,10 +149,9 @@ fun GMessage(
 ) {
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
         Surface(
-            modifier.widthIn(max = 360.dp),
+            modifier.widthIn(max = 360.dp).loungeDialog(MaterialTheme.shapes.extraLarge),
             shape = MaterialTheme.shapes.extraLarge,
-            color = GColors.Cream,
-            shadowElevation = Elevation.dialog,
+            color = androidx.compose.ui.graphics.Color.Transparent,
         ) {
             Column(
                 Modifier.padding(Spacing.xl),

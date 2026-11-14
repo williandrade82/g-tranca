@@ -13,11 +13,12 @@ data class ShopPurchase(val wallet: Wallet, val inventory: Inventory)
 
 /** §17.10 Loja: ofertas fixas e a regra da compra (moedas por boosters). */
 object Shop {
-    /** As nove ofertas, na ordem da tela: b1, b2 e b3, cada um em pacotes de 10, 5 e 1. */
+    /** As doze ofertas, na ordem da tela: b1, b2, b3 e b4, cada um em pacotes de 10, 5 e 1. */
     val OFFERS: List<ShopOffer> = listOf(
         BoosterCatalog.GREEN_LED,
         BoosterCatalog.RED_LED,
         BoosterCatalog.REACTIONS,
+        BoosterCatalog.SCOREBOARD,
     ).flatMap { id -> listOf(ShopOffer(id, 10, 50), ShopOffer(id, 5, 30), ShopOffer(id, 1, 10)) }
 
     /** Saldo depois da compra; negativo = a compra não cobre (a tela mostra "saldo insuficiente"). */

@@ -47,14 +47,28 @@ object GoOutDrama {
     }
 
     /** Tempos da dramatização no overlay do fim da partida. */
-    enum class OverlayPhase { FIREWORKS, BANNER }
+    enum class OverlayPhase { FIREWORKS, SCOREBAR, BANNER }
 
-    /** Fase em que o overlay começa: com batida e animações ligadas, os fogos vêm antes do banner. */
-    fun startPhase(end: RoundEnd, animate: Boolean): OverlayPhase =
-        if (animate && end != RoundEnd.NO_WINNER) OverlayPhase.FIREWORKS else OverlayPhase.BANNER
+    /**
+     * Fase em que o overlay começa: com batida e animações ligadas, os fogos vêm antes do banner. Com a barra de
+     * progressão do b4 ([scoreBar], §17.11.1) e sem fogos, começa pela atualização da barra.
+     */
+    fun startPhase(end: RoundEnd, animate: Boolean, scoreBar: Boolean = false): OverlayPhase = when {
+        animate && end != RoundEnd.NO_WINNER -> OverlayPhase.FIREWORKS
+        animate && scoreBar -> OverlayPhase.SCOREBAR
+        else -> OverlayPhase.BANNER
+    }
 
-    /** Depois dos fogos vem o banner (que não tem fase seguinte: ele mesmo encerra o overlay). */
-    fun next(phase: OverlayPhase): OverlayPhase = OverlayPhase.BANNER
+    /**
+     * §17.11.1 depois dos fogos vem a barra de progressão com a pontuação final (só com o b4) e então o banner (que não
+     * tem fase seguinte: ele mesmo encerra o overlay).
+     */
+    fun next(phase: OverlayPhase, scoreBar: Boolean = false): OverlayPhase =
+        if (phase == OverlayPhase.FIREWORKS && scoreBar) OverlayPhase.SCOREBAR else OverlayPhase.BANNER
+
+    /** §17.11.1 quanto a barra segura o banner: giro, destaque e, se um marco foi alcançado, a animação dele. */
+    fun scoreBarMillis(milestone: Boolean): Long =
+        (ScoreBarTiming.FINAL_ROLL_MILLIS + ScoreBarTiming.HIGHLIGHT_MILLIS + if (milestone) ScoreBarTiming.MILESTONE_MILLIS else 0).toLong()
 
     /** Fogos verdes se o lado do jogador venceu a partida, vermelhos se perdeu. */
     fun fireworksWin(end: RoundEnd): Boolean = end == RoundEnd.YOU || end == RoundEnd.PARTNER

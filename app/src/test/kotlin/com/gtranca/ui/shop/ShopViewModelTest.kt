@@ -71,13 +71,14 @@ class ShopViewModelTest {
     }
 
     @Test
-    fun `§17_10 a loja lista as nove ofertas com o booster do catalogo`() = runTest(dispatcher) {
+    fun `§17_10 a loja lista as doze ofertas com o booster do catalogo`() = runTest(dispatcher) {
         val (vm, _, shop) = vm(100)
         advanceUntilIdle()
         vm.state.value.items.map { Triple(it.def.name, it.offer.quantity, it.offer.price) } shouldBe listOf(
             Triple("Green-LED", 10, 50), Triple("Green-LED", 5, 30), Triple("Green-LED", 1, 10),
             Triple("Yellow-LED", 10, 50), Triple("Yellow-LED", 5, 30), Triple("Yellow-LED", 1, 10),
             Triple("Reações", 10, 50), Triple("Reações", 5, 30), Triple("Reações", 1, 10),
+            Triple("Placar", 10, 50), Triple("Placar", 5, 30), Triple("Placar", 1, 10),
         )
         vm.state.value.balance shouldBe 100
         // abrir a loja termina uma compra interrompida

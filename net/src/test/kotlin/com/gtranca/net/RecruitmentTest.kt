@@ -651,6 +651,27 @@ class RecruitmentTest {
     }
 
     @Test
+    fun `§16_2 o recrutador lista o livre pela conexao de espera antes de a propria busca o achar, e o tira quando ela cai`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        // A busca da Ana não vê a Bia (ainda não a achou), mas a conexão de espera dela já chegou.
+        ana.transport.forgetPresence("kb")
+        runCurrent()
+        ana.r.free.value.map { it.key to it.name } shouldBe listOf("kb" to "Bia")
+        // E dá para chamá-la por essa entrada: o convite vai na hora pela conexão.
+        ana.r.call(2, ana.r.free.value.single()) shouldBe true
+        runCurrent()
+        bia.r.status.value.shouldBeInstanceOf<RecruitStatus.Invited>()
+        // Conexão caída e nada na busca: sai da lista.
+        net.tap = { d -> if (d.from == bia.transport.id || d.to == bia.transport.id) emptyList() else listOf(d) }
+        advanceTimeBy(Recruitment.DEAD_AFTER_MILLIS + Recruitment.HEARTBEAT_MILLIS * 2)
+        runCurrent()
+        ana.r.free.value shouldBe emptyList()
+        ana.scope.cancel()
+    }
+
+    @Test
     fun `§16_2 aviso explicito de saida - o outro tira o jogador das listas na hora`() = runTest {
         val net = MemoryNetwork()
         val (ana, others) = recruiter(net, "kb" to "Bia")

@@ -99,6 +99,27 @@ class PlayerSelectionViewModelTest {
     }
 
     @Test
+    fun `§16_2 Completar com robos enquanto a mesa abre na rede - os robos vao para a rede e nao somem`() = withMain {
+        val vm = duplas()
+        val opening = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val seats = object : SeatRecruiter by FakeSeats() {
+            val placed = mutableListOf<Int>()
+            override suspend fun open() = opening.await()
+            override suspend fun placeRobot(seat: Int, persona: String): Boolean { placed += seat; return true }
+        }
+        val attached = launch { vm.attach(seats) }
+        advanceUntilIdle()
+        // A mesa ainda está abrindo na rede: o toque vale no layout local.
+        vm.onFill()
+        vm.layout.robots.keys shouldBe setOf(1, 2, 3)
+        opening.complete(Unit)
+        advanceUntilIdle()
+        attached.isCompleted shouldBe true
+        // Os três foram repetidos na rede (antes, só os de antes de abrir iam, e a rede apagava os do toque).
+        seats.placed.sorted() shouldBe listOf(1, 2, 3)
+    }
+
+    @Test
     fun `§16_2 o convite so sai com os dois escolhidos - jogador e lugar, em qualquer ordem`() = withMain {
         val vm = duplas()
         val seats = FakeSeats()

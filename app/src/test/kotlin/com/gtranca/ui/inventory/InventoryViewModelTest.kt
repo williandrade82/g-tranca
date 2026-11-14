@@ -45,7 +45,7 @@ class InventoryViewModelTest {
         override suspend fun claimGift(today: Long, random: Random): Gift? = null
     }
 
-    private val four = BoosterCatalog.DEFAULT + BoosterDef("b4", "Quarto", "x", 1, 5, 1, 1)
+    private val four = BoosterCatalog.DEFAULT + BoosterDef("b5", "Quinto", "x", 1, 5, 1, 1)
 
     @Test
     fun `§17_2 o armario lista o catalogo com a quantidade e a marcacao`() = runTest(dispatcher) {
@@ -54,7 +54,7 @@ class InventoryViewModelTest {
         vm.onToggle("b1")
         advanceUntilIdle()
         vm.state.value.items.map { Triple(it.def.id, it.quantity, it.selected) } shouldBe
-            listOf(Triple("b1", 3, true), Triple("b2", 0, false), Triple("b3", 7, false))
+            listOf(Triple("b1", 3, true), Triple("b2", 0, false), Triple("b3", 7, false), Triple("b4", 0, false))
     }
 
     @Test

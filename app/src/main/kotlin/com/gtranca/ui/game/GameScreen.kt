@@ -98,7 +98,15 @@ fun GameScreen(
     var goOutSeen by rememberSaveable { mutableStateOf(0) }
     val finishedRounds = snapshot.history.size
     // §14.4 regras da mesa para os textos (sem coringa, §1: só "Canastra", sem limpa/suja).
-    androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules, LocalTableHeaderBottom provides androidx.compose.runtime.remember { mutableStateOf(0f) }) {
+    // §17.11.1 a barra de progressão do b4 guarda a escala da partida, que sobrevive à troca para a mesa final: a partida
+    // em jogo é a seguinte às já pontuadas; na mesa final, a última pontuada.
+    val scoreBar = androidx.compose.runtime.remember { ScoreBarHolder() }
+    scoreBar.startRound(if (state.endScreen != null) finishedRounds else finishedRounds + 1)
+    val hasScoreBar = com.gtranca.engine.BoosterCatalog.SCOREBOARD in state.boosters
+    val showFinalScore: () -> Boolean = {
+        snapshot.history.lastOrNull()?.let { record -> scoreBar.showFinal(record.scores.map { it.total }) } ?: false
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTableRules provides snapshot.view.rules, LocalTableHeaderBottom provides androidx.compose.runtime.remember { mutableStateOf(0f) }, LocalScoreBar provides scoreBar) {
     if (state.boosterSelectorPending) {
         // §17.3 antes de cada partida: o seletor de boosters, sem a distribuição à vista (docs/telas.md 3.19).
         viewModel.boosterInventory?.let { inventory ->
@@ -139,7 +147,15 @@ fun GameScreen(
                     )
                 }
             }
-            if (showing && state.endScreen == EndScreen.FINAL_TABLE) RoundEndOverlay(end!!, snapshot.view.mode, state.animationMillis > 0, onDone = { goOutSeen = finishedRounds })
+            if (showing && state.endScreen == EndScreen.FINAL_TABLE) {
+                RoundEndOverlay(
+                    end!!, snapshot.view.mode, state.animationMillis > 0, onDone = { goOutSeen = finishedRounds },
+                    showFinalScore = if (hasScoreBar) showFinalScore else null,
+                )
+            } else if (hasScoreBar) {
+                // Mesa final já vista (ou sem animação de fim): a barra fica com a pontuação final, sem esperar.
+                androidx.compose.runtime.LaunchedEffect(finishedRounds) { showFinalScore() }
+            }
             // docs/telas.md 3.10 os pontos da partida em modal sobre a mesa final.
             if (state.endScreen == EndScreen.ROUND_POINTS) RoundSummaryScreen(snapshot, viewModel::onNextRound, viewModel::onEndNext, state.personas)
         }

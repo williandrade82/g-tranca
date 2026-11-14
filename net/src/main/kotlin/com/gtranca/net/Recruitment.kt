@@ -175,6 +175,24 @@ class Recruitment(
      */
     val free: StateFlow<List<PresenceAdvert>> = _free.asStateFlow()
 
+    /** §16.2 nome de quem chegou pela conexão de espera (por chave): listado como livre antes de a busca achá-lo. */
+    private val standbyNames = mutableMapOf<String, String>()
+
+    /**
+     * §16.2 publica os livres: os achados pela busca mais quem está na conexão de espera e a busca ainda não viu (o
+     * recrutador o vê assim que ele conecta). Quem só estava pela espera sai quando a conexão cai.
+     */
+    private fun publishFreeLocked() {
+        val scanned = presences.filter { it.free && !it.hosting && !it.leaving && it.key != myKey }
+        val seen = presences.map { it.key }.toSet()
+        val linked = peerKey.values.toSet()
+        standbyNames.keys.retainAll(linked)
+        val extra = if (!recruiting()) emptyList() else standbyNames
+            .filterKeys { it !in seen && it != myKey }
+            .map { (key, name) -> PresenceAdvert(key, name, free = true) }
+        _free.value = scanned + extra
+    }
+
     // ---- recrutador ---------------------------------------------------------------------------------------------
     private class Remote(val key: String, var name: String, val calledAt: Long) {
         var link: ReliableLink? = null
@@ -607,7 +625,7 @@ class Recruitment(
     private suspend fun presencesLocked(list: List<PresenceAdvert>) {
         presences = list.associateBy { it.key }.values.toList()
         _recruiters.value = presences.filter { it.hosting && !it.leaving && it.key != myKey }
-        _free.value = presences.filter { it.free && !it.hosting && !it.leaving && it.key != myKey }
+        publishFreeLocked()
         val keys = presences.map { it.key }.toSet()
         // Recrutador: chamado sem conexÃ£o que sumiu da busca por 10 s volta a VAGO ("fora do alcance").
         remotes.values.forEach { r ->
@@ -722,6 +740,7 @@ class Recruitment(
         }
         links.remove(l.endpoint)
         peerKey.remove(l.endpoint)
+        publishFreeLocked()
         photoSent -= l.endpoint
         l.close()
         scope.launch { runCatching { transport.disconnect(l.endpoint) } }
@@ -962,6 +981,9 @@ class Recruitment(
         peerKey[link.endpoint] = hello.key
         sendPhotoOnceLocked(link)
         if (inLayout == null) {
+            // §16.2 o jogador livre entra na lista já com a conexão de espera (sem esperar a busca do recrutador).
+            if (!hello.rejoin) standbyNames[hello.key] = hello.name
+            publishFreeLocked()
             log("rec standby ${k(hello.key)}")
             return
         }
@@ -988,6 +1010,7 @@ class Recruitment(
     /** A conexÃ£o caiu: o recrutador dÃ¡ o prazo de reingresso a quem aceitou; o chamado/recrutado tenta voltar. */
     private suspend fun lostLocked(endpoint: EndpointId, link: ReliableLink) {
         peerKey.remove(endpoint)
+        publishFreeLocked()
         photoSent -= endpoint
         remotes.values.firstOrNull { it.link === link }?.let { r ->
             r.link = null

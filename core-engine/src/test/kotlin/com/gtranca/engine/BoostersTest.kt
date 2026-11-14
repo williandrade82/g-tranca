@@ -17,19 +17,20 @@ class BoostersTest {
     private val catalog = BoosterCatalog.DEFAULT
 
     @Test
-    fun `§17_1 catalogo inicial - b1 b2 b3 com custo 1, 5 iniciais e faixas de sorteio`() {
-        catalog.map { it.id } shouldBe listOf("b1", "b2", "b3")
-        catalog.map { it.name } shouldBe listOf("Green-LED", "Yellow-LED", "Reações")
+    fun `§17_1 catalogo inicial - b1 b2 b3 b4 com custo 1, 5 iniciais e faixas de sorteio`() {
+        catalog.map { it.id } shouldBe listOf("b1", "b2", "b3", "b4")
+        catalog.map { it.name } shouldBe listOf("Green-LED", "Yellow-LED", "Reações", "Placar")
         catalog.all { it.cost == 1 && it.initialQuantity == 5 } shouldBe true
-        catalog.map { it.giftMin to it.giftMax } shouldBe listOf(1 to 3, 1 to 3, 2 to 7)
+        catalog.map { it.giftMin to it.giftMax } shouldBe listOf(1 to 3, 1 to 3, 2 to 7, 1 to 3)
     }
 
     @Test
-    fun `§17_1 b1 e b2 sao boosters de skill e b3 de interacao`() {
-        catalog.map { it.kind } shouldBe listOf(BoosterKind.SKILL, BoosterKind.SKILL, BoosterKind.INTERACTION)
+    fun `§17_1 b1, b2 e b4 sao boosters de skill e b3 de interacao`() {
+        catalog.map { it.kind } shouldBe listOf(BoosterKind.SKILL, BoosterKind.SKILL, BoosterKind.INTERACTION, BoosterKind.SKILL)
         BoosterCatalog.isSkill("b1") shouldBe true
         BoosterCatalog.isSkill("b2") shouldBe true
         BoosterCatalog.isSkill("b3") shouldBe false
+        BoosterCatalog.isSkill("b4") shouldBe true
         BoosterCatalog.isSkill("inventado") shouldBe false
     }
 

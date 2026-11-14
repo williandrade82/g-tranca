@@ -22,6 +22,8 @@ import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.GSubPanel
 import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.Spacing
+import com.gtranca.ui.theme.BrandHeader
+import com.gtranca.ui.theme.loungeDialog
 import com.gtranca.ui.cards.frameColor
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -53,7 +55,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -109,16 +110,17 @@ fun RoundSummaryScreen(
         // Cor clara pelo LocalContentColor (não pelo estilo): o botão dourado continua com a cor escura dele.
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides GColors.Ivory) {
         androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+        val panelShape = RoundedCornerShape(24.dp)
         Column(
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = maxModal)
-                .clip(RoundedCornerShape(24.dp))
-                .background(GColors.Indigo.copy(alpha = 0.93f))
-                .border(1.5.dp, GColors.Gold.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
+                .loungeDialog(panelShape)
+                .clip(panelShape)
                 .padding(Spacing.md),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
+            BrandHeader()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 GTitle(stringResource(R.string.round_over_title, record.number), Modifier.weight(1f))
                 com.gtranca.ui.tour.TourButton(startTour)

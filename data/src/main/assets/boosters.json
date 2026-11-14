@@ -30,6 +30,16 @@
       "giftMin": 2,
       "giftMax": 7,
       "kind": "INTERACTION"
+    },
+    {
+      "id": "b4",
+      "name": "Placar",
+      "summary": "Mostra os pontos da mesa de cada lado e o valor de cada conjunto",
+      "cost": 1,
+      "initialQuantity": 5,
+      "giftMin": 1,
+      "giftMax": 3,
+      "kind": "SKILL"
     }
   ]
 }

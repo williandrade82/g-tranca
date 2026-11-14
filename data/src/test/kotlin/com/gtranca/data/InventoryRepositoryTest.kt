@@ -80,7 +80,7 @@ class InventoryRepositoryTest {
         repo.setSelection(listOf("b1", "b3"))
         val done = repo.confirmLoadout(listOf("b1", "b3"))
         done.boosters shouldBe listOf("b1", "b3")
-        repo.inventory.first().quantities shouldBe mapOf("b1" to 4, "b2" to 5, "b3" to 4)
+        repo.inventory.first().quantities shouldBe mapOf("b1" to 4, "b2" to 5, "b3" to 4, "b4" to 5)
         repo.selection.first() shouldBe listOf("b1", "b3")
     }
 

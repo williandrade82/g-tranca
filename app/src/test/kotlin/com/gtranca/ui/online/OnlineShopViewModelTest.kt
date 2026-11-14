@@ -41,11 +41,11 @@ class OnlineShopViewModelTest {
     )
 
     @Test
-    fun `lista as nove ofertas e o saldo da carteira online`() = runTest(dispatcher) {
+    fun `lista as doze ofertas e o saldo da carteira online`() = runTest(dispatcher) {
         val vm = newVm(FakeEconomy(initialBalance = 100))
         advanceUntilIdle()
         vm.uiState.value.status shouldBe OnlineShopStatus.READY
-        vm.uiState.value.shop.items.size shouldBe 9
+        vm.uiState.value.shop.items.size shouldBe 12
         vm.uiState.value.shop.balance shouldBe 100
     }
 
@@ -212,7 +212,7 @@ class OnlineShopViewModelTest {
         val vm = newVm(economy)
         advanceUntilIdle()
         vm.uiState.value.status shouldBe OnlineShopStatus.READY
-        vm.uiState.value.shop.items.size shouldBe 9
+        vm.uiState.value.shop.items.size shouldBe 12
         vm.uiState.value.shop.balance shouldBe 100
         vm.uiState.value.staleOffers shouldBe true
     }

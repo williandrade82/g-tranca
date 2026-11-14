@@ -62,6 +62,21 @@ class HumanTurnResolverTest {
     }
 
     @Test
+    fun `destino da selecao - jogos que recebem tudo e conjunto vazio so com conjunto novo`() {
+        val table = SideTable(listOf(TableMeld(MeldId(1), meld("4H", "5H", "6H"))))
+        val s = state(hand, table = table)
+        val legal = RoundEngine.legalActions(s, Seat(0))
+        HumanTurnResolver.addTargets(legal, cards("7H")) shouldBe setOf(MeldId(1))
+        HumanTurnResolver.addTargets(legal, cards("7H", "QS")) shouldBe emptySet()
+        HumanTurnResolver.canCreateNew(legal, cards("QS", "QC", "QS'")) shouldBe true
+        HumanTurnResolver.canCreateNew(legal, cards("7H")) shouldBe false
+        // O toque no conjunto vazio só baixa conjunto novo; um acréscimo não vale ali.
+        resolve(s, PlayIntent.NewMeld, cards("QS", "QC", "QS'")).shouldBeInstanceOf<Resolution.Play>()
+            .action.shouldBeInstanceOf<Action.CreateMeld>()
+        resolve(s, PlayIntent.NewMeld, cards("7H")).shouldBeInstanceOf<Resolution.Rejected>()
+    }
+
+    @Test
     fun `selecao com a outra copia da carta tambem casa (cartas representativas)`() {
         val result = resolve(state(hand), PlayIntent.CreateMeld, cards("7H'", "8H", "9H"))
         val action = result.shouldBeInstanceOf<Resolution.Play>().action

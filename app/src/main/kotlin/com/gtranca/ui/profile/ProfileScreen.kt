@@ -64,6 +64,11 @@ import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.GTitle
 import com.gtranca.ui.theme.Spacing
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.res.painterResource
+import com.gtranca.ui.home.homeCrest
+import com.gtranca.ui.home.rememberHomeMotion
 
 /** Perfil do jogador (§14.1): nome e avatar (foto ou medalhão com a inicial e a cor), com pré-visualização. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -83,11 +88,16 @@ fun ProfileScreen(
     }
     val profile = state.profile
     val youName = stringResource(R.string.side_you)
+    val motion = rememberHomeMotion()
     GBackground(Modifier.fillMaxSize().testTag("profile-screen")) {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
+            Image(
+                painterResource(R.drawable.home_crest), null,
+                Modifier.align(Alignment.CenterHorizontally).width(120.dp).aspectRatio(640f / 298f).homeCrest(motion),
+            )
             GTitle(stringResource(R.string.profile_title))
             GPanel(Modifier.fillMaxWidth()) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

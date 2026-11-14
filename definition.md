@@ -514,7 +514,7 @@ flowchart TD
 - **Aparelhos e versões:** só participam aparelhos com o serviço de comunicação por proximidade do Google (Google Play Services). Versões diferentes do jogo **não jogam juntas**, e o app diz isso com clareza ("O anfitrião está com outra versão do jogo (anfitrião: versão N; você: versão M). Atualizem todos os celulares para a mesma versão e criem uma mesa nova.").
 
 ### **16.2. Mesa multijogador**
-- **Jogadores próximos:** o aparelho com o **Wi-Fi do jogo** ligado (no Perfil, na tela *Iniciar novo jogo* ou na *Seleção de jogadores*) e fora de um jogo anuncia a sua **presença** (nome) e procura a dos outros. A presença diz também o **estado** do jogador: **livre** (na tela *Iniciar novo jogo*, podendo ser chamado) ou **recrutando** (na *Seleção de jogadores*). A tela *Iniciar novo jogo* lista os jogadores **recrutando** (sem o próprio; só informativo); a *Seleção de jogadores* lista os jogadores **livres** com Wi-Fi ligado. Quem está em outra tela (Início, Perfil...) anuncia a presença mas **não aparece** nas listas e não pode ser chamado. A lista fica **sempre atualizada**: quem **desliga o Wi-Fi do jogo** anuncia por um instante que está **saindo** (§16.15) antes de parar, e quem vê esse aviso o tira da lista **na hora**; quem some sem avisar (fora do alcance, aparelho desligado) sai da lista depois de **duas verificações seguidas** sem ser revisto (§16.15), e quem continua visível não pisca. A **foto** do jogador próximo (pequena e comprimida, a mesma de §14.1) vem **pela conexão de espera** (abaixo), uma vez por conexão, e fica **só em memória** enquanto o Wi-Fi do jogo está ligado (nunca em disco); sem foto, ou antes de ela chegar, aparece a inicial; com **"Ver fotos nas mesas compartilhadas"** desligada, aparece a inicial. *Limitação:* no `P2P_STAR` quem está livre na tela 1 mantém a espera com **um** recrutador por vez; a foto dos **outros** recrutadores da lista da tela 1 aparece como inicial.
+- **Jogadores próximos:** o aparelho com o **Wi-Fi do jogo** ligado (no Perfil, na tela *Iniciar novo jogo* ou na *Seleção de jogadores*) e fora de um jogo anuncia a sua **presença** (nome) e procura a dos outros. A presença diz também o **estado** do jogador: **livre** (na tela *Iniciar novo jogo*, podendo ser chamado) ou **recrutando** (na *Seleção de jogadores*). A tela *Iniciar novo jogo* lista os jogadores **recrutando** (sem o próprio; só informativo); a *Seleção de jogadores* lista os jogadores **livres** com Wi-Fi ligado. Quem está em outra tela (Início, Perfil...) anuncia a presença mas **não aparece** nas listas e não pode ser chamado. A lista fica **sempre atualizada**: quem **desliga o Wi-Fi do jogo** anuncia por um instante que está **saindo** (§16.15) antes de parar, e quem vê esse aviso o tira da lista **na hora**; quem some sem avisar (fora do alcance, aparelho desligado) sai da lista depois de **duas verificações seguidas** sem ser revisto (§16.15), e quem continua visível não pisca. A **foto** do jogador próximo (pequena e comprimida, a mesma de §14.1) vem **pela conexão de espera** (abaixo), uma vez por conexão, e fica **só em memória** enquanto o Wi-Fi do jogo está ligado (nunca em disco); sem foto, ou antes de ela chegar, aparece a inicial; com **"Ver fotos nas mesas compartilhadas"** desligada, aparece a inicial. O recrutador lista o jogador livre **assim que a conexão de espera dele chega**, sem esperar a própria busca achá-lo (a busca continua valendo para quem não conectou); quando a conexão cai e a busca não o vê, ele sai da lista. *Limitação:* no `P2P_STAR` quem está livre na tela 1 mantém a espera com **um** recrutador por vez; a foto dos **outros** recrutadores da lista da tela 1 aparece como inicial.
 - **Dados da mesa:** o recrutador define na tela *Iniciar novo jogo* (§14.4) o **modo**, o **perfil de regras** (§14.3), a **pontuação-alvo**, a **aposta** (§14.6), a **dificuldade dos robôs** e a permissão dos **boosters de skill** (§17.9); na *Seleção de jogadores*, o personagem (§14.5) de cada lugar de robô. Esses dados vão ao chamado **no convite** (o modal mostra aposta, tipo, posição e título da regra) e, depois que ele aceita, ficam **sincronizados ao vivo** na tela dele, **só para leitura**; aceitar o convite é aceitar as regras (§14.4). Não mudam depois que o jogo começa. O **nome da mesa** é o do anfitrião ("Mesa de <nome>").
 - **Lugares:** a mesa de **duplas** tem **4 lugares** (duas duplas, "Dupla 1" e "Dupla 2", parceiros em posições opostas, §1.1); a **individual**, **2 lugares**, um em frente ao outro (§16.3). O recrutador ocupa sempre o lugar de **baixo** (o lugar 1, §4.1) e **não se move**; o lugar da frente é o do **parceiro**. Na seleção cada lugar está **VAGO**, ocupado por um **robô**, por um **Chamado** (convite sem resposta) ou por um **Recrutado** (aceitou); ao começar, **todos** estão preenchidos (humano ou robô). Humanos podem ser **parceiros, adversários ou ambos**, conforme o lugar.
 - **Recrutamento (chamar):** o recrutador (anfitrião com a *Seleção de jogadores* aberta e o Wi-Fi do jogo ligado) toca num lugar VAGO e, depois, num jogador próximo **livre**.
@@ -689,6 +689,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 | b1 | Green-LED | Skill | Mostra um ponto verde nas cartas que pode baixar | 5 | 1 a 3 |
 | b2 | Yellow-LED | Skill | Mostra um ponto amarelo nas cartas que se encaixam no jogo do adversário | 5 | 1 a 3 |
 | b3 | Reações | Interação | Permite expressar até 3 reações durante a partida | 5 | 2 a 7 |
+| b4 | Placar | Skill | Mostra os pontos da mesa de cada lado e o valor de cada conjunto | 5 | 1 a 3 |
 
 ### **17.2. Escolha no inventário**
 - Na tela do inventário o jogador marca **até 3 boosters distintos** para a próxima partida; **moedas não podem** ser marcadas. A marcação é gravada e **vale também para as próximas partidas** até ser mudada; booster com quantidade **0** não pode ser marcado e, se estava marcado, sai da marcação.
@@ -730,7 +731,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 
 ### **17.9. Boosters de skill na mesa**
 - Ao **iniciar uma nova mesa** (§14.4, tela *Iniciar novo jogo*), o jogador escolhe se a mesa **permite** ou **não permite** os **boosters de skill** (§17.1). O padrão é **permitir** e a escolha é lembrada com as demais opções da mesa. Vale para o jogo **todo** e **não muda** depois que o jogo começa, como as regras (§14.4); o jogo salvo ("Continuar") e o jogo que passa a ser hospedado (§16.7) mantêm a escolha.
-- Com os boosters de skill **não permitidos**: no seletor (§17.3) eles aparecem **esmaecidos**, com um aviso de que a mesa não os permite, e **não podem ser escolhidos** nem são debitados; a marcação do inventário (§17.2) não muda, só não vale nessa mesa. O anfitrião **recusa** a escolha de um booster de skill nessa mesa (como recusa um id fora do catálogo, §17.4). Os **boosters de interação** (b3) continuam permitidos.
+- Com os boosters de skill **não permitidos**: no seletor (§17.3) eles aparecem **esmaecidos**, com um aviso de que a mesa não os permite, e **não podem ser escolhidos** nem são debitados; a marcação do inventário (§17.2) não muda, só não vale nessa mesa. O anfitrião **recusa** a escolha de um booster de skill nessa mesa (como recusa um id fora do catálogo, §17.4). Os **boosters de interação** (b3) continuam permitidos; b1, b2 e b4 são de skill.
 - Quem é **recrutado** (§16.2) é informado no **convite** se os boosters de skill são **permitidos ou não** na mesa, antes de aceitar; aceitar o convite é aceitar essa regra, como as demais (§14.4). A informação aparece também na *Mesa do recrutado* e no convite de partida em andamento (§16.7).
 
 ### **17.10. Loja**
@@ -748,10 +749,48 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 | b3 Reações | 10 | 50 |
 | b3 Reações | 5 | 30 |
 | b3 Reações | 1 | 10 |
+| b4 Placar | 10 | 50 |
+| b4 Placar | 5 | 30 |
+| b4 Placar | 1 | 10 |
 
 - Antes de confirmar, o jogador vê o booster, a quantidade, o **valor total**, as moedas que **tem** e as que **terá depois**. A compra **pode zerar** o saldo, mas **nunca deixá-lo negativo**: com saldo menor que o valor, a compra **não é feita** e nada muda.
 - Confirmada, **debita** o valor da carteira e **soma** a quantidade ao inventário numa só operação (nunca um sem o outro, nem em caso de queda do app no meio); o booster já vale para o **próximo seletor** (§17.3) e o saldo na tela é atualizado.
 - A compra **não tem limite** de estoque (o teto de 10 do presente, §17.5, só vale para o presente). Não conta como aposta nem entra no resultado em moedas das estatísticas (§14.6).
+
+### **17.11. b4 Placar**
+- Com o b4 no jogo, a mesa mostra, **o tempo todo** (não só na vez do jogador):
+  - no **canto superior direito da área de jogos de cada lado** (o próprio e o adversário; em duplas, a mesa da dupla), o **total da mesa** daquele lado;
+  - no **canto superior direito de cada conjunto** baixado, o **valor daquele conjunto**.
+- Os valores seguem a tabela do §12.1, **só com o que está na mesa**:
+  - **valor do conjunto** = bônus de canastra (limpa **+200**, suja **+100**; nada se ainda não é canastra) + o valor de cada carta dele (4 a 10: **+8**; J, Q, K, A e coringa: **+10**). Ex.: canastra limpa 4-5-6-7-8-9-10 = **256**;
+  - **total da mesa** = soma dos valores dos conjuntos do lado + cada 3 vermelho baixado: **+5** mais **+100** se o lado já tem canastra, ou **–100** se ainda não tem (o valor muda na hora em que a 1ª canastra fecha) + o **morto não pego** (§12.2, o valor da regra da mesa, normalmente **–100**) enquanto o lado ainda não pegou o morto. Cada lado começa a partida em **–100**; pegar o morto **soma 100** ao total.
+- **Não entram** os pontos que só existem no fim da partida: batida (+100) e cartas na mão (§12.2). Só usa informação **visível** da mesa (§16.4).
+- O número muda quando a jogada **pousa** na mesa (fim da animação), não antes. Não é uma jogada e **não** muda `legalActions`. Sem o b4 na partida, nada disso aparece.
+
+#### **17.11.1. Barra de progressão**
+- Com o b4, o jogador vê também a **barra de progressão**, logo abaixo da barra de títulos, **fixa** (não rola com a mesa). Sem o b4, ela não aparece.
+- Com o b4, esse bloco **substitui o placar "Nós × Eles"** do cabeçalho e tem três linhas, de cima para baixo, sempre no estilo "Nós × Eles" (o próprio lado à **esquerda**, o adversário à **direita**):
+  1. **apresentação**: a arte do próprio lado encostada na ponta esquerda, seguida do texto "Nós" (no individual, o nome curto do lado, como no placar); o texto "Eles" seguido da arte do adversário, encostada na ponta direita. Os textos ficam mais ao centro. Em duplas, os dois da dupla lado a lado, a imagem mais perto do centro cobrindo 40% da outra;
+  2. **barra do jogo** (§17.11.2);
+  3. **barra da partida** (esta seção).
+- **Barra da partida**: o **zero fica nas pontas** e cada metade cresce **da ponta para o centro** (o centro é o teto da escala). Na metade **esquerda**, o total da mesa (§17.11) do próprio lado; na **direita**, o do lado adversário. O número de cada lado fica na ponta do seu lado.
+- Cada lado tem **um só valor** (o total da mesa): positivo, a barra é **dourada**; negativo, **vermelha**. Nunca as duas no mesmo lado ao mesmo tempo.
+- **Escala** (igual para os dois lados, começa em **500** a cada partida e **nunca diminui** dentro dela):
+  - quando um lado chega a **500**: animação empolgante e a escala vai a **750**;
+  - quando um lado chega a **750**: animação mais emocionante e a escala vai a **1000**;
+  - quando um lado **passa de 1000**: a última animação, a mais forte, e, dali em diante, a escala acompanha o maior total (ele enche a metade da barra).
+  - se um salto passa por mais de um marco, toca só a animação do maior.
+- **Marcação** de cada marco alcançado (500, 750, 1000), com o número embaixo, nas duas metades: na metade do lado que **já alcançou** aquele marco em algum momento da partida, uma **estrela**; na metade do lado que ainda não alcançou (o marco só aparece porque o outro lado chegou lá), só uma **fina linha vertical** no ponto.
+- **Toda** mudança de valor é animada: a barra cresce ou diminui até o novo valor e o número gira como um letreiro. O valor muda quando a jogada pousa (§17.11).
+- **Fim da partida**: depois dos fogos de artifício, a barra recebe a **pontuação final da partida** de cada lado (§12, com batida e cartas na mão). Os dois números giram juntos em **0,5 s** e o novo valor aparece com um destaque; se um marco foi alcançado, toca a animação dele; só então aparece a arte de bateu ou perdeu e o fim de partida segue como antes.
+- Só usa informação visível (§16.4). Não é jogada, não muda `legalActions` nem a pontuação oficial (§12).
+
+#### **17.11.2. Barra do jogo**
+- Linha 2 do bloco do §17.11.1, semelhante à barra da partida, mas com os **pontos do jogo** (o placar acumulado das partidas já terminadas, §13), não só os da partida.
+- Também crescendo **da ponta para o centro** (zero nas pontas, o alvo no centro), o próprio lado na metade **esquerda** e o adversário na **direita**, o número de cada lado na ponta. A escala vai de **0** à **pontuação-alvo** da mesa (`targetScore`) e não muda; acima do alvo a barra fica cheia.
+- A barra é **cinza bem claro** e **não marca valores negativos**: com placar negativo ela fica vazia (o número mostra o valor real).
+- O placar de cada lado **ao fim de cada partida** fica marcado na metade daquele lado (uma marca fina por partida terminada).
+- Muda com animação (a barra cresce ou diminui e o número gira como letreiro) quando uma partida termina e o placar do jogo muda.
 
 # **18. Jogo online**
 

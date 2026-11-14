@@ -9,16 +9,18 @@ import io.kotest.property.checkAll
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 
-/** §17.10 Loja: as nove ofertas e a regra da compra. */
+/** §17.10 Loja: as doze ofertas e a regra da compra. */
 class ShopTest {
     private val inventory = Inventory(mapOf("b1" to 5, "b2" to 5, "b3" to 5))
 
     @Test
-    fun `§17_10 as nove ofertas - b1 b2 b3 em pacotes de 10 por 50, 5 por 30 e 1 por 10`() {
+    fun `§17_10 as doze ofertas - b1 b2 b3 b4 em pacotes de 10 por 50, 5 por 30 e 1 por 10`() {
         Shop.OFFERS.map { Triple(it.boosterId, it.quantity, it.price) } shouldBe listOf(
             Triple("b1", 10, 50), Triple("b1", 5, 30), Triple("b1", 1, 10),
             Triple("b2", 10, 50), Triple("b2", 5, 30), Triple("b2", 1, 10),
             Triple("b3", 10, 50), Triple("b3", 5, 30), Triple("b3", 1, 10),
+            // §17.11 o b4 entra no fim: os índices das ofertas antigas (preços ajustados no servidor) não mudam.
+            Triple("b4", 10, 50), Triple("b4", 5, 30), Triple("b4", 1, 10),
         )
     }
 

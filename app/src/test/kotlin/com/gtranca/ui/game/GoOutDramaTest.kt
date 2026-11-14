@@ -65,6 +65,16 @@ class GoOutDramaTest {
     }
 
     @Test
+    fun `§17_11_1 com o b4 a barra recebe a pontuacao final entre os fogos e o banner`() {
+        GoOutDrama.next(GoOutDrama.OverlayPhase.FIREWORKS, scoreBar = true) shouldBe GoOutDrama.OverlayPhase.SCOREBAR
+        GoOutDrama.next(GoOutDrama.OverlayPhase.SCOREBAR, scoreBar = true) shouldBe GoOutDrama.OverlayPhase.BANNER
+        GoOutDrama.startPhase(RoundEnd.NO_WINNER, animate = true, scoreBar = true) shouldBe GoOutDrama.OverlayPhase.SCOREBAR
+        GoOutDrama.startPhase(RoundEnd.YOU, animate = false, scoreBar = true) shouldBe GoOutDrama.OverlayPhase.BANNER
+        GoOutDrama.scoreBarMillis(milestone = false) shouldBe 1_100L
+        GoOutDrama.scoreBarMillis(milestone = true) shouldBe 2_700L
+    }
+
+    @Test
     fun `o tremor da mesa comeca e termina parado e fica amortecido`() {
         GoOutDrama.shake(0f) shouldBe Triple(0f, 0f, 0f)
         GoOutDrama.shake(1f) shouldBe Triple(0f, 0f, 0f)

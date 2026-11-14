@@ -194,7 +194,7 @@ enum class AdminConfigSource { DEFAULT, OVERRIDE }
 data class AdminConfigFieldDto(val value: Long, val source: AdminConfigSource, val sinceMs: Long? = null)
 
 /**
- * Uma das nove ofertas da loja (§17.10) com o preco e a quantidade ATUAIS (default ou com override, cada um
+ * Uma das ofertas da loja (§17.10) com o preco e a quantidade ATUAIS (default ou com override, cada um
  * independente — mudar so o preco nao cria historico de quantidade). [boosterId] e fixo (vem do catalogo,
  * `:core-engine`, fora do alcance desta etapa); so [price] e [quantity] sao editaveis.
  */
