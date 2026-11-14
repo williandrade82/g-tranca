@@ -230,6 +230,7 @@ O motor entrega o estado já pronto a cada ação (o morto, por exemplo, entra n
 - **R9. O descarte é sempre o último movimento da vez** de quem joga.
 - **R10. Batida e fim da partida (§11, §12).** A última jogada (baixa de quem bate ou descarte) pousa na mesa antes de o anúncio de fim da partida aparecer; o anúncio não corta voos em andamento nem voos na fila.
 - **R11. Multijogador e reconexão (§16.6).** Cada aparelho segue R1 a R10 no seu ritmo; as vistas recebidas são mostradas uma por vez, em ordem. Quem entra ou volta no meio da partida (§16.7, §16.9) recebe a mesa no estado atual **sem** encenar o que já aconteceu, e a partir daí vale R1.
+- **R12. A distribuição inicial não sai do monte.** Cada leva da distribuição (a mão de um assento ou um morto) entra vinda de **fora da mesa**, pela borda do lado de quem distribui aquela leva — a mão vem do `dealGuess.dealerSeat`, cada morto do `dealGuess.mortoDealerSeat` (os dois mortos pelo mesmo lado), §3.6/§4.2 — segundo o **papel** desse assento visto por quem olha a tela: parceiro ou único adversário (individual) = de cima; adversário à esquerda = da esquerda; adversário à direita = da direita; o próprio jogador (quando ele é sorteado para distribuir) = de baixo, perto de onde fica a própria mão. O destino de cada carta (a mão do assento, ou o morto correspondente) continua o de sempre; só a origem do voo muda. Vale mesmo com `dealGuessBonusEnabled` desligado (§3.8.2): não é exclusivo do minijogo de palpite.
 
 #### 3.8.2 Distribuição certeira (§3.6)
 
