@@ -304,7 +304,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
   - Não há 3 preto na mesa (nenhum 3 compõe conjuntos, §6.2).
   - Contam todas as cartas de todos os conjuntos do lado (canastras ou não) e os 3 vermelhos baixados, sempre (com ou sem vencedor, com ou sem canastra).
   - Exemplo: canastra limpa 4-5-6-7-8-9-10 de copas = 200 (canastra limpa) + 7 × 8 (cartas) = **256**.
-- **Distribuição certeira** (§3.6): **+100** para o lado de quem acertou o palpite da mão, e mais **+100** para o lado de quem acertou o palpite do morto (podem ser o mesmo lado ou lados diferentes) *(parâmetro `dealGuessBonusEnabled`; base: sim)*.
+- **Distribuição certeira** (§3.6): **+100** para o lado de quem acertou o palpite da mão, e mais **+100** para o lado de quem acertou o palpite do morto — os dois assentos que palpitam (`dealerSeat` e `mortoDealerSeat`, §3.6) ficam sempre em lados diferentes, então os dois bônus nunca vão para o mesmo lado *(parâmetro `dealGuessBonusEnabled`; base: sim)*.
 
 ### **12.2. Penalidades (negativas)**
 - **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto — inclusive o lado que bate quando não havia mais morto disponível (§9.5).

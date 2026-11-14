@@ -7,6 +7,7 @@ import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.dealGuessHandTarget
 import com.gtranca.engine.model.dealGuessMortoTarget
+import com.gtranca.engine.model.dealGuessSeats
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
@@ -59,6 +60,19 @@ class DealGuessTest {
         // §3.6 simetria: com firstSeat = 1, o assento 0 distribui a mão e o 1 (quem abre) distribui o morto
         val state = dealRound(GameMode.INDIVIDUAL, Random(1), firstSeat = Seat(1))
         state.dealGuess shouldBe DealGuess(dealerSeat = Seat(0), mortoDealerSeat = Seat(1))
+    }
+
+    @Test
+    fun `quem distribui a mao e quem distribui o morto ficam sempre em lados diferentes`() {
+        // §12.1 os dois bônus de +100 (mão e morto) nunca vão para o mesmo lado: dealerSeat e mortoDealerSeat
+        // (§3.6) são sempre de lados opostos, em qualquer modo e qualquer firstSeat (não só nos casos pontuais
+        // já cobertos acima) — invariante estrutural de dealGuessSeats, não um acaso das sementes usadas alhures.
+        GameMode.entries.forEach { mode ->
+            mode.seats.forEach { firstSeat ->
+                val (dealerSeat, mortoDealerSeat) = dealGuessSeats(mode, firstSeat)
+                mode.sideOf(dealerSeat) shouldNotBe mode.sideOf(mortoDealerSeat)
+            }
+        }
     }
 
     // ---------- §3.6 acerto e erro do palpite da mão ----------
