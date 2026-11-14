@@ -5,6 +5,7 @@ import com.gtranca.engine.Action
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.Seat
@@ -32,12 +33,20 @@ class SnapshotPacerTest {
     private val viewer = Seat(0)
     private val robot = Seat(1)
 
-    /** Vista inicial de uma partida de duplas (a do assento 0), sem jogadas. */
+    /**
+     * Vista inicial de uma partida de duplas (a do assento 0), sem jogadas. `RuleSet.DEFAULT` tem
+     * `dealGuessBonusEnabled` ligado (§3.6/§14.2): a vista "crua" do controlador nasceria em
+     * [Phase.DEAL_GUESS_HAND], mas o que estes testes sempre quiseram dizer com "partida nova, sem jogadas" é uma
+     * partida que já passou dessa etapa — por isso a fase é fixada em [Phase.AWAITING_DRAW] aqui. Ver o teste §3.6
+     * para o caso em que a vista chega mesmo numa fase de palpite (dedicado, com fixtures próprias).
+     */
     private val base: GameSnapshot = GameController(
         GameConfig(GameMode.DUPLAS, Difficulty.FACIL),
         gameSeed = 7,
         players = GameMode.DUPLAS.seats.map { BotSeatPlayer(createBot(Difficulty.FACIL, Random(it.index.toLong()))) },
-    ).state.value.let { it.copy(stage = Stage.PLAYING, roundNumber = 1, view = it.view.copy(redThreeLog = emptyList())) }
+    ).state.value.let {
+        it.copy(stage = Stage.PLAYING, roundNumber = 1, view = it.view.copy(redThreeLog = emptyList(), phase = Phase.AWAITING_DRAW))
+    }
 
     private fun after(previous: GameSnapshot, seat: Seat, action: Action, laid: List<RedThreeLaid> = emptyList()): GameSnapshot {
         val event = PublicEvent.of(previous.view.discardPile, seat, action)
@@ -111,5 +120,54 @@ class SnapshotPacerTest {
         shown2 shouldBe listOf(first)
         job2.cancel()
         advanceUntilIdle()
+    }
+
+    /**
+     * §3.6 relato 2026-11-14 (mesa multijogador local, convidado): `awaitStaging` detecta "partida nova" (o número
+     * mudou) e espera a animação da distribuição ([dealWaitMillis]) — mas, com a distribuição certeira ligada
+     * (padrão de hoje), a 1ª vista de uma partida nova chega ainda na fase de palpite ([Phase.DEAL_GUESS_HAND]),
+     * **antes** de a distribuição de verdade começar (`GameViewModel.absorb`: `dealing` só vira `true` ao SAIR da
+     * fase de palpite, `leavingGuessPhases`, nunca durante ela). O convidado não tem controlador local para
+     * terminar essa animação (não existe nenhuma: a mão ainda não foi mesmo distribuída na tela) — a tela nunca
+     * chama `dealAnimationDone(1)` nesse instante, então `awaitStaging` ficava bloqueada pelo [dealWaitMillis]
+     * inteiro (vários segundos) antes de mostrar a vista do palpite, e de novo a cada palpite seguinte da mesma
+     * partida. Isso é a "pausa indevida antes do jogo começar" do relato: a cada partida (não só a 1ª do jogo),
+     * com o convidado nunca respondendo ao sinal certo.
+     */
+    @Test
+    fun `§3_6 a vista do palpite da distribuicao certeira nao espera a animacao da distribuicao`() = runTest {
+        val deal1Hand = base.copy(view = base.view.copy(phase = Phase.DEAL_GUESS_HAND))
+        val deal1Morto = deal1Hand.copy(view = deal1Hand.view.copy(phase = Phase.DEAL_GUESS_MORTO))
+        // Sai da fase de palpite: é só aqui que a distribuição de verdade é animada na tela (§3.6).
+        val deal1Draw = deal1Morto.copy(view = deal1Morto.view.copy(phase = Phase.AWAITING_DRAW))
+        val shown = mutableListOf<GameSnapshot>()
+        val pacer = SnapshotPacer({ 0 }, { 5_000 }, { 0 }) { shown += it }
+        // `initial` já está na tela (nunca passa por `publish`, ver KDoc de `run`): só a 1ª espera (antes do laço)
+        // conta aqui, e ela não pode travar nos 5s do `dealWaitMillis` só porque o palpite da mão é "partida nova".
+        val job = launch { pacer.run(deal1Hand) }
+        runCurrent()
+        shown shouldBe emptyList()
+
+        // O palpite do morto (ainda a mesma partida, ainda em fase de palpite): nada para animar, sem espera.
+        pacer.offer(deal1Morto)
+        runCurrent()
+        shown shouldBe listOf(deal1Morto)
+
+        // Sai da fase de palpite: esta vista em si é publicada na hora (como sempre: `publish` vem antes da espera
+        // em `run`) — é a PRÓXIMA vista que fica retida até a distribuição de verdade terminar na tela.
+        pacer.offer(deal1Draw)
+        runCurrent()
+        shown shouldBe listOf(deal1Morto, deal1Draw)
+
+        // A 1ª jogada de verdade (depois da distribuição animada): só aparece depois de `dealAnimationDone`, como
+        // qualquer outra partida nova — aqui sim a espera deve valer.
+        val humanTurn = deal1Draw.copy(humanLegal = listOf(Action.DrawFromStock), humanRequestId = 1)
+        pacer.offer(humanTurn)
+        advanceTimeBy(4_000)
+        shown shouldBe listOf(deal1Morto, deal1Draw)
+        pacer.dealAnimationDone(1)
+        runCurrent()
+        shown shouldBe listOf(deal1Morto, deal1Draw, humanTurn)
+        job.cancel()
     }
 }
