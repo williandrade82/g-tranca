@@ -53,28 +53,48 @@ class DealGuessViewModelTest {
         return vm
     }
 
-    /** Uma semente em que o assento 0 (humano) abre a partida: no individual, ele palpita a mão e o morto. */
+    /**
+     * Uma semente em que o assento 0 (humano) é `dealerSeat`: ele palpita a mão (§3.6). Desde a correção de §3.6
+     * (dealGuessSeats sempre dá assentos diferentes, inclusive em individual), `mortoDealerSeat` nunca é o mesmo
+     * assento: o morto é palpitado por outro (um robô), resolvido sozinho (`reactToGuess` libera na hora para quem
+     * não é `YOU`/`PARTNER`) sem exigir toque nenhum deste aparelho.
+     */
     private fun TestScope.humanDealerGame(animationMillis: Long = 0): GameViewModel {
         for (seed in 1L..200L) {
             val vm = newGame(seed, animationMillis = animationMillis)
             if (vm.uiState.value.snapshot.view.dealGuess?.dealerSeat == Seat(0)) return vm
         }
-        error("Nenhuma semente com o assento 0 abrindo a partida em 200 tentativas")
+        error("Nenhuma semente com o assento 0 sendo dealerSeat (palpite da mao) em 200 tentativas")
     }
 
     /**
-     * Uma semente em que, além do assento 0 ser o dealerSeat (abre a partida e palpita os dois, individual), a mão
-     * dele já tem um 3 vermelho (ainda não trocado: `beginTurn` só roda depois do palpite do morto resolvido, §3.5,
-     * `Deal.kt`) — reproduz o cenário do bug: a reação do palpite do morto e o aviso "Baixar 3 vermelho" do início
-     * da vez chegam juntos, na mesma ação (`RoundEngine.beginTurn` dentro do `GuessDealRange` do morto).
+     * Uma semente em que o assento 0 (humano) é `mortoDealerSeat`: ele palpita o morto (§3.6). O palpite da mão, de
+     * outro assento (um robô), já foi resolvido e liberado sozinho antes de chegar aqui — `newGame` já roda
+     * `advanceUntilIdle()`, então o laço do controlador só pausa de novo quando é a vez do humano palpitar.
+     */
+    private fun TestScope.humanMortoDealerGame(animationMillis: Long = 0): GameViewModel {
+        for (seed in 1L..200L) {
+            val vm = newGame(seed, animationMillis = animationMillis)
+            if (vm.uiState.value.snapshot.view.dealGuess?.mortoDealerSeat == Seat(0)) return vm
+        }
+        error("Nenhuma semente com o assento 0 sendo mortoDealerSeat (palpite do morto) em 200 tentativas")
+    }
+
+    /**
+     * Uma semente em que, além do assento 0 ser o `mortoDealerSeat` (em individual, `mortoDealerSeat` é sempre quem
+     * abre a partida, `firstSeat` — ver `DealGuess.kt`), a mão dele já tem um 3 vermelho (ainda não trocado:
+     * `beginTurn` só roda depois do palpite do morto resolvido, §3.5, `Deal.kt`) — reproduz o cenário do bug: a
+     * reação do palpite do morto e o aviso "Baixar 3 vermelho" do início da vez chegam juntos, na mesma ação
+     * (`RoundEngine.beginTurn` dentro do `GuessDealRange` do morto). O palpite da mão, de outro assento (um robô),
+     * já foi resolvido e liberado sozinho antes de chegar aqui.
      */
     private fun TestScope.humanDealerWithStartSwapGame(animationMillis: Long = 0): GameViewModel {
         for (seed in 1L..500L) {
             val vm = newGame(seed, animationMillis = animationMillis)
             val view = vm.uiState.value.snapshot.view
-            if (view.dealGuess?.dealerSeat == Seat(0) && view.hand.any { it.isRedThree }) return vm
+            if (view.dealGuess?.mortoDealerSeat == Seat(0) && view.hand.any { it.isRedThree }) return vm
         }
-        error("Nenhuma semente com o assento 0 abrindo a partida com 3 vermelho na mão em 500 tentativas")
+        error("Nenhuma semente com o assento 0 sendo mortoDealerSeat com 3 vermelho na mao em 500 tentativas")
     }
 
     @Test
@@ -153,35 +173,35 @@ class DealGuessViewModelTest {
         reveal.partner shouldBe false
         reveal.stage shouldBe DealGuessStage.HAND
         afterGuess.dealGuessPills[0]?.correct shouldBe true
-        // Individual: o mesmo jogador palpitaria o morto em seguida, mas o modal espera a reação fechar primeiro.
         afterGuess.dealGuessPrompt.shouldBeNull()
         afterGuess.snapshot.view.phase shouldBe Phase.DEAL_GUESS_MORTO
+        // O morto (agora sempre outro assento, um robô) ainda não foi palpitado: o controlador espera o toque
+        // antes de liberar a próxima etapa, mesmo não sendo mais o mesmo jogador quem palpita os dois.
+        afterGuess.snapshot.view.dealGuess?.morto shouldBe null
 
         vm.onDealGuessRevealDismissed()
         advanceUntilIdle()
 
         val afterDismiss = vm.uiState.value
         afterDismiss.dealGuessReveal.shouldBeNull()
-        afterDismiss.dealGuessPrompt.shouldNotBeNull()
-        afterDismiss.dealGuessPrompt!!.stage shouldBe DealGuessStage.MORTO
+        // §3.6 o robô palpita o morto sozinho, sem modal (reactToGuess libera `guessRevealDone` na hora para quem
+        // não é YOU/PARTNER): nenhum prompt novo aparece para o humano, e o palpite já foi resolvido.
+        afterDismiss.dealGuessPrompt.shouldBeNull()
+        afterDismiss.snapshot.view.dealGuess?.morto.shouldNotBeNull()
     }
 
     @Test
     fun `§3_6 §12_1 palpite errado do morto mostra nao foi dessa vez e a partida comeca so apos o toque`() = runTest(dispatcher) {
-        val vm = humanDealerGame()
-        val view0 = vm.uiState.value.snapshot.view
-        val handTarget = dealGuessHandTarget(view0.mode, view0.rules)
-        // Larguras diferentes da certa sempre erram (§3.6): "largura certa + 1" nunca é o alvo.
-        vm.onGuessDealRange(0, handTarget + 1)
-        advanceUntilIdle()
-        vm.onDealGuessRevealDismissed()
-        advanceUntilIdle()
-
+        // §3.6 o assento 0 agora só palpita o morto aqui: a mão, de outro assento (um robô), já foi resolvida e
+        // liberada sozinha (`reactToGuess` chama `guessRevealDone` na hora para quem não é YOU/PARTNER) dentro do
+        // `advanceUntilIdle()` que `newGame` já roda.
+        val vm = humanMortoDealerGame()
         val beforeMorto = vm.uiState.value
         beforeMorto.dealGuessPrompt.shouldNotBeNull()
         beforeMorto.dealGuessPrompt!!.stage shouldBe DealGuessStage.MORTO
         val mortoTarget = dealGuessMortoTarget(beforeMorto.snapshot.view.rules)
 
+        // Larguras diferentes da certa sempre erram (§3.6): "largura certa + 1" nunca é o alvo.
         vm.onGuessDealRange(0, mortoTarget + 1)
         // §3.6 idem: só o que já está pronto agora, antes da pílula sumir sozinha.
         runCurrent()
@@ -260,19 +280,15 @@ class DealGuessViewModelTest {
      */
     @Test
     fun `§3_6 §3_5 fechar a reacao do palpite antes de baixar o 3 vermelho do inicio da vez nao trava o jogo`() = runTest(dispatcher) {
-        // §3.6 BUG: usa `runCurrent()`, nunca `advanceUntilIdle()`, logo depois de cada `GuessDealRange` — a espera do
-        // motor pelo toque (`guessRevealSignal`) agora tem um tempo limite de segurança bem longo (ver
+        // §3.6 BUG: usa `runCurrent()`, nunca `advanceUntilIdle()`, logo depois do `GuessDealRange` do morto — a
+        // espera do motor pelo toque (`guessRevealSignal`) agora tem um tempo limite de segurança bem longo (ver
         // `GameController.GUESS_REVEAL_SAFETY_MILLIS`); com `advanceUntilIdle()` o relógio virtual adiantaria direto
         // até esse limite e o teste passaria mesmo SEM a correção de verdade (o toque nunca chegando a valer nada),
         // só por sorte do tempo virtual. `runCurrent()` só processa o que já está pronto agora, sem pular à frente —
         // é o que de fato obriga o toque adiantado a já valer (o canal conflado guarda o sinal até ser esperado).
+        // A mão (de outro assento, um robô) já foi resolvida e liberada sozinha dentro do `advanceUntilIdle()` que
+        // `humanDealerWithStartSwapGame`/`newGame` já rodaram: chegamos direto no palpite do morto, do humano.
         val vm = humanDealerWithStartSwapGame()
-        val view0 = vm.uiState.value.snapshot.view
-        vm.onGuessDealRange(0, dealGuessHandTarget(view0.mode, view0.rules))
-        runCurrent()
-        vm.onDealGuessRevealDismissed()
-        runCurrent()
-
         val beforeMorto = vm.uiState.value
         beforeMorto.dealGuessPrompt.shouldNotBeNull()
         val mortoTarget = dealGuessMortoTarget(beforeMorto.snapshot.view.rules)
@@ -320,13 +336,13 @@ class DealGuessViewModelTest {
         vm.onGuessDealRange(0, dealGuessHandTarget(view0.mode, view0.rules))
         runCurrent()
         vm.uiState.value.dealPending shouldBe false
-        vm.onDealGuessRevealDismissed()
-        advanceUntilIdle()
-        vm.uiState.value.dealPending shouldBe false // ainda palpitando o morto
 
-        vm.onGuessDealRange(0, dealGuessMortoTarget(vm.uiState.value.snapshot.view.rules))
+        // §3.6 o morto agora é sempre outro assento (um robô): o mesmo `runCurrent()` do toque já libera
+        // `guessRevealDone` (nenhum toque esperado dele) e deixa o robô responder pelo morto sem nenhum delay real
+        // de por meio — é aqui que a distribuição de verdade seria animada: a transição real pra 1ª jogada, saindo
+        // da fase de palpite, tudo dentro deste mesmo `runCurrent()`.
+        vm.onDealGuessRevealDismissed()
         runCurrent()
-        // §3.5 saiu da fase de palpite: agora é que a distribuição de verdade seria animada.
         vm.uiState.value.dealPending shouldBe true
 
         vm.onDealAnimationFinished()

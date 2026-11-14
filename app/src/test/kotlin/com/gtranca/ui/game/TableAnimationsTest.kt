@@ -585,13 +585,19 @@ class TableAnimationsTest {
             flights.filter { it.to is AnimAnchor.Morto }.all { it.from == AnimAnchor.DealEntry(case.mortoEdge) } shouldBe true
         }
 
-        // Individual: só 2 assentos, a dupla aplicação do "anterior" volta ao próprio firstSeat (§3.6): dealerSeat
-        // == mortoDealerSeat == firstSeat, logo a mão e os mortos entram do mesmo lado.
-        listOf(Seat(0) to TableEdge.BOTTOM, Seat(1) to TableEdge.TOP).forEach { (firstSeat, edge) ->
-            val v = view(hand).copy(mode = GameMode.INDIVIDUAL, firstSeat = firstSeat, handSizes = listOf(3, 3))
+        // Individual: só 2 assentos; dealerSeat é o OUTRO assento (nunca quem abre a partida) e mortoDealerSeat
+        // volta a ser o próprio firstSeat (§3.6) — a mão e os mortos entram de lados diferentes, viewer = Seat(0).
+        data class IndividualCase(val firstSeat: Seat, val handEdge: TableEdge, val mortoEdge: TableEdge)
+        listOf(
+            IndividualCase(Seat(0), TableEdge.TOP, TableEdge.BOTTOM), // dealerSeat 1 (OPPONENT), mortoDealerSeat 0 (YOU)
+            IndividualCase(Seat(1), TableEdge.BOTTOM, TableEdge.TOP), // dealerSeat 0 (YOU), mortoDealerSeat 1 (OPPONENT)
+        ).forEach { case ->
+            val v = view(hand).copy(mode = GameMode.INDIVIDUAL, firstSeat = case.firstSeat, handSizes = listOf(3, 3))
             var id = 0L
             val flights = TableAnimations.deal(snapshot(v, List(2) { emptyList() }), hand, { id++ })
-            flights.all { it.from == AnimAnchor.DealEntry(edge) } shouldBe true
+            flights.filter { it.to == AnimAnchor.OwnHand || it.to is AnimAnchor.SeatHand }
+                .all { it.from == AnimAnchor.DealEntry(case.handEdge) } shouldBe true
+            flights.filter { it.to is AnimAnchor.Morto }.all { it.from == AnimAnchor.DealEntry(case.mortoEdge) } shouldBe true
         }
 
         // O viewer também pode não ser o assento 0 (duplas): com firstSeat 0, dealerSeat é 3 e mortoDealerSeat é 2;
