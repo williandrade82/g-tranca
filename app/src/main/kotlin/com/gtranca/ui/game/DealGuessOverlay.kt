@@ -35,8 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -52,8 +52,11 @@ import androidx.compose.ui.zIndex
 import com.gtranca.R
 import com.gtranca.ui.sound.LocalSound
 import com.gtranca.ui.sound.SoundEffect
+import com.gtranca.ui.theme.Corner
 import com.gtranca.ui.theme.GColors
+import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.goldTitleStyle
+import com.gtranca.ui.theme.loungeDialog
 import kotlin.math.roundToInt
 
 /** Um ciclo (subida OU descida) do indicador, por padrão dentro de 2 a 4 s (§14.5), como as demais animações cíclicas. */
@@ -105,51 +108,41 @@ internal fun dealGuessBand(start: Int?, stage: Int, totalStages: Int): Pair<Floa
 }
 
 /**
- * §3.6, telas-app.md 3.8.2 (14/11/2026, reescrita em `Canvas`: a composição por `Box`es sobre a arte de fundo tinha
- * um bug de orientação — o `Box` que cresce com `fillMaxHeight(fraction)` dentro de outro sem `contentAlignment`
- * ancora no topo por padrão, então o indicador não acompanhava o estágio corretamente): a barra de palpite —
- * **trilho azul sempre visível, de ponta a ponta** ([GColors.RoyalBlue]); o **segmento verde** ([GColors.Emerald])
- * da faixa já marcada ([rangeStart] até [stage], quando o 1º toque já aconteceu); e o **indicador** (triângulo
- * dourado), à esquerda da barra. Eixo do `Canvas`: y cresce para baixo, então o estágio 0 fica no **topo** e
- * [totalStages] na **base** — o indicador percorre a barra de cima a baixo e de baixo para cima em ciclo contínuo
- * (quem anima o vai-e-vem é [dealGuessLiveStage]; aqui só se desenha a posição atual).
+ * Frações medidas na arte `deal_guess_background` (640×853 px) do **vazado** do bastão dourado onde a barra
+ * funcional entra (trilho de ponta a ponta, ocupando o vazado inteiro — não mais só a metade dele) e da borda
+ * externa do trilho esquerdo (onde a ponta do indicador encosta), com ~2 px de folga da antialiasing da arte.
+ */
+private const val HOLLOW_LEFT = 519f / 640f
+private const val HOLLOW_TOP = 194f / 853f
+private const val HOLLOW_WIDTH = 48f / 640f
+private const val HOLLOW_HEIGHT = 565f / 853f
+private const val RAIL_OUTER_LEFT = 491f / 640f
+
+/** Proporção (largura/altura) e altura relativa do "cabo" (círculo) de [R.drawable.deal_guess_indicator]. */
+private const val INDICATOR_ASPECT = 240f / 164f
+private const val INDICATOR_HUB_Y = 88f / 164f
+private const val INDICATOR_WIDTH_FRACTION = 0.24f
+
+/**
+ * §3.6, telas-app.md 3.8.2 (14/11/2026, reescrita em `Canvas`): a barra de palpite — **trilho azul sempre visível,
+ * de ponta a ponta** ([GColors.RoyalBlue]) e o **segmento verde** ([GColors.Emerald]) da faixa já marcada
+ * ([band], `null` antes do 1º toque). Eixo do `Canvas`: y cresce para baixo, então o estágio 0 fica no **topo** e
+ * o último na **base**. O indicador (imagem de verdade, não mais um triângulo desenhado aqui) é posicionado por
+ * [DealGuessModal], fora deste `Canvas`, porque precisa das dimensões em dp da arte de fundo inteira.
  */
 @Composable
-private fun DealGuessGauge(stage: Int, totalStages: Int, rangeStart: Int?, modifier: Modifier = Modifier) {
-    val fraction = if (totalStages <= 0) 0f else (stage.toFloat() / totalStages).coerceIn(0f, 1f)
-    val band = dealGuessBand(rangeStart, stage, totalStages)
+private fun DealGuessGauge(band: Pair<Float, Float>?, modifier: Modifier = Modifier) {
     Canvas(modifier) {
-        val barWidth = size.width * 0.5f
-        val barLeft = size.width - barWidth
-        val corner = CornerRadius(barWidth / 2f)
-        // Trilho: sempre visível, do topo à base (nunca escondido pelo preenchimento nem pelo indicador).
-        drawRoundRect(color = GColors.RoyalBlue, topLeft = Offset(barLeft, 0f), size = Size(barWidth, size.height), cornerRadius = corner)
-        // Faixa já marcada: do Início (1º toque) até a posição atual do indicador.
+        val corner = CornerRadius(size.width / 2f)
+        // Trilho: sempre visível, do topo à base (nunca escondido pelo preenchimento).
+        drawRoundRect(color = GColors.RoyalBlue, size = size, cornerRadius = corner)
         if (band != null) {
             val top = band.first * size.height
             val bottom = band.second * size.height
             if (bottom > top) {
-                drawRoundRect(
-                    color = GColors.Emerald,
-                    topLeft = Offset(barLeft, top),
-                    size = Size(barWidth, bottom - top),
-                    cornerRadius = corner,
-                )
+                drawRoundRect(color = GColors.Emerald, topLeft = Offset(0f, top), size = Size(size.width, bottom - top), cornerRadius = corner)
             }
         }
-        // Indicador: triângulo dourado apontando para a barra, na altura do estágio atual (0 = topo).
-        val y = fraction * size.height
-        val half = (barWidth * 0.9f).coerceAtMost(size.height / 2f)
-        val tailX = (barLeft - barWidth).coerceAtLeast(0f)
-        drawPath(
-            Path().apply {
-                moveTo(barLeft, y)
-                lineTo(tailX, y - half)
-                lineTo(tailX, y + half)
-                close()
-            },
-            color = GColors.Gold,
-        )
     }
 }
 
@@ -185,46 +178,72 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int, Int) -> Unit) {
             .testTag("deal-guess-modal"),
         contentAlignment = Alignment.Center,
     ) {
+        // §3.6 item 4 do relato 14/11/2026: o conteúdo mora num cartão de fundo sólido (`loungeDialog`, mesmo
+        // estilo dos demais modais do jogo), não solto sobre o scrim — mas o `clickable` continua no `Box` de fora,
+        // em qualquer ponto da tela (inclusive fora do cartão): é assim que o 1º/2º toque funcionam.
+        val panelShape = RoundedCornerShape(Corner.lg)
         Column(
-            Modifier.widthIn(max = 360.dp).padding(24.dp),
+            Modifier
+                .widthIn(max = 300.dp)
+                .loungeDialog(panelShape)
+                .clip(panelShape)
+                .padding(Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(title, style = goldTitleStyle(MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold)), textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                // O baralho e a barra vazia já vêm prontos na arte de fundo; a barra funcional (azul/verde/indicador)
-                // fica sobre a área onde a arte desenha o bastão dourado vazio, à direita da pilha de cartas.
-                BoxWithConstraints(Modifier.aspectRatio(640f / 853f).widthIn(max = 220.dp)) {
-                    Image(
-                        painterResource(R.drawable.deal_guess_background),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.FillBounds,
-                    )
-                    DealGuessGauge(
-                        // §3.6 (bug 14/11/2026): `start` bruto, nunca pré-ordenado, vai para a barra — é ela quem
-                        // decide topo/base da faixa verde com `minOf`/`maxOf` das duas frações cruas; um `lo` já
-                        // ordenado aqui fazia a faixa degenerar sempre que o indicador volta a subir acima do 1º
-                        // toque (ver KDoc de `dealGuessBand`). `lo`/`hi` continuam servindo só os campos de texto
-                        // abaixo, que devem sempre mostrar o menor valor em Início.
-                        stage, prompt.totalStages, start,
-                        Modifier
-                            .offset(x = maxWidth * 0.70f, y = maxHeight * 0.07f)
-                            .width(maxWidth * 0.28f)
-                            .height(maxHeight * 0.86f)
-                            .testTag("deal-guess-gauge"),
-                    )
-                }
+            Spacer(Modifier.height(Spacing.md))
+            // Tamanho reduzido (14/11/2026): a arte inteira mede 150dp de largura (antes era ilimitada por engano —
+            // o `widthIn` depois do `aspectRatio` não tinha efeito nenhum, pois `aspectRatio` mede o filho com
+            // restrições fixas antes do `widthIn` seguinte rodar). A barra funcional fica encaixada com precisão
+            // dentro do vazado dourado da própria arte (`HOLLOW_*`, medido em pixels da arte).
+            BoxWithConstraints(Modifier.width(150.dp).aspectRatio(640f / 853f)) {
+                Image(
+                    painterResource(R.drawable.deal_guess_background),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.FillBounds,
+                )
+                val hollowLeft = maxWidth * HOLLOW_LEFT
+                val hollowTop = maxHeight * HOLLOW_TOP
+                val hollowWidth = maxWidth * HOLLOW_WIDTH
+                val hollowHeight = maxHeight * HOLLOW_HEIGHT
+                DealGuessGauge(
+                    // §3.6 (bug 14/11/2026): `start` bruto, nunca pré-ordenado, vai para `dealGuessBand` — é ela
+                    // quem decide topo/base da faixa verde com `minOf`/`maxOf` das duas frações cruas; um `lo` já
+                    // ordenado aqui fazia a faixa degenerar sempre que o indicador volta a subir acima do 1º toque.
+                    // `lo`/`hi` continuam servindo só os campos de texto abaixo, sempre ordenados.
+                    dealGuessBand(start, stage, prompt.totalStages),
+                    Modifier
+                        .offset(x = hollowLeft, y = hollowTop)
+                        .size(hollowWidth, hollowHeight)
+                        .testTag("deal-guess-gauge"),
+                )
+                // Indicador: a imagem de verdade (`deal_guess_indicator`, não mais um triângulo desenhado), com a
+                // ponta encostada na borda externa do trilho esquerdo, na altura do estágio atual.
+                val fraction = if (prompt.totalStages <= 0) 0f else (stage.toFloat() / prompt.totalStages).coerceIn(0f, 1f)
+                val indicatorWidth = maxWidth * INDICATOR_WIDTH_FRACTION
+                val indicatorHeight = indicatorWidth / INDICATOR_ASPECT
+                val railOuterLeft = maxWidth * RAIL_OUTER_LEFT
+                Image(
+                    painterResource(R.drawable.deal_guess_indicator),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(indicatorWidth, indicatorHeight)
+                        .offset(
+                            x = railOuterLeft - indicatorWidth,
+                            y = hollowTop + hollowHeight * fraction - indicatorHeight * INDICATOR_HUB_Y,
+                        ),
+                )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(Spacing.lg))
             Text(
                 stringResource(R.string.deal_guess_instructions),
                 color = GColors.Ivory,
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Spacer(Modifier.height(Spacing.lg))
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
                 DealGuessField(stringResource(R.string.deal_guess_start_label), lo, Modifier.testTag("deal-guess-start"))
                 DealGuessField(stringResource(R.string.deal_guess_end_label), hi, Modifier.testTag("deal-guess-end"))
                 DealGuessField(
