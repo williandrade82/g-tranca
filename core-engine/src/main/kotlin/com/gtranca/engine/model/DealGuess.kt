@@ -9,9 +9,9 @@ import kotlinx.serialization.Serializable
  *
  * **Quem palpita** (§3.6): [dealerSeat] é o anterior (§4.2) a [RoundState.firstSeat]; [mortoDealerSeat] é o anterior
  * a [dealerSeat]. Em duplas (4 assentos) são três assentos distintos. Em individual (2 assentos), a dupla aplicação
- * do "anterior" volta ao próprio assento que abre a partida: por decisão explícita do pedido que introduziu esta
- * regra, ele acumula os dois papéis e faz os dois palpites, um atrás do outro (`dealerSeat == mortoDealerSeat ==
- * firstSeat`); ver [dealGuessSeats].
+ * do "anterior" alterna entre os dois únicos assentos: [dealerSeat] é o outro assento (não quem abre a partida) e
+ * [mortoDealerSeat] volta a ser o próprio assento que abre a partida — os dois papéis ficam sempre em assentos
+ * diferentes, assim como em duplas; ver [dealGuessSeats].
  *
  * @property hand palpite da mão (§3.1), ou `null` enquanto não resolvido.
  * @property morto palpite do morto (§3.2), ou `null` enquanto não resolvido (só existe depois do palpite da mão).
@@ -40,12 +40,12 @@ data class Guess(val start: Int, val end: Int, val correct: Boolean) {
 
 /**
  * §3.6 assentos que palpitam (jogador 2 e jogador 3) a partir de [firstSeat]: o anterior a ele (§4.2) e o anterior
- * a esse. Em individual (2 assentos) os dois papéis caem no próprio [firstSeat] (decisão do pedido que introduziu
- * esta regra): ele faz os dois palpites, um atrás do outro, em vez de delegar o da mão ao adversário.
+ * a esse. Em individual (2 assentos), aplicar "o anterior" duas vezes alterna entre os dois assentos: o primeiro
+ * palpite (mão) cai no outro assento, e o segundo (morto) volta ao próprio [firstSeat] — os dois papéis ficam
+ * sempre em assentos diferentes, assim como em duplas.
  */
 fun dealGuessSeats(mode: GameMode, firstSeat: Seat): Pair<Seat, Seat> {
     mode.requireSeat(firstSeat)
-    if (mode == GameMode.INDIVIDUAL) return firstSeat to firstSeat
     val dealerSeat = mode.previousSeat(firstSeat)
     return dealerSeat to mode.previousSeat(dealerSeat)
 }

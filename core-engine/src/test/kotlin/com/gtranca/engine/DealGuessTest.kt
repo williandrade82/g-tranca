@@ -40,18 +40,25 @@ class DealGuessTest {
     }
 
     @Test
-    fun `individual o jogador que abre a partida acumula os dois papeis`() {
-        // §3.6 em individual (2 assentos), a dupla aplicação de "anterior" volta ao próprio assento que abre:
-        // ele palpita a mão e, em seguida, o morto, um atrás do outro (decisão explícita do pedido desta regra)
+    fun `individual o outro assento distribui a mao e quem abre a partida distribui o morto`() {
+        // §3.6 em individual (2 assentos), "o anterior" a quem abre a partida é o outro jogador (palpita a mão);
+        // "o anterior a esse" volta a quem abre a partida (palpita o morto e, a seguir, começa a jogar de fato)
         val state = dealRound(GameMode.INDIVIDUAL, Random(1), firstSeat = Seat(0))
         state.phase shouldBe Phase.DEAL_GUESS_HAND
-        state.currentSeat shouldBe Seat(0)
-        state.dealGuess shouldBe DealGuess(dealerSeat = Seat(0), mortoDealerSeat = Seat(0))
+        state.currentSeat shouldBe Seat(1)
+        state.dealGuess shouldBe DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(0))
 
-        val afterHand = RoundEngine.apply(state, Seat(0), Action.GuessDealRange(5, 27)) // largura 22 = alvo individual
+        val afterHand = RoundEngine.apply(state, Seat(1), Action.GuessDealRange(5, 27)) // largura 22 = alvo individual
         afterHand.phase shouldBe Phase.DEAL_GUESS_MORTO
-        afterHand.currentSeat shouldBe Seat(0) // o mesmo assento, "um atrás do outro"
+        afterHand.currentSeat shouldBe Seat(0) // volta a quem abre a partida, assento diferente de quem deu a mão
         afterHand.dealGuess?.hand shouldBe Guess(5, 27, correct = true)
+    }
+
+    @Test
+    fun `individual os dois papeis trocam de assento quando quem abre a partida e o assento 1`() {
+        // §3.6 simetria: com firstSeat = 1, o assento 0 distribui a mão e o 1 (quem abre) distribui o morto
+        val state = dealRound(GameMode.INDIVIDUAL, Random(1), firstSeat = Seat(1))
+        state.dealGuess shouldBe DealGuess(dealerSeat = Seat(0), mortoDealerSeat = Seat(1))
     }
 
     // ---------- §3.6 acerto e erro do palpite da mão ----------
@@ -150,22 +157,24 @@ class DealGuessTest {
     }
 
     @Test
-    fun `individual o jogador que abre acumula os dois acertos no proprio lado`() {
-        // §3.6 / §12.1 em individual, dealerSeat == mortoDealerSeat == firstSeat: acertar os dois dá 200 ao seu lado
+    fun `individual os dois acertos vao para lados diferentes um para cada assento`() {
+        // §3.6 / §12.1 em individual, dealerSeat e mortoDealerSeat são sempre assentos diferentes: cada acerto
+        // rende 100 ao lado de quem palpitou, um para cada um dos dois lados (cada assento é o seu próprio lado)
         val state = finishedRound(
             GameMode.INDIVIDUAL,
             DealGuess(
-                dealerSeat = Seat(0),
+                dealerSeat = Seat(1),
                 mortoDealerSeat = Seat(0),
                 hand = Guess(0, 22, correct = true),
                 morto = Guess(0, 22, correct = true),
             ),
         )
         val scores = scoreRound(state)
-        scores[0].dealGuessBonus shouldBe 200
-        scores[1].dealGuessBonus shouldBe 0
+        scores[0].dealGuessBonus shouldBe 100 // lado 0: acertou o morto
+        scores[1].dealGuessBonus shouldBe 100 // lado 1: acertou a mão
         // sem mais nenhum bônus de mesa neste cenário (sem conjuntos, sem 3 vermelho, sem batida, mãos vazias)
-        scores[0].total shouldBe 200
+        scores[0].total shouldBe 100
+        scores[1].total shouldBe 100
     }
 
     @Test
