@@ -8,6 +8,7 @@ import com.gtranca.engine.PlayerView
 import com.gtranca.engine.RoundEngine
 import com.gtranca.engine.finishRound
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundRecord
@@ -147,13 +148,15 @@ class GameController(
     private val onSave: ((SaveSnapshot) -> Unit)? = null,
     private val pacing: PacingPolicy = PacingPolicy.LOCAL_ANIMATED,
     /**
-     * TEMPORÁRIO (pedido do usuário, 2026-11-14), `false` por padrão (não afeta nenhum teste nem a reprodução
-     * bit-a-bit do `:sim`): sem sorteio do 1º jogador da 1ª partida de um jogo novo enquanto testamos a distribuição
-     * certeira (§3.6) — [viewerSeat] (o anfitrião/humano deste aparelho) é sempre `dealGuess.dealerSeat` (quem
-     * distribui a mão). Ligado só no ponto de entrada real de um jogo novo local (`AppNavHost.startGame`/`GameRoute`);
-     * remover (e este parâmetro) depois dos testes.
+     * TEMPORÁRIO (pedido do usuário, 2026-11-14, ajustado 14/11/2026), `false` por padrão (não afeta nenhum teste
+     * nem a reprodução bit-a-bit do `:sim`): sem sorteio do 1º jogador da 1ª partida de um jogo novo enquanto
+     * testamos a distribuição certeira (§3.6) — em duplas, o **parceiro** de [viewerSeat] (o anfitrião/humano deste
+     * aparelho) é sempre `dealGuess.dealerSeat` (quem distribui a mão), pra testar mais rápido a reação pequena do
+     * parceiro (telas-app.md 3.8.2); em individual não há parceiro, então o parâmetro não tem efeito. Ligado só no
+     * ponto de entrada real de um jogo novo local (`AppNavHost.startGame`/`GameRoute`); remover (e este parâmetro)
+     * depois dos testes.
      */
-    private val forceHostDeals: Boolean = false,
+    private val forcePartnerDeals: Boolean = false,
 ) {
     init {
         require(players.size == config.mode.seatCount) { "Um jogador por assento: ${config.mode.seatCount}" }
@@ -215,10 +218,13 @@ class GameController(
     @Volatile
     private var match: Match = restored?.match ?: startMatch(
         config.mode, config.targetScore, Random(gameSeed), config.rules,
-        // [forceHostDeals]: dealGuessSeats (§3.6) faz dealerSeat = previousSeat(firstSeat) nos dois modos (2026-11-14:
-        // individual deixou de ter o caso especial que acumulava mão e morto no mesmo assento) — para o anfitrião
-        // (viewerSeat) ser sempre o dealerSeat, o firstSeat é o seguinte a ele (§4.2), nos dois modos.
-        firstSeat = if (!forceHostDeals) null else config.mode.nextSeat(viewerSeat),
+        // [forcePartnerDeals]: dealGuessSeats (§3.6) faz dealerSeat = previousSeat(firstSeat) — para o parceiro de
+        // viewerSeat (mesmo lado, assento oposto em duplas, §1.1) ser sempre o dealerSeat, o firstSeat é o seguinte
+        // a ele (§4.2). Só em duplas: em individual não há parceiro, então o parâmetro não altera o sorteio.
+        firstSeat = if (!forcePartnerDeals || config.mode != GameMode.DUPLAS) null else {
+            val partnerSeat = Seat((viewerSeat.index + 2) % config.mode.seatCount)
+            config.mode.nextSeat(partnerSeat)
+        },
     )
 
     @Volatile
