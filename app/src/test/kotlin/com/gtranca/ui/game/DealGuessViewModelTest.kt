@@ -88,6 +88,51 @@ class DealGuessViewModelTest {
         (state.dealGuessPrompt!!.totalStages > 0) shouldBe true
     }
 
+    /**
+     * §3.6 item 7 do relato 2026-11-14: o alvo (44/22 ou 22) é número público das regras (`definition.md` §3.6),
+     * mostrado no modal ("Selecione XX cartas..."). Em individual os dois alvos coincidem (22/22), o que não
+     * distingue um bug de troca entre `dealGuessHandTarget`/`dealGuessMortoTarget`; por isso o teste roda em
+     * duplas, onde a mão vale 44 e o morto 22 — valores diferentes o bastante para flagrar a troca. Em duplas
+     * `dealerSeat` (mão) e `mortoDealerSeat` (morto) são sempre assentos diferentes (`dealGuessSeats`), então cada
+     * palpite é buscado numa semente própria, não encadeado na mesma partida.
+     */
+    @Test
+    fun `§3_6 o alvo mostrado no modal da mao bate com dealGuessHandTarget, em duplas`() = runTest(dispatcher) {
+        var vm: GameViewModel? = null
+        for (seed in 1L..200L) {
+            val candidate = newGame(seed, mode = GameMode.DUPLAS)
+            if (candidate.uiState.value.snapshot.view.dealGuess?.dealerSeat == Seat(0)) {
+                vm = candidate
+                break
+            }
+        }
+        val game = vm ?: error("Nenhuma semente com o assento 0 abrindo a partida em duplas em 200 tentativas")
+        val view0 = game.uiState.value.snapshot.view
+        val handPrompt = game.uiState.value.dealGuessPrompt.shouldNotBeNull()
+        handPrompt.stage shouldBe DealGuessStage.HAND
+        handPrompt.target shouldBe dealGuessHandTarget(view0.mode, view0.rules)
+        handPrompt.target shouldBe 44
+    }
+
+    @Test
+    fun `§3_6 o alvo mostrado no modal do morto bate com dealGuessMortoTarget, em duplas`() = runTest(dispatcher) {
+        var vm: GameViewModel? = null
+        for (seed in 1L..200L) {
+            val candidate = newGame(seed, mode = GameMode.DUPLAS)
+            if (candidate.uiState.value.snapshot.view.dealGuess?.mortoDealerSeat == Seat(0)) {
+                vm = candidate
+                break
+            }
+        }
+        val game = vm ?: error("Nenhuma semente com o assento 0 distribuindo o morto em duplas em 200 tentativas")
+        // `newGame` já roda `advanceUntilIdle()`: a vez do assento 0 só é o palpite do morto se o da mão (de outro
+        // assento, sempre diferente em duplas) já foi resolvido por um robô antes de pausar aqui.
+        val mortoPrompt = game.uiState.value.dealGuessPrompt.shouldNotBeNull()
+        mortoPrompt.stage shouldBe DealGuessStage.MORTO
+        mortoPrompt.target shouldBe dealGuessMortoTarget(game.uiState.value.snapshot.view.rules)
+        mortoPrompt.target shouldBe 22
+    }
+
     @Test
     fun `§3_6 §12_1 palpite certo da mao mostra a reacao de vitoria e so libera o morto apos o toque`() = runTest(dispatcher) {
         val vm = humanDealerGame()

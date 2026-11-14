@@ -191,6 +191,15 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int, Int) -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(title, style = goldTitleStyle(MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold)), textAlign = TextAlign.Center)
+            Spacer(Modifier.height(Spacing.sm))
+            // §3.6 item 7 do relato 14/11/2026: o alvo (44/22 ou 22) é número público das regras
+            // (`definition.md` §3.6); só a posição certa na barra é segredo do motor.
+            Text(
+                stringResource(R.string.deal_guess_target, prompt.target),
+                color = GColors.Gold,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            )
             Spacer(Modifier.height(Spacing.md))
             // Tamanho reduzido (14/11/2026): a arte inteira mede 150dp de largura (antes era ilimitada por engano —
             // o `widthIn` depois do `aspectRatio` não tinha efeito nenhum, pois `aspectRatio` mede o filho com

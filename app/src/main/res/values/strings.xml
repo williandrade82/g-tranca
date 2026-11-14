@@ -966,6 +966,7 @@
     <!-- §3.6, 3.8.2 docs/telas-app.md: minijogo "distribuição certeira" -->
     <string name="deal_guess_title_hand">Cartas para a distribuição</string>
     <string name="deal_guess_title_morto">Cartas para o Morto</string>
+    <string name="deal_guess_target">Selecione %1$d cartas para receber 100 pontos.</string>
     <string name="deal_guess_instructions">Toque uma vez para iniciar a seleção, toque a segunda vez para definir as cartas. Chance única!</string>
     <string name="deal_guess_start_label">Início</string>
     <string name="deal_guess_end_label">Fim</string>

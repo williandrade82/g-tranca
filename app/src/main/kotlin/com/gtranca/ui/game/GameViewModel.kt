@@ -88,10 +88,12 @@ data class RedThreeReveal(val notice: RedThreeNotice, val hiddenHandCards: Set<C
 enum class DealGuessStage { HAND, MORTO }
 
 /**
- * §3.6 é a vez do humano palpitar: a tela mostra o modal "Cartas para a distribuição"/"Cartas para o Morto". A
- * largura certa (o alvo) nunca aparece aqui — só o motor sabe; a tela só sabe o total de estágios da barra.
+ * §3.6 é a vez do humano palpitar: a tela mostra o modal "Cartas para a distribuição"/"Cartas para o Morto".
+ * [target] é a largura certa (44 ou 22 na mão, sempre 22 no morto) — número **público** das regras
+ * (`definition.md` §3.6), mostrado na tela (telas-app.md 3.8.2); o que continua secreto, só do motor, é a
+ * **posição** dessa largura certa dentro da barra de [totalStages] estágios.
  */
-data class DealGuessPrompt(val stage: DealGuessStage, val totalStages: Int)
+data class DealGuessPrompt(val stage: DealGuessStage, val totalStages: Int, val target: Int)
 
 /**
  * §3.6 reação em tela cheia a um palpite resolvido (próprio jogador ou parceiro, §14.5): fica até o toque
@@ -241,10 +243,18 @@ data class GameUiState(
             if (!isHumanTurn || dealGuessReveal != null || opening) return null
             val view = snapshot.view
             return when (view.phase) {
-                Phase.DEAL_GUESS_HAND -> DealGuessPrompt(DealGuessStage.HAND, com.gtranca.engine.model.dealGuessHandStages(view.rules))
+                Phase.DEAL_GUESS_HAND -> DealGuessPrompt(
+                    DealGuessStage.HAND,
+                    com.gtranca.engine.model.dealGuessHandStages(view.rules),
+                    com.gtranca.engine.model.dealGuessHandTarget(view.mode, view.rules),
+                )
                 Phase.DEAL_GUESS_MORTO -> {
                     val handWidth = view.dealGuess?.hand?.width ?: return null
-                    DealGuessPrompt(DealGuessStage.MORTO, com.gtranca.engine.model.dealGuessMortoStages(view.mode, view.rules, handWidth))
+                    DealGuessPrompt(
+                        DealGuessStage.MORTO,
+                        com.gtranca.engine.model.dealGuessMortoStages(view.mode, view.rules, handWidth),
+                        com.gtranca.engine.model.dealGuessMortoTarget(view.rules),
+                    )
                 }
                 else -> null
             }
