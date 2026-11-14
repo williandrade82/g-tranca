@@ -8,7 +8,6 @@ import com.gtranca.engine.PlayerView
 import com.gtranca.engine.RoundEngine
 import com.gtranca.engine.finishRound
 import com.gtranca.engine.model.Card
-import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundRecord
@@ -216,11 +215,10 @@ class GameController(
     @Volatile
     private var match: Match = restored?.match ?: startMatch(
         config.mode, config.targetScore, Random(gameSeed), config.rules,
-        // [forceHostDeals]: dealGuessSeats (§3.6) faz dealerSeat = firstSeat no individual (mesmo assento, papel
-        // duplo) e dealerSeat = previousSeat(firstSeat) em duplas — para o anfitrião (viewerSeat) ser sempre o
-        // dealerSeat, o firstSeat é ele mesmo no individual, e o seguinte (§4.2) a ele em duplas.
-        firstSeat = if (!forceHostDeals) null
-        else if (config.mode == GameMode.INDIVIDUAL) viewerSeat else config.mode.nextSeat(viewerSeat),
+        // [forceHostDeals]: dealGuessSeats (§3.6) faz dealerSeat = previousSeat(firstSeat) nos dois modos (2026-11-14:
+        // individual deixou de ter o caso especial que acumulava mão e morto no mesmo assento) — para o anfitrião
+        // (viewerSeat) ser sempre o dealerSeat, o firstSeat é o seguinte a ele (§4.2), nos dois modos.
+        firstSeat = if (!forceHostDeals) null else config.mode.nextSeat(viewerSeat),
     )
 
     @Volatile
