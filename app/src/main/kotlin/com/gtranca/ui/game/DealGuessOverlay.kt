@@ -68,6 +68,7 @@ import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.goldTitleStyle
 import com.gtranca.ui.theme.loungeDialog
 import com.gtranca.ui.theme.rememberMotionEnabled
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /** Um ciclo (subida OU descida) do indicador, por padrão dentro de 2 a 4 s (§14.5), como as demais animações cíclicas. */
@@ -380,77 +381,116 @@ private fun partnerGuessReactionTextRes(reaction: PartnerGuessReaction): Int = w
     else -> R.string.deal_guess_miss_partner_morto
 }
 
-/**
- * Tamanho do bloco inteiro (imagem + cartão de texto) da reação do parceiro (§3.8.2) — bem menor que o banner em
- * tela cheia do próprio. Aumentado em 14/11/2026: a versão anterior (imagem pequena dentro do mesmo cartão do
- * texto) ficava ilegível no celular.
- */
-private val PARTNER_GUESS_CARD_WIDTH = 248.dp
-private val PARTNER_GUESS_CARD_HEIGHT = 96.dp
-
-/** Imagem de vitória/erro (§3.8.2), maior e sem fundo — só o texto ao lado leva o cartão com fundo/borda. */
+/** Imagem de vitória/erro (§3.8.2) no topo do cartão, sem fundo, tamanho fixo (a largura do cartão é que varia). */
 private val PARTNER_GUESS_IMAGE_SIZE = 56.dp
 
-/** Quanto dura a subida do cartão até a posição de repouso (entrada, não a permanência na tela). */
+/** Largura do cartão de texto (telas-app.md 3.8.2, pedido do usuário 14/11/2026): 90 % da largura da MESA. */
+private const val PARTNER_GUESS_WIDTH_FRACTION = 0.9f
+
+/** Sem [Rect] da mesa pra calcular a largura (não devia acontecer): cai numa largura fixa, como antes do redesenho. */
+private val PARTNER_GUESS_FALLBACK_WIDTH = 248.dp
+
+/** Quanto dura a entrada (de fora da mesa, à esquerda, até a posição de repouso encostada na borda). */
 private const val PARTNER_GUESS_ENTER_MILLIS = 450
+
+/** Quanto o cartão fica parado e visível na posição de repouso, antes de começar a sair (pedido do usuário: 3 s). */
+private const val PARTNER_GUESS_REST_MILLIS = 3_000L
+
+/** Quanto dura a saída (da posição de repouso até sair da mesa pela borda direita). */
+private const val PARTNER_GUESS_EXIT_MILLIS = 450
 
 /**
  * §3.6, telas-app.md 3.8.2: reação pequena e **não bloqueante** ao palpite do PARCEIRO (duplas) — ao contrário de
  * [DealGuessRevealOverlay] (tela cheia, só do próprio jogador, que exige o toque), esta nunca espera nada: o motor
- * já foi liberado na hora ([GameViewModel.reactToGuess]/[GameController.guessRevealDone]); ela é só informativa,
- * some sozinha depois de um tempo ([GameViewModel.PARTNER_GUESS_REACTION_MILLIS]). Ancorada no canto inferior
- * direito da mesa ([tableRect]), nasce perto da borda superior direita da própria mão do jogador ([ownHandRect],
- * `AnimAnchor.OwnHand`) e sobe até a posição de repouso — mesma técnica de posicionamento por coordenadas de raiz
- * do resto da mesa (`FlyingCard`, `ReactionCenterOverlay`): os dois retângulos e o próprio cartão são medidos na
- * raiz da janela, então a conta vale mesmo com a mesa rolada.
+ * já foi liberado na hora ([GameViewModel.reactToGuess]/[GameController.guessRevealDone]).
+ *
+ * Redesenhada 14/11/2026 (pedido do usuário): nasce encostada na borda **esquerda** da área de jogos do próprio
+ * lado ([sideAreaRect], `AnimAnchor.SideArea` do lado do jogador — "a área de organização das cartas baixadas pela
+ * dupla") e desliza **horizontalmente**, da esquerda para a direita, em três fases que [reaction] por si só não
+ * controla (a UI conduz sozinha, a partir da última reação não-nula recebida — por isso [reaction] aqui é
+ * anulável: chamar sempre, incondicionalmente, é o que permite continuar desenhando a saída mesmo depois do
+ * `GameViewModel` já ter zerado o estado, [GameViewModel.PARTNER_GUESS_REACTION_MILLIS] depois de armado):
+ * 1. **Entrada** ([PARTNER_GUESS_ENTER_MILLIS]): de fora da mesa (à esquerda de [sideAreaRect]) até a posição de
+ *    repouso, encostada na borda esquerda dele.
+ * 2. **Repouso** ([PARTNER_GUESS_REST_MILLIS]): parada, visível.
+ * 3. **Saída** ([PARTNER_GUESS_EXIT_MILLIS]): continua para a direita até sair da mesa pela borda direita de
+ *    [tableRect], e só então o bloco é descartado de vez.
+ *
+ * Mesma técnica de posicionamento por coordenadas de raiz do resto da mesa (`FlyingCard`, `ReactionCenterOverlay`):
+ * os retângulos e o próprio cartão são medidos na raiz da janela, então a conta vale mesmo com a mesa rolada.
+ *
+ * **Atrás das cartas da distribuição:** esta função não define `zIndex` nenhum — quem chama deve compô-la **antes**
+ * de `FlightsLayer` (o voo das cartas), no mesmo `Box`, para o voo (declarado depois) ficar visualmente por cima
+ * quando passar pela mesma área (telas-app.md 3.8.2).
  */
 @Composable
-fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction, tableRect: Rect?, ownHandRect: Rect?) {
-    key(reaction.id) {
-        val motion = rememberMotionEnabled()
-        val progress = remember { Animatable(if (motion) 0f else 1f) }
-        LaunchedEffect(Unit) {
-            if (motion) progress.animateTo(1f, tween(PARTNER_GUESS_ENTER_MILLIS, easing = FastOutSlowInEasing))
-        }
-        val density = LocalDensity.current
-        val widthPx = with(density) { PARTNER_GUESS_CARD_WIDTH.toPx() }
-        val heightPx = with(density) { PARTNER_GUESS_CARD_HEIGHT.toPx() }
-        val insetPx = with(density) { Spacing.md.toPx() }
-        var origin by remember { mutableStateOf(Offset.Zero) }
-        val accent = if (reaction.correct) GColors.Emerald else GColors.Ruby
-        val text = stringResource(partnerGuessReactionTextRes(reaction))
-        Box(
-            Modifier
-                .fillMaxSize()
-                .zIndex(9f)
-                .onGloballyPositioned { origin = it.positionInRoot() }
-                .testTag("partner-guess-reaction"),
-        ) {
-            Row(
+fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect?, sideAreaRect: Rect?) {
+    // Guarda a última reação não-nula por `id`: a UI decide sozinha quando descartar de vez (ao fim da saída),
+    // independente de o ViewModel já ter zerado `reaction` antes disso (ele nunca espera por esta animação).
+    var shown by remember { mutableStateOf<PartnerGuessReaction?>(null) }
+    LaunchedEffect(reaction?.id) { if (reaction != null) shown = reaction }
+    val current = shown ?: return
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { origin = it.positionInRoot() }
+            .testTag("partner-guess-reaction"),
+    ) {
+        key(current.id) {
+            val motion = rememberMotionEnabled()
+            // 0 = nascimento (fora da mesa, à esquerda); 1 = repouso (encostada na borda esquerda da área de jogos).
+            val enterProgress = remember { Animatable(if (motion) 0f else 1f) }
+            // 0 = ainda em repouso; 1 = saiu da mesa pela direita.
+            val exitProgress = remember { Animatable(0f) }
+            LaunchedEffect(current.id) {
+                if (motion) enterProgress.animateTo(1f, tween(PARTNER_GUESS_ENTER_MILLIS, easing = FastOutSlowInEasing))
+                delay(PARTNER_GUESS_REST_MILLIS)
+                if (motion) exitProgress.animateTo(1f, tween(PARTNER_GUESS_EXIT_MILLIS, easing = FastOutSlowInEasing)) else exitProgress.snapTo(1f)
+                // Só descarta se ninguém chegou com uma reação mais nova enquanto este bloco saía.
+                if (shown?.id == current.id) shown = null
+            }
+            val density = LocalDensity.current
+            val fallbackWidthPx = with(density) { PARTNER_GUESS_FALLBACK_WIDTH.toPx() }
+            val widthPx = tableRect?.width?.times(PARTNER_GUESS_WIDTH_FRACTION) ?: fallbackWidthPx
+            val insetPx = with(density) { Spacing.md.toPx() }
+            var selfHeightPx by remember { mutableStateOf(0f) }
+            val accent = if (current.correct) GColors.Emerald else GColors.Ruby
+            val text = stringResource(partnerGuessReactionTextRes(current)) + "\n\n" +
+                stringResource(R.string.deal_guess_partner_numbers, current.target, current.guessedWidth)
+            Column(
                 Modifier
                     .offset {
-                        // Repouso: canto inferior direito da mesa; nascimento: canto superior direito da mão —
-                        // ambos em coordenadas de raiz, como [origin], para a subtração dar um deslocamento local.
-                        val rest = tableRect?.let { Offset(it.right - widthPx - insetPx, it.bottom - heightPx - insetPx) }
-                        val start = ownHandRect?.let { Offset(it.right - widthPx, it.top) } ?: rest ?: Offset.Zero
-                        val target = rest ?: start
-                        val point = start + (target - start) * progress.value - origin
+                        // Repouso: encostada na borda esquerda da área de jogos do próprio lado; nascimento: a
+                        // mesma posição, deslocada para fora da mesa (à esquerda); saída: desliza para a direita
+                        // até sair da mesa pela borda direita — tudo em coordenadas de raiz, como [origin].
+                        val restX = sideAreaRect?.left ?: tableRect?.left ?: 0f
+                        val enterStartX = restX - widthPx - insetPx
+                        val exitEndX = (tableRect?.right ?: (restX + widthPx)) + widthPx + insetPx
+                        val baseX = enterStartX + (restX - enterStartX) * enterProgress.value
+                        val x = baseX + (exitEndX - restX) * exitProgress.value
+                        val areaTop = sideAreaRect?.top ?: tableRect?.top ?: 0f
+                        val areaHeight = sideAreaRect?.height ?: 0f
+                        val y = areaTop + areaHeight / 2f - selfHeightPx / 2f
+                        val point = Offset(x, y) - origin
                         IntOffset(point.x.roundToInt(), point.y.roundToInt())
                     }
-                    .size(PARTNER_GUESS_CARD_WIDTH, PARTNER_GUESS_CARD_HEIGHT)
+                    .onGloballyPositioned { selfHeightPx = it.size.height.toFloat() }
+                    .width(with(density) { widthPx.toDp() })
                     .testTag("partner-guess-reaction-card"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                // §3.8.2 a imagem não leva fundo (só o cartão do texto); maior, pra ficar legível a distância.
+                // §3.8.2 a imagem não leva fundo (só o cartão do texto, abaixo); centralizada por cima.
                 Image(
-                    painterResource(if (reaction.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss),
+                    painterResource(if (current.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss),
                     contentDescription = null,
                     modifier = Modifier.size(PARTNER_GUESS_IMAGE_SIZE),
                     contentScale = ContentScale.Fit,
                 )
                 Box(
                     Modifier
+                        .fillMaxWidth()
                         .background(GColors.Midnight.copy(alpha = 0.92f), RoundedCornerShape(Corner.sm))
                         .border(2.dp, accent, RoundedCornerShape(Corner.sm))
                         .padding(Spacing.sm)
@@ -460,8 +500,8 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction, tableRect: Rect?
                     Text(
                         text,
                         color = GColors.Ivory,
-                        textAlign = TextAlign.Start,
-                        maxLines = 4,
+                        textAlign = TextAlign.Center,
+                        maxLines = 6,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     )
                 }
