@@ -1,5 +1,6 @@
 package com.gtranca.multiplayer
 
+import com.gtranca.engine.model.Phase
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.Stage
 import kotlinx.coroutines.channels.Channel
@@ -76,12 +77,23 @@ class SnapshotPacer(
         if (next.stage == Stage.PLAYING && !next.resigned) boostersGate?.invoke(next.roundNumber)
     }
 
+    /** §3.6 [snapshot] está numa fase de palpite da distribuição certeira: a distribuição de verdade ainda não comecou. */
+    private fun inGuessPhase(snapshot: GameSnapshot): Boolean =
+        snapshot.view.phase == Phase.DEAL_GUESS_HAND || snapshot.view.phase == Phase.DEAL_GUESS_MORTO
+
     /** Depois de mostrar [next]: espera a distribuição (partida nova) e a encenação das trocas novas de 3 vermelho. */
     private suspend fun awaitStaging(previous: GameSnapshot?, next: GameSnapshot) {
         if (next.stage != Stage.PLAYING || next.resigned) return
         val round = next.roundNumber
         val newRound = previous == null || previous.roundNumber != round || previous.stage != Stage.PLAYING
-        if (newRound) {
+        // §3.6 com a distribuição certeira ligada, a partida nova chega primeiro numa fase de palpite
+        // ([Phase.DEAL_GUESS_HAND]/[Phase.DEAL_GUESS_MORTO]): a distribuição de verdade só é animada na tela depois
+        // dos dois palpites resolvidos (`GameViewModel.absorb`, `dealing`/`leavingGuessPhases`) — esperar aqui, só
+        // porque o número da partida mudou, travaria pelo [dealWaitMillis] inteiro sem motivo (nada para animar
+        // ainda), a cada partida. Só espera ao SAIR da fase de palpite (`leavingGuess`), que é quando a distribuição
+        // de verdade começa; sem a regra (nunca em fase de palpite), o comportamento é o de sempre.
+        val leavingGuess = previous != null && inGuessPhase(previous) && !inGuessPhase(next)
+        if ((newRound || leavingGuess) && !inGuessPhase(next)) {
             dealWaitMillis().takeIf { it > 0 }?.let { limit -> withTimeoutOrNull(limit) { dealt.first { it >= round } } }
         }
         val size = next.view.redThreeLog.size
