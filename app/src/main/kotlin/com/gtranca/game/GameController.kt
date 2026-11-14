@@ -8,6 +8,7 @@ import com.gtranca.engine.PlayerView
 import com.gtranca.engine.RoundEngine
 import com.gtranca.engine.finishRound
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundRecord
@@ -146,6 +147,14 @@ class GameController(
      */
     private val onSave: ((SaveSnapshot) -> Unit)? = null,
     private val pacing: PacingPolicy = PacingPolicy.LOCAL_ANIMATED,
+    /**
+     * TEMPORÁRIO (pedido do usuário, 2026-11-14), `false` por padrão (não afeta nenhum teste nem a reprodução
+     * bit-a-bit do `:sim`): sem sorteio do 1º jogador da 1ª partida de um jogo novo enquanto testamos a distribuição
+     * certeira (§3.6) — [viewerSeat] (o anfitrião/humano deste aparelho) é sempre `dealGuess.dealerSeat` (quem
+     * distribui a mão). Ligado só no ponto de entrada real de um jogo novo local (`AppNavHost.startGame`/`GameRoute`);
+     * remover (e este parâmetro) depois dos testes.
+     */
+    private val forceHostDeals: Boolean = false,
 ) {
     init {
         require(players.size == config.mode.seatCount) { "Um jogador por assento: ${config.mode.seatCount}" }
@@ -205,7 +214,14 @@ class GameController(
     private val lock = Any()
 
     @Volatile
-    private var match: Match = restored?.match ?: startMatch(config.mode, config.targetScore, Random(gameSeed), config.rules)
+    private var match: Match = restored?.match ?: startMatch(
+        config.mode, config.targetScore, Random(gameSeed), config.rules,
+        // [forceHostDeals]: dealGuessSeats (§3.6) faz dealerSeat = firstSeat no individual (mesmo assento, papel
+        // duplo) e dealerSeat = previousSeat(firstSeat) em duplas — para o anfitrião (viewerSeat) ser sempre o
+        // dealerSeat, o firstSeat é ele mesmo no individual, e o seguinte (§4.2) a ele em duplas.
+        firstSeat = if (!forceHostDeals) null
+        else if (config.mode == GameMode.INDIVIDUAL) viewerSeat else config.mode.nextSeat(viewerSeat),
+    )
 
     @Volatile
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }

@@ -575,7 +575,8 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             boosterInventory = data.inventory,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory)
+                        // forceHostDeals: TEMPORÁRIO (pedido do usuário, 2026-11-14) — ver GameController.forceHostDeals.
+                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory, forceHostDeals = true)
                     }
                 }
                 session.started = true

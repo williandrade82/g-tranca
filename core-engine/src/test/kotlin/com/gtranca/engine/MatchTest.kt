@@ -77,6 +77,12 @@ class MatchTest {
     }
 
     @Test
+    fun `firstSeat explicito ignora o sorteio da 1a partida`() {
+        val m = startMatch(GameMode.DUPLAS, random = Random(1), firstSeat = Seat(2))
+        m.currentRound.firstSeat shouldBe Seat(2)
+    }
+
+    @Test
     fun `nao se encerra partida em andamento nem duas vezes`() {
         val m = startMatch(GameMode.INDIVIDUAL, random = Random(1))
         shouldThrow<IllegalArgumentException> { m.finishRound() }

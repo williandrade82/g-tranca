@@ -21,6 +21,7 @@ fun startMatch(
     targetScore: Int? = null,
     random: Random,
     rules: RuleSet = RuleSet.DEFAULT,
+    firstSeat: Seat? = null,
 ): Match {
     // §14 a mesa pode ajustar a pontuação-alvo do perfil; o jogo guarda a cópia das regras com o alvo usado (§14.4).
     val target = targetScore ?: rules.targetScore
@@ -32,7 +33,7 @@ fun startMatch(
         seed = seed,
         totals = List(mode.sideCount) { 0 },
         history = emptyList(),
-        currentRound = dealRound(mode, roundRandom(seed, 0), rules),
+        currentRound = dealRound(mode, roundRandom(seed, 0), rules, firstSeat),
         rules = rules.copy(targetScore = target),
     )
 }
