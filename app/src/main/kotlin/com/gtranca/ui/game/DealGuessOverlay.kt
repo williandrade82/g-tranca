@@ -380,9 +380,16 @@ private fun partnerGuessReactionTextRes(reaction: PartnerGuessReaction): Int = w
     else -> R.string.deal_guess_miss_partner_morto
 }
 
-/** Tamanho do cartão pequeno da reação do parceiro (§3.8.2) — bem menor que o banner em tela cheia do próprio. */
-private val PARTNER_GUESS_CARD_WIDTH = 210.dp
-private val PARTNER_GUESS_CARD_HEIGHT = 92.dp
+/**
+ * Tamanho do bloco inteiro (imagem + cartão de texto) da reação do parceiro (§3.8.2) — bem menor que o banner em
+ * tela cheia do próprio. Aumentado em 14/11/2026: a versão anterior (imagem pequena dentro do mesmo cartão do
+ * texto) ficava ilegível no celular.
+ */
+private val PARTNER_GUESS_CARD_WIDTH = 248.dp
+private val PARTNER_GUESS_CARD_HEIGHT = 96.dp
+
+/** Imagem de vitória/erro (§3.8.2), maior e sem fundo — só o texto ao lado leva o cartão com fundo/borda. */
+private val PARTNER_GUESS_IMAGE_SIZE = 56.dp
 
 /** Quanto dura a subida do cartão até a posição de repouso (entrada, não a permanência na tela). */
 private const val PARTNER_GUESS_ENTER_MILLIS = 450
@@ -419,7 +426,7 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction, tableRect: Rect?
                 .onGloballyPositioned { origin = it.positionInRoot() }
                 .testTag("partner-guess-reaction"),
         ) {
-            Box(
+            Row(
                 Modifier
                     .offset {
                         // Repouso: canto inferior direito da mesa; nascimento: canto superior direito da mão —
@@ -431,26 +438,31 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction, tableRect: Rect?
                         IntOffset(point.x.roundToInt(), point.y.roundToInt())
                     }
                     .size(PARTNER_GUESS_CARD_WIDTH, PARTNER_GUESS_CARD_HEIGHT)
-                    .background(GColors.Midnight.copy(alpha = 0.92f), RoundedCornerShape(Corner.sm))
-                    .border(2.dp, accent, RoundedCornerShape(Corner.sm))
-                    .padding(Spacing.sm)
-                    .semantics(mergeDescendants = true) { contentDescription = text; liveRegion = LiveRegionMode.Polite }
                     .testTag("partner-guess-reaction-card"),
-                contentAlignment = Alignment.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Image(
-                        painterResource(if (reaction.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss),
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        contentScale = ContentScale.Fit,
-                    )
+                // §3.8.2 a imagem não leva fundo (só o cartão do texto); maior, pra ficar legível a distância.
+                Image(
+                    painterResource(if (reaction.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss),
+                    contentDescription = null,
+                    modifier = Modifier.size(PARTNER_GUESS_IMAGE_SIZE),
+                    contentScale = ContentScale.Fit,
+                )
+                Box(
+                    Modifier
+                        .background(GColors.Midnight.copy(alpha = 0.92f), RoundedCornerShape(Corner.sm))
+                        .border(2.dp, accent, RoundedCornerShape(Corner.sm))
+                        .padding(Spacing.sm)
+                        .semantics(mergeDescendants = true) { contentDescription = text; liveRegion = LiveRegionMode.Polite },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
                         text,
                         color = GColors.Ivory,
                         textAlign = TextAlign.Start,
                         maxLines = 4,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     )
                 }
             }
