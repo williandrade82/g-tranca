@@ -11,15 +11,19 @@ import com.gtranca.game.GameConfig
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import com.gtranca.game.GameController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -424,5 +428,118 @@ class DealGuessViewModelTest {
 
         advanceUntilIdle()
         vm.uiState.value.partnerGuessReaction.shouldBeNull()
+    }
+
+    /**
+     * §3.6 relato 2026-11-14: a hipótese era que o atraso de 1,5 s do "Prepare-se!" na tela ([GameUiState.opening])
+     * e o atraso igual armado dentro do [GameController] (antes do 1º palpite da 1ª partida) contam a partir de
+     * instantes diferentes — o do controlador começando bem antes do da tela, de modo que o palpite do parceiro já
+     * teria resolvido (e a reação pequena já teria sumido sozinha) atrás da cortina, antes dela sumir. Em
+     * [GameViewModel], os dois atrasos são armados no MESMO `init` (`opening` logo depois de `controller.run()` ser
+     * ligado), então os dois relógios começam juntos — e o laço do controlador só decide a vez de quem palpita
+     * depois de alguns passos síncronos mais a pausa real entre jogadas de robô ([GameController.DEFAULT_BOT_DELAY_MILLIS],
+     * nunca zero fora dos testes), o que empurra qualquer palpite de robô para depois do fim da cortina, nunca
+     * antes. Este teste usa os mesmos atrasos reais da mesa contra robôs (`forceHostDeals = true`, como
+     * `AppNavHost.GameDestination` liga para todo jogo novo local) e prova a invariante: enquanto `opening` ainda
+     * está `true`, a reação do parceiro nunca aparece — ela só nasce depois, e fica à vista o tempo inteiro
+     * ([GameViewModel.PARTNER_GUESS_REACTION_MILLIS]) sem a cortina por cima.
+     */
+    @Test
+    fun `§3_6 a reacao do parceiro so nasce depois do Prepare-se, nunca escondida atras dele`() = runTest(dispatcher) {
+        val vm = GameViewModel(
+            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+            gameSeed = 42L,
+            computeDispatcher = dispatcher,
+            botDelayMillis = GameController.DEFAULT_BOT_DELAY_MILLIS,
+            swapAnimationMillis = 300,
+            animationMillis = 450,
+            forceHostDeals = true,
+        )
+        // Com `forceHostDeals`, o assento 0 (humano) é sempre quem palpita a mão (§3.6, `dealGuessSeats`): o único
+        // palpite de robô possível na 1ª partida é o do morto, de um adversário — por isso a prova aqui é sobre a
+        // pílula do adversário, não sobre `partnerGuessReaction` (o parceiro nunca palpita com esta semente/flag:
+        // ver o teste seguinte para o caso em que ele palpita de verdade, sem `forceHostDeals`).
+        var openingWasTrueWhileReacting = false
+        var pillAppeared = false
+
+        // Espera a cortina "Prepare-se!" e o próprio controlador liberarem o 1º pedido (o palpite da mão, do
+        // humano): só então o modal aparece de verdade (`dealGuessPrompt`), como na mesa real.
+        repeat(20) {
+            advanceTimeBy(100)
+            runCurrent()
+            if (vm.uiState.value.dealGuessPrompt != null) return@repeat
+        }
+        val view0 = vm.uiState.value.snapshot.view
+        vm.onGuessDealRange(0, com.gtranca.engine.model.dealGuessHandTarget(view0.mode, view0.rules))
+        runCurrent()
+        // A reação em tela cheia do próprio palpite (role == YOU) só fecha com o toque (§3.6): sem ele o motor nunca
+        // chega a perguntar o morto ao adversário — é exatamente o que um humano de verdade faria antes de seguir.
+        vm.onDealGuessRevealDismissed()
+        runCurrent()
+
+        repeat(80) {
+            advanceTimeBy(100)
+            runCurrent()
+            val state = vm.uiState.value
+            if (state.dealGuessPills.isNotEmpty()) {
+                pillAppeared = true
+                if (state.opening) openingWasTrueWhileReacting = true
+            }
+        }
+        pillAppeared.shouldBeTrue()
+        openingWasTrueWhileReacting.shouldBeFalse()
+    }
+
+    /**
+     * Mesma invariante do teste acima, mas com o PARCEIRO (assento 2) de verdade palpitando (sem `forceHostDeals`,
+     * como numa partida depois da 1ª do jogo, em que `firstSeat` não é mais forçado no anfitrião): prova que
+     * `partnerGuessReaction` nunca aparece enquanto `opening` ainda vale `true`, e que ela fica à vista o tempo
+     * inteiro depois de nascer (nunca é apagada por um "catch-up" que a esconderia atrás do Prepare-se).
+     */
+    @Test
+    fun `§3_6 a reacao pequena do parceiro nunca aparece atras do Prepare-se`() = runTest(dispatcher) {
+        var seed: Long? = null
+        for (candidate in 1L..500L) {
+            val probe = GameViewModel(
+                GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+                gameSeed = candidate, computeDispatcher = dispatcher, botDelayMillis = 0,
+                swapAnimationMillis = 0, animationMillis = 0,
+            )
+            val guess = probe.uiState.value.snapshot.view.dealGuess
+            if (guess != null && (guess.dealerSeat == Seat(2) || guess.mortoDealerSeat == Seat(2)) &&
+                guess.dealerSeat != Seat(0) && guess.mortoDealerSeat != Seat(0)
+            ) {
+                seed = candidate
+                break
+            }
+        }
+        val chosenSeed = seed ?: error("Nenhuma semente com o parceiro (assento 2) palpitando, sem o humano, em 500 tentativas")
+
+        val vm = GameViewModel(
+            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+            gameSeed = chosenSeed,
+            computeDispatcher = dispatcher,
+            botDelayMillis = GameController.DEFAULT_BOT_DELAY_MILLIS,
+            swapAnimationMillis = 300,
+            animationMillis = 450,
+            forceHostDeals = false,
+        )
+        var openingWasTrueWhileReacting = false
+        var sawPartnerReaction = false
+        var sawReactionDisappear = false
+        repeat(120) {
+            advanceTimeBy(100)
+            runCurrent()
+            val state = vm.uiState.value
+            if (state.partnerGuessReaction != null) {
+                sawPartnerReaction = true
+                if (state.opening) openingWasTrueWhileReacting = true
+            } else if (sawPartnerReaction) {
+                sawReactionDisappear = true
+            }
+        }
+        sawPartnerReaction.shouldBeTrue()
+        sawReactionDisappear.shouldBeTrue()
+        openingWasTrueWhileReacting.shouldBeFalse()
     }
 }
