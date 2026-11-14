@@ -3,6 +3,7 @@ package com.gtranca.ui.sound
 import com.gtranca.engine.model.Card
 import com.gtranca.ui.game.AnimAnchor
 import com.gtranca.ui.game.CardFlight
+import com.gtranca.ui.game.TableEdge
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
@@ -72,6 +73,9 @@ class SoundTest {
         SoundMap.forFlight(flight(AnimAnchor.Stock, AnimAnchor.SeatHand(1))) shouldBe SoundEffect.FLIP
         SoundMap.forFlight(flight(AnimAnchor.Morto(0), AnimAnchor.OwnHand)) shouldBe SoundEffect.FLIP
         SoundMap.forFlight(flight(AnimAnchor.DiscardPile, AnimAnchor.OwnHand)) shouldBe SoundEffect.FLIP
+        // §3.8.1 distribuição inicial: entra de fora da mesa (nunca do monte), mesmo gesto de virar a carta.
+        SoundMap.forFlight(flight(AnimAnchor.DealEntry(TableEdge.LEFT), AnimAnchor.OwnHand)) shouldBe SoundEffect.FLIP
+        SoundMap.forFlight(flight(AnimAnchor.DealEntry(TableEdge.TOP), AnimAnchor.Morto(0))) shouldBe SoundEffect.FLIP
         // Descarte.
         SoundMap.forFlight(flight(AnimAnchor.OwnHand, AnimAnchor.DiscardPile)) shouldBe SoundEffect.TAP
         SoundMap.forFlight(flight(AnimAnchor.SeatHand(2), AnimAnchor.DiscardPile)) shouldBe SoundEffect.TAP

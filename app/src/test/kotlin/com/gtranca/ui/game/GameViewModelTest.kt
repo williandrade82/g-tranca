@@ -475,7 +475,8 @@ class GameViewModelTest {
                     )
                     val log = vm.uiState.value.snapshot.view.redThreeLog
                     val own = log.filter { it.seat == Seat(0) && it.atTurnStart }
-                    val dealtOwn = vm.uiState.value.flights.filter { it.to == AnimAnchor.OwnHand && it.from == AnimAnchor.Stock }
+                    // §3.8.1 a distribuição inicial entra de fora da mesa (AnimAnchor.DealEntry), nunca do monte.
+                    val dealtOwn = vm.uiState.value.flights.filter { it.to == AnimAnchor.OwnHand && it.from is AnimAnchor.DealEntry }
                     val handSize = vm.uiState.value.snapshot.view.hand.size
                     if (own.isNotEmpty()) {
                         // A distribuição dá 11 cartas: as da mão (menos as repostas, que chegam depois) e os 3 vermelhos originais;

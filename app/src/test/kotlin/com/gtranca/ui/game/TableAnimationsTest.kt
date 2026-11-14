@@ -179,8 +179,8 @@ class TableAnimationsTest {
             tables = listOf(SideTable(), SideTable()), redThreeLog = redThreeLog,
         )
 
-    private fun snapshot(view: PlayerView, events: List<List<PublicEvent>>) = GameSnapshot(
-        GameConfig(GameMode.DUPLAS, Difficulty.MEDIO, 3000), Seat(0), view, 1, listOf(0, 0), emptyList(), Stage.PLAYING,
+    private fun snapshot(view: PlayerView, events: List<List<PublicEvent>>, viewerSeat: Seat = Seat(0)) = GameSnapshot(
+        GameConfig(GameMode.DUPLAS, Difficulty.MEDIO, 3000), viewerSeat, view, 1, listOf(0, 0), emptyList(), Stage.PLAYING,
         null, emptyList(), null, events,
     )
 
@@ -489,7 +489,11 @@ class TableAnimationsTest {
 
         // 4 assentos × 3 cartas + 2 mortos × 11 cartas: os mortos são distribuídos por completo, não só 1 carta.
         flights.size shouldBe 4 * 3 + 2 * 11
-        flights.all { it.from == AnimAnchor.Stock } shouldBe true
+        // §3.8.1 entram de fora da mesa, nunca do monte: view() tem firstSeat 0, logo dealerSeat é o assento 3
+        // (anterior a quem começa, §4.2), visto do assento 0 (viewer) como LEFT_OPPONENT; mortoDealerSeat é o 2
+        // (anterior ao anterior), PARTNER.
+        flights.take(12).all { it.from == AnimAnchor.DealEntry(TableEdge.LEFT) } shouldBe true
+        flights.drop(12).all { it.from == AnimAnchor.DealEntry(TableEdge.TOP) } shouldBe true
         // Lote de 3 para cada assento, em rodízio a partir de quem começa.
         flights.take(12).map { it.to } shouldBe listOf(
             AnimAnchor.OwnHand, AnimAnchor.OwnHand, AnimAnchor.OwnHand,
@@ -531,7 +535,9 @@ class TableAnimationsTest {
 
         // 4 assentos × 3 cartas + 2 mortos × 11 cartas: os mortos são distribuídos por completo, não só 1 carta.
         flights.size shouldBe 4 * 3 + 2 * 11
-        flights.all { it.from == AnimAnchor.Stock } shouldBe true
+        // §3.8.1 entram de fora da mesa (mesmos papéis do teste de lotes de 3 acima: dealerSeat 3 = LEFT, mortoDealerSeat 2 = TOP).
+        flights.take(12).all { it.from == AnimAnchor.DealEntry(TableEdge.LEFT) } shouldBe true
+        flights.drop(12).all { it.from == AnimAnchor.DealEntry(TableEdge.TOP) } shouldBe true
         // Rodízio a partir de quem começa: você, assento 1, 2, 3, e de novo (3 levas, a mão é de 3 cartas).
         flights.take(12).map { it.to } shouldBe List(3) {
             listOf(AnimAnchor.OwnHand, AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(3))
@@ -550,6 +556,54 @@ class TableAnimationsTest {
         val lastSeatWaveEnd = flights.take(12).maxOf { it.delayMillis }
         (mortoFlights.first().delayMillis >= lastSeatWaveEnd + dur / 2) shouldBe true
         flights.map { it.id }.toSet().size shouldBe flights.size
+    }
+
+    @Test
+    fun `telas_md 3_8_1 distribuicao inicial entra de fora da mesa pelo lado de quem distribui, nunca do monte`() {
+        // §3.6 dealerSeat é o anterior a firstSeat (§4.2) e mortoDealerSeat o anterior a esse. A direção na tela é
+        // o papel de quem distribui visto do assento que vê a tela (SeatRole.of): parceiro/único adversário = de
+        // cima, à esquerda = da esquerda, à direita = da direita, o próprio = de baixo. Os pares abaixo (firstSeat,
+        // hand edge, morto edge) são fixos, calculados à mão a partir de SeatRole.of (não recalculados aqui com a
+        // mesma função da produção: um swap de (seat, viewer) no código não seria detectado se o teste repetisse a conta).
+        val hand = listOf(c("4S"), c("7H"), c("KD"))
+
+        // Duplas, viewer sempre o assento 0: varre os 4 valores de firstSeat, cobrindo os 4 papéis possíveis de
+        // dealerSeat/mortoDealerSeat, inclusive o próprio viewer sorteado para distribuir (firstSeat 1 e 2).
+        data class DuplasCase(val firstSeat: Seat, val handEdge: TableEdge, val mortoEdge: TableEdge)
+        listOf(
+            DuplasCase(Seat(0), TableEdge.LEFT, TableEdge.TOP), // dealerSeat 3 (LEFT_OPPONENT), mortoDealerSeat 2 (PARTNER)
+            DuplasCase(Seat(1), TableEdge.BOTTOM, TableEdge.LEFT), // dealerSeat 0 (YOU), mortoDealerSeat 3 (LEFT_OPPONENT)
+            DuplasCase(Seat(2), TableEdge.RIGHT, TableEdge.BOTTOM), // dealerSeat 1 (RIGHT_OPPONENT), mortoDealerSeat 0 (YOU)
+            DuplasCase(Seat(3), TableEdge.TOP, TableEdge.RIGHT), // dealerSeat 2 (PARTNER), mortoDealerSeat 1 (RIGHT_OPPONENT)
+        ).forEach { case ->
+            val v = view(hand).copy(firstSeat = case.firstSeat, handSizes = listOf(3, 3, 3, 3))
+            var id = 0L
+            val flights = TableAnimations.deal(snapshot(v, List(4) { emptyList() }), hand, { id++ })
+            flights.none { it.from == AnimAnchor.Stock } shouldBe true
+            flights.filter { it.to == AnimAnchor.OwnHand || it.to is AnimAnchor.SeatHand }
+                .all { it.from == AnimAnchor.DealEntry(case.handEdge) } shouldBe true
+            flights.filter { it.to is AnimAnchor.Morto }.all { it.from == AnimAnchor.DealEntry(case.mortoEdge) } shouldBe true
+        }
+
+        // Individual: só 2 assentos, a dupla aplicação do "anterior" volta ao próprio firstSeat (§3.6): dealerSeat
+        // == mortoDealerSeat == firstSeat, logo a mão e os mortos entram do mesmo lado.
+        listOf(Seat(0) to TableEdge.BOTTOM, Seat(1) to TableEdge.TOP).forEach { (firstSeat, edge) ->
+            val v = view(hand).copy(mode = GameMode.INDIVIDUAL, firstSeat = firstSeat, handSizes = listOf(3, 3))
+            var id = 0L
+            val flights = TableAnimations.deal(snapshot(v, List(2) { emptyList() }), hand, { id++ })
+            flights.all { it.from == AnimAnchor.DealEntry(edge) } shouldBe true
+        }
+
+        // O viewer também pode não ser o assento 0 (duplas): com firstSeat 0, dealerSeat é 3 e mortoDealerSeat é 2;
+        // vistos do assento 2 (viewer), 3 é RIGHT_OPPONENT (da direita) e 2 é o próprio viewer (YOU, de baixo).
+        val vOtherViewer = view(hand).copy(firstSeat = Seat(0), handSizes = listOf(3, 3, 3, 3))
+        var id2 = 0L
+        val flights2 = TableAnimations.deal(snapshot(vOtherViewer, List(4) { emptyList() }, viewerSeat = Seat(2)), hand, { id2++ })
+        // A própria mão do viewer (assento 2, que não é quem distribui aqui) entra do mesmo lado que as dos outros:
+        // a mão inteira (todos os assentos) tem uma única entrada, a direção de dealerSeat.
+        flights2.filter { it.to == AnimAnchor.OwnHand || it.to is AnimAnchor.SeatHand }
+            .all { it.from == AnimAnchor.DealEntry(TableEdge.RIGHT) } shouldBe true
+        flights2.filter { it.to is AnimAnchor.Morto }.all { it.from == AnimAnchor.DealEntry(TableEdge.BOTTOM) } shouldBe true
     }
 
     @Test
