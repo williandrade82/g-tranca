@@ -349,4 +349,80 @@ class DealGuessViewModelTest {
         runCurrent()
         vm.uiState.value.dealPending shouldBe false
     }
+
+    /**
+     * Uma semente em duplas em que o parceiro (assento 2, sempre `PARTNER` do ponto de vista do assento 0) é quem
+     * palpita [stage]. `dealGuess.dealerSeat`/`.mortoDealerSeat` são fixados na distribuição ([GameController.init],
+     * síncrono) — dá pra checar direto no 1º snapshot, antes de rodar qualquer coisa do relógio virtual (sem isso,
+     * `phase`/`canDraw` abaixo não provariam nada: ver a prova de não travar nos testes). Em duplas (4 assentos,
+     * `GameMode.previousSeat`), `dealerSeat == Seat(2)` sempre dá `mortoDealerSeat == Seat(1)`, e
+     * `mortoDealerSeat == Seat(2)` sempre dá `dealerSeat == Seat(3)` e `firstSeat == Seat(0)` — nos dois casos o
+     * OUTRO papel nunca cai no assento 0 (humano), então um único `runCurrent()` resolve a cadeia inteira (o outro
+     * palpite e, no caso do morto, a 1ª jogada de verdade) sem travar esperando toque humano nenhum.
+     */
+    private fun TestScope.partnerGuessReactionGame(stage: DealGuessStage, animationMillis: Long = 0): GameViewModel {
+        for (seed in 1L..300L) {
+            val vm = GameViewModel(
+                GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+                gameSeed = seed, computeDispatcher = dispatcher, botDelayMillis = 0,
+                swapAnimationMillis = 0, animationMillis = animationMillis,
+            )
+            val view = vm.uiState.value.snapshot.view
+            val guess = view.dealGuess
+            val seat = if (stage == DealGuessStage.HAND) guess?.dealerSeat else guess?.mortoDealerSeat
+            // Sem 3 vermelho na mão do humano: evita a troca do início da vez mascarar `canDraw` na prova de não
+            // travar (o caso do morto termina com o próprio assento 0 começando a jogar).
+            if (seat == Seat(2) && view.hand.none { it.isRedThree }) {
+                runCurrent()
+                return vm
+            }
+        }
+        error("Nenhuma semente com o parceiro (assento 2) palpitando $stage em 300 tentativas")
+    }
+
+    /**
+     * §3.6, telas-app.md 3.8.2 (14/11/2026): quando é o PARCEIRO (duplas) quem palpita, este aparelho (que só está
+     * acompanhando) nunca mostra a reação em tela cheia — só a reação pequena, não bloqueante, no canto da mesa. A
+     * prova de que o motor foi liberado na hora (`guessRevealDone`, sem esperar nenhum `onDealGuessRevealDismissed`
+     * que não existe pra esse caso): o morto, perguntado a outro assento (sempre `Seat(1)`, nunca o humano) só
+     * depois da mão resolver, já aparece resolvido no mesmo `runCurrent()` — se a reação do parceiro tivesse ficado
+     * bloqueante (regressão para o comportamento antigo da tela cheia), o motor nunca teria perguntado o morto.
+     */
+    @Test
+    fun `§3_6 o palpite da mao do parceiro mostra so a reacao pequena e libera o motor sem esperar toque`() = runTest(dispatcher) {
+        val vm = partnerGuessReactionGame(DealGuessStage.HAND)
+        val state = vm.uiState.value
+        // Tela cheia é exclusiva de quem palpitou de verdade (role == YOU); o parceiro nunca a recebe.
+        state.dealGuessReveal.shouldBeNull()
+        val reaction = state.partnerGuessReaction.shouldNotBeNull()
+        reaction.stage shouldBe DealGuessStage.HAND
+        reaction.correct shouldBe state.snapshot.view.dealGuess?.hand?.correct
+
+        state.snapshot.view.dealGuess?.morto.shouldNotBeNull()
+
+        // E a reação pequena some sozinha, sem exigir nada do jogador.
+        advanceUntilIdle()
+        vm.uiState.value.partnerGuessReaction.shouldBeNull()
+    }
+
+    /**
+     * Mesma prova do teste acima, para o palpite do morto: `mortoDealerSeat == Seat(2)` sempre dá `firstSeat ==
+     * Seat(0)` (o humano abre a partida), então `canDraw` só fica `true` se o motor já tiver avançado da fase de
+     * palpite pra 1ª jogada de verdade — o que só acontece se `guessRevealDone` já tiver sido chamado pelo palpite
+     * do parceiro, sem esperar nenhum toque.
+     */
+    @Test
+    fun `§3_6 o palpite do morto do parceiro tambem libera o motor sem esperar toque`() = runTest(dispatcher) {
+        val vm = partnerGuessReactionGame(DealGuessStage.MORTO)
+        val state = vm.uiState.value
+        state.dealGuessReveal.shouldBeNull()
+        val reaction = state.partnerGuessReaction.shouldNotBeNull()
+        reaction.stage shouldBe DealGuessStage.MORTO
+        reaction.correct shouldBe state.snapshot.view.dealGuess?.morto?.correct
+
+        state.canDraw shouldBe true
+
+        advanceUntilIdle()
+        vm.uiState.value.partnerGuessReaction.shouldBeNull()
+    }
 }

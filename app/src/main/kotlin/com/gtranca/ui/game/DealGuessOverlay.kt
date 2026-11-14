@@ -1,8 +1,12 @@
 package com.gtranca.ui.game
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,10 +39,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -47,6 +56,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.gtranca.R
@@ -57,6 +67,7 @@ import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.Spacing
 import com.gtranca.ui.theme.goldTitleStyle
 import com.gtranca.ui.theme.loungeDialog
+import com.gtranca.ui.theme.rememberMotionEnabled
 import kotlin.math.roundToInt
 
 /** Um ciclo (subida OU descida) do indicador, por padrão dentro de 2 a 4 s (§14.5), como as demais animações cíclicas. */
@@ -283,8 +294,9 @@ private fun DealGuessField(label: String, value: Int?, modifier: Modifier = Modi
 /**
  * §3.6, telas-app.md 3.8.2: reação em tela cheia do palpite resolvido (vitória: +100 pontos, confete e som de
  * canastra; erro, 14/11/2026 simplificada: só o banner a 75% da largura da tela e, embaixo dele, os três campos
- * Início/Fim/Total que o jogador tocou, sem borda piscando nem outro efeito) — do próprio jogador ou do parceiro
- * dele (duplas). Fica até o toque ([onDismiss], que libera o motor para o próximo palpite ou a 1ª jogada de verdade).
+ * Início/Fim/Total que o jogador tocou, sem borda piscando nem outro efeito) — exclusiva de quem palpitou de
+ * verdade (`role == YOU`; o parceiro, em duplas, usa [PartnerGuessReactionOverlay], pequena e não bloqueante).
+ * Fica até o toque ([onDismiss], que libera o motor para o próximo palpite ou a 1ª jogada de verdade).
  */
 @Composable
 fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
@@ -331,9 +343,8 @@ fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // §3.6 Início/Fim só existem quando foi este aparelho que tocou (`reveal.start`/`.end`, `null` na
-                    // reação do parceiro: a tela mostra "—", `DealGuessField` já trata isso); o Total (largura) vem
-                    // do motor e aparece sempre.
+                    // §3.6 esta tela é exclusiva de quem palpitou de verdade (role == YOU): `reveal.start`/`.end`
+                    // sempre vêm do toque deste aparelho. O Total (largura) vem do motor e aparece sempre.
                     DealGuessField(stringResource(R.string.deal_guess_start_label), reveal.start, Modifier.testTag("deal-guess-reveal-start"))
                     DealGuessField(stringResource(R.string.deal_guess_end_label), reveal.end, Modifier.testTag("deal-guess-reveal-end"))
                     DealGuessField(stringResource(R.string.deal_guess_total_label), reveal.width, Modifier.testTag("deal-guess-reveal-total"))
@@ -351,13 +362,98 @@ fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
     }
 }
 
-/** Texto exato do §3.8.2 do telas-app.md, conforme quem palpitou (próprio/parceiro) e a fase (mão/morto). */
+/**
+ * Texto exato do §3.8.2 do telas-app.md. [DealGuessRevealOverlay] é exclusiva de quem palpitou de verdade
+ * (`role == YOU`, [DealGuessReveal.partner] sempre `false`): o parceiro usa [partnerGuessReactionTextRes], abaixo.
+ */
 private fun dealGuessRevealTextRes(reveal: DealGuessReveal): Int = when {
-    reveal.correct && !reveal.partner -> R.string.deal_guess_win_you
-    reveal.correct && reveal.partner && reveal.stage == DealGuessStage.HAND -> R.string.deal_guess_win_partner_hand
-    reveal.correct && reveal.partner -> R.string.deal_guess_win_partner_morto
-    !reveal.partner && reveal.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_you_hand
-    !reveal.partner -> R.string.deal_guess_miss_you_morto
-    reveal.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_partner_hand
+    reveal.correct -> R.string.deal_guess_win_you
+    reveal.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_you_hand
+    else -> R.string.deal_guess_miss_you_morto
+}
+
+/** Mesmo texto do parceiro usado no banner em tela cheia (acima), reaproveitado no cartão pequeno abaixo. */
+private fun partnerGuessReactionTextRes(reaction: PartnerGuessReaction): Int = when {
+    reaction.correct && reaction.stage == DealGuessStage.HAND -> R.string.deal_guess_win_partner_hand
+    reaction.correct -> R.string.deal_guess_win_partner_morto
+    reaction.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_partner_hand
     else -> R.string.deal_guess_miss_partner_morto
+}
+
+/** Tamanho do cartão pequeno da reação do parceiro (§3.8.2) — bem menor que o banner em tela cheia do próprio. */
+private val PARTNER_GUESS_CARD_WIDTH = 210.dp
+private val PARTNER_GUESS_CARD_HEIGHT = 92.dp
+
+/** Quanto dura a subida do cartão até a posição de repouso (entrada, não a permanência na tela). */
+private const val PARTNER_GUESS_ENTER_MILLIS = 450
+
+/**
+ * §3.6, telas-app.md 3.8.2: reação pequena e **não bloqueante** ao palpite do PARCEIRO (duplas) — ao contrário de
+ * [DealGuessRevealOverlay] (tela cheia, só do próprio jogador, que exige o toque), esta nunca espera nada: o motor
+ * já foi liberado na hora ([GameViewModel.reactToGuess]/[GameController.guessRevealDone]); ela é só informativa,
+ * some sozinha depois de um tempo ([GameViewModel.PARTNER_GUESS_REACTION_MILLIS]). Ancorada no canto inferior
+ * direito da mesa ([tableRect]), nasce perto da borda superior direita da própria mão do jogador ([ownHandRect],
+ * `AnimAnchor.OwnHand`) e sobe até a posição de repouso — mesma técnica de posicionamento por coordenadas de raiz
+ * do resto da mesa (`FlyingCard`, `ReactionCenterOverlay`): os dois retângulos e o próprio cartão são medidos na
+ * raiz da janela, então a conta vale mesmo com a mesa rolada.
+ */
+@Composable
+fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction, tableRect: Rect?, ownHandRect: Rect?) {
+    key(reaction.id) {
+        val motion = rememberMotionEnabled()
+        val progress = remember { Animatable(if (motion) 0f else 1f) }
+        LaunchedEffect(Unit) {
+            if (motion) progress.animateTo(1f, tween(PARTNER_GUESS_ENTER_MILLIS, easing = FastOutSlowInEasing))
+        }
+        val density = LocalDensity.current
+        val widthPx = with(density) { PARTNER_GUESS_CARD_WIDTH.toPx() }
+        val heightPx = with(density) { PARTNER_GUESS_CARD_HEIGHT.toPx() }
+        val insetPx = with(density) { Spacing.md.toPx() }
+        var origin by remember { mutableStateOf(Offset.Zero) }
+        val accent = if (reaction.correct) GColors.Emerald else GColors.Ruby
+        val text = stringResource(partnerGuessReactionTextRes(reaction))
+        Box(
+            Modifier
+                .fillMaxSize()
+                .zIndex(9f)
+                .onGloballyPositioned { origin = it.positionInRoot() }
+                .testTag("partner-guess-reaction"),
+        ) {
+            Box(
+                Modifier
+                    .offset {
+                        // Repouso: canto inferior direito da mesa; nascimento: canto superior direito da mão —
+                        // ambos em coordenadas de raiz, como [origin], para a subtração dar um deslocamento local.
+                        val rest = tableRect?.let { Offset(it.right - widthPx - insetPx, it.bottom - heightPx - insetPx) }
+                        val start = ownHandRect?.let { Offset(it.right - widthPx, it.top) } ?: rest ?: Offset.Zero
+                        val target = rest ?: start
+                        val point = start + (target - start) * progress.value - origin
+                        IntOffset(point.x.roundToInt(), point.y.roundToInt())
+                    }
+                    .size(PARTNER_GUESS_CARD_WIDTH, PARTNER_GUESS_CARD_HEIGHT)
+                    .background(GColors.Midnight.copy(alpha = 0.92f), RoundedCornerShape(Corner.sm))
+                    .border(2.dp, accent, RoundedCornerShape(Corner.sm))
+                    .padding(Spacing.sm)
+                    .semantics(mergeDescendants = true) { contentDescription = text; liveRegion = LiveRegionMode.Polite }
+                    .testTag("partner-guess-reaction-card"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Image(
+                        painterResource(if (reaction.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        contentScale = ContentScale.Fit,
+                    )
+                    Text(
+                        text,
+                        color = GColors.Ivory,
+                        textAlign = TextAlign.Start,
+                        maxLines = 4,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    )
+                }
+            }
+        }
+    }
 }

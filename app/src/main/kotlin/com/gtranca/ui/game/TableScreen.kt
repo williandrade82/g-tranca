@@ -603,11 +603,15 @@ private fun TableScreenContent(
     }
     // "Prepare-se!" (docs/telas-app.md): 1,5 s sobre a mesa já montada, antes da distribuição da 1ª partida.
     if (state.opening) com.gtranca.ui.selection.GetReadyOverlay()
-    // §3.6 minijogo "distribuição certeira" (telas-app.md 3.8.2): o modal de seleção, só na tela de quem palpita, e a
-    // reação em tela cheia do palpite resolvido (própria ou do parceiro), por cima de tudo o mais da mesa.
+    // §3.6 minijogo "distribuição certeira" (telas-app.md 3.8.2): o modal de seleção, só na tela de quem palpita; a
+    // reação em tela cheia, só de quem palpitou de verdade; e a reação pequena do parceiro (duplas) — por cima de
+    // tudo o mais da mesa.
     if (onReviewContinue == null) {
         state.dealGuessPrompt?.let { prompt -> DealGuessModal(prompt, events::onGuessDealRange) }
+        // §3.6 tela cheia e bloqueante: só do próprio jogador (`role == YOU`). O parceiro (duplas) usa a reação
+        // pequena abaixo, ancorada no canto da mesa, que não bloqueia nada.
         state.dealGuessReveal?.let { reveal -> DealGuessRevealOverlay(reveal, events::onDealGuessRevealDismissed) }
+        state.partnerGuessReaction?.let { reaction -> PartnerGuessReactionOverlay(reaction, tableViewport, anchors[AnimAnchor.OwnHand]) }
     }
     }
 

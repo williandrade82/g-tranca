@@ -96,24 +96,26 @@ enum class DealGuessStage { HAND, MORTO }
 data class DealGuessPrompt(val stage: DealGuessStage, val totalStages: Int, val target: Int)
 
 /**
- * §3.6 reação em tela cheia a um palpite resolvido (próprio jogador ou parceiro, §14.5): fica até o toque
- * ([TableEvents.onDealGuessRevealDismissed]), que libera a próxima jogada do motor (o palpite seguinte, ou a 1ª
- * jogada de verdade). [roundNumber] e [stage] identificam, para o motor, qual espera reconhecer.
+ * §3.6 reação em tela cheia a um palpite resolvido: fica até o toque ([TableEvents.onDealGuessRevealDismissed]),
+ * que libera a próxima jogada do motor (o palpite seguinte, ou a 1ª jogada de verdade). Exclusiva de quem palpitou
+ * de verdade (`role == YOU`); o parceiro (duplas, `role == PARTNER`) usa a reação pequena e não bloqueante
+ * [PartnerGuessReaction] (abaixo), não esta — por isso [partner] é sempre `false` aqui (mantido só para não mudar
+ * o formato já testado; este estado é só da UI, nunca é serializado/salvo). [roundNumber] e [stage] identificam,
+ * para o motor, qual espera reconhecer.
  */
 data class DealGuessReveal(
     val stage: DealGuessStage,
     val partner: Boolean,
     val correct: Boolean,
     /**
-     * Início e fim que o jogador tocou (já normalizados, §3.8.2), mostrados de novo na reação de erro — só quando a
-     * reação é do próprio humano **deste aparelho**: o motor só guarda a largura do palpite (`Guess.start/.end` são
-     * sempre `0`/`width`, a ação representativa de `legalActions`, `LegalActions.dealGuessCandidates`), então os
-     * valores reais só existem onde o toque aconteceu. `null` na reação do parceiro (duplas): a tela mostra "—" nos
-     * campos Início/Fim (ver `DealGuessField`) e [width] no Total.
+     * Início e fim que o jogador tocou (já normalizados, §3.8.2), mostrados de novo na reação de erro: o motor só
+     * guarda a largura do palpite (`Guess.start/.end` são sempre `0`/`width`, a ação representativa de
+     * `legalActions`, `LegalActions.dealGuessCandidates`), então os valores reais só existem onde o toque aconteceu
+     * — sempre este aparelho, já que esta reação é exclusiva de quem palpitou de verdade.
      */
     val start: Int?,
     val end: Int?,
-    /** Largura do palpite (`end − start` de verdade, vem do motor): sempre conhecida, mesmo na reação do parceiro. */
+    /** Largura do palpite (`end − start` de verdade, vem do motor): sempre conhecida. */
     val width: Int,
     val roundNumber: Int,
     val id: Long,
@@ -121,6 +123,15 @@ data class DealGuessReveal(
 
 /** §3.6 reação reduzida (pílula) de quem palpitou: confete/borda dourada no acerto, tremor no erro; some sozinha. */
 data class DealGuessPillReaction(val correct: Boolean, val id: Long)
+
+/**
+ * §3.6 reação pequena, não bloqueante, do palpite do PARCEIRO (duplas): ao contrário de [DealGuessReveal] (tela
+ * cheia, só do próprio jogador), esta some sozinha depois de alguns instantes e nunca espera toque — o motor já foi
+ * liberado na hora ([GameController.guessRevealDone]), igual aos demais assentos que não são o próprio nem o
+ * parceiro. Ancorada no canto inferior direito da mesa (telas-app.md 3.8.2), sobe a partir da borda superior
+ * direita da mão do jogador ([AnimAnchor.OwnHand]).
+ */
+data class PartnerGuessReaction(val correct: Boolean, val stage: DealGuessStage, val id: Long)
 
 /** Telas depois de uma partida: anúncio do resultado, pontos (§12), anúncio do fim do jogo e tela final (§13). */
 /** Etapas do fim da partida (docs/telas.md 3.9–3.12): mesa final com "Seguir", pontos da partida e, no fim do jogo, o resultado. */
@@ -220,10 +231,12 @@ data class GameUiState(
      * "Aguardando <nome> escolher os boosters" no lugar do texto de vez de sempre (telas.md 3.19 "Online"/"Multijogador").
      */
     val boostersAwaitingSeat: Seat? = null,
-    /** §3.6 reação em tela cheia do palpite resolvido (próprio jogador ou parceiro), até o toque fechar. */
+    /** §3.6 reação em tela cheia do palpite resolvido, só do próprio jogador (`role == YOU`), até o toque fechar. */
     val dealGuessReveal: DealGuessReveal? = null,
     /** §3.6 reação reduzida (pílula) por assento (índice), enquanto estiver à vista. */
     val dealGuessPills: Map<Int, DealGuessPillReaction> = emptyMap(),
+    /** §3.6 reação pequena do palpite do parceiro (duplas), ancorada no canto da mesa; some sozinha. */
+    val partnerGuessReaction: PartnerGuessReaction? = null,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
     private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
@@ -234,9 +247,11 @@ data class GameUiState(
     val canDraw: Boolean get() = Action.DrawFromStock in legal
 
     /**
-     * §3.6 é a vez do humano palpitar e o modal deve aparecer: `null` fora dessa vez, enquanto a reação em tela cheia
-     * do palpite anterior ainda não fechou (individual: o mesmo jogador palpita a mão e, depois, o morto) ou durante
-     * o "Prepare-se!" (que cobriria o modal). O monte some da mesa no mesmo intervalo (fora daqui: ver [isDealGuessing]).
+     * §3.6 é a vez do humano palpitar e o modal deve aparecer: `null` fora dessa vez, enquanto a reação em tela
+     * cheia do palpite anterior (deste próprio humano) ainda não fechou, ou durante o "Prepare-se!" (que cobriria o
+     * modal). `dealerSeat`/`mortoDealerSeat` são sempre assentos diferentes (inclusive em individual, §3.6): o
+     * humano só palpita uma das duas etapas por partida, nunca as duas. O monte some da mesa no mesmo intervalo
+     * (fora daqui: ver [isDealGuessing]).
      */
     val dealGuessPrompt: DealGuessPrompt?
         get() {
@@ -465,6 +480,8 @@ class GameViewModel(
         val dealGuessReveal: DealGuessReveal? = null,
         /** §3.6 reação reduzida (pílula) por assento (índice), enquanto estiver à vista. */
         val dealGuessPills: Map<Int, DealGuessPillReaction> = emptyMap(),
+        /** §3.6 reação pequena do palpite do parceiro (duplas), ancorada no canto da mesa; some sozinha. */
+        val partnerGuessReaction: PartnerGuessReaction? = null,
         /**
          * §3.6 início/fim que ESTE aparelho tocou em cada palpite ainda não encenado nesta partida (por fase): o
          * motor só guarda a largura ([DealGuessReveal]), então os valores reais tocados só existem aqui, do lado de
@@ -736,9 +753,10 @@ class GameViewModel(
 
     /**
      * §3.6 reage ao palpite de [seat] resolvido ([guess] vem só do motor, nunca calculado aqui): a pílula (telas.md
-     * 3.8.2 `deal-guess-pill-burst`/`-shake`) sempre aparece, em qualquer aparelho; a reação em tela cheia só para o
-     * próprio jogador ou o parceiro dele (duplas) — os demais acionam [GameController.guessRevealDone] na hora, sem
-     * esperar toque nenhum (não há nada para o jogador fechar).
+     * 3.8.2 `deal-guess-pill-burst`/`-shake`) sempre aparece, em qualquer aparelho. A reação em tela cheia
+     * ([DealGuessReveal], bloqueante, só fecha no toque) é exclusiva do próprio jogador (`role == YOU`). O parceiro
+     * (duplas, `role == PARTNER`) ganha uma reação pequena, não bloqueante ([PartnerGuessReaction]): o motor já é
+     * liberado na hora, como para qualquer outro assento — ela é só cosmética, some sozinha.
      */
     private fun reactToGuess(stage: DealGuessStage, seat: Seat, guess: Guess, snapshot: GameSnapshot) {
         val id = animationIds.incrementAndGet()
@@ -748,22 +766,30 @@ class GameViewModel(
             local.update { state -> if (state.dealGuessPills[seat.index]?.id == id) state.copy(dealGuessPills = state.dealGuessPills - seat.index) else state }
         }
         val role = com.gtranca.game.SeatRole.of(snapshot.view.mode, seat, snapshot.viewerSeat)
-        if (role == com.gtranca.game.SeatRole.YOU || role == com.gtranca.game.SeatRole.PARTNER) {
-            // §3.6 o motor só guarda a largura (`guess.start`/`.end` são sempre `0`/width, a ação representativa de
-            // `legalActions`): o par de verdade só existe aqui, do lado de quem tocou. Na reação do parceiro (duplas),
-            // ninguém tocou neste aparelho: Início/Fim ficam `null` (a tela mostra "—"), só o Total (largura) é certo.
-            val tap = local.value.dealGuessTaps[stage]?.takeIf { role == com.gtranca.game.SeatRole.YOU }
-            local.update {
-                it.copy(
-                    dealGuessReveal = DealGuessReveal(
-                        stage, partner = role == com.gtranca.game.SeatRole.PARTNER, correct = guess.correct,
-                        start = tap?.first, end = tap?.second, width = guess.width,
-                        roundNumber = snapshot.roundNumber, id = id,
-                    ),
-                )
+        when (role) {
+            com.gtranca.game.SeatRole.YOU -> {
+                // §3.6 o motor só guarda a largura (`guess.start`/`.end` são sempre `0`/width, a ação representativa
+                // de `legalActions`): o par de verdade só existe aqui, do lado de quem tocou.
+                val tap = local.value.dealGuessTaps[stage]
+                local.update {
+                    it.copy(
+                        dealGuessReveal = DealGuessReveal(
+                            stage, partner = false, correct = guess.correct,
+                            start = tap?.first, end = tap?.second, width = guess.width,
+                            roundNumber = snapshot.roundNumber, id = id,
+                        ),
+                    )
+                }
             }
-        } else {
-            controller.guessRevealDone(snapshot.roundNumber, stage == DealGuessStage.HAND)
+            com.gtranca.game.SeatRole.PARTNER -> {
+                local.update { it.copy(partnerGuessReaction = PartnerGuessReaction(guess.correct, stage, id)) }
+                controller.guessRevealDone(snapshot.roundNumber, stage == DealGuessStage.HAND)
+                viewModelScope.launch {
+                    delay(PARTNER_GUESS_REACTION_MILLIS)
+                    local.update { state -> if (state.partnerGuessReaction?.id == id) state.copy(partnerGuessReaction = null) else state }
+                }
+            }
+            else -> controller.guessRevealDone(snapshot.roundNumber, stage == DealGuessStage.HAND)
         }
     }
 
@@ -994,6 +1020,7 @@ class GameViewModel(
             opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
             dealGuessReveal = state.dealGuessReveal,
             dealGuessPills = state.dealGuessPills,
+            partnerGuessReaction = state.partnerGuessReaction,
             dealPending = !state.dealDone,
             dealFlightIds = state.dealIds,
             opening = state.opening,
@@ -1366,6 +1393,10 @@ class GameViewModel(
 
         /** §3.6 quanto tempo a pílula de quem palpitou mostra a reação reduzida (confete/tremor). */
         const val DEAL_GUESS_PILL_MILLIS: Long = 1_600
+
+        /** §3.6 quanto tempo a reação pequena do palpite do parceiro fica no canto da mesa (um pouco mais que a
+         * pílula, §3.8.2: ainda não bloqueante, mas dá tempo da animação de entrada terminar antes de sumir). */
+        const val PARTNER_GUESS_REACTION_MILLIS: Long = 2_400
 
         /** Fator de duração da velocidade "lenta" (30% mais lenta). */
         const val SLOW_FACTOR: Float = 1.3f
