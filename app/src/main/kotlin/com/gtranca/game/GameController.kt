@@ -458,6 +458,21 @@ class GameController(
                     // Inclui as trocas do início da vez do PRÓXIMO jogador (§3.5), feitas na mesma passagem de vez.
                     val wait = animated() && after.phase != Phase.FINISHED && after.redThreeLog.size > round.redThreeLog.size
                     if (wait) awaitingPresentation.set(PresentationKey(match.roundNumber, after.redThreeLog.size))
+                    // §3.6 BUG (relatado 2026-11-14): quando o palpite do morto resolve na MESMA ação que o início da
+                    // vez do dealer (`RoundEngine.beginTurn`, acima, pode trocar um 3 vermelho dele), a interface
+                    // publica os dois avisos juntos (a reação do palpite, zIndex mais alto, e "Baixar 3 vermelho") — e
+                    // o jogador pode tocar no de cima (fechar a reação) ANTES de a troca ser confirmada. Arma a espera
+                    // aqui, antes de publicar o snapshot e antes de esperar [presentationSignal]: o canal é conflado
+                    // (`guessRevealSignal`), então um toque que chegue adiantado fica guardado até [guessRevealSignal]
+                    // ser mesmo esperado, em vez de se perder (motivo do travamento: o motor nunca mais publicava o
+                    // próximo pedido). Descarta primeiro qualquer sinal perdido de uma espera anterior já desarmada
+                    // pelo tempo limite (ver abaixo) para não resolver esta de cara.
+                    val guessKey = (action as? Action.GuessDealRange)?.takeIf { animated() }
+                        ?.let { GuessRevealKey(match.roundNumber, round.phase == Phase.DEAL_GUESS_HAND) }
+                    if (guessKey != null) {
+                        guessRevealSignal.tryReceive()
+                        awaitingGuessReveal.set(guessKey)
+                    }
                     // Durante a encenação, quem trocou continua "jogando" (a vez passa ao humano só depois): o texto e o
                     // destaque seguem o adversário em vez de um "Aguarde…" neutro (cada vista exclui o próprio assento).
                     publishLocked(Stage.PLAYING, thinkingSeat = after.redThreeLog.lastOrNull()?.seat.takeIf { wait })
@@ -468,10 +483,14 @@ class GameController(
                 // §3.6 depois de resolver um palpite, espera a interface reconhecer a reação (pílula sempre; tela cheia
                 // só no toque, quando é a vez do jogador ou do parceiro dele) antes de pedir o próximo palpite ou a 1ª
                 // jogada de verdade. Sem humano/ritmo animado (bots, `:sim`, anfitrião de mesa multijogador em
-                // `PacingPolicy.FREE`), segue direto: ninguém vai reconhecer nada.
+                // `PacingPolicy.FREE`), segue direto: ninguém vai reconhecer nada ([guessKey] fica `null`).
                 if (action is Action.GuessDealRange && animated()) {
-                    awaitingGuessReveal.set(GuessRevealKey(match.roundNumber, round.phase == Phase.DEAL_GUESS_HAND))
-                    guessRevealSignal.receive()
+                    val key = GuessRevealKey(match.roundNumber, round.phase == Phase.DEAL_GUESS_HAND)
+                    // Rede de segurança: sem o toque (bug na interface, app em segundo plano etc.), segue depois de um
+                    // tempo bem generoso em vez de travar o jogo para sempre — a reação "fica até o toque" (§3.8.2 do
+                    // telas-app.md) em condições normais, então isto nunca deve disparar de verdade.
+                    val acknowledged = withTimeoutOrNull(GUESS_REVEAL_SAFETY_MILLIS) { guessRevealSignal.receive() } != null
+                    if (!acknowledged) awaitingGuessReveal.compareAndSet(key, null)
                     // O palpite do morto é o último: só depois dele a animação da distribuição começa (adiada do
                     // início da partida, ver acima), antes da 1ª jogada de verdade.
                     if (round.phase == Phase.DEAL_GUESS_MORTO && dealDelayMillis > 0) {
@@ -755,6 +774,14 @@ class GameController(
 
         /** Folga da espera pelo aviso da interface de que a distribuição terminou (rede de segurança). */
         private const val DEAL_SIGNAL_GRACE_MILLIS: Long = 4_000
+
+        /**
+         * §3.6 rede de segurança da reação do palpite (`guessRevealSignal`): espera o toque do jogador por até isto
+         * antes de seguir sozinho. Bem mais generoso que [DEAL_SIGNAL_GRACE_MILLIS] (que só espera uma animação de
+         * duração conhecida): aqui é um toque humano, que pode legitimamente demorar; em condições normais, com a
+         * correção de 2026-11-14 (armar a espera antes de publicar o snapshot, não depois), isto nunca deve disparar.
+         */
+        private const val GUESS_REVEAL_SAFETY_MILLIS: Long = 300_000
 
         /** Eventos que cabem em [events] sem o consumidor ler. */
         private const val EVENT_BUFFER: Int = 512

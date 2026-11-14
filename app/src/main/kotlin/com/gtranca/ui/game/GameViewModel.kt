@@ -847,7 +847,12 @@ class GameViewModel(
             batchSeq = if (startNow) state.batchSeq + 1 else state.batchSeq,
             batchLanding = if (startNow) landingMillis(newFlights, state) else state.batchLanding,
             dealIds = (if (playing && sameRound) state.dealIds else emptySet()) + dealFlights.map { it.id },
-            dealDone = if (previous == null || !sameRound) !dealing else state.dealDone,
+            // §3.6 BUG (relatado 2026-11-14): sem `leavingGuessPhases` aqui, o 1º snapshot da partida (ainda em fase
+            // de palpite, `dealing=false` porque não há nada a animar enquanto se palpita) fixava `dealDone=true` e
+            // nunca mais era recalculado dentro da mesma partida (só `previous==null || !sameRound` recalculava) —
+            // mesmo na transição real de saída dos palpites para a 1ª jogada, quando [dealing] already fica `true` e
+            // a distribuição de verdade merecia ser esperada como em qualquer outra partida.
+            dealDone = if (previous == null || !sameRound || leavingGuessPhases) !dealing else state.dealDone,
             afterDeal = if (dealing) fresh.isNotEmpty() else state.afterDeal,
             flashes = if (keepFlights) state.flashes + (if (queueIt) emptyList() else newFlashes) else emptyList(),
             hidden = if (playing) hidden.filterKeys { id -> swaps.any { it.id == id } } else emptyMap(),
