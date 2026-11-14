@@ -89,6 +89,22 @@ private fun dealGuessLiveStage(totalStages: Int, frozen: Int?): Int {
 }
 
 /**
+ * §3.6 topo/base (frações de 0 a 1) da faixa verde já marcada, a partir do toque **bruto** ([start], `null` antes
+ * do 1º toque) e do estágio atual do indicador ([stage], 0 a [totalStages]). Extraída à parte (testável sem
+ * Compose) pelo bug relatado 14/11/2026: [DealGuessModal] pré-calculava `lo = minOf(start, stage)` para os campos
+ * de texto e passava esse `lo` (sempre `<= stage`, por construção) como se fosse o toque bruto para a barra — então,
+ * quando o indicador voltava a subir acima do toque inicial (`stage < start`), `lo` degenerava para `== stage` a
+ * cada recomposição e a faixa nunca tinha altura. A correção é passar [start] sempre bruto para esta função (nunca
+ * um valor já pré-ordenado); ela mesma faz `minOf`/`maxOf` das duas frações cruas, cobrindo os dois sentidos.
+ */
+internal fun dealGuessBand(start: Int?, stage: Int, totalStages: Int): Pair<Float, Float>? {
+    if (start == null || totalStages <= 0) return null
+    val startFraction = (start.toFloat() / totalStages).coerceIn(0f, 1f)
+    val stageFraction = (stage.toFloat() / totalStages).coerceIn(0f, 1f)
+    return minOf(startFraction, stageFraction) to maxOf(startFraction, stageFraction)
+}
+
+/**
  * §3.6, telas-app.md 3.8.2 (14/11/2026, reescrita em `Canvas`: a composição por `Box`es sobre a arte de fundo tinha
  * um bug de orientação — o `Box` que cresce com `fillMaxHeight(fraction)` dentro de outro sem `contentAlignment`
  * ancora no topo por padrão, então o indicador não acompanhava o estágio corretamente): a barra de palpite —
@@ -101,7 +117,7 @@ private fun dealGuessLiveStage(totalStages: Int, frozen: Int?): Int {
 @Composable
 private fun DealGuessGauge(stage: Int, totalStages: Int, rangeStart: Int?, modifier: Modifier = Modifier) {
     val fraction = if (totalStages <= 0) 0f else (stage.toFloat() / totalStages).coerceIn(0f, 1f)
-    val rangeFraction = rangeStart?.takeIf { totalStages > 0 }?.let { (it.toFloat() / totalStages).coerceIn(0f, 1f) }
+    val band = dealGuessBand(rangeStart, stage, totalStages)
     Canvas(modifier) {
         val barWidth = size.width * 0.5f
         val barLeft = size.width - barWidth
@@ -109,9 +125,9 @@ private fun DealGuessGauge(stage: Int, totalStages: Int, rangeStart: Int?, modif
         // Trilho: sempre visível, do topo à base (nunca escondido pelo preenchimento nem pelo indicador).
         drawRoundRect(color = GColors.RoyalBlue, topLeft = Offset(barLeft, 0f), size = Size(barWidth, size.height), cornerRadius = corner)
         // Faixa já marcada: do Início (1º toque) até a posição atual do indicador.
-        if (rangeFraction != null) {
-            val top = minOf(rangeFraction, fraction) * size.height
-            val bottom = maxOf(rangeFraction, fraction) * size.height
+        if (band != null) {
+            val top = band.first * size.height
+            val bottom = band.second * size.height
             if (bottom > top) {
                 drawRoundRect(
                     color = GColors.Emerald,
@@ -186,7 +202,12 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int, Int) -> Unit) {
                         contentScale = ContentScale.FillBounds,
                     )
                     DealGuessGauge(
-                        stage, prompt.totalStages, lo,
+                        // §3.6 (bug 14/11/2026): `start` bruto, nunca pré-ordenado, vai para a barra — é ela quem
+                        // decide topo/base da faixa verde com `minOf`/`maxOf` das duas frações cruas; um `lo` já
+                        // ordenado aqui fazia a faixa degenerar sempre que o indicador volta a subir acima do 1º
+                        // toque (ver KDoc de `dealGuessBand`). `lo`/`hi` continuam servindo só os campos de texto
+                        // abaixo, que devem sempre mostrar o menor valor em Início.
+                        stage, prompt.totalStages, start,
                         Modifier
                             .offset(x = maxWidth * 0.70f, y = maxHeight * 0.07f)
                             .width(maxWidth * 0.28f)
@@ -312,4 +333,3 @@ private fun dealGuessRevealTextRes(reveal: DealGuessReveal): Int = when {
     reveal.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_partner_hand
     else -> R.string.deal_guess_miss_partner_morto
 }
-
