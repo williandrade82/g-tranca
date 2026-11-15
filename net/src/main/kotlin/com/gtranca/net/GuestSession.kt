@@ -251,7 +251,20 @@ class GuestSession(
         this.token = token
         this.requestedSeat = seat
         this.inviteKey = inviteKey
-        collector = scope.launch { transport.events.collect { handle(it) } }
+        // §16: sem o try/catch, qualquer exceção em handle() matava este coletor (e, sem supervisor, talvez o
+        // escopo inteiro) em silêncio — achado numa investigação de regressão (15/11/2026): nenhuma pista
+        // sobrava nem no adb logcat. Nunca loga cartas nem tokens, só classe/mensagem da exceção.
+        collector = scope.launch {
+            transport.events.collect { event ->
+                try {
+                    handle(event)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("handle failed: ${e::class.qualifiedName}: ${e.message}")
+                }
+            }
+        }
         locateAndConnect(seat)
     }
 
