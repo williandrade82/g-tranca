@@ -508,7 +508,6 @@ class Recruitment(
             // Quem estava só em espera (não é recrutado) fica sabendo que este recrutador saiu; os recrutados só recebem o início.
             val recruitedLinks = remotes.values.mapNotNull { it.link }.toSet()
             links.values.filter { it !in recruitedLinks }.forEach { it.sendLocked(RecruitBye(myKey)) }
-            startPending = false
             log("rec start sent prepare=$PREPARE_MILLIS remotes=${remotes.size}")
             remotes.values.forEach { it.absentJob?.cancel(); it.graceJob?.cancel() }
             remotes.clear()
@@ -517,7 +516,15 @@ class Recruitment(
             advertiseLocked()
             links.values.toList()
         }
+        // §16.15 (achado 15/11/2026, dispositivos reais): `startPending` só protegia até aqui, mas a conexão de
+        // recrutamento ainda precisa ser encerrada (abaixo) antes de virar "morta" para o batimento cardíaco —
+        // num rádio lento de verdade, o recrutado pode já estar algum tempo em silêncio (ocupado entrando na mesa
+        // do jogo de verdade) exatamente neste intervalo. Sem isso, o batimento corria risco de declarar "morta"
+        // uma conexão que [closeAfterConfirm] já ia fechar de propósito mais abaixo, tratando como queda (e
+        // acionando o assento VAGO, §16.8/§16.9) uma transição normal — foi exatamente o caso observado: o
+        // recrutado reconectava com sucesso meio segundo depois de o anfitrião já ter esquecido a presença.
         closeAfterConfirm(all, START_CONFIRM_MILLIS)
+        mutex.withLock { startPending = false }
     }
 
     /** Â§16.2 o recrutador voltou Ã  tela 1, saiu ou desligou o Wi-Fi: chamados tÃªm o convite cancelado; recrutados, "Mesa encerrada". */
