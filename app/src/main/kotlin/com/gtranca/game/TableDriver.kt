@@ -33,10 +33,16 @@ interface TableDriver {
 
     /**
      * §3.6 a interface reconheceu a reação (pílula ou tela cheia) do palpite resolvido da partida [roundNumber]
-     * ([hand] = mão, `false` = morto): libera o próximo pedido do jogo local ([LocalTableDriver]) ou a próxima vista
-     * da fila na mesa multijogador local (`MultiplayerDriver`, via `SnapshotPacer.guessRevealDone`) — mesmo princípio
-     * de [presentationDone] para as trocas de 3 vermelho. Sem efeito no jogo online por enquanto (`:online-client`;
-     * fora do escopo desta correção, ver `docs/plano-distribuicao-certeira.md`).
+     * ([hand] = mão, `false` = morto): libera o próximo pedido do jogo local. **Sem efeito na mesa multijogador**
+     * (local ou online): o anfitrião roda em [PacingPolicy.FREE] e não espera ninguém (§16.6), então o jogo pode
+     * avançar por trás da reação em tela cheia deste aparelho — ela mesma cobre a tela inteira e consome qualquer
+     * toque (`DealGuessRevealOverlay`, `:app` `ui/game/DealGuessOverlay.kt`), então nada fica visível nem clicável
+     * por baixo até o próprio toque a fechar; é o mesmo princípio de fluidez do resto do multijogador (CLAUDE.md:
+     * "prefira a leitura que mantém o jogo andando"). Uma versão anterior desta correção (14/11/2026) tentou um
+     * portão equivalente a [presentationDone] no `SnapshotPacer`, mas foi revertida: o `StateFlow` que a tela
+     * observa é conflado e pode nunca mostrar a vista exata em que um palpite "acabou de resolver" (só a seguinte,
+     * já adiantada) — o reconhecimento correspondente nunca seria enviado e a mesa travaria pelo limite de
+     * segurança (300 s) na virada de partida. Ver `docs/plano-distribuicao-certeira.md`.
      */
     fun guessRevealDone(roundNumber: Int, hand: Boolean) {}
 
