@@ -808,6 +808,10 @@ class TableAnimationsTest {
 
     @Test
     fun `§3_6 §17_11 liveSideTotal soma 200 quando os dois acertos ja resolvidos caem no mesmo lado`() {
+        // Estado hipotético, não alcançável por dealGuessSeats (dealerSeat e mortoDealerSeat ficam sempre em
+        // lados opostos, §12.1, docs/rules-traceability.md §12.1 "distribuição certeira") — mesmo DealGuess
+        // montado à mão do par em DealGuessTest ("os dois acertos do mesmo lado somam 200"), aqui só pra provar
+        // que liveSideTotal soma os dois bônus corretamente, sem depender de dealGuessSeats pra validar a soma.
         val dealGuess = DealGuess(
             dealerSeat = Seat(0),
             mortoDealerSeat = Seat(2),

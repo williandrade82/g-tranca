@@ -23,8 +23,9 @@ enum class ScoreItem(val section: ScoreSection) {
     DIRTY_CANASTAS(ScoreSection.SPECIAL),
     GO_OUT(ScoreSection.SPECIAL),
     MORTO_NOT_TAKEN(ScoreSection.SPECIAL),
-    /** §3.6 / §12.1 bônus da distribuição certeira (0, 1 ou 2 palpites certos deste lado); depois do morto não
-     * pego, por ser um bônus adicional que não vem de cartas, igual a batida e ao morto. */
+    /** §3.6 / §12.1 bônus da distribuição certeira (0 ou 1 palpite certo deste lado — nunca 2: `dealerSeat` e
+     * `mortoDealerSeat` caem sempre em lados opostos); depois do morto não pego, por ser um bônus adicional que
+     * não vem de cartas, igual a batida e ao morto. */
     DEAL_GUESS_BONUS(ScoreSection.SPECIAL),
     TABLE_RED_THREES(ScoreSection.TABLE),
     TABLE_FOUR_TO_TEN(ScoreSection.TABLE),
@@ -52,8 +53,9 @@ object ScoreBreakdown {
         ScoreItem.DIRTY_CANASTAS to score.dirtyCanastas.line(),
         ScoreItem.GO_OUT to Line(null, score.goOut),
         ScoreItem.MORTO_NOT_TAKEN to Line(null, score.mortoNotTaken),
-        // §3.6 / §12.1 a quantidade é só para a coluna de quantidade (0, 1 ou 2 palpites certos); o valor já
-        // vem pronto de SideScore.dealGuessBonus, nunca recalculado aqui.
+        // §3.6 / §12.1 a quantidade é só para a coluna de quantidade (0 ou 1 palpite certo deste lado, nunca 2 —
+        // ver KDoc de DEAL_GUESS_BONUS acima); o valor já vem pronto de SideScore.dealGuessBonus, nunca
+        // recalculado aqui.
         ScoreItem.DEAL_GUESS_BONUS to Line(
             if (rules.dealGuessBonusPoints == 0) 0 else score.dealGuessBonus / rules.dealGuessBonusPoints,
             score.dealGuessBonus,
