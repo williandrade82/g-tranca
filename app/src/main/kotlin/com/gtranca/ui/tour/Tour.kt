@@ -88,9 +88,11 @@ object Tours {
 
     /**
      * Tour de Pontos da partida (docs/telas.md 3.10, 3.16): cada coluna e cada linha da tabela, de cima para baixo.
-     * Sem coringas na mesa (§1), as linhas de canastra suja e de coringas não existem e ficam de fora.
+     * Sem coringas na mesa (§1), as linhas de canastra suja e de coringas não existem e ficam de fora. Sem o
+     * bônus da distribuição certeira ligado (§3.6, [dealGuessBonus]), a linha dele também fica de fora (sempre
+     * mostraria "0").
      */
-    fun summarySteps(noWilds: Boolean): List<TourStep> = listOfNotNull(
+    fun summarySteps(noWilds: Boolean, dealGuessBonus: Boolean = true): List<TourStep> = listOfNotNull(
         TourStep(BUTTON, R.string.tour_again),
         TourStep("score-col-item", R.string.tour_summary_item),
         TourStep("score-side-own", R.string.tour_summary_sides),
@@ -102,6 +104,7 @@ object Tours {
         TourStep("score-row-DIRTY_CANASTAS", R.string.tour_summary_dirty).takeUnless { noWilds },
         TourStep("score-row-GO_OUT", R.string.tour_summary_go_out),
         TourStep("score-row-MORTO_NOT_TAKEN", R.string.tour_summary_morto),
+        TourStep("score-row-DEAL_GUESS_BONUS", R.string.tour_summary_deal_guess_bonus).takeIf { dealGuessBonus },
         TourStep("table-section", R.string.tour_summary_table_section),
         TourStep("score-row-TABLE_RED_THREES", R.string.tour_summary_table_red_threes),
         TourStep("score-row-TABLE_FOUR_TO_TEN", R.string.tour_summary_table_low),

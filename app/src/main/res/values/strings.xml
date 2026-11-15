@@ -436,6 +436,8 @@
     <string name="score_dirty_canastas">Canastras sujas</string>
     <string name="score_go_out">Batida</string>
     <string name="score_morto_not_taken">Morto não pego</string>
+    <!-- §3.6 / §12.1 bônus do minijogo "distribuição certeira", resolvido antes da 1ª vez da partida. -->
+    <string name="score_deal_guess_bonus">Distribuição certeira</string>
     <string name="score_table_header">Cartas na mesa</string>
     <string name="score_table_red_threes">3 vermelhos (+5)</string>
     <string name="score_table_four_to_ten">4 a 10 (+8)</string>
@@ -671,6 +673,7 @@
     <string name="tour_summary_dirty">Canastra suja: um jogo com 7 cartas ou mais que usa coringa (o 2). Vale menos que a limpa.</string>
     <string name="tour_summary_go_out">Batida: o lado de quem bateu (ficou sem cartas no fim) ganha este bônus.</string>
     <string name="tour_summary_morto">Morto não pego: o lado que terminou a partida sem pegar o morto perde estes pontos.</string>
+    <string name="tour_summary_deal_guess_bonus">Distribuição certeira: quem acertou o palpite da mão e/ou do morto no começo da partida ganha este bônus, um para cada acerto.</string>
     <string name="tour_summary_table_section">Cartas na mesa: aqui contam todas as cartas que o lado baixou nos jogos, mesmo as que não viraram canastra.</string>
     <string name="tour_summary_table_red_threes">O 3 vermelho baixado também vale como carta, além do bônus lá de cima.</string>
     <string name="tour_summary_table_low">Cartas de 4 a 10 baixadas na mesa: cada uma soma o valor desta linha.</string>
