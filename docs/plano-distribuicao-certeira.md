@@ -1,6 +1,6 @@
 # Plano: 100 pontos para a distribuição certeira
 
-Status: **rascunho inicial, com as decisões do usuário de 13/11/2026**; nada implementado. Fluxo de sempre: `definition.md` primeiro, depois `docs/telas-app.md`, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash.
+Status (14/11/2026): **Fases 1–3 (motor, bots, UI local) e Fase 4 no multijogador local implementadas**; o online (Fase 4 em `online/contracts`/`:online-client`/`game-service`) continua pendente. Fluxo de sempre: `definition.md` primeiro, depois `docs/telas-app.md`, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash.
 
 ## O que é a regra, em uma frase
 Antes da distribuição, quem vai distribuir (jogador 2) e quem vai distribuir o morto (jogador 3) **tentam adivinhar**, numa barra deslizante, o tanto certo de cartas (44 ou 22 para a mão, conforme o modo; 22 para o morto). **Acertar não muda nada na distribuição real** — ela continua exatamente como é hoje (11 por mão, 11 por morto, nos estilos de animação já implementados). Acertar só rende **+100 pontos** de bônus para o lado. É um minijogo de sorte/pontaria encaixado antes da distribuição, não uma regra de distribuição nova.
@@ -73,22 +73,35 @@ partida depois da 1ª (`GameViewModel.dealGuessPrompt` retornava `null` na fase 
    via `ignoreUnknownKeys`+default, builds diferentes não "quase" se falam — sem o bump o convidado desatualizado
    ficaria preso no mesmo bug, só que silenciosamente). Testes: `net/src/test/kotlin/com/gtranca/net/SeatViewTest.kt`
    (ida e volta pelo `ProtocolCodec` de verdade).
-2. `:app`: `SnapshotPacer` ganhou a mesma espera que já existia para as trocas de 3 vermelho
-   (`presentationDone`/`presentationWaitMillis`), agora também para o palpite (`guessRevealDone`/
-   `guessRevealWaitMillis`): a vista seguinte à que resolve um palpite só aparece depois de a tela reconhecer a
-   reação (pílula ou tela cheia), nunca "furando a fila" por trás de uma reação ainda aberta — isso importa de
-   verdade no individual, onde `mortoDealerSeat == firstSeat` (quem acabou de palpitar já é o próximo a jogar).
-   `MultiplayerDriver.guessRevealDone` deixou de ser o no-op padrão da interface e passou a repassar ao `pacer`.
-   Testes: `app/src/test/kotlin/com/gtranca/multiplayer/SnapshotPacerTest.kt` (espera, limite de segurança e
-   reconexão sem replay) e `app/src/test/kotlin/com/gtranca/multiplayer/DealGuessGuestTest.kt` (prova de ponta a
-   ponta: o convidado como `mortoDealerSeat` numa partida depois da 1ª vê o modal e consegue agir — a vista passa
-   pelo `SeatView`/`ProtocolCodec`/`toSnapshot` de verdade, não um `PlayerView` fabricado direto para a tela; um 2º
-   teste, com o mesmo cenário mas sem `dealGuess`, prova que o `dealGuessPrompt` dependia mesmo dele).
+2. `:app`: `GameViewModel` já tinha toda a lógica certa (`dealGuessPrompt`, `handleDealGuessTransition`,
+   `reactToGuess`); só faltava o campo do item 1 chegar. Testes: `app/src/test/kotlin/com/gtranca/multiplayer/
+   DealGuessGuestTest.kt` (prova de ponta a ponta: o convidado como `mortoDealerSeat` numa partida depois da 1ª vê
+   o modal e consegue agir — a vista passa pelo `SeatView`/`ProtocolCodec`/`toSnapshot` de verdade, não um
+   `PlayerView` fabricado direto para a tela; um 2º teste, com o mesmo cenário mas sem `dealGuess`, prova que o
+   `dealGuessPrompt` dependia mesmo dele).
+   - **Tentativa revertida (mesmo dia):** uma versão intermediária desta correção tentou um portão no
+     `SnapshotPacer` (`guessRevealWaitMillis`/`guessRevealDone`), espelhando o que já existe para as trocas de 3
+     vermelho (`presentationDone`), para a vista seguinte a um palpite resolvido só aparecer depois de a tela
+     reconhecer a reação. **Foi desfeita**: o `GameViewModel` observa `TableDriver.state`, um `StateFlow`
+     **conflado** — na virada de partida, com o anfitrião em `PacingPolicy.FREE` (nunca espera ninguém), a tela pode
+     nunca ver a vista exata em que um palpite "acabou de resolver" (só a seguinte, já adiantada); o reconhecimento
+     correspondente nunca seria enviado e o portão travaria a mesa pelos 300 s do limite de segurança **a cada
+     virada de partida** — pior que o problema que resolveria. Isso é seguro por outro motivo: a reação em tela
+     cheia (`DealGuessRevealOverlay`) cobre a tela inteira e consome qualquer toque, então nada do que avança por
+     trás dela fica visível ou clicável até o próprio toque a fechar (§16.6, princípio de fluidez). Ver KDoc de
+     `TableDriver.guessRevealDone` (`:app`).
 3. `docs/telas-app.md` 3.8.2 **não precisou mudar**: já descrevia o comportamento correto (modal só para quem
    palpita; pílula para os demais, em qualquer mesa) — só não funcionava ainda no multijogador local; agora funciona
    como o texto sempre disse.
 4. `definition.md` **não precisou mudar**: §16.4 já cobre o caso em termos gerais ("mesma informação que um robô
    recebe", §14.5) — não é uma lista fechada de campos que precisasse citar `dealGuess` à parte.
+5. **Checado e confirmado correto** (não era um gap, hipótese descartada após investigação): a pausa do anfitrião
+   para assento VAGO/desconectado (§16.8, `MultiplayerHost.evaluatePause`) é agnóstica de fase — reconhece uma
+   partida pendente em `Phase.DEAL_GUESS_HAND`/`DEAL_GUESS_MORTO` do mesmo jeito que em `PLAYING`. O teste
+   `MultiplayerHostTest.§16_9 desistencia deixa o assento VAGO...` passa com a regra ligada (removido o
+   `NO_DEAL_GUESS` que tinha antes); precisou de um ajuste no próprio teste (`runCurrent()` entre duas chamadas de
+   `driveGuests`/`driveHost` sem ponto de suspensão no meio — nuance de agendamento do `StandardTestDispatcher` ao
+   dirigir só um subconjunto dos convidados, não um bug do motor nem da mesa).
 
 ## Assets já recebidos (`docs/img/`)
 `selecao_de_cartas.png`, `indicador_e_barras.png` (precisa recorte, ver Fase 3.1), `100pontos.png`, `nao_foi_dessa_vez.png` — conferidos, prontos para uso; nenhuma pendência de criação de arte, só de recorte/exportação dos 3 pedaços do indicador.
