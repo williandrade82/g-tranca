@@ -1079,12 +1079,13 @@ class GameViewModel(
      * em qualquer outra jogada, a tela nunca decide sozinha se acertou nem monta a ação por conta própria: escolhe,
      * em `legalActions`, a ação que [com.gtranca.engine.model.dealGuessAction] constrói para esse número — se não
      * estiver lá (fora da faixa, toque atrasado etc.), a jogada é ignorada, como qualquer `onX` desta interface.
+     * Devolve se o motor aceitou (ver KDoc de [TableEvents.onGuessDealNumber]: a tela só trava o toque nesse caso).
      */
-    override fun onGuessDealNumber(number: Int) {
+    override fun onGuessDealNumber(number: Int): Boolean {
         val snapshot = controller.state.value
-        if (!snapshot.isHumanTurn || !controller.awaitingHuman() || turnHeld(local.value)) return
-        val action = snapshot.humanLegal.firstOrNull { it == com.gtranca.engine.model.dealGuessAction(number) } ?: return
-        submit(action, snapshot.humanRequestId)
+        if (!snapshot.isHumanTurn || !controller.awaitingHuman() || turnHeld(local.value)) return false
+        val action = snapshot.humanLegal.firstOrNull { it == com.gtranca.engine.model.dealGuessAction(number) } ?: return false
+        return submit(action, snapshot.humanRequestId)
     }
 
     /** §3.6 toque que fecha a reação em tela cheia do palpite: libera o próximo pedido do motor (§3.6, `GameController`). */
@@ -1408,10 +1409,12 @@ class GameViewModel(
         fun speedFor(slow: Boolean): Float = if (slow) SLOW_FACTOR else 1f
     }
 
-    private fun submit(action: Action, requestId: Long) {
-        if (controller.submit(action, requestId)) {
+    private fun submit(action: Action, requestId: Long): Boolean {
+        val accepted = controller.submit(action, requestId)
+        if (accepted) {
             local.update { it.copy(selected = emptyList(), targetMeld = null, newCards = emptySet(), message = null) }
         }
+        return accepted
     }
 }
 

@@ -167,9 +167,14 @@ private fun DealGuessGauge(fill: Float, modifier: Modifier = Modifier) {
  * [DealGuessPrompt.range]; um único toque marca o número do estágio naquele instante como o palpite e já o envia
  * ao motor ([onGuess]). A tela nunca decide sozinha se acertou: só mostra o número tocado; o resultado chega
  * depois, em [DealGuessRevealOverlay].
+ *
+ * [onGuess] devolve se o motor aceitou de verdade o toque (`TableEvents.onGuessDealNumber`): um toque pode ser
+ * ignorado por uma corrida de estado passageira (multijogador/online, §16.8/§16.9) sem que o jogo tenha avançado —
+ * só congela a barra ([frozen]) quando a devolução for `true`; senão, o próximo toque tenta de novo normalmente,
+ * como qualquer outro controle da mesa (nenhum outro usa um "já toquei, ignoro pra sempre" do lado da tela).
  */
 @Composable
-fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int) -> Unit) {
+fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int) -> Boolean) {
     var frozen by remember(prompt) { mutableStateOf<Int?>(null) }
     val stage = dealGuessLiveStage(prompt.range, frozen)
     val title = stringResource(if (prompt.stage == DealGuessStage.HAND) R.string.deal_guess_title_hand else R.string.deal_guess_title_morto)
@@ -180,8 +185,7 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int) -> Unit) {
             .background(Color.Black.copy(alpha = 0.55f))
             .clickable(remember { MutableInteractionSource() }, indication = null) {
                 if (frozen != null) return@clickable // já resolvido: espera o motor (sem toque duplo)
-                frozen = stage
-                onGuess(stage)
+                if (onGuess(stage)) frozen = stage
             }
             .semantics(mergeDescendants = true) { contentDescription = title; liveRegion = LiveRegionMode.Polite }
             .testTag("deal-guess-modal"),

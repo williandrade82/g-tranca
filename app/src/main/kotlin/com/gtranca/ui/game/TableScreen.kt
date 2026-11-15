@@ -239,8 +239,13 @@ interface TableEvents {
     fun onConfirmResign()
     fun onDismissResign()
 
-    /** §3.6 (toque único, 15/11/2026) o jogador tocou a barra com o indicador no estágio [number]. */
-    fun onGuessDealNumber(number: Int) = Unit
+    /**
+     * §3.6 (toque único, 15/11/2026) o jogador tocou a barra com o indicador no estágio [number]. Devolve se o
+     * motor aceitou de verdade (`true`): um toque pode ser ignorado (fora da faixa naquele instante, corrida de
+     * estado no multijogador/online, §16.8/§16.9) sem que a tela trave esperando um toque que nunca chegou ao
+     * motor — [DealGuessModal] só "congela" a barra quando a devolução for `true`, senão deixa tocar de novo.
+     */
+    fun onGuessDealNumber(number: Int): Boolean = false
 
     /** §3.6 toque que fecha a reação em tela cheia do palpite resolvido (vitória ou "não foi dessa vez"). */
     fun onDealGuessRevealDismissed() = Unit

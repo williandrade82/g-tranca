@@ -44,8 +44,11 @@ sealed interface Action {
     /**
      * §3.6 palpite da largura (fim − início) numa barra de estágios, antes da 1ª vez da partida: só válido nas
      * fases [com.gtranca.engine.model.Phase.DEAL_GUESS_HAND] / [com.gtranca.engine.model.Phase.DEAL_GUESS_MORTO],
-     * para o assento indicado em [com.gtranca.engine.model.RoundState.dealGuess]. O motor normaliza [start]/[end]
-     * (o menor vira início) e só exige `0 <= start, end <= total de estágios` daquela fase.
+     * para o assento indicado em [com.gtranca.engine.model.RoundState.dealGuess]. Desde o ajuste de toque único
+     * (15/11/2026): o motor **não normaliza mais** [start]/[end] — exige [start] sempre igual a
+     * [com.gtranca.engine.model.DEAL_GUESS_FIXED_START] (sempre montado por [com.gtranca.engine.model.dealGuessAction],
+     * nunca à mão) e só aceita [end] tal que `end - start` esteja dentro da faixa fixa do papel/modo
+     * (`dealGuessHandRange`/`dealGuessMortoRange`), não mais o baralho inteiro.
      */
     @Serializable
     @SerialName("guessDealRange")

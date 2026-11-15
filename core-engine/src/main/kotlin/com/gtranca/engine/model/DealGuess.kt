@@ -79,9 +79,11 @@ fun dealGuessMortoTarget(rules: RuleSet): Int = rules.cardsPerMorto * rules.mort
 fun dealGuessMortoRange(): IntRange = 12..32
 
 /**
- * §3.6 "o valor de seleção inicial será sempre um": o `start` fixo de todo [Action.GuessDealRange] do minijogo
- * de palpite, em qualquer papel ou modo. O número escolhido pelo jogador (dentro de [dealGuessHandRange] /
- * [dealGuessMortoRange]) vira `end` somando esse fixo — ver [dealGuessAction].
+ * §3.6 (ajuste de toque único, 15/11/2026, pedido do usuário): o `start` fixo de todo [Action.GuessDealRange] do
+ * minijogo de palpite, em qualquer papel ou modo — não é texto do `definition.md`, é só a constante de
+ * implementação que fixa o "início" nesta mudança (a UI deixou de pedir dois toques, só um). O número escolhido
+ * pelo jogador (dentro de [dealGuessHandRange] / [dealGuessMortoRange]) vira `end` somando esse fixo — ver
+ * [dealGuessAction].
  */
 const val DEAL_GUESS_FIXED_START: Int = 1
 
