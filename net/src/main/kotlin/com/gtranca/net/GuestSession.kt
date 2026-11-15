@@ -467,8 +467,8 @@ class GuestSession(
     }
 
     /**
-     * A conexão caiu: no jogo (ou à espera da aprovação, §16.7), tenta voltar (§16.5); se for sucessor e a mesa sumiu
-     * da busca, assume (§16.10).
+     * A conexão caiu: no jogo, na sala antes do início (§16.2, §16.15) ou à espera da aprovação (§16.7), tenta voltar
+     * (§16.5); se for sucessor e a mesa sumiu da busca, assume (§16.10).
      */
     private fun lostLocked() {
         log("connection lost (status=${_status.value})")
@@ -481,7 +481,10 @@ class GuestSession(
             return
         }
         when (_status.value) {
-            GuestStatus.Playing, GuestStatus.Reconnecting -> {
+            // §16.15 a queda pode acontecer bem na janela do início (Pronto confirmado, started ainda virando true no
+            // anfitrião): sem o reingresso aqui, uma queda real de rádio nesse instante ia direto para "Mesa encerrada"
+            // em vez de tentar voltar pelo token, que já existe desde o Welcome.
+            GuestStatus.Playing, GuestStatus.Reconnecting, GuestStatus.Lobby -> {
                 _status.value = GuestStatus.Reconnecting
                 scope.launch { reconnect() }
             }

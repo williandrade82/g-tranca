@@ -138,6 +138,21 @@ class EntryReliabilityTest {
     }
 
     @Test
+    fun `§16_5 §16_15 queda de verdade na sala logo apos o Pronto tenta voltar pelo token em vez de ir direto para Mesa encerrada`() = runTest {
+        val t = plannedTable(mapOf(1 to "Bia"), start = false)
+        val bia = t.guests.getValue(1)
+        bia.status.value shouldBe GuestStatus.Lobby
+        t.network.drop(t.transports.getValue(1).id)
+        // Antes: GuestStatus.Lobby não tentava reingresso nenhum e ia direto para Closed ("Mesa encerrada"), mesmo
+        // com o token já em mãos desde o Welcome — uma queda real de rádio bem nessa janela (§16.15) não tinha volta.
+        // No transporte de teste a reconexão por token é instantânea, então o estado intermediário Reconnecting não
+        // dá tempo de ser observado aqui: o que prova a correção é nunca passar por Closed e terminar jogando.
+        advanceUntilIdle()
+        bia.status.value shouldBe GuestStatus.Playing
+        t.host.gameStart.value shouldBe mapOf(Seat(1) to bia.playerId)
+    }
+
+    @Test
     fun `§16_2 §16_15 quem chega depois de virar robo recebe o aviso de que perdeu o lugar`() = runTest {
         val network = MemoryNetwork()
         val plan = planFor(GameMode.DUPLAS, mapOf(1 to "Bia"))
