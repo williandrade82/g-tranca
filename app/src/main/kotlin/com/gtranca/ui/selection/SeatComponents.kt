@@ -183,15 +183,16 @@ fun SealedAvatar(
     }
 }
 
-/** O lugar VAGO: círculo tracejado com o texto. */
+/** O lugar VAGO: quadrado (cantos levemente arredondados) com o texto. */
 @Composable
-private fun VacantAvatar(size: Dp, highlighted: Boolean) {
+private fun VacantAvatar(size: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
     Box(
-        Modifier
+        modifier
             .size(size)
-            .clip(CircleShape)
+            .clip(shape)
             .background(GColors.Midnight.copy(alpha = 0.55f))
-            .border(if (highlighted) 3.dp else 1.5.dp, if (highlighted) GColors.Gold else GColors.Steel.copy(alpha = 0.7f), CircleShape),
+            .border(if (highlighted) 3.dp else 1.5.dp, if (highlighted) GColors.Gold else GColors.Steel.copy(alpha = 0.7f), shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(stringResource(R.string.selection_seat_vacant), color = GColors.Steel, style = MaterialTheme.typography.labelMedium)
@@ -340,10 +341,15 @@ fun SeatTable(
                     val persona = if (index == viewerSeat) self else Persona(hostName, color = hostName.hashCode().mod(Persona.COLORS))
                     PersonaStandee(persona, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
                 }
+                slot is Slot.Vacant -> {
+                    // Quadrado, não círculo: também não leva selo nem anel.
+                    VacantAvatar(avatarSize, picked, Modifier.testTag("$tagPrefix-$index-$stateTag"))
+                }
                 else -> {
+                    // Só sobra Chamado e Recrutado: continuam no círculo, que carrega o selo e o anel do convite.
                     SealedAvatar(
                         avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
-                        highlighted = picked && slot != Slot.Vacant,
+                        highlighted = picked,
                         calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
                     ) { look.avatar(avatarSize) }
                 }
@@ -395,7 +401,7 @@ private val OpponentDrop = 18.dp
 private val OpponentInset = 26.dp
 
 /** Quanto a mesa sobe por cima dos perfis (docs/telas.md 3.3): precisa sobrepor pelo menos um pouco. */
-private val TableRise = 26.dp
+private val TableRise = 14.dp
 
 /** Tamanho do avatar de um lugar. */
 private val SeatAvatar = 56.dp
