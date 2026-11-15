@@ -856,4 +856,89 @@ class MultiplayerTableTest {
         advanceTimeBy(2_000)
         again.end.value shouldBe MpEnd.NotFound
     }
+
+    /**
+     * §3.6/§16 relato grave de 15/11/2026 (2 celulares reais, mesma versão do APK, jogo novo, INDIVIDUAL,
+     * sem robôs): depois do recrutamento, o anfitrião tocava "Começar Partida" e: (tentativa 1) a tela do
+     * anfitrião "ficou pensando", depois o convidado foi desconectado e só então apareceu o seletor de boosters
+     * para o anfitrião sozinho; (tentativa 2) a mesa do convidado foi encerrada quase imediatamente e a do
+     * anfitrião ficou travada por ~30 s (bate com `BOOSTERS_WAIT_MILLIS = 35_000`). Reproduz com o caminho real de
+     * início de jogo (`MultiplayerTable.host`/`join`, não só `MultiplayerHost` direto como em
+     * `MultiplayerTestTable`), com as REGRAS PADRÃO da mesa real do app: `RuleSet.DEFAULT`
+     * (`dealGuessBonusEnabled = true`) e `skillBoosters = true` (o seletor de boosters do §17.3 entra no caminho,
+     * como no app de verdade — `MultiplayerDriver.create(..., withBoosters = true)`, igual a
+     * `AppNavHost.kt:411`), ambos os aparelhos com um [GameViewModel] real. Se alguma exceção for engolida em
+     * algum `catch` do caminho (`MultiplayerTable.runHost`, `watchGuest`, etc.), ela aparece aqui como falha do
+     * teste com stacktrace — o que nenhum `adb logcat` sem log explícito mostraria no dispositivo real.
+     */
+    @Test
+    fun `§3_6 §16 jogo novo individual, 2 humanos, regras padrao (boosters e palpite ligados) - inicia sem travar nem lancar excecao`() = runTest {
+        val seed = 150L
+        val network = MemoryNetwork()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(dispatcher + Job())
+        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 1000)
+        config.rules.dealGuessBonusEnabled shouldBe true // confere a premissa: regra padrão da mesa real
+        val rules = TableRules(
+            "Mesa de Ana", GameMode.INDIVIDUAL, config.rules, targetScore = 1000, stake = 0,
+            difficulty = Difficulty.FACIL.id, skillBoosters = true,
+        )
+        val hostTable = MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, newSeed = { seed })
+        val guestTable = MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, newSeed = { seed })
+        var layout = com.gtranca.net.TableLayout.initial(GameMode.INDIVIDUAL).call(1, "k1", "Beto")!!.accept("k1")!!
+        val plan = com.gtranca.net.TablePlan(layout, com.gtranca.game.Tables.personaPool, seed)
+        hostTable.host(rules, "Ana", "mesa-1", plan)
+        runCurrent()
+        guestTable.join("mesa-1", "Beto", inviteKey = "k1")
+        advanceUntilIdle() // "Prepare-se!" (1,5 s) passa no relógio virtual: o jogo começa sozinho nos dois aparelhos
+
+        kotlinx.coroutines.Dispatchers.setMain(dispatcher)
+        try {
+            val hostDriver = MultiplayerDriver.create(hostTable, scope, withBoosters = true) { 0 }
+            val guestDriver = MultiplayerDriver.create(guestTable, scope, withBoosters = true) { 0 }
+            val hostPersonas = hostTable.personas(Persona("Ana"), "VAGO") { it }
+            val guestPersonas = guestTable.personas(Persona("Beto"), "VAGO") { it }
+            val hostVm = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(rules), animationMillis = 0, swapAnimationMillis = 0,
+                externalDriver = hostDriver, externalPersonas = hostPersonas, multiplayer = true,
+            )
+            val guestVm = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(rules), animationMillis = 0, swapAnimationMillis = 0,
+                externalDriver = guestDriver, externalPersonas = guestPersonas, multiplayer = true,
+            )
+            advanceUntilIdle()
+
+            // Os dois confirmam o seletor de boosters (§17.3), como o jogador faria tocando "Seguir" — sem
+            // escolher nenhum (lista vazia é uma confirmação válida).
+            if (hostVm.uiState.value.boosterSelectorPending) hostVm.onBoostersConfirmed(emptyList())
+            if (guestVm.uiState.value.boosterSelectorPending) guestVm.onBoostersConfirmed(emptyList())
+            advanceUntilIdle()
+
+            // Alguém (anfitrião ou convidado, conforme o sorteio do dealerSeat/mortoDealerSeat) responde ao
+            // palpite da mão e do morto, como o toque único faria (`TableEvents.onGuessDealNumber`).
+            repeat(4) {
+                val hostPrompt = hostVm.uiState.value.dealGuessPrompt
+                if (hostPrompt != null) hostVm.onGuessDealNumber((hostPrompt.range.first + hostPrompt.range.last) / 2)
+                val guestPrompt = guestVm.uiState.value.dealGuessPrompt
+                if (guestPrompt != null) guestVm.onGuessDealNumber((guestPrompt.range.first + guestPrompt.range.last) / 2)
+                if (hostVm.uiState.value.dealGuessReveal != null) hostVm.onDealGuessRevealDismissed()
+                if (guestVm.uiState.value.dealGuessReveal != null) guestVm.onDealGuessRevealDismissed()
+                advanceUntilIdle()
+            }
+
+            // O morto já resolveu (currentSeat em AWAITING_DRAW): quem abre a partida compra, completando a
+            // transição para a 1ª jogada de verdade — prova de que o jogo chegou lá mesmo, não só perto.
+            if (hostVm.uiState.value.canDraw) hostVm.onDraw()
+            if (guestVm.uiState.value.canDraw) guestVm.onDraw()
+            advanceUntilIdle()
+
+            // O jogo chegou de verdade à 1ª jogada (não ficou parado no seletor de boosters nem no palpite).
+            hostVm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
+            guestVm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
+            hostTable.end.value shouldBe null
+            guestTable.end.value shouldBe null
+        } finally {
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
+    }
 }

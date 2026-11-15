@@ -373,7 +373,7 @@ class MultiplayerTable(
                 _end.value = failureEnd(e.kind)
             } catch (e: Exception) {
                 // Outra falha ao conectar: nunca vira "Mesa não encontrada".
-                log("connect failed ${e.message?.take(40)}")
+                log("connect failed: ${describeError(e)}")
                 _end.value = MpEnd.ConnectFailed
             }
         }
@@ -432,6 +432,7 @@ class MultiplayerTable(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log("hostRobotGame failed: ${describeError(e)}")
                 _end.value = MpEnd.Closed
             }
         }
@@ -505,6 +506,7 @@ class MultiplayerTable(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log("rejoin failed: ${describeError(e)}")
                 _end.value = MpEnd.NotFound
             }
         }
@@ -527,6 +529,7 @@ class MultiplayerTable(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log("hostAsync failed: ${describeError(e)}")
                 _end.value = MpEnd.Closed
             }
         }
@@ -980,15 +983,24 @@ class MultiplayerTable(
         coins.settle(gameId(), rules, result, stake, received)
     }
 
-    /** Roda o jogo do anfitri�o; a passagem do cargo cancela o la�o (normal). Outra falha fecha a mesa para este aparelho. */
+    /** Roda o jogo do anfitrião; a passagem do cargo cancela o laço (normal). Outra falha fecha a mesa para este aparelho. */
     private suspend fun runHost(host: MultiplayerHost) {
         try {
             host.run()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
+            // §16: sem isto, qualquer exceção no laço do jogo (GameController.run) fechava a mesa em silêncio — nem
+            // o adb logcat mostrava pista alguma (achado numa investigação de regressão, 15/11/2026).
+            log("runHost failed: ${describeError(e)}")
             _end.value = MpEnd.Closed
         }
+    }
+
+    /** Diagnóstico de uma exceção (§16): classe, mensagem e as primeiras linhas da pilha; nunca cartas nem tokens. */
+    private fun describeError(e: Throwable): String {
+        val trace = e.stackTrace.take(4).joinToString(" | ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
+        return "${e::class.qualifiedName}: ${e.message} [$trace]"
     }
 
     private fun gameId(): String = "mp-${_role.value?.tableId}-$myId"
