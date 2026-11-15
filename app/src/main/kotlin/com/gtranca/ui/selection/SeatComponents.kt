@@ -103,6 +103,22 @@ fun RobotStandee(profile: BotProfile, level: BotLevel, height: Dp, highlighted: 
     )
 }
 
+/**
+ * A foto do próprio jogador (ou do anfitrião) **inteira** na mesa de lugares (docs/telas.md 3.3), do tamanho de
+ * [height] em altura; sem foto, o medalhão com a inicial continua redondo. [highlighted] marca a seleção pendente com
+ * uma moldura dourada. Só para quem nunca leva selo nem anel de convite (o próprio jogador e o anfitrião); Chamado e
+ * Recrutado continuam em [SealedAvatar], que precisa do círculo para o selo e o anel.
+ */
+@Composable
+fun PersonaStandee(persona: Persona, height: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
+    PersonaAvatar(
+        persona,
+        height,
+        modifier.then(if (highlighted) Modifier.border(3.dp, GColors.Gold, RoundedCornerShape(20.dp)) else Modifier),
+        crop = false,
+    )
+}
+
 /** Relógio local (ms) em que os prazos dos convites são medidos (o mesmo do recrutamento do `:net`). */
 fun nowMillis(): Long = System.nanoTime() / 1_000_000
 
@@ -302,17 +318,8 @@ fun SeatTable(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (slot is Slot.Robot) {
-                // A imagem de apresentação inteira (sem recorte em círculo): não leva selo nem anel de convite.
-                val profile = BotProfile.entries.firstOrNull { it.code == slot.persona } ?: BotProfile.entries.first()
-                RobotStandee(profile, level, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
-            } else {
-                SealedAvatar(
-                    avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
-                    highlighted = picked && slot != Slot.Vacant,
-                    calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
-                ) { look.avatar(avatarSize) }
-            }
+            // O nome fica acima da imagem, alinhado com ela (docs/telas.md 3.3): a posição de cada lugar (esquerda,
+            // centro, direita) já vem do Box de fora; aqui só muda a ordem (nome em cima, imagem embaixo).
             Text(
                 look.name,
                 color = GColors.Champagne,
@@ -322,6 +329,25 @@ fun SeatTable(
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.labelMedium,
             )
+            when {
+                slot is Slot.Robot -> {
+                    // A imagem de apresentação inteira (sem recorte em círculo): não leva selo nem anel de convite.
+                    val profile = BotProfile.entries.firstOrNull { it.code == slot.persona } ?: BotProfile.entries.first()
+                    RobotStandee(profile, level, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
+                }
+                index == viewerSeat || slot is Slot.Host -> {
+                    // A foto do próprio jogador ou do anfitrião, inteira: nunca leva selo nem anel de convite.
+                    val persona = if (index == viewerSeat) self else Persona(hostName, color = hostName.hashCode().mod(Persona.COLORS))
+                    PersonaStandee(persona, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
+                }
+                else -> {
+                    SealedAvatar(
+                        avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
+                        highlighted = picked && slot != Slot.Vacant,
+                        calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
+                    ) { look.avatar(avatarSize) }
+                }
+            }
         }
     }
 
@@ -368,8 +394,8 @@ private val OpponentDrop = 18.dp
 /** Quanto os adversários entram por baixo do parceiro (robôs grandes e próximos uns dos outros). */
 private val OpponentInset = 26.dp
 
-/** Quanto a mesa sobe por cima do que vem antes, para parecer bem próxima de quem está nos lugares. */
-private val TableRise = 6.dp
+/** Quanto a mesa sobe por cima dos perfis (docs/telas.md 3.3): precisa sobrepor pelo menos um pouco. */
+private val TableRise = 26.dp
 
 /** Tamanho do avatar de um lugar. */
 private val SeatAvatar = 56.dp

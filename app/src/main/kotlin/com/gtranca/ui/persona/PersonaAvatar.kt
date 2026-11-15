@@ -3,6 +3,7 @@ package com.gtranca.ui.persona
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
@@ -30,30 +31,53 @@ internal val MedalColors = listOf(0xFF6C5BD4, 0xFFD23A4F, 0xFF1F9E6B, 0xFFD99A1E
 /**
  * Avatar de um jogador num círculo (§14.1, §14.5): o personagem do jogador virtual (pose do pensador, a pequena), a foto
  * pessoal do jogador ou, sem foto, o medalhão com a inicial na cor escolhida. Sem texto: quem usa dá a descrição
- * (o nome) à tela. [holdingCards]: o robô com as cartas na mão, em vez do pensador (que é o da vez dele).
+ * (o nome) à tela. [holdingCards]: o robô com as cartas na mão, em vez do pensador (que é o da vez dele). [crop] falso
+ * (docs/telas.md 3.3) mostra a foto **inteira** (sem recortar em círculo), do tamanho de [size] em altura; sem foto, o
+ * medalhão continua redondo (não há o que descortar).
  */
 @Composable
-fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, animate: Boolean = false, pose: Pose = Pose.PENSADOR, holdingCards: Boolean = false) {
+fun PersonaAvatar(
+    persona: Persona,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    animate: Boolean = false,
+    pose: Pose = Pose.PENSADOR,
+    holdingCards: Boolean = false,
+    crop: Boolean = true,
+) {
+    val wholeImage = Modifier.height(size)
     persona.character?.let { character ->
         if (pose == Pose.VENCEDOR || pose == Pose.PERDEDOR) {
             // rosto quadrado da pose (tabelas de pontos): parado
             Image(
                 androidx.compose.ui.res.painterResource(avatarRes(character, pose)),
                 null,
-                modifier.size(size).clip(CircleShape).background(GColors.Indigo),
-                contentScale = ContentScale.Crop,
+                if (crop) modifier.size(size).clip(CircleShape).background(GColors.Indigo) else modifier.then(wholeImage),
+                contentScale = if (crop) ContentScale.Crop else ContentScale.Fit,
             )
             return
         }
-        CharacterPortrait(
-            character,
-            Pose.PENSADOR,
-            modifier.size(size).clip(CircleShape).background(GColors.Indigo),
-            animate = animate,
-            effects = false,
-            contentScale = ContentScale.Crop,
-            imageRes = if (holdingCards) cardsRes(character.profile) else null,
-        )
+        if (crop) {
+            CharacterPortrait(
+                character,
+                Pose.PENSADOR,
+                modifier.size(size).clip(CircleShape).background(GColors.Indigo),
+                animate = animate,
+                effects = false,
+                contentScale = ContentScale.Crop,
+                imageRes = if (holdingCards) cardsRes(character.profile) else null,
+            )
+        } else {
+            CharacterPortrait(
+                character,
+                Pose.PENSADOR,
+                modifier.then(wholeImage),
+                animate = animate,
+                effects = false,
+                contentScale = ContentScale.Fit,
+                imageRes = if (holdingCards) cardsRes(character.profile) else null,
+            )
+        }
         return
     }
     // §14.1 foto pessoal do jogador: lida do arquivo (relida quando muda); enquanto carrega ou se falhar, vale o medalhão.
@@ -72,13 +96,22 @@ fun PersonaAvatar(persona: Persona, size: Dp, modifier: Modifier = Modifier, ani
         }
     }
     if (shared != null) {
-        Image(shared, null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+        if (crop) {
+            Image(shared, null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+        } else {
+            Image(shared, null, modifier.then(wholeImage), contentScale = ContentScale.Fit)
+        }
         return
     }
     if (photo != null) {
-        Image(photo, null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+        if (crop) {
+            Image(photo, null, modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
+        } else {
+            Image(photo, null, modifier.then(wholeImage), contentScale = ContentScale.Fit)
+        }
         return
     }
+    // Sem foto: o medalhão continua redondo (não é uma foto para mostrar inteira).
     Box(modifier.size(size).clip(CircleShape).background(MedalColors[persona.color]), contentAlignment = Alignment.Center) {
         Text(
             persona.initial,
