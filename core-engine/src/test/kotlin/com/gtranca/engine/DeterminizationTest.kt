@@ -16,6 +16,8 @@ import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.SideTable
 import com.gtranca.engine.model.Suit
 import com.gtranca.engine.model.TableMeld
+import com.gtranca.engine.model.dealGuessAction
+import com.gtranca.engine.model.dealGuessHandRange
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContain
@@ -133,7 +135,8 @@ class DeterminizationTest {
         for (mode in GameMode.entries) {
             for (seed in 0L until 10L) {
                 val dealt = dealRound(mode, Random(seed))
-                val afterHand = RoundEngine.apply(dealt, dealt.currentSeat, Action.GuessDealRange(0, 10))
+                // §3.6 (14/11/2026) qualquer número válido da faixa fixa do modo serve para este teste
+                val afterHand = RoundEngine.apply(dealt, dealt.currentSeat, dealGuessAction(dealGuessHandRange(mode).first))
                 afterHand.phase shouldBe Phase.DEAL_GUESS_MORTO
                 for (seat in mode.seats) {
                     val view = afterHand.viewFor(seat)

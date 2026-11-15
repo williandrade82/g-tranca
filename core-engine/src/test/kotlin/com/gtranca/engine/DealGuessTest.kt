@@ -1,11 +1,15 @@
 package com.gtranca.engine
 
 import com.gtranca.engine.model.ActionError
+import com.gtranca.engine.model.DEAL_GUESS_FIXED_START
 import com.gtranca.engine.model.DealGuess
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.dealGuessAction
+import com.gtranca.engine.model.dealGuessHandRange
 import com.gtranca.engine.model.dealGuessHandTarget
+import com.gtranca.engine.model.dealGuessMortoRange
 import com.gtranca.engine.model.dealGuessMortoTarget
 import com.gtranca.engine.model.dealGuessSeats
 import com.gtranca.engine.model.RoundResult
@@ -26,6 +30,12 @@ import kotlin.random.Random
  * §3.6 "Distribuição certeira": minijogo de palpite antes da 1ª vez, que não altera a distribuição real
  * (§3.1/§3.2); só rende bônus de pontos (§12.1). Testes do motor (`:core-engine`); o palpite dos robôs
  * (§14.5) e a interface (modal de seleção) ficam para outras tarefas.
+ *
+ * Ajuste de 14/11/2026 (toque único): a faixa de números oferecida encolheu e passou a ser fixa por papel/modo
+ * (35..55 duplas / 12..32 individual na mão; 12..32 em qualquer modo no morto), não mais derivada do baralho
+ * restante. O formato da [Action.GuessDealRange] continua o mesmo (para não exigir bump de `:net`), mas agora
+ * só é aceito com `start` fixo em 1 ([DEAL_GUESS_FIXED_START]); o número escolhido é `end - start`. Ver
+ * [dealGuessAction] (o único jeito suportado de montar essa ação).
  */
 class DealGuessTest {
 
@@ -49,10 +59,10 @@ class DealGuessTest {
         state.currentSeat shouldBe Seat(1)
         state.dealGuess shouldBe DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(0))
 
-        val afterHand = RoundEngine.apply(state, Seat(1), Action.GuessDealRange(5, 27)) // largura 22 = alvo individual
+        val afterHand = RoundEngine.apply(state, Seat(1), dealGuessAction(22)) // 22 = alvo individual
         afterHand.phase shouldBe Phase.DEAL_GUESS_MORTO
         afterHand.currentSeat shouldBe Seat(0) // volta a quem abre a partida, assento diferente de quem deu a mão
-        afterHand.dealGuess?.hand shouldBe Guess(5, 27, correct = true)
+        afterHand.dealGuess?.hand shouldBe Guess(DEAL_GUESS_FIXED_START, DEAL_GUESS_FIXED_START + 22, correct = true)
     }
 
     @Test
@@ -75,51 +85,69 @@ class DealGuessTest {
         }
     }
 
+    // ---------- §3.6 faixas fixas (ajuste de 14/11/2026) ----------
+
+    @Test
+    fun `faixa da mao e 35 a 55 em duplas e 12 a 32 em individual`() {
+        // §3.6 faixa encolhida e fixa, não mais derivada do baralho
+        dealGuessHandRange(GameMode.DUPLAS) shouldBe 35..55
+        dealGuessHandRange(GameMode.INDIVIDUAL) shouldBe 12..32
+    }
+
+    @Test
+    fun `faixa do morto e 12 a 32 em qualquer modo`() {
+        // §3.6 faixa do morto fixa, independente do modo e da largura escolhida na mão
+        dealGuessMortoRange() shouldBe 12..32
+    }
+
     // ---------- §3.6 acerto e erro do palpite da mão ----------
 
     @ParameterizedTest
     @EnumSource(GameMode::class)
-    fun `palpite da mao acerta com largura igual a cardsPerHand vezes o numero de assentos`(mode: GameMode) {
-        // §3.6 alvo da mão: 44 em duplas, 22 em individual (11 cartas por jogador, §3.1)
+    fun `palpite da mao acerta com o numero igual a cardsPerHand vezes o numero de assentos`(mode: GameMode) {
+        // §3.6 alvo da mão: 44 em duplas, 22 em individual (11 cartas por jogador, §3.1); dentro da faixa nova
         val target = RuleSet.DEFAULT.cardsPerHand * mode.seatCount
+        target shouldBeInRangeOf dealGuessHandRange(mode)
         val state = dealRound(mode, Random(5), firstSeat = Seat(0))
         val dealer = state.dealGuess!!.dealerSeat
-        val resolved = RoundEngine.apply(state, dealer, Action.GuessDealRange(10, 10 + target))
-        resolved.dealGuess?.hand shouldBe Guess(10, 10 + target, correct = true)
+        val resolved = RoundEngine.apply(state, dealer, dealGuessAction(target))
+        resolved.dealGuess?.hand shouldBe Guess(DEAL_GUESS_FIXED_START, DEAL_GUESS_FIXED_START + target, correct = true)
         resolved.phase shouldBe Phase.DEAL_GUESS_MORTO
     }
 
     @Test
-    fun `palpite da mao com largura errada nao acerta mas resolve normalmente`() {
-        // §3.6 largura diferente do alvo: palpite registrado, sem acerto, segue para o palpite do morto
+    fun `palpite da mao com numero errado nao acerta mas resolve normalmente`() {
+        // §3.6 número diferente do alvo, mas dentro da faixa: palpite registrado, sem acerto, segue para o morto
         val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
         val dealer = state.dealGuess!!.dealerSeat
-        val resolved = RoundEngine.apply(state, dealer, Action.GuessDealRange(0, 10)) // largura 10 != 44
-        resolved.dealGuess?.hand shouldBe Guess(0, 10, correct = false)
+        val resolved = RoundEngine.apply(state, dealer, dealGuessAction(35)) // 35 != 44 (alvo duplas)
+        resolved.dealGuess?.hand shouldBe Guess(DEAL_GUESS_FIXED_START, DEAL_GUESS_FIXED_START + 35, correct = false)
         resolved.phase shouldBe Phase.DEAL_GUESS_MORTO
         resolved.currentSeat shouldBe state.dealGuess.mortoDealerSeat
     }
 
     @Test
-    fun `start e end trocados sao normalizados pelo motor`() {
-        // §3.6 o motor só confere a largura normalizada; quem resolve a dinâmica de toque é a UI (fora do motor)
+    fun `start diferente de 1 e recusado mesmo com largura dentro da faixa antiga`() {
+        // §3.6 (14/11/2026) toque único: só o formato start=1 é aceito; a "normalização de start/end trocados"
+        // do toque duplo deixou de existir — um par que seria válido no baralho inteiro de antes é recusado agora
         val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
         val dealer = state.dealGuess!!.dealerSeat
-        val resolved = RoundEngine.apply(state, dealer, Action.GuessDealRange(60, 16)) // "fim" antes do "início"
-        resolved.dealGuess?.hand shouldBe Guess(16, 60, correct = true) // largura 44
+        RoundEngine.validate(state, dealer, Action.GuessDealRange(0, 44)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
+        RoundEngine.validate(state, dealer, Action.GuessDealRange(16, 60)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
+        RoundEngine.validate(state, dealer, Action.GuessDealRange(60, 16)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
     }
 
     // ---------- §3.6 acerto e erro do palpite do morto ----------
 
     @ParameterizedTest
     @EnumSource(GameMode::class)
-    fun `palpite do morto acerta com largura 22`(mode: GameMode) {
+    fun `palpite do morto acerta com numero 22`(mode: GameMode) {
         // §3.6 alvo do morto: 22 (11 cartas por morto x 2 mortos, §3.2), em qualquer modo
         val state = dealRound(mode, Random(5), firstSeat = Seat(0))
-        val afterHand = RoundEngine.apply(state, state.dealGuess!!.dealerSeat, Action.GuessDealRange(0, 10))
+        val afterHand = RoundEngine.apply(state, state.dealGuess!!.dealerSeat, dealGuessAction(dealGuessHandRange(mode).first))
         val mortoDealer = afterHand.dealGuess!!.mortoDealerSeat
-        val resolved = RoundEngine.apply(afterHand, mortoDealer, Action.GuessDealRange(3, 25))
-        resolved.dealGuess?.morto shouldBe Guess(3, 25, correct = true)
+        val resolved = RoundEngine.apply(afterHand, mortoDealer, dealGuessAction(22))
+        resolved.dealGuess?.morto shouldBe Guess(DEAL_GUESS_FIXED_START, DEAL_GUESS_FIXED_START + 22, correct = true)
         // §3.6 só depois do 2º palpite resolvido a vez do primeiro jogador começa de verdade (§3.5)
         resolved.phase shouldBe Phase.AWAITING_DRAW
         resolved.currentSeat shouldBe state.firstSeat
@@ -144,8 +172,8 @@ class DealGuessTest {
             DealGuess(
                 dealerSeat = Seat(3),
                 mortoDealerSeat = Seat(2),
-                hand = Guess(0, 44, correct = true),
-                morto = Guess(0, 22, correct = true),
+                hand = Guess(1, 45, correct = true),
+                morto = Guess(1, 23, correct = true),
             ),
         )
         val scores = scoreRound(state)
@@ -161,8 +189,8 @@ class DealGuessTest {
             DealGuess(
                 dealerSeat = Seat(0), // lado 0
                 mortoDealerSeat = Seat(2), // lado 0 também
-                hand = Guess(0, 44, correct = true),
-                morto = Guess(0, 22, correct = true),
+                hand = Guess(1, 45, correct = true),
+                morto = Guess(1, 23, correct = true),
             ),
         )
         val scores = scoreRound(state)
@@ -179,8 +207,8 @@ class DealGuessTest {
             DealGuess(
                 dealerSeat = Seat(1),
                 mortoDealerSeat = Seat(0),
-                hand = Guess(0, 22, correct = true),
-                morto = Guess(0, 22, correct = true),
+                hand = Guess(1, 23, correct = true),
+                morto = Guess(1, 23, correct = true),
             ),
         )
         val scores = scoreRound(state)
@@ -193,14 +221,14 @@ class DealGuessTest {
 
     @Test
     fun `palpites errados nao rendem bonus nenhum`() {
-        // §3.6 / §12.1 erro na largura: sem bônus
+        // §3.6 / §12.1 número errado: sem bônus
         val state = finishedRound(
             GameMode.DUPLAS,
             DealGuess(
                 dealerSeat = Seat(3),
                 mortoDealerSeat = Seat(2),
-                hand = Guess(0, 10, correct = false),
-                morto = Guess(0, 5, correct = false),
+                hand = Guess(1, 36, correct = false),
+                morto = Guess(1, 13, correct = false),
             ),
         )
         val scores = scoreRound(state)
@@ -228,7 +256,7 @@ class DealGuessTest {
     fun `acao fora da fase de palpite e recusada`() {
         // §3.6 GuessDealRange só é aceito nas fases DEAL_GUESS_HAND / DEAL_GUESS_MORTO
         val playing = round(GameMode.INDIVIDUAL) { hand(0, "5H 6H 7H KS") }
-        playing.check(0, Action.GuessDealRange(0, 10)) shouldFailWith ActionError.NOT_GUESS_PHASE
+        playing.check(0, dealGuessAction(22)) shouldFailWith ActionError.NOT_GUESS_PHASE
     }
 
     @Test
@@ -244,86 +272,97 @@ class DealGuessTest {
         // §3.6 / §4.2 o gate de vez já existente cobre o palpite: só quem está em currentSeat pode agir
         val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
         val wrongSeat = state.mode.seats.first { it != state.currentSeat }
-        RoundEngine.validate(state, wrongSeat, Action.GuessDealRange(0, 10)) shouldFailWith ActionError.NOT_YOUR_TURN
-    }
-
-    @Test
-    fun `largura fora da faixa valida e recusada`() {
-        // §3.6 0 <= start, end <= total de estágios (104 cartas sem coringas fora, §1)
-        val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
-        val dealer = state.currentSeat
-        RoundEngine.validate(state, dealer, Action.GuessDealRange(-1, 10)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
-        RoundEngine.validate(state, dealer, Action.GuessDealRange(0, 105)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
-        RoundEngine.validate(state, dealer, Action.GuessDealRange(0, 104)).shouldBeOk() // 104 estágios: limite válido
-    }
-
-    // ---------- §3.6 limites do palpite do morto (22 a 60/82) ----------
-
-    @Test
-    fun `limite maximo do morto e 60 em duplas quando a mao palpitou largura minima`() {
-        // §3.6 estágios do morto = baralho (104) − largura da mão, entre 22 e 60 (duplas)
-        val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
-        val afterHand = RoundEngine.apply(state, state.currentSeat, Action.GuessDealRange(0, 0)) // largura 0
-        val mortoDealer = afterHand.currentSeat
-        RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 61)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
-        RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 60)).shouldBeOk()
-    }
-
-    @Test
-    fun `limite maximo do morto e 82 em individual quando a mao palpitou largura minima`() {
-        // §3.6 estágios do morto em individual: 104 − largura da mão, entre 22 e 82
-        val state = dealRound(GameMode.INDIVIDUAL, Random(5), firstSeat = Seat(0))
-        val afterHand = RoundEngine.apply(state, state.currentSeat, Action.GuessDealRange(0, 0))
-        val mortoDealer = afterHand.currentSeat
-        RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 83)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
-        RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 82)).shouldBeOk()
+        RoundEngine.validate(state, wrongSeat, dealGuessAction(44)) shouldFailWith ActionError.NOT_YOUR_TURN
     }
 
     @ParameterizedTest
     @EnumSource(GameMode::class)
-    fun `limite minimo do morto e 22 quando a mao palpitou largura grande`(mode: GameMode) {
-        // §3.6 largura da mão 90 deixa só 14 cartas (104-90), elevado ao mínimo de 22
+    fun `bordas da faixa da mao sao aceitas e um numero fora e recusado`(mode: GameMode) {
+        // §3.6 bordas inclusivas da faixa nova (35/55 duplas, 12/32 individual)
         val state = dealRound(mode, Random(5), firstSeat = Seat(0))
-        val afterHand = RoundEngine.apply(state, state.currentSeat, Action.GuessDealRange(0, 90))
+        val dealer = state.currentSeat
+        val range = dealGuessHandRange(mode)
+        RoundEngine.validate(state, dealer, dealGuessAction(range.first)).shouldBeOk()
+        RoundEngine.validate(state, dealer, dealGuessAction(range.last)).shouldBeOk()
+        RoundEngine.validate(state, dealer, dealGuessAction(range.first - 1)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
+        RoundEngine.validate(state, dealer, dealGuessAction(range.last + 1)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
+    }
+
+    @Test
+    fun `um numero que era valido no baralho inteiro de antes agora e recusado`() {
+        // §3.6 (14/11/2026) 90 cabia no baralho inteiro (0..104) de antes, mas está fora das faixas novas
+        val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
+        val dealer = state.currentSeat
+        RoundEngine.validate(state, dealer, Action.GuessDealRange(1, 1 + 90)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
+    }
+
+    @Test
+    fun `bordas da faixa do morto sao aceitas e um numero fora e recusado`() {
+        // §3.6 bordas inclusivas da faixa nova do morto (12/32), fixa em qualquer modo
+        val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
+        val afterHand = RoundEngine.apply(state, state.currentSeat, dealGuessAction(44))
         val mortoDealer = afterHand.currentSeat
-        RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 23)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
-        RoundEngine.validate(afterHand, mortoDealer, Action.GuessDealRange(0, 22)).shouldBeOk()
+        val range = dealGuessMortoRange()
+        RoundEngine.validate(afterHand, mortoDealer, dealGuessAction(range.first)).shouldBeOk()
+        RoundEngine.validate(afterHand, mortoDealer, dealGuessAction(range.last)).shouldBeOk()
+        RoundEngine.validate(afterHand, mortoDealer, dealGuessAction(range.first - 1)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
+        RoundEngine.validate(afterHand, mortoDealer, dealGuessAction(range.last + 1)) shouldFailWith ActionError.GUESS_RANGE_OUT_OF_BOUNDS
+    }
+
+    @Test
+    fun `faixa do morto nao depende mais da largura escolhida na mao`() {
+        // §3.6 (14/11/2026) a faixa do morto é sempre 12..32, mesmo quando a mão escolheu o extremo da sua faixa
+        val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
+        val afterMin = RoundEngine.apply(state, state.currentSeat, dealGuessAction(dealGuessHandRange(GameMode.DUPLAS).first))
+        val afterMax = RoundEngine.apply(state, state.currentSeat, dealGuessAction(dealGuessHandRange(GameMode.DUPLAS).last))
+        RoundEngine.legalActions(afterMin, afterMin.currentSeat) shouldBe RoundEngine.legalActions(afterMax, afterMax.currentSeat)
     }
 
     // ---------- §3.6 dealGuessHandTarget / dealGuessMortoTarget (helpers usados por :ai e, depois, pela UI) ----------
 
     @ParameterizedTest
     @EnumSource(GameMode::class)
-    fun `dealGuessHandTarget acerta a mesma largura que o motor usa para a mao`(mode: GameMode) {
+    fun `dealGuessHandTarget acerta o mesmo numero que o motor usa para a mao`(mode: GameMode) {
         // §3.6 confere que o helper bate com a fórmula inline de RoundEngine.guessDealRange
         val target = dealGuessHandTarget(mode, RuleSet.DEFAULT)
         val state = dealRound(mode, Random(9), firstSeat = Seat(0))
         val dealer = state.dealGuess!!.dealerSeat
-        val resolved = RoundEngine.apply(state, dealer, Action.GuessDealRange(0, target))
-        resolved.dealGuess?.hand shouldBe Guess(0, target, correct = true)
+        val resolved = RoundEngine.apply(state, dealer, dealGuessAction(target))
+        resolved.dealGuess?.hand?.correct shouldBe true
     }
 
     @ParameterizedTest
     @EnumSource(GameMode::class)
-    fun `dealGuessMortoTarget acerta a mesma largura que o motor usa para o morto`(mode: GameMode) {
-        // §3.6 alvo do morto é fixo (22), independente do modo ou da largura escolhida na mão
+    fun `dealGuessMortoTarget acerta o mesmo numero que o motor usa para o morto`(mode: GameMode) {
+        // §3.6 alvo do morto é fixo (22), independente do modo ou do número escolhido na mão
         val target = dealGuessMortoTarget(RuleSet.DEFAULT)
         val state = dealRound(mode, Random(9), firstSeat = Seat(0))
-        val afterHand = RoundEngine.apply(state, state.dealGuess!!.dealerSeat, Action.GuessDealRange(0, 1))
+        val afterHand = RoundEngine.apply(state, state.dealGuess!!.dealerSeat, dealGuessAction(dealGuessHandRange(mode).first))
         val mortoDealer = afterHand.dealGuess!!.mortoDealerSeat
-        val resolved = RoundEngine.apply(afterHand, mortoDealer, Action.GuessDealRange(0, target))
-        resolved.dealGuess?.morto shouldBe Guess(0, target, correct = true)
+        val resolved = RoundEngine.apply(afterHand, mortoDealer, dealGuessAction(target))
+        resolved.dealGuess?.morto?.correct shouldBe true
     }
 
     // ---------- §3.6 legalActions ----------
 
-    @Test
-    fun `legalActions na fase de palpite tem um candidato por largura possivel`() {
-        // §3.6 um GuessDealRange por largura (0..104), já que o resultado só depende da largura
-        val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
+    @ParameterizedTest
+    @EnumSource(GameMode::class)
+    fun `legalActions na fase de palpite da mao tem um candidato por numero possivel na faixa fixa`(mode: GameMode) {
+        // §3.6 (14/11/2026) um dealGuessAction por número da faixa fixa do modo (21 números: 35..55 ou 12..32)
+        val state = dealRound(mode, Random(5), firstSeat = Seat(0))
         val legal = RoundEngine.legalActions(state, state.currentSeat)
-        legal shouldHaveSize 105 // estágios 0..104
+        legal shouldHaveSize dealGuessHandRange(mode).count()
         legal.forEach { RoundEngine.validate(state, state.currentSeat, it).shouldBeOk() }
+    }
+
+    @Test
+    fun `legalActions na fase de palpite do morto tem um candidato por numero possivel na faixa fixa`() {
+        // §3.6 (14/11/2026) faixa do morto fixa (12..32 = 21 números), em qualquer modo
+        val state = dealRound(GameMode.DUPLAS, Random(5), firstSeat = Seat(0))
+        val afterHand = RoundEngine.apply(state, state.currentSeat, dealGuessAction(44))
+        val legal = RoundEngine.legalActions(afterHand, afterHand.currentSeat)
+        legal shouldHaveSize dealGuessMortoRange().count()
+        legal.forEach { RoundEngine.validate(afterHand, afterHand.currentSeat, it).shouldBeOk() }
     }
 
     // ---------- §3.6 o palpite não altera a distribuição real ----------
@@ -332,12 +371,12 @@ class DealGuessTest {
     @EnumSource(GameMode::class)
     fun `resolver os dois palpites produz exatamente a mesma distribuicao de com o parametro desligado`(mode: GameMode) {
         // §3.6 "o palpite não altera em nada a distribuição real": com a mesma semente, o estado após os dois
-        // palpites (quaisquer larguras) é igual ao obtido com dealGuessBonusEnabled = false, exceto o próprio
-        // campo dealGuess (que só existe com o parâmetro ligado)
+        // palpites (quaisquer números válidos) é igual ao obtido com dealGuessBonusEnabled = false, exceto o
+        // próprio campo dealGuess (que só existe com o parâmetro ligado)
         for (seed in 0L until 20L) {
             val withGuess = dealRound(mode, Random(seed))
             val withoutGuess = dealRound(mode, Random(seed), NO_DEAL_GUESS)
-            val resolved = resolveDealGuesses(withGuess, handWidth = 1, mortoWidth = 1)
+            val resolved = resolveDealGuesses(withGuess, mode)
             resolved.copy(dealGuess = null) shouldBe withoutGuess
         }
     }
@@ -362,14 +401,18 @@ class DealGuessTest {
         val a = dealRound(GameMode.DUPLAS, Random(42))
         val b = dealRound(GameMode.DUPLAS, Random(42))
         a shouldBe b
-        val resolvedA = resolveDealGuesses(a, handWidth = 10, mortoWidth = 5)
-        val resolvedB = resolveDealGuesses(b, handWidth = 10, mortoWidth = 5)
+        val resolvedA = resolveDealGuesses(a, GameMode.DUPLAS)
+        val resolvedB = resolveDealGuesses(b, GameMode.DUPLAS)
         resolvedA shouldBe resolvedB
     }
 
-    /** Resolve os dois palpites pendentes de [state] com as larguras indicadas (início sempre 0), devolvendo o estado após. */
-    private fun resolveDealGuesses(state: RoundState, handWidth: Int, mortoWidth: Int): RoundState {
-        val afterHand = RoundEngine.apply(state, state.currentSeat, Action.GuessDealRange(0, handWidth))
-        return RoundEngine.apply(afterHand, afterHand.currentSeat, Action.GuessDealRange(0, mortoWidth))
+    /** Resolve os dois palpites pendentes de [state], com o menor número válido da faixa fixa de cada fase. */
+    private fun resolveDealGuesses(state: RoundState, mode: GameMode): RoundState {
+        val afterHand = RoundEngine.apply(state, state.currentSeat, dealGuessAction(dealGuessHandRange(mode).first))
+        return RoundEngine.apply(afterHand, afterHand.currentSeat, dealGuessAction(dealGuessMortoRange().first))
+    }
+
+    private infix fun Int.shouldBeInRangeOf(range: IntRange) {
+        (this in range) shouldBe true
     }
 }
