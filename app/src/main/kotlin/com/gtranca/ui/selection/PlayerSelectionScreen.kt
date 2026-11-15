@@ -57,7 +57,6 @@ import com.gtranca.ui.tables.WifiControl
 import com.gtranca.ui.tables.modeLabel
 import com.gtranca.ui.tables.rulesName
 import com.gtranca.ui.theme.FitText
-import com.gtranca.ui.theme.GButton
 import com.gtranca.ui.theme.GButtonKind
 import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.Spacing
@@ -120,7 +119,9 @@ fun PlayerSelectionScreen(
             "player-selection",
             bottom = {
                 BottomButton(stringResource(R.string.back), "selection-back", GButtonKind.Secondary, enabled = !starting, weight = 0.7f, onClick = onBack)
-                BottomButton(stringResource(R.string.selection_start), "start-match", GButtonKind.Primary, enabled = ui.layout.canStart && !starting, weight = 1.3f, onClick = onStart)
+                // §16.2 falta gente? "Começar Partida" completa com robôs antes de começar (onStart, em AppNavHost); só fica
+                // inativo com um Chamado pendente (não dá para decidir por ele).
+                BottomButton(stringResource(R.string.selection_start), "start-match", GButtonKind.Primary, enabled = !ui.layout.hasCalled && !starting, weight = 1.3f, onClick = onStart)
             },
             titleExtra = { TourButton(startTour) },
         ) {
@@ -182,12 +183,6 @@ private fun ColumnScope.SelectionContent(
     )
     RobotRow(ui.layout.usedPersonas, (sel as? Selection.Robot)?.persona, level, vm::onRobotTap)
     MultiplayerBlock(vm, ui, wifi, free, myKey, photos, onRefresh)
-    GButton(
-        vm::onFill,
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).tourTarget("fill-with-robots").testTag("fill-with-robots"),
-        enabled = !starting,
-        kind = GButtonKind.Secondary,
-    ) { Text(stringResource(R.string.selection_fill)) }
 }
 
 /** A lista horizontal dos 4 robôs: foto de apresentação em círculo e o nome embaixo; esmaecido quando já sentado. */

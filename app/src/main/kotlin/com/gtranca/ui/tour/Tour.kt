@@ -140,7 +140,6 @@ object Tours {
         TourStep("robot-row", R.string.tour_sel_robots),
         TourStep("multiplayer-block", R.string.tour_sel_multiplayer),
         TourStep("selection-refresh", R.string.tour_refresh),
-        TourStep("fill-with-robots", R.string.tour_sel_fill),
         TourStep("start-match", R.string.tour_sel_start),
     )
 

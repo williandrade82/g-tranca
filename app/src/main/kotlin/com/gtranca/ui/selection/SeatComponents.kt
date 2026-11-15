@@ -9,8 +9,9 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -29,7 +30,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -205,9 +205,10 @@ private fun slotLook(
 internal fun seatAt(bounds: Map<Int, Rect>, point: Offset): Int? = bounds.entries.firstOrNull { it.value.contains(point) }?.key
 
 /**
- * A mesa de lugares (docs/telas.md 3.3 e 3.13): feltro verde com aro de madeira; o jogador de [viewerSeat] embaixo, o
- * parceiro em cima e os adversários nas laterais. Interativa só para o recrutador ([interactive]): tocar escolhe/abre o
- * menu e arrastar um avatar troca ou move. Na tela do recrutado ([interactive] falso) é só leitura.
+ * A mesa de lugares (docs/telas.md 3.3 e 3.13): a imagem da mesa (a mesma do Início) com os lugares **acima** dela —
+ * em duplas, adversário esquerda / parceiro / adversário direita; no individual, só o adversário — e o jogador de
+ * [viewerSeat] sempre **embaixo**. Interativa só para o recrutador ([interactive]): tocar escolhe/abre o menu e
+ * arrastar um avatar troca ou move. Na tela do recrutado ([interactive] falso) é só leitura.
  */
 @Composable
 fun SeatTable(
@@ -230,89 +231,117 @@ fun SeatTable(
     val bounds = remember { mutableStateMapOf<Int, Rect>() }
     var dragFrom by remember { mutableStateOf<Int?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    Box(modifier.aspectRatio(if (mode.seatCount == 2) 1.15f else 1f), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize().padding(if (mode.seatCount == 2) 28.dp else 36.dp)) {
-            val radius = size.minDimension / 2
-            drawCircle(Brush.radialGradient(listOf(Felt, FeltDark), center, radius), radius)
-            drawCircle(Wood, radius, style = Stroke(radius * 0.09f))
-            drawCircle(GColors.Gold.copy(alpha = 0.5f), radius * 0.955f, style = Stroke(2f))
-            drawCircle(GColors.Gold.copy(alpha = 0.25f), radius * 0.35f, center, style = Stroke(2f))
+
+    @Composable
+    fun SeatItem(index: Int, avatarSize: Dp = SeatAvatar, modifier: Modifier = Modifier) {
+        val slot = layout.slots[index]
+        val picked = selectedSeat == index
+        val look = slotLook(index, slot, viewerSeat, self, hostName, level, photos, highlighted = picked)
+        val stateTag = when {
+            slot is Slot.Vacant -> "vacant"
+            slot is Slot.Called -> "called"
+            slot is Slot.Recruited -> "recruited"
+            else -> "filled"
         }
-        layout.slots.forEachIndexed { index, slot ->
-            val role = SeatRole.of(mode, Seat(index), Seat(viewerSeat))
-            val align = when (role) {
-                SeatRole.YOU -> Alignment.BottomCenter
-                SeatRole.PARTNER, SeatRole.OPPONENT -> Alignment.TopCenter
-                SeatRole.LEFT_OPPONENT -> Alignment.CenterStart
-                SeatRole.RIGHT_OPPONENT -> Alignment.CenterEnd
-            }
-            val picked = selectedSeat == index
-            val look = slotLook(index, slot, viewerSeat, self, hostName, level, photos, highlighted = picked)
-            val stateTag = when {
-                slot is Slot.Vacant -> "vacant"
-                slot is Slot.Called -> "called"
-                slot is Slot.Recruited -> "recruited"
-                else -> "filled"
-            }
-            val draggable = interactive && index != TableLayout.HOST_SEAT && slot != Slot.Vacant
-            val dragging = dragFrom == index
-            Column(
-                Modifier
-                    .align(align)
-                    .zIndex(if (dragging) 2f else 0f)
-                    .widthIn(max = 96.dp)
-                    .onGloballyPositioned { bounds[index] = it.boundsInRoot() }
-                    .graphicsLayer {
-                        if (dragging) {
-                            translationX = dragOffset.x
-                            translationY = dragOffset.y
-                        }
+        val draggable = interactive && index != TableLayout.HOST_SEAT && slot != Slot.Vacant
+        val dragging = dragFrom == index
+        Column(
+            modifier
+                .zIndex(if (dragging) 2f else 0f)
+                .widthIn(max = avatarSize + 24.dp)
+                .onGloballyPositioned { bounds[index] = it.boundsInRoot() }
+                .graphicsLayer {
+                    if (dragging) {
+                        translationX = dragOffset.x
+                        translationY = dragOffset.y
                     }
-                    .semantics(mergeDescendants = true) { contentDescription = look.describe }
-                    .testTag("$tagPrefix-$index")
-                    .then(if (interactive) Modifier.clickable { onSeatTap(index) } else Modifier)
-                    .then(
-                        if (draggable) {
-                            Modifier.pointerInput(index, layout) {
-                                detectDragGestures(
-                                    onDragStart = { dragFrom = index; dragOffset = Offset.Zero },
-                                    onDrag = { change, amount ->
-                                        change.consume()
-                                        dragOffset += amount
-                                    },
-                                    onDragEnd = {
-                                        val from = index
-                                        val origin = bounds[from]
-                                        val target = origin?.let { seatAt(bounds, it.center + dragOffset) }
-                                        dragFrom = null
-                                        dragOffset = Offset.Zero
-                                        if (target != null && target != from) onDrop(from, target)
-                                    },
-                                    onDragCancel = { dragFrom = null; dragOffset = Offset.Zero },
-                                )
-                            }
-                        } else Modifier,
-                    ),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                SealedAvatar(
-                    SeatAvatar, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
-                    highlighted = picked && slot != Slot.Vacant,
-                    calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
-                ) { look.avatar(SeatAvatar) }
-                Text(
-                    look.name,
-                    color = GColors.Champagne,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
+                }
+                .semantics(mergeDescendants = true) { contentDescription = look.describe }
+                .testTag("$tagPrefix-$index")
+                .then(if (interactive) Modifier.clickable { onSeatTap(index) } else Modifier)
+                .then(
+                    if (draggable) {
+                        Modifier.pointerInput(index, layout) {
+                            detectDragGestures(
+                                onDragStart = { dragFrom = index; dragOffset = Offset.Zero },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount
+                                },
+                                onDragEnd = {
+                                    val from = index
+                                    val origin = bounds[from]
+                                    val target = origin?.let { seatAt(bounds, it.center + dragOffset) }
+                                    dragFrom = null
+                                    dragOffset = Offset.Zero
+                                    if (target != null && target != from) onDrop(from, target)
+                                },
+                                onDragCancel = { dragFrom = null; dragOffset = Offset.Zero },
+                            )
+                        }
+                    } else Modifier,
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            SealedAvatar(
+                avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
+                highlighted = picked && slot != Slot.Vacant,
+                calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
+            ) { look.avatar(avatarSize) }
+            Text(
+                look.name,
+                color = GColors.Champagne,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
+
+    // Acima da mesa (docs/telas.md 3.3): em duplas o parceiro fica em cima e mais à frente (maior, por cima no
+    // desenho) e os dois adversários um pouco abaixo dele, quase encostando na mesa; no individual, só o adversário,
+    // no mesmo tamanho do parceiro. O lugar de viewerSeat nunca entra aqui, fica embaixo da imagem.
+    val roleOf = layout.slots.indices.associateWith { SeatRole.of(mode, Seat(it), Seat(viewerSeat)) }
+    val partnerIndex = roleOf.entries.firstOrNull { it.value == SeatRole.PARTNER }?.key
+    val leftIndex = roleOf.entries.firstOrNull { it.value == SeatRole.LEFT_OPPONENT }?.key
+    val rightIndex = roleOf.entries.firstOrNull { it.value == SeatRole.RIGHT_OPPONENT }?.key
+    val soleOpponentIndex = roleOf.entries.firstOrNull { it.value == SeatRole.OPPONENT }?.key
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        if (partnerIndex != null) {
+            // zIndex à frente da mesa (vem depois, no mesmo Column): o parceiro e os adversários ficam por cima dela.
+            Box(Modifier.fillMaxWidth().zIndex(1f)) {
+                leftIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopStart).offset(y = OpponentDrop)) }
+                rightIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopEnd).offset(y = OpponentDrop)) }
+                SeatItem(partnerIndex, PartnerAvatar, Modifier.align(Alignment.TopCenter))
+            }
+        } else if (soleOpponentIndex != null) {
+            Box(Modifier.fillMaxWidth()) {
+                SeatItem(soleOpponentIndex, PartnerAvatar, Modifier.align(Alignment.Center))
+            }
+        }
+        Image(
+            painterResource(R.drawable.home_table),
+            contentDescription = null,
+            modifier = Modifier.fillMaxWidth(0.92f).aspectRatio(1080f / 316f).offset(y = -TableRise).padding(bottom = 4.dp),
+            contentScale = ContentScale.FillWidth,
+        )
+        SeatItem(viewerSeat)
+    }
 }
+
+/** Avatar do parceiro (duplas) ou do único adversário (individual): maior, para ficar à frente dos demais. */
+private val PartnerAvatar = 92.dp
+
+/** Avatar dos adversários em duplas: um pouco menor que o do parceiro. */
+private val OpponentAvatar = 64.dp
+
+/** Quanto os adversários descem em relação ao parceiro, quase encostando na mesa. */
+private val OpponentDrop = 16.dp
+
+/** Quanto a mesa sobe por cima do que vem antes, para parecer bem próxima de quem está nos lugares. */
+private val TableRise = 6.dp
 
 /** Tamanho do avatar de um lugar. */
 private val SeatAvatar = 56.dp
