@@ -81,4 +81,28 @@ class SeatViewTest {
         seatView.dealGuess.shouldBeNull()
         seatView.toPlayerView(RuleSet.DEFAULT).dealGuess.shouldBeNull()
     }
+
+    /**
+     * §3.6 (15/11/2026): o estado de verdade enviado logo no início de toda partida nova (1ª vista, antes de
+     * qualquer palpite resolvido) — `hand` e `morto` ainda `null`. Nenhum outro teste deste arquivo cobria esse
+     * caso específico (todos usam `hand` já resolvido, ou `dealGuess = null` inteiro) — checado depois de um
+     * relato de travamento real no multijogador logo ao iniciar uma partida nova.
+     */
+    @Test
+    fun `§3_6 primeira vista da partida (hand e morto ainda null) sobrevive a ida e volta pela rede`() {
+        val view = mortoGuessView().copy(
+            phase = Phase.DEAL_GUESS_HAND,
+            dealGuess = DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(0), hand = null, morto = null),
+        )
+        val seatView = seatViewOf(view)
+        val bytes = ProtocolCodec().encode(1, ViewUpdate(seatView))
+        val decoded = ProtocolCodec().decode(bytes)
+        decoded.shouldBeInstanceOf<Decoded.Ok>()
+        val payload = decoded.envelope.p
+        payload.shouldBeInstanceOf<ViewUpdate>()
+        val received = payload.view
+        received.dealGuess shouldBe view.dealGuess
+        val rebuilt = received.toPlayerView(RuleSet.DEFAULT)
+        rebuilt.dealGuess shouldBe view.dealGuess
+    }
 }
