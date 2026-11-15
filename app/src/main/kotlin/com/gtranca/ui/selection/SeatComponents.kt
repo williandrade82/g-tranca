@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -81,6 +83,23 @@ fun RobotPhoto(profile: BotProfile, level: BotLevel, size: Dp, modifier: Modifie
         modifier.size(size).clip(CircleShape).background(GColors.Indigo),
         contentScale = ContentScale.Crop,
         alignment = Alignment.TopCenter,
+    )
+}
+
+/**
+ * A imagem de apresentação do robô **inteira** (sem recortar em círculo), do jeito que ela aparece na mesa de lugares
+ * (docs/telas.md 3.3): grande, do tamanho de [height] (a largura segue a proporção da imagem). [highlighted] marca a
+ * seleção pendente com uma moldura dourada.
+ */
+@Composable
+fun RobotStandee(profile: BotProfile, level: BotLevel, height: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
+    Image(
+        painterResource(characterRes(BotCharacter(profile, level), Pose.APRESENTACAO)),
+        null,
+        modifier
+            .height(height)
+            .then(if (highlighted) Modifier.border(3.dp, GColors.Gold, RoundedCornerShape(20.dp)) else Modifier),
+        contentScale = ContentScale.FillHeight,
     )
 }
 
@@ -187,7 +206,7 @@ private fun slotLook(
         }
         slot is Slot.Robot -> {
             val profile = BotProfile.entries.firstOrNull { it.code == slot.persona } ?: BotProfile.entries.first()
-            SlotLook(profile.botName, null, false, stringResource(R.string.a11y_robot_seated, profile.botName)) { RobotPhoto(profile, level, it) }
+            SlotLook(profile.botName, null, false, stringResource(R.string.a11y_robot_seated, profile.botName)) { RobotStandee(profile, level, it, highlighted) }
         }
         slot is Slot.Called -> {
             val persona = Persona(slot.name, color = slot.key.hashCode().mod(Persona.COLORS), photoBytes = photos[slot.key])
@@ -283,11 +302,17 @@ fun SeatTable(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SealedAvatar(
-                avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
-                highlighted = picked && slot != Slot.Vacant,
-                calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
-            ) { look.avatar(avatarSize) }
+            if (slot is Slot.Robot) {
+                // A imagem de apresentação inteira (sem recorte em círculo): não leva selo nem anel de convite.
+                val profile = BotProfile.entries.firstOrNull { it.code == slot.persona } ?: BotProfile.entries.first()
+                RobotStandee(profile, level, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
+            } else {
+                SealedAvatar(
+                    avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
+                    highlighted = picked && slot != Slot.Vacant,
+                    calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
+                ) { look.avatar(avatarSize) }
+            }
             Text(
                 look.name,
                 color = GColors.Champagne,
@@ -312,8 +337,8 @@ fun SeatTable(
         if (partnerIndex != null) {
             // zIndex à frente da mesa (vem depois, no mesmo Column): o parceiro e os adversários ficam por cima dela.
             Box(Modifier.fillMaxWidth().zIndex(1f)) {
-                leftIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopStart).offset(y = OpponentDrop)) }
-                rightIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopEnd).offset(y = OpponentDrop)) }
+                leftIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopStart).offset(x = OpponentInset, y = OpponentDrop)) }
+                rightIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopEnd).offset(x = -OpponentInset, y = OpponentDrop)) }
                 SeatItem(partnerIndex, PartnerAvatar, Modifier.align(Alignment.TopCenter))
             }
         } else if (soleOpponentIndex != null) {
@@ -331,14 +356,17 @@ fun SeatTable(
     }
 }
 
-/** Avatar do parceiro (duplas) ou do único adversário (individual): maior, para ficar à frente dos demais. */
-private val PartnerAvatar = 92.dp
+/** Altura do parceiro (duplas) ou do único adversário (individual): maior, para ficar à frente dos demais. */
+private val PartnerAvatar = 108.dp
 
-/** Avatar dos adversários em duplas: um pouco menor que o do parceiro. */
-private val OpponentAvatar = 64.dp
+/** Altura dos adversários em duplas: um pouco menor que a do parceiro. */
+private val OpponentAvatar = 80.dp
 
 /** Quanto os adversários descem em relação ao parceiro, quase encostando na mesa. */
-private val OpponentDrop = 16.dp
+private val OpponentDrop = 18.dp
+
+/** Quanto os adversários entram por baixo do parceiro (robôs grandes e próximos uns dos outros). */
+private val OpponentInset = 26.dp
 
 /** Quanto a mesa sobe por cima do que vem antes, para parecer bem próxima de quem está nos lugares. */
 private val TableRise = 6.dp
