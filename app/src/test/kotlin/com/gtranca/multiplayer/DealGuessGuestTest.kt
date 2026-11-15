@@ -31,9 +31,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
@@ -145,5 +149,90 @@ class DealGuessGuestTest {
         advanceUntilIdle()
         vm.uiState.value.isHumanTurn shouldBe true
         vm.uiState.value.dealGuessPrompt.shouldBeNull()
+    }
+
+    /** Vista mínima de duplas (pacer puro): [viewerSeat] só acompanha os palpites de [dealerSeat]/[mortoDealerSeat]. */
+    private fun bystanderSnapshot(viewerSeat: Seat, round: Int, phase: Phase, dealGuess: DealGuess?): GameSnapshot {
+        val view = PlayerView(
+            mode = GameMode.DUPLAS, seat = viewerSeat, side = com.gtranca.engine.model.GameMode.DUPLAS.sideOf(viewerSeat),
+            currentSeat = viewerSeat, firstSeat = viewerSeat, phase = phase, result = null, hand = emptyList(),
+            handSizes = listOf(11, 11, 11, 11), discardPile = emptyList(), stockSize = 30,
+            mortoStatus = listOf(MortoStatus.Available, MortoStatus.Available), mortoSizes = listOf(11, 11),
+            redThrees = List(2) { emptyList() }, tables = listOf(SideTable(), SideTable()), rules = RuleSet.DEFAULT,
+            dealGuess = dealGuess,
+        )
+        return GameSnapshot(
+            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000), viewerSeat, view, round, listOf(0, 0), emptyList(),
+            Stage.PLAYING, null, emptyList(), null, List(4) { emptyList() },
+        )
+    }
+
+    /**
+     * §3.6 regressão achada em revisão (14/11/2026): o motor exclui `Action.GuessDealRange` de `turnEvents`
+     * (`GameController.recordEvent`), então `SnapshotPacer.othersPlayed` nunca reconhecia o palpite de outro
+     * assento como "alguém jogou" — sem pausa nenhuma antes de mostrá-lo, como qualquer outra jogada de robô
+     * (telas-app.md 3.8.2: "mesma pausa de pensando"). Numa virada de partida, o `SnapshotPacer` publica, sem
+     * suspender entre uma vista e outra, "partida nova, ainda sem palpite" seguido de "palpite já resolvido por um
+     * robô" — e o `StateFlow` conflado que o [GameViewModel] observa (`TableDriver.state`) pode nunca mostrar a
+     * 1ª vista para o convidado: só a seguinte, já resolvida. Sem "antes" (`dealGuess.hand == null`) para comparar,
+     * `handleDealGuessTransition` nunca detecta a transição, e a pílula do robô nunca aparece — o sintoma relatado
+     * (ver `docs/plano-distribuicao-certeira.md`, item revertido do portão no pacer). Corrigido estendendo
+     * `SnapshotPacer.othersPlayed` para também pausar quando um palpite resolvido é de outro assento (não o
+     * `viewerSeat`): a pausa (`paceMillis`, a mesma de qualquer jogada de robô) garante que a vista "ainda sem
+     * palpite" fica visível tempo suficiente para o coletor da VM processá-la antes da seguinte.
+     */
+    @Test
+    fun `§3_6 pacer de verdade pausa antes do palpite de outro assento, a pilula nao se perde na rajada`() = runTest(dispatcher) {
+        val viewerSeat = Seat(1)
+        val dealerRobot = Seat(0)
+        val mortoSeat = Seat(2)
+        val initial = bystanderSnapshot(viewerSeat, round = 1, phase = Phase.PLAYING, dealGuess = null)
+        // A partida 2 chega em DUAS vistas (rajada, como o anfitrião manda em `PacingPolicy.FREE`): primeiro sem
+        // nenhum palpite resolvido, depois com o palpite da mão já resolvido pelo robô (`dealerRobot`).
+        val roundStart = bystanderSnapshot(
+            viewerSeat, round = 2, phase = Phase.DEAL_GUESS_HAND, dealGuess = DealGuess(dealerRobot, mortoSeat, hand = null),
+        )
+        val resolved = bystanderSnapshot(
+            viewerSeat, round = 2, phase = Phase.DEAL_GUESS_MORTO,
+            dealGuess = DealGuess(dealerRobot, mortoSeat, hand = Guess(0, 44, true)),
+        )
+
+        val state = MutableStateFlow(initial)
+        val driver = object : TableDriver {
+            override val state: StateFlow<GameSnapshot> = state
+            override fun awaitingHuman() = false
+            override fun submit(action: Action, requestId: Long) = false
+            override fun explain(action: Action, requestId: Long): RuleError? = null
+            override var dealDelayScale = 1.0
+            override fun continueToNextRound() = Unit
+            override fun resign() = Unit
+            override suspend fun run() = awaitCancellation()
+        }
+        val vm = GameViewModel(
+            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000), gameSeed = 1, computeDispatcher = dispatcher,
+            botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
+            externalDriver = driver, multiplayer = true, continuing = true,
+        )
+        val pacer = com.gtranca.multiplayer.SnapshotPacer({ 700 }, { 0 }, { 0 }) { state.value = it }
+        val job = launch { pacer.run(initial) }
+        runCurrent()
+
+        pacer.offer(roundStart)
+        pacer.offer(resolved)
+        runCurrent()
+
+        // A pausa (700 ms, como a de qualquer jogada de robô) ainda não passou: a pílula do robô já deveria ter
+        // aparecido (e ainda não teria sumido, `DEAL_GUESS_PILL_MILLIS` = 1 600 ms) se a vista intermediária tivesse
+        // sido vista — a regressão faz isso nunca acontecer.
+        advanceTimeBy(699)
+        vm.uiState.value.dealGuessPills[dealerRobot.index].shouldBeNull()
+
+        advanceTimeBy(1)
+        // `advanceTimeBy` move o relógio até o instante exato do `delay(700)` do pacer, mas o `runCurrent()` abaixo
+        // é quem efetivamente retoma a corrotina suspensa nele (publica `resolved` e a VM reage).
+        runCurrent()
+        val pill = vm.uiState.value.dealGuessPills[dealerRobot.index].shouldNotBeNull()
+        pill.correct shouldBe true
+        job.cancel()
     }
 }

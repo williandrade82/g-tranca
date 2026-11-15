@@ -115,11 +115,29 @@ class SnapshotPacer(
     }
 
     companion object {
-        /** Outro assento jogou desde a vista anterior (na mesma partida): é a vez de pausar para acompanhar. */
+        /**
+         * Outro assento jogou desde a vista anterior (na mesma partida): é a vez de pausar para acompanhar, como
+         * qualquer jogada de robô (telas-app.md 3.8.2: "mesma pausa de pensando antes de 'tocar'").
+         *
+         * §3.6 inclui também o palpite da distribuição certeira resolvido por **outro** assento (não
+         * [GameSnapshot.viewerSeat]): o motor exclui de propósito `Action.GuessDealRange` de `turnEvents`
+         * (`GameController.recordEvent`, pílula/detalhe da vez não devem registrá-lo), então sem este caso a
+         * checagem acima nunca via essa transição — e o palpite de um robô, resolvido sem demora
+         * (`PacingPolicy.FREE`), publicava sem pausa nenhuma. Isso não é só cosmético: o `StateFlow` que o
+         * [com.gtranca.ui.game.GameViewModel] observa é conflado, então, numa virada de partida (várias vistas em
+         * rajada, sem suspensão entre elas), a tela podia nunca ver a vista "ainda sem o palpite" — e sem ela para
+         * comparar, `handleDealGuessTransition` nunca detecta a transição: a pílula do robô nunca aparece. A pausa
+         * aqui garante a suspensão que falta, dando tempo ao coletor da tela de processar a vista anterior.
+         */
         fun othersPlayed(previous: GameSnapshot, next: GameSnapshot): Boolean {
             if (previous.stage != Stage.PLAYING || next.stage != Stage.PLAYING || previous.roundNumber != next.roundNumber) return false
             val viewer = next.viewerSeat.index
-            return next.turnEvents.indices.any { it != viewer && next.turnEvents[it] != previous.turnEvents.getOrNull(it) }
+            if (next.turnEvents.indices.any { it != viewer && next.turnEvents[it] != previous.turnEvents.getOrNull(it) }) return true
+            val before = previous.view.dealGuess
+            val after = next.view.dealGuess ?: return false
+            if (before?.hand == null && after.hand != null && after.dealerSeat != next.viewerSeat) return true
+            if (before?.morto == null && after.morto != null && after.mortoDealerSeat != next.viewerSeat) return true
+            return false
         }
     }
 }

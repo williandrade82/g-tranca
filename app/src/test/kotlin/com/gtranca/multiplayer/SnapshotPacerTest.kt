@@ -170,4 +170,26 @@ class SnapshotPacerTest {
         shown shouldBe listOf(deal1Morto, deal1Draw, humanTurn)
         job.cancel()
     }
+
+    /**
+     * §3.6 regressão achada em revisão (14/11/2026): o motor exclui `Action.GuessDealRange` de `turnEvents`
+     * (`GameController.recordEvent`), então sem este caso `othersPlayed` nunca via o palpite de outro assento como
+     * "alguém jogou" — e, numa virada de partida (vistas em rajada, sem suspensão entre elas), o `StateFlow`
+     * conflado que a tela observa podia nunca mostrar a vista "ainda sem o palpite", perdendo a pílula do robô
+     * (ver `app/src/test/kotlin/com/gtranca/multiplayer/DealGuessGuestTest.kt` para a prova de ponta a ponta com
+     * o `GameViewModel` de verdade).
+     */
+    @Test
+    fun `§3_6 othersPlayed reconhece o palpite de outro assento, mas nao o do proprio jogador`() {
+        val mortoSeat = Seat(2)
+        fun guess(hand: com.gtranca.engine.model.Guess?) = base.copy(view = base.view.copy(dealGuess = com.gtranca.engine.model.DealGuess(robot, mortoSeat, hand = hand)))
+        val before = guess(hand = null)
+        val resolvedByRobot = guess(hand = com.gtranca.engine.model.Guess(0, 44, true))
+        SnapshotPacer.othersPlayed(before, resolvedByRobot) shouldBe true
+
+        // O mesmo palpite, mas resolvido pelo próprio `viewer` (assento 0, §3.6): aparece na hora, sem pausa.
+        val beforeOwn = base.copy(view = base.view.copy(dealGuess = com.gtranca.engine.model.DealGuess(viewer, mortoSeat, hand = null)))
+        val resolvedByViewer = beforeOwn.copy(view = beforeOwn.view.copy(dealGuess = com.gtranca.engine.model.DealGuess(viewer, mortoSeat, hand = com.gtranca.engine.model.Guess(0, 44, true))))
+        SnapshotPacer.othersPlayed(beforeOwn, resolvedByViewer) shouldBe false
+    }
 }
