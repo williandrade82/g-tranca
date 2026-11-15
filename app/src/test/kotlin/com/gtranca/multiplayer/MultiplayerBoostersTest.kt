@@ -25,7 +25,9 @@ class MultiplayerBoostersTest {
 
     @Test
     fun `§17_9 a versao do protocolo subiu para 19`() {
-        PROTOCOL_VERSION shouldBe 19
+        // §3.6 protocolo 20 (SeatView.dealGuess, ver SeatViewTest): este teste não é sobre boosters, só fixa o
+        // número para flagrar qualquer bump futuro sem o commit correspondente de documentação/plano.
+        PROTOCOL_VERSION shouldBe 20
     }
 
     @Test
