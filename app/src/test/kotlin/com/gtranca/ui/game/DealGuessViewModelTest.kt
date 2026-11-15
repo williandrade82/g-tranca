@@ -203,45 +203,55 @@ class DealGuessViewModelTest {
         mortoPrompt.target shouldBe 22
     }
 
+    /**
+     * §3.6 (ajuste de 15/11/2026, reação própria não bloqueante): o motor é liberado **na hora**, para qualquer
+     * papel — não existe mais um toque que "fecha" a reação e só então libera o morto. Por isso, dentro do MESMO
+     * `runCurrent()` do palpite da mão, o morto (sempre outro assento, um robô) já resolve sozinho e a mesa já
+     * avança até a 1ª jogada de verdade (`Phase.AWAITING_DRAW`). O monte continua escondido
+     * ([GameUiState.isDealGuessing]) só enquanto a reação pequena do próprio jogador ([GameUiState.ownGuessReaction])
+     * ainda está à vista, por [GameViewModel.OWN_GUESS_REACTION_MILLIS] (1,5 s) — sem esperar toque nenhum.
+     */
     @Test
-    fun `§3_6 §12_1 palpite certo da mao mostra a reacao de vitoria e so libera o morto apos o toque`() = runTest(dispatcher) {
+    fun `§3_6 §12_1 palpite certo da mao mostra a reacao propria e libera o morto no mesmo runCurrent`() = runTest(dispatcher) {
         val vm = humanDealerGame()
         val rules = vm.uiState.value.snapshot.view.rules
         val mode = vm.uiState.value.snapshot.view.mode
         val target = dealGuessHandTarget(mode, rules)
 
         vm.onGuessDealNumber(target)
-        // §3.6 só o que já está pronto agora: `advanceUntilIdle` adiantaria o relógio virtual além do tempo da
-        // pílula (ela já teria sumido sozinha antes da conferência abaixo).
         runCurrent()
 
         val afterGuess = vm.uiState.value
         // §3.6 o palpite nunca é jogada da vez: não aparece no registro do próprio assento.
         afterGuess.snapshot.view.dealGuess?.hand?.correct shouldBe true
-        val reveal = afterGuess.dealGuessReveal.shouldNotBeNull()
-        reveal.correct shouldBe true
-        reveal.partner shouldBe false
-        reveal.stage shouldBe DealGuessStage.HAND
+        val reaction = afterGuess.ownGuessReaction.shouldNotBeNull()
+        reaction.correct shouldBe true
+        reaction.own shouldBe true
+        reaction.stage shouldBe DealGuessStage.HAND
         afterGuess.dealGuessPills[0]?.correct shouldBe true
         afterGuess.dealGuessPrompt.shouldBeNull()
-        afterGuess.snapshot.view.phase shouldBe Phase.DEAL_GUESS_MORTO
-        // O morto (agora sempre outro assento, um robô) ainda não foi palpitado: o controlador espera o toque
-        // antes de liberar a próxima etapa, mesmo não sendo mais o mesmo jogador quem palpita os dois.
-        afterGuess.snapshot.view.dealGuess?.morto shouldBe null
+        // O morto (outro assento, um robô) já resolveu sozinho, sem nenhum toque deste aparelho.
+        afterGuess.snapshot.view.dealGuess?.morto.shouldNotBeNull()
+        afterGuess.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
+        // O monte continua escondido enquanto a reação própria (1,5 s) ainda está à vista.
+        afterGuess.isDealGuessing shouldBe true
 
-        vm.onDealGuessRevealDismissed()
-        advanceUntilIdle()
+        advanceTimeBy(GameViewModel.OWN_GUESS_REACTION_MILLIS)
+        runCurrent()
 
-        val afterDismiss = vm.uiState.value
-        afterDismiss.dealGuessReveal.shouldBeNull()
-        // §3.6 o robô palpita o morto sozinho, sem modal (reactToGuess libera `guessRevealDone` na hora para quem
-        // não é YOU/PARTNER): nenhum prompt novo aparece para o humano, e o palpite já foi resolvido.
-        afterDismiss.dealGuessPrompt.shouldBeNull()
-        afterDismiss.snapshot.view.dealGuess?.morto.shouldNotBeNull()
+        val afterReaction = vm.uiState.value
+        afterReaction.ownGuessReaction.shouldBeNull()
+        afterReaction.isDealGuessing shouldBe false
+        afterReaction.dealGuessPrompt.shouldBeNull()
     }
 
+    /**
+     * §3.6 (ajuste de 15/11/2026): o motor já avança para a 1ª jogada de verdade na hora (sem esperar toque); o
+     * monte só reaparece quando a reação pequena do próprio jogador ([GameUiState.ownGuessReaction]) some sozinha,
+     * depois de [GameViewModel.OWN_GUESS_REACTION_MILLIS] (1,5 s) — nunca por um toque explícito.
+     */
     @Test
-    fun `§3_6 §12_1 palpite errado do morto mostra nao foi dessa vez e a partida comeca so apos o toque`() = runTest(dispatcher) {
+    fun `§3_6 §12_1 palpite errado do morto mostra a reacao propria e some sozinha apos 1,5s`() = runTest(dispatcher) {
         // §3.6 o assento 0 agora só palpita o morto aqui: a mão, de outro assento (um robô), já foi resolvida e
         // liberada sozinha (`reactToGuess` chama `guessRevealDone` na hora para quem não é YOU/PARTNER) dentro do
         // `advanceUntilIdle()` que `newGame` já roda.
@@ -253,25 +263,25 @@ class DealGuessViewModelTest {
 
         // Larguras diferentes da certa sempre erram (§3.6): "largura certa + 1" nunca é o alvo.
         vm.onGuessDealNumber(mortoTarget + 1)
-        // §3.6 idem: só o que já está pronto agora, antes da pílula sumir sozinha.
         runCurrent()
 
         val afterGuess = vm.uiState.value
-        val reveal = afterGuess.dealGuessReveal.shouldNotBeNull()
-        reveal.correct shouldBe false
-        reveal.stage shouldBe DealGuessStage.MORTO
+        val reaction = afterGuess.ownGuessReaction.shouldNotBeNull()
+        reaction.correct shouldBe false
+        reaction.own shouldBe true
+        reaction.stage shouldBe DealGuessStage.MORTO
         afterGuess.dealGuessPills[0]?.correct shouldBe false
-        // A 1ª jogada de verdade ainda não começou: o monte continua escondido até o toque fechar a reação.
+        // A 1ª jogada de verdade já começou no motor, mas o monte continua escondido até a reação própria terminar.
         afterGuess.isDealGuessing shouldBe true
         afterGuess.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
 
-        vm.onDealGuessRevealDismissed()
-        advanceUntilIdle()
+        advanceTimeBy(GameViewModel.OWN_GUESS_REACTION_MILLIS)
+        runCurrent()
 
-        val afterDismiss = vm.uiState.value
-        afterDismiss.dealGuessReveal.shouldBeNull()
-        afterDismiss.isDealGuessing shouldBe false
-        afterDismiss.dealGuessPrompt.shouldBeNull()
+        val afterReaction = vm.uiState.value
+        afterReaction.ownGuessReaction.shouldBeNull()
+        afterReaction.isDealGuessing shouldBe false
+        afterReaction.dealGuessPrompt.shouldBeNull()
     }
 
     /**
@@ -297,7 +307,7 @@ class DealGuessViewModelTest {
         hand.width shouldBe target
     }
 
-    /** §3.6 a reação de erro mostra o número que o PRÓPRIO jogador tocou (`DealGuessReveal.width`). */
+    /** §3.6 a reação de erro mostra o número que o PRÓPRIO jogador tocou (`DealGuessSideReaction.guessedWidth`). */
     @Test
     fun `§3_6 a reacao de erro mostra o numero que o proprio jogador tocou de verdade`() = runTest(dispatcher) {
         val vm = humanDealerGame()
@@ -309,10 +319,10 @@ class DealGuessViewModelTest {
         vm.onGuessDealNumber(wrongNumber)
         runCurrent()
 
-        val reveal = vm.uiState.value.dealGuessReveal.shouldNotBeNull()
-        reveal.correct shouldBe false
-        reveal.partner shouldBe false
-        reveal.width shouldBe wrongNumber
+        val reaction = vm.uiState.value.ownGuessReaction.shouldNotBeNull()
+        reaction.correct shouldBe false
+        reaction.own shouldBe true
+        reaction.guessedWidth shouldBe wrongNumber
     }
 
     /**
@@ -336,23 +346,18 @@ class DealGuessViewModelTest {
     }
 
     /**
-     * BUG relatado 2026-11-14: o palpite do morto e a troca do 3 vermelho do início da vez do próprio dealer (§3.5,
-     * `RoundEngine.beginTurn` roda dentro do `GuessDealRange` do morto, `RoundEngine.kt` linha ~220) resolvem na
-     * MESMA ação: a reação em tela cheia do palpite e o aviso "Baixar 3 vermelho" chegam juntos. Na tela real
-     * (zIndex mais alto por cima), o jogador fecha a reação do palpite primeiro — mas antes da correção o
-     * controlador só armava a espera desse toque (`awaitingGuessReveal`) DEPOIS de esperar a confirmação da troca
-     * (`presentationSignal`), então o toque chegava cedo demais e se perdia (`guessRevealDone` devolve `false` sem
-     * ninguém esperando): o motor nunca mais publicava o próximo pedido, e os botões ficavam presos em
-     * "Comprar"/"Pegar" (nenhuma ação em `legalActions`).
+     * BUG relatado 2026-11-14 (contexto histórico): o palpite do morto e a troca do 3 vermelho do início da vez do
+     * próprio dealer (§3.5, `RoundEngine.beginTurn` roda dentro do `GuessDealRange` do morto, `RoundEngine.kt`
+     * linha ~220) resolvem na MESMA ação: antes do ajuste de 15/11/2026 (reação própria não bloqueante), a tela
+     * mostrava uma reação em tela cheia que só fechava no toque, e o jogador podia fechá-la antes de confirmar a
+     * troca — corrida que dependia da ORDEM de dois toques. Essa corrida não existe mais: [GameViewModel.reactToGuess]
+     * chama `controller.guessRevealDone` **sincronamente**, ao processar o snapshot, sempre antes de qualquer
+     * confirmação de troca (nenhum toque envolvido) — este teste agora prova a invariante que sobrou: os dois
+     * avisos (reação própria e "Baixar 3 vermelho") podem chegar juntos sem travar o jogo, em qualquer ordem que a
+     * tela os resolva.
      */
     @Test
-    fun `§3_6 §3_5 fechar a reacao do palpite antes de baixar o 3 vermelho do inicio da vez nao trava o jogo`() = runTest(dispatcher) {
-        // §3.6 BUG: usa `runCurrent()`, nunca `advanceUntilIdle()`, logo depois do `GuessDealRange` do morto — a
-        // espera do motor pelo toque (`guessRevealSignal`) agora tem um tempo limite de segurança bem longo (ver
-        // `GameController.GUESS_REVEAL_SAFETY_MILLIS`); com `advanceUntilIdle()` o relógio virtual adiantaria direto
-        // até esse limite e o teste passaria mesmo SEM a correção de verdade (o toque nunca chegando a valer nada),
-        // só por sorte do tempo virtual. `runCurrent()` só processa o que já está pronto agora, sem pular à frente —
-        // é o que de fato obriga o toque adiantado a já valer (o canal conflado guarda o sinal até ser esperado).
+    fun `§3_6 §3_5 reacao propria e 3 vermelho do inicio da vez chegando juntos nao travam o jogo`() = runTest(dispatcher) {
         // A mão (de outro assento, um robô) já foi resolvida e liberada sozinha dentro do `advanceUntilIdle()` que
         // `humanDealerWithStartSwapGame`/`newGame` já rodaram: chegamos direto no palpite do morto, do humano.
         val vm = humanDealerWithStartSwapGame()
@@ -363,23 +368,19 @@ class DealGuessViewModelTest {
         vm.onGuessDealNumber(mortoTarget)
         runCurrent()
 
-        // Os dois avisos chegam juntos: a reação do palpite (por cima) e "Baixar 3 vermelho" do início da vez.
-        vm.uiState.value.dealGuessReveal.shouldNotBeNull()
+        // Os dois avisos chegam juntos: a reação própria do palpite e "Baixar 3 vermelho" do início da vez — e o
+        // motor já foi reconhecido na hora (sem esperar a troca ser confirmada).
+        vm.uiState.value.ownGuessReaction.shouldNotBeNull()
         vm.uiState.value.ownSwapPending shouldBe true
 
-        // Ordem real da tela: o toque fecha primeiro o que está por cima. Pode haver mais de um 3 vermelho na mão
-        // inicial (cada um é uma troca própria em `state.swaps`, confirmada uma por vez em "Baixar 3 vermelho").
-        vm.onDealGuessRevealDismissed()
-        runCurrent()
+        // Pode haver mais de um 3 vermelho na mão inicial (cada um é uma troca própria em `state.swaps`,
+        // confirmada uma por vez em "Baixar 3 vermelho").
         repeat(20) {
             if (!vm.uiState.value.ownSwapPending) return@repeat
             vm.onRevealConfirmed()
             runCurrent()
         }
         vm.uiState.value.ownSwapPending shouldBe false
-
-        // A regressão: sem a correção, o motor nunca publica o próximo pedido e `canDraw` fica preso em `false`
-        // (sem o `runCurrent()` acima, só chegaria a `true` depois de adiantar o relógio pelo tempo limite inteiro).
         vm.uiState.value.canDraw shouldBe true
 
         // E o jogo segue normalmente: a próxima jogada publica botões novos de verdade.
@@ -393,6 +394,10 @@ class DealGuessViewModelTest {
      * saída dos palpites para a 1ª jogada (quando a distribuição de verdade seria animada) — nunca durante os
      * palpites em si, e nunca "esquecido" em `true`/`false` por partida inteira (`dealDone` não podia ficar só
      * recalculado no 1º snapshot da partida, que ainda está em fase de palpite).
+     *
+     * Ajuste de 15/11/2026: como o motor agora é liberado na hora (sem toque), o morto (outro assento, um robô) já
+     * resolve dentro do MESMO `runCurrent()` do palpite da mão — por isso a transição real pra 1ª jogada acontece
+     * nesse `runCurrent()`, e não mais num passo seguinte, explícito, de dismiss.
      */
     @Test
     fun `§3_5 dealPending so fica verdadeiro na transicao real pra 1a jogada, nao durante os palpites`() = runTest(dispatcher) {
@@ -402,19 +407,38 @@ class DealGuessViewModelTest {
         val view0 = vm.uiState.value.snapshot.view
         vm.onGuessDealNumber(dealGuessHandTarget(view0.mode, view0.rules))
         runCurrent()
-        vm.uiState.value.dealPending shouldBe false
-
-        // §3.6 o morto agora é sempre outro assento (um robô): o mesmo `runCurrent()` do toque já libera
-        // `guessRevealDone` (nenhum toque esperado dele) e deixa o robô responder pelo morto sem nenhum delay real
-        // de por meio — é aqui que a distribuição de verdade seria animada: a transição real pra 1ª jogada, saindo
-        // da fase de palpite, tudo dentro deste mesmo `runCurrent()`.
-        vm.onDealGuessRevealDismissed()
-        runCurrent()
+        // §3.6 o morto (outro assento, um robô) já resolveu dentro deste mesmo `runCurrent()`, saindo de vez da
+        // fase de palpite: é aqui que a distribuição de verdade seria animada.
         vm.uiState.value.dealPending shouldBe true
 
         vm.onDealAnimationFinished()
         runCurrent()
         vm.uiState.value.dealPending shouldBe false
+    }
+
+    /**
+     * §3.8.1/§3.8.2 (15/11/2026, pedido do usuário, só apresentação local): enquanto `dealPending` é verdadeiro, a
+     * decisão que `CardFlow` usa para cobrir a própria mão ([ownHandCover], `TableAnimations.kt`) é
+     * [OwnHandCover.DEALING] — as cartas já pousadas aparecem de costas; depois que a distribuição termina
+     * (`onDealAnimationFinished`), a mesma decisão volta a [OwnHandCover.NONE] (face normal), sozinha, sem toque.
+     */
+    @Test
+    fun `§3_8_1 §3_8_2 enquanto dealPending for verdadeiro a propria mao fica de costas, depois volta sozinha`() = runTest(dispatcher) {
+        val vm = humanDealerGame(animationMillis = 50)
+        val view0 = vm.uiState.value.snapshot.view
+        vm.onGuessDealNumber(dealGuessHandTarget(view0.mode, view0.rules))
+        runCurrent()
+
+        val dealing = vm.uiState.value
+        dealing.dealPending shouldBe true
+        ownHandCover(dealing.dealPending, dealing.handHidden) shouldBe OwnHandCover.DEALING
+
+        vm.onDealAnimationFinished()
+        runCurrent()
+
+        val done = vm.uiState.value
+        done.dealPending shouldBe false
+        ownHandCover(done.dealPending, done.handHidden) shouldBe OwnHandCover.NONE
     }
 
     /**
@@ -463,9 +487,10 @@ class DealGuessViewModelTest {
     fun `§3_6 o palpite da mao do parceiro mostra so a reacao pequena e libera o motor sem esperar toque`() = runTest(dispatcher) {
         val vm = partnerGuessReactionGame(DealGuessStage.HAND)
         val state = vm.uiState.value
-        // Tela cheia é exclusiva de quem palpitou de verdade (role == YOU); o parceiro nunca a recebe.
-        state.dealGuessReveal.shouldBeNull()
+        // A reação própria é exclusiva de quem palpitou de verdade (role == YOU); o parceiro nunca a recebe.
+        state.ownGuessReaction.shouldBeNull()
         val reaction = state.partnerGuessReaction.shouldNotBeNull()
+        reaction.own shouldBe false
         reaction.stage shouldBe DealGuessStage.HAND
         reaction.correct shouldBe state.snapshot.view.dealGuess?.hand?.correct
         reaction.target shouldBe dealGuessHandTarget(state.snapshot.view.mode, state.snapshot.view.rules)
@@ -491,8 +516,9 @@ class DealGuessViewModelTest {
     fun `§3_6 o palpite do morto do parceiro tambem libera o motor sem esperar toque`() = runTest(dispatcher) {
         val vm = partnerGuessReactionGame(DealGuessStage.MORTO)
         val state = vm.uiState.value
-        state.dealGuessReveal.shouldBeNull()
+        state.ownGuessReaction.shouldBeNull()
         val reaction = state.partnerGuessReaction.shouldNotBeNull()
+        reaction.own shouldBe false
         reaction.stage shouldBe DealGuessStage.MORTO
         reaction.correct shouldBe state.snapshot.view.dealGuess?.morto?.correct
         reaction.target shouldBe dealGuessMortoTarget(state.snapshot.view.rules)

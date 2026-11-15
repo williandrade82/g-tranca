@@ -958,8 +958,7 @@ class MultiplayerTableTest {
                 if (hostPrompt != null) hostVm.onGuessDealNumber((hostPrompt.range.first + hostPrompt.range.last) / 2)
                 val guestPrompt = guestVm.uiState.value.dealGuessPrompt
                 if (guestPrompt != null) guestVm.onGuessDealNumber((guestPrompt.range.first + guestPrompt.range.last) / 2)
-                if (hostVm.uiState.value.dealGuessReveal != null) hostVm.onDealGuessRevealDismissed()
-                if (guestVm.uiState.value.dealGuessReveal != null) guestVm.onDealGuessRevealDismissed()
+                // §3.6 (15/11/2026): a reação do próprio palpite não bloqueia mais nada (some sozinha, sem toque).
                 advanceUntilIdle()
             }
 

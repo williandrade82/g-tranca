@@ -62,6 +62,8 @@
     <string name="hand_hide">Esconder cartas</string>
     <string name="hand_show">Mostrar cartas</string>
     <string name="card_hidden">Carta escondida</string>
+    <!-- §3.8.1/§3.8.2 (15/11/2026): a mão virada de costas enquanto a distribuição inicial ainda está acontecendo. -->
+    <string name="card_dealing">Carta sendo distribuída</string>
     <string name="msg_show_cards_to_play">Mostre suas cartas para jogar</string>
     <string name="own_last_play">Ver a sua última jogada</string>
     <string name="own_last_play_title">Sua última jogada</string>
@@ -976,7 +978,10 @@
     <string name="deal_guess_miss_you_morto">Você não acertou o número de cartas para o Morto.</string>
     <string name="deal_guess_miss_partner_hand">O seu parceiro não acertou o número de cartas para a distribuição.</string>
     <string name="deal_guess_miss_partner_morto">O seu parceiro não acertou o número de cartas para o Morto.</string>
-    <string name="deal_guess_tap_to_close">Toque na tela para fechar.</string>
     <!-- Cartão pequeno do parceiro (14/11/2026): 2º parágrafo fixo com o alvo da regra e a largura que ele escolheu. -->
     <string name="deal_guess_partner_numbers">Esperado: %1$d cartas | Palpite do parceiro: %2$d cartas.</string>
+    <!-- Mesmo 2º parágrafo, para a reação pequena do PRÓPRIO jogador (15/11/2026, substitui a antiga tela cheia). -->
+    <string name="deal_guess_own_numbers">Esperado: %1$d cartas | Seu palpite: %2$d cartas.</string>
+    <string name="deal_guess_outcome_hit">Você acertou o palpite.</string>
+    <string name="deal_guess_outcome_miss">Você não acertou o palpite.</string>
 </resources>

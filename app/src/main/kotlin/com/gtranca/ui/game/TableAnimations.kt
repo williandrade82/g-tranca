@@ -89,6 +89,24 @@ data class CardFlight(
 data class CanastaFlash(val id: Long, val side: Int, val meldId: Int, val clean: Boolean)
 
 /**
+ * §3.8.1/§3.8.2 (15/11/2026, pedido do usuário) qual verso (se algum) cobre as cartas da própria mão na mesa:
+ * [DEALING] enquanto a distribuição inicial ainda está em andamento (`GameUiState.dealPending`, "não é uma jogada
+ * nem precisa ser sincronizado pela rede: é só apresentação local" — vira sozinho, sem toque, quando a distribuição
+ * termina); [HIDDEN] é o "Esconder cartas" do multijogador local (`GameUiState.handHidden`, um toque do jogador).
+ * [DEALING] tem prioridade sobre [HIDDEN] quando os dois coincidem (a distribuição é transitória; o "esconder" é
+ * uma escolha explícita, que continua valendo depois). Pura (sem Compose), testável na JVM — `CardFlow`,
+ * `TableScreen.kt`, só lê o resultado.
+ */
+internal enum class OwnHandCover { NONE, DEALING, HIDDEN }
+
+/** Ver [OwnHandCover]. */
+internal fun ownHandCover(dealPending: Boolean, handHidden: Boolean): OwnHandCover = when {
+    dealPending -> OwnHandCover.DEALING
+    handHidden -> OwnHandCover.HIDDEN
+    else -> OwnHandCover.NONE
+}
+
+/**
  * Deriva as animações da mesa das diferenças entre dois snapshots e dos eventos públicos ([GameSnapshot.turnEvents]).
  * Nada de estado oculto: de outros assentos só cartas viradas ou cartas já públicas (descarte, lixo, conjuntos,
  * 3 vermelho). Puro (sem Android), testável na JVM.

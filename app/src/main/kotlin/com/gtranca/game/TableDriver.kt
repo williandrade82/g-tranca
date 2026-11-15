@@ -32,17 +32,17 @@ interface TableDriver {
     fun dealAnimationDone(roundNumber: Int) {}
 
     /**
-     * §3.6 a interface reconheceu a reação (pílula ou tela cheia) do palpite resolvido da partida [roundNumber]
-     * ([hand] = mão, `false` = morto): libera o próximo pedido do jogo local. **Sem efeito na mesa multijogador**
-     * (local ou online): o anfitrião roda em [PacingPolicy.FREE] e não espera ninguém (§16.6), então o jogo pode
-     * avançar por trás da reação em tela cheia deste aparelho — ela mesma cobre a tela inteira e consome qualquer
-     * toque (`DealGuessRevealOverlay`, `:app` `ui/game/DealGuessOverlay.kt`), então nada fica visível nem clicável
-     * por baixo até o próprio toque a fechar; é o mesmo princípio de fluidez do resto do multijogador (CLAUDE.md:
-     * "prefira a leitura que mantém o jogo andando"). Uma versão anterior desta correção (14/11/2026) tentou um
-     * portão equivalente a [presentationDone] no `SnapshotPacer`, mas foi revertida: o `StateFlow` que a tela
-     * observa é conflado e pode nunca mostrar a vista exata em que um palpite "acabou de resolver" (só a seguinte,
-     * já adiantada) — o reconhecimento correspondente nunca seria enviado e a mesa travaria pelo limite de
-     * segurança (300 s) na virada de partida. Ver `docs/plano-distribuicao-certeira.md`.
+     * §3.6 a interface reconheceu a reação (pílula sempre; a reação pequena dentro da mesa, do próprio jogador ou
+     * do parceiro, 15/11/2026) do palpite resolvido da partida [roundNumber] ([hand] = mão, `false` = morto):
+     * libera o próximo pedido do jogo local — hoje sempre chamado **na hora**, para qualquer papel, já que nenhum
+     * palpite espera mais um toque (`GameViewModel.reactToGuess`, `:app` `ui/game/GameViewModel.kt`). **Sem efeito
+     * na mesa multijogador** (local ou online): o anfitrião roda em [PacingPolicy.FREE] e não espera ninguém
+     * (§16.6); é o mesmo princípio de fluidez do resto do multijogador (CLAUDE.md: "prefira a leitura que mantém o
+     * jogo andando"). Uma versão anterior desta correção (14/11/2026) tentou um portão equivalente a
+     * [presentationDone] no `SnapshotPacer`, mas foi revertida: o `StateFlow` que a tela observa é conflado e pode
+     * nunca mostrar a vista exata em que um palpite "acabou de resolver" (só a seguinte, já adiantada) — o
+     * reconhecimento correspondente nunca seria enviado e a mesa travaria pelo limite de segurança (300 s) na
+     * virada de partida. Ver `docs/plano-distribuicao-certeira.md`.
      */
     fun guessRevealDone(roundNumber: Int, hand: Boolean) {}
 

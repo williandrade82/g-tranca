@@ -24,7 +24,9 @@ import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Stage
 import com.gtranca.game.botSeed
 import com.gtranca.game.cardClass
+import androidx.compose.ui.geometry.Rect
 import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
@@ -685,5 +687,65 @@ class TableAnimationsTest {
         flights.size shouldBe 3
         // a ordem da lista é a do histórico e cada voo começa depois de o anterior pousar
         flights.zipWithNext().forEach { (a, b) -> (b.delayMillis >= a.delayMillis + dur) shouldBe true }
+    }
+
+    /**
+     * §3.8.1 R12 (correção de 15/11/2026, bug relatado pelo usuário): a origem do voo da distribuição do PRÓPRIO
+     * jogador (`TableEdge.BOTTOM`) sai perto do topo de [AnimAnchor.OwnHand] (a própria mão), não do fundo da tela
+     * inteira ([AnimAnchor.TableBounds], que inclui a barra de comandos) — ver [dealEntryOrigin].
+     */
+    @Test
+    fun `§3_8_1 R12 BOTTOM usa o topo da propria mao, nao o fundo da tela inteira`() {
+        val tableBounds = Rect(0f, 0f, 360f, 800f)
+        val ownHandBounds = Rect(0f, 500f, 360f, 580f)
+        val margin = 40f
+
+        val origin = dealEntryOrigin(TableEdge.BOTTOM, tableBounds, ownHandBounds, margin).shouldNotBeNull()
+
+        // Perto do topo da mão (margem para fora, ou seja, ainda mais para cima) — nunca perto do fundo da tela.
+        origin.center.y shouldBe (ownHandBounds.top - margin)
+        origin.center.x shouldBe ownHandBounds.center.x
+        (origin.center.y < tableBounds.bottom - margin) shouldBe true
+    }
+
+    /** Sem [AnimAnchor.OwnHand] ainda medido (1º quadro): cai no cálculo antigo ([dealEntryPoint] com [TableBounds]), rede de segurança. */
+    @Test
+    fun `§3_8_1 R12 BOTTOM sem a propria mao medida ainda cai no calculo antigo (TableBounds)`() {
+        val tableBounds = Rect(0f, 0f, 360f, 800f)
+        val margin = 40f
+
+        val origin = dealEntryOrigin(TableEdge.BOTTOM, tableBounds, null, margin).shouldNotBeNull()
+
+        origin shouldBe dealEntryPoint(tableBounds, TableEdge.BOTTOM, margin)
+    }
+
+    /** Os outros três lados (TOP/LEFT/RIGHT) não têm o mesmo bug: continuam ancorados em [TableBounds], sem olhar [AnimAnchor.OwnHand]. */
+    @Test
+    fun `§3_8_1 R12 TOP LEFT RIGHT continuam ancorados no TableBounds, ignorando a propria mao`() {
+        val tableBounds = Rect(0f, 0f, 360f, 800f)
+        val ownHandBounds = Rect(0f, 500f, 360f, 580f)
+        val margin = 40f
+
+        listOf(TableEdge.TOP, TableEdge.LEFT, TableEdge.RIGHT).forEach { edge ->
+            dealEntryOrigin(edge, tableBounds, ownHandBounds, margin) shouldBe dealEntryPoint(tableBounds, edge, margin)
+        }
+    }
+
+    /** Sem nenhum dos dois retângulos medidos ainda: nenhum ponto de origem (nunca quebra, a carta só espera). */
+    @Test
+    fun `§3_8_1 R12 sem nenhum retangulo medido, dealEntryOrigin devolve null`() {
+        dealEntryOrigin(TableEdge.BOTTOM, null, null, 40f).shouldBeNull()
+    }
+
+    /**
+     * §3.8.1/§3.8.2 (15/11/2026): [OwnHandCover.DEALING] (distribuição em andamento) tem prioridade sobre
+     * [OwnHandCover.HIDDEN] ("Esconder cartas" do multijogador) quando os dois valem ao mesmo tempo.
+     */
+    @Test
+    fun `§3_8_1 §3_8_2 ownHandCover prioriza DEALING sobre HIDDEN`() {
+        ownHandCover(dealPending = true, handHidden = true) shouldBe OwnHandCover.DEALING
+        ownHandCover(dealPending = true, handHidden = false) shouldBe OwnHandCover.DEALING
+        ownHandCover(dealPending = false, handHidden = true) shouldBe OwnHandCover.HIDDEN
+        ownHandCover(dealPending = false, handHidden = false) shouldBe OwnHandCover.NONE
     }
 }

@@ -44,6 +44,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -166,7 +168,7 @@ private fun DealGuessGauge(fill: Float, modifier: Modifier = Modifier) {
  * Morto". Só aparece na tela de quem está palpitando. O indicador percorre, ida e volta, só os números de
  * [DealGuessPrompt.range]; um único toque marca o número do estágio naquele instante como o palpite e já o envia
  * ao motor ([onGuess]). A tela nunca decide sozinha se acertou: só mostra o número tocado; o resultado chega
- * depois, em [DealGuessRevealOverlay].
+ * depois, em [GuessSideReactionOverlay] (reação pequena, dentro da mesa — 15/11/2026, antes era uma tela cheia).
  *
  * [onGuess] devolve se o motor aceitou de verdade o toque (`TableEvents.onGuessDealNumber`): um toque pode ser
  * ignorado por uma corrida de estado passageira (multijogador/online, §16.8/§16.9) sem que o jogo tenha avançado —
@@ -284,84 +286,12 @@ private fun DealGuessField(label: String, value: Int?, modifier: Modifier = Modi
 }
 
 /**
- * §3.6, telas-app.md 3.8.2: reação em tela cheia do palpite resolvido (vitória: +100 pontos, confete e som de
- * canastra; erro, simplificada: só o banner a 75% da largura da tela e, embaixo dele, o número que o jogador
- * tocou, sem borda piscando nem outro efeito) — exclusiva de quem palpitou de verdade (`role == YOU`; o parceiro,
- * em duplas, usa [PartnerGuessReactionOverlay], pequena e não bloqueante). Fica até o toque ([onDismiss], que
- * libera o motor para o próximo palpite ou a 1ª jogada de verdade).
+ * Texto exato do §3.8.2 do telas-app.md para a reação dentro da mesa, própria ou do parceiro ([reaction.own]).
  */
-@Composable
-fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
-    val sound = LocalSound.current
-    LaunchedEffect(reveal.id) { if (reveal.correct) sound.play(SoundEffect.CANASTA) }
-    val text = stringResource(dealGuessRevealTextRes(reveal))
-    val closeText = stringResource(R.string.deal_guess_tap_to_close)
-    Box(
-        Modifier
-            .fillMaxSize()
-            .zIndex(11f)
-            .background(Color.Black.copy(alpha = 0.6f))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
-            .semantics(mergeDescendants = true) { contentDescription = "$text $closeText"; liveRegion = LiveRegionMode.Polite }
-            .testTag("deal-guess-close"),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (reveal.correct) {
-            EndCelebration(EndOutcome.WIN, brief = false, enabled = true, playSound = false, modifier = Modifier.testTag("deal-guess-confetti"))
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.widthIn(max = 420.dp).padding(24.dp).testTag("deal-guess-win"),
-            ) {
-                Image(
-                    painterResource(R.drawable.deal_guess_win),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.FillWidth,
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(text, color = GColors.Ivory, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Spacer(Modifier.height(8.dp))
-                Text(closeText, color = GColors.Ivory.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
-            }
-        } else {
-            // telas-app.md 3.8.2 (toque único, 15/11/2026): sem borda âmbar nem outro drama — só o banner a 75% da
-            // tela e, embaixo, o número que o jogador tocou (mesmo visual do modal de palpite, `DealGuessField`).
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.testTag("deal-guess-miss")) {
-                Image(
-                    painterResource(R.drawable.deal_guess_miss),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth(0.75f),
-                    contentScale = ContentScale.FillWidth,
-                )
-                Spacer(Modifier.height(12.dp))
-                // §3.6 esta tela é exclusiva de quem palpitou de verdade (role == YOU): `reveal.width` é o número
-                // que este aparelho tocou de verdade (o motor fixa `start` em 1, `dealGuessAction`).
-                DealGuessField(stringResource(R.string.deal_guess_number_label), reveal.width, Modifier.testTag("deal-guess-reveal-number"))
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text, color = GColors.Ivory, textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.widthIn(max = 420.dp).padding(horizontal = 24.dp),
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(closeText, color = GColors.Ivory.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-    }
-}
-
-/**
- * Texto exato do §3.8.2 do telas-app.md. [DealGuessRevealOverlay] é exclusiva de quem palpitou de verdade
- * (`role == YOU`, [DealGuessReveal.partner] sempre `false`): o parceiro usa [partnerGuessReactionTextRes], abaixo.
- */
-private fun dealGuessRevealTextRes(reveal: DealGuessReveal): Int = when {
-    reveal.correct -> R.string.deal_guess_win_you
-    reveal.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_you_hand
-    else -> R.string.deal_guess_miss_you_morto
-}
-
-/** Mesmo texto do parceiro usado no banner em tela cheia (acima), reaproveitado no cartão pequeno abaixo. */
-private fun partnerGuessReactionTextRes(reaction: PartnerGuessReaction): Int = when {
+private fun dealGuessSideReactionTextRes(reaction: DealGuessSideReaction): Int = when {
+    reaction.own && reaction.correct -> R.string.deal_guess_win_you
+    reaction.own && reaction.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_you_hand
+    reaction.own -> R.string.deal_guess_miss_you_morto
     reaction.correct && reaction.stage == DealGuessStage.HAND -> R.string.deal_guess_win_partner_hand
     reaction.correct -> R.string.deal_guess_win_partner_morto
     reaction.stage == DealGuessStage.HAND -> R.string.deal_guess_miss_partner_hand
@@ -381,31 +311,46 @@ private const val PARTNER_GUESS_WIDTH_FRACTION = 0.9f
 /** Sem [Rect] da mesa pra calcular a largura (não devia acontecer): cai numa largura fixa, como antes do redesenho. */
 private val PARTNER_GUESS_FALLBACK_WIDTH = 248.dp
 
-/** Quanto dura a entrada (de fora da mesa, à esquerda, até a posição de repouso encostada na borda). */
+/** Quanto dura a entrada (de fora da mesa, à esquerda, até a posição de repouso encostada na borda); igual para as duas reações. */
 private const val PARTNER_GUESS_ENTER_MILLIS = 450
 
-/** Quanto o cartão fica parado e visível na posição de repouso, antes de começar a sair (pedido do usuário: 4 s). */
+/**
+ * Quanto o cartão fica parado e visível na posição de repouso, antes de começar a sair — pedido do usuário: 4 s
+ * para o parceiro (duplas, 14/11/2026), **1,5 s para o próprio jogador** (15/11/2026, [DealGuessSideReaction.own],
+ * substitui a antiga tela cheia que só fechava no toque — [GameViewModel.OWN_GUESS_REACTION_MILLIS] zera o estado
+ * exatamente quando este repouso termina, o que também libera [GameUiState.isDealGuessing]/o monte).
+ */
 private const val PARTNER_GUESS_REST_MILLIS = 4_000L
+private const val OWN_GUESS_REST_MILLIS = 1_500L
 
-/** Quanto dura a saída (da posição de repouso até sair da mesa pela borda direita). */
+/** Quanto dura a saída (da posição de repouso até sair da mesa pela borda direita); igual para as duas reações. */
 private const val PARTNER_GUESS_EXIT_MILLIS = 450
 
 /**
- * §3.6, telas-app.md 3.8.2: reação pequena e **não bloqueante** ao palpite do PARCEIRO (duplas) — ao contrário de
- * [DealGuessRevealOverlay] (tela cheia, só do próprio jogador, que exige o toque), esta nunca espera nada: o motor
- * já foi liberado na hora ([GameViewModel.reactToGuess]/[GameController.guessRevealDone]).
+ * §3.6, telas-app.md 3.8.2 (15/11/2026, unificada): reação pequena e **não bloqueante**, dentro da mesa, a um
+ * palpite resolvido — do PRÓPRIO jogador deste aparelho ([reaction.own] `true`, `role == YOU`, substitui a antiga
+ * tela cheia que exigia toque) ou do PARCEIRO (duplas, `role == PARTNER`). Em nenhum dos dois casos esta função
+ * espera nada: o motor já foi liberado na hora ([GameViewModel.reactToGuess]/[GameController.guessRevealDone]),
+ * antes mesmo desta reação nascer.
  *
- * Redesenhada 14/11/2026 (pedido do usuário): nasce encostada na borda **esquerda** da área de jogos do próprio
- * lado ([sideAreaRect], `AnimAnchor.SideArea` do lado do jogador — "a área de organização das cartas baixadas pela
- * dupla") e desliza **horizontalmente**, da esquerda para a direita, em três fases que [reaction] por si só não
+ * Redesenhada 14/11/2026 (pedido do usuário) para o parceiro, reaproveitada 15/11/2026 para o próprio jogador:
+ * nasce encostada na borda **esquerda** da área de jogos do próprio lado ([sideAreaRect], `AnimAnchor.SideArea` do
+ * lado do jogador — "a área de organização das cartas baixadas pela dupla", a mesma onde ele baixa as próprias
+ * cartas) e desliza **horizontalmente**, da esquerda para a direita, em três fases que [reaction] por si só não
  * controla (a UI conduz sozinha, a partir da última reação não-nula recebida — por isso [reaction] aqui é
  * anulável: chamar sempre, incondicionalmente, é o que permite continuar desenhando a saída mesmo depois do
- * `GameViewModel` já ter zerado o estado, [GameViewModel.PARTNER_GUESS_REACTION_MILLIS] depois de armado):
+ * `GameViewModel` já ter zerado o estado, [GameViewModel.PARTNER_GUESS_REACTION_MILLIS]/[GameViewModel.OWN_GUESS_REACTION_MILLIS]
+ * depois de armado):
  * 1. **Entrada** ([PARTNER_GUESS_ENTER_MILLIS]): de fora da mesa (à esquerda de [sideAreaRect]) até a posição de
  *    repouso, encostada na borda esquerda dele.
- * 2. **Repouso** ([PARTNER_GUESS_REST_MILLIS]): parada, visível.
+ * 2. **Repouso** ([PARTNER_GUESS_REST_MILLIS] ou [OWN_GUESS_REST_MILLIS], conforme [reaction.own]): parada, visível.
  * 3. **Saída** ([PARTNER_GUESS_EXIT_MILLIS]): continua para a direita até sair da mesa pela borda direita de
  *    [tableRect], e só então o bloco é descartado de vez.
+ *
+ * **Selo de acerto/erro:** só quando [reaction.own] é `true` (o parceiro já lê o resultado pelo parágrafo de
+ * números do próprio cartão) — um ✓ verde ([GColors.Emerald]) no acerto, um ✗ vermelho ([GColors.Ruby]) no erro,
+ * desenhado em `Canvas` ([GuessOutcomeMark]) no canto superior do bloco (sem ícone de biblioteca: o catálogo
+ * `material-icons` não está nas dependências do projeto, `gradle/libs.versions.toml`).
  *
  * Mesma técnica de posicionamento por coordenadas de raiz do resto da mesa (`FlyingCard`, `ReactionCenterOverlay`):
  * os retângulos e o próprio cartão são medidos na raiz da janela, então a conta vale mesmo com a mesa rolada.
@@ -415,10 +360,13 @@ private const val PARTNER_GUESS_EXIT_MILLIS = 450
  * quando passar pela mesma área (telas-app.md 3.8.2).
  */
 @Composable
-fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect?, sideAreaRect: Rect?) {
+fun GuessSideReactionOverlay(reaction: DealGuessSideReaction?, tableRect: Rect?, sideAreaRect: Rect?) {
+    val sound = LocalSound.current
+    // Som de canastra no acerto do PRÓPRIO jogador (herdado da antiga tela cheia); o parceiro nunca teve som aqui.
+    LaunchedEffect(reaction?.id) { if (reaction?.own == true && reaction.correct) sound.play(SoundEffect.CANASTA) }
     // Guarda a última reação não-nula por `id`: a UI decide sozinha quando descartar de vez (ao fim da saída),
     // independente de o ViewModel já ter zerado `reaction` antes disso (ele nunca espera por esta animação).
-    var shown by remember { mutableStateOf<PartnerGuessReaction?>(null) }
+    var shown by remember { mutableStateOf<DealGuessSideReaction?>(null) }
     LaunchedEffect(reaction?.id) { if (reaction != null) shown = reaction }
     val current = shown ?: return
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -426,7 +374,7 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
         Modifier
             .fillMaxSize()
             .onGloballyPositioned { origin = it.positionInRoot() }
-            .testTag("partner-guess-reaction"),
+            .testTag("deal-guess-side-reaction"),
     ) {
         key(current.id) {
             val motion = rememberMotionEnabled()
@@ -436,7 +384,7 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
             val exitProgress = remember { Animatable(0f) }
             LaunchedEffect(current.id) {
                 if (motion) enterProgress.animateTo(1f, tween(PARTNER_GUESS_ENTER_MILLIS, easing = FastOutSlowInEasing))
-                delay(PARTNER_GUESS_REST_MILLIS)
+                delay(if (current.own) OWN_GUESS_REST_MILLIS else PARTNER_GUESS_REST_MILLIS)
                 if (motion) exitProgress.animateTo(1f, tween(PARTNER_GUESS_EXIT_MILLIS, easing = FastOutSlowInEasing)) else exitProgress.snapTo(1f)
                 // Só descarta se ninguém chegou com uma reação mais nova enquanto este bloco saía.
                 if (shown?.id == current.id) shown = null
@@ -447,8 +395,9 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
             val insetPx = with(density) { Spacing.md.toPx() }
             var selfHeightPx by remember { mutableStateOf(0f) }
             val accent = if (current.correct) GColors.Emerald else GColors.Ruby
-            val text = stringResource(partnerGuessReactionTextRes(current)) + "\n\n" +
-                stringResource(R.string.deal_guess_partner_numbers, current.target, current.guessedWidth)
+            val numbersRes = if (current.own) R.string.deal_guess_own_numbers else R.string.deal_guess_partner_numbers
+            val text = stringResource(dealGuessSideReactionTextRes(current)) + "\n\n" +
+                stringResource(numbersRes, current.target, current.guessedWidth)
             Column(
                 Modifier
                     .offset {
@@ -472,7 +421,7 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
                     }
                     .onGloballyPositioned { selfHeightPx = it.size.height.toFloat() }
                     .width(with(density) { widthPx.toDp() })
-                    .testTag("partner-guess-reaction-card"),
+                    .testTag("deal-guess-side-reaction-card"),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
@@ -481,12 +430,22 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
                 // distorcida) — [aspectRatio] calculado a partir do tamanho intrínseco do próprio `painter`.
                 val painter = painterResource(if (current.correct) R.drawable.deal_guess_win else R.drawable.deal_guess_miss)
                 val imageRatio = painter.intrinsicSize.let { if (it.isSpecified && it.height > 0f) it.width / it.height else 1f }
-                Image(
-                    painter,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth(PARTNER_GUESS_IMAGE_WIDTH_FRACTION).aspectRatio(imageRatio),
-                    contentScale = ContentScale.FillWidth,
-                )
+                Box(contentAlignment = Alignment.TopEnd) {
+                    Image(
+                        painter,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth(PARTNER_GUESS_IMAGE_WIDTH_FRACTION).aspectRatio(imageRatio),
+                        contentScale = ContentScale.FillWidth,
+                    )
+                    // §3.6 selo ✓/✗ (15/11/2026, pedido do usuário): só na reação do PRÓPRIO jogador — o parceiro
+                    // já lê o resultado pelo parágrafo de números abaixo.
+                    if (current.own) {
+                        GuessOutcomeMark(
+                            current.correct,
+                            Modifier.padding(Spacing.xs).size(28.dp).testTag("deal-guess-outcome-mark"),
+                        )
+                    }
+                }
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -505,6 +464,34 @@ fun PartnerGuessReactionOverlay(reaction: PartnerGuessReaction?, tableRect: Rect
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * §3.6 (15/11/2026, pedido do usuário) selo de acerto/erro da reação pequena do PRÓPRIO jogador: um ✓ verde
+ * ([GColors.Emerald]) no acerto, um ✗ vermelho ([GColors.Ruby]) no erro — desenhado em `Canvas`, sem ícone de
+ * biblioteca (o catálogo `androidx.compose.material:material-icons-*` não está em `gradle/libs.versions.toml`;
+ * não foi adicionado só para isto, por decisão do CLAUDE.md de registrar dependências novas no catálogo). Um
+ * disco sólido atrás do traço garante contraste sobre a arte de fundo (clara, no acerto; cinza, no erro).
+ */
+@Composable
+private fun GuessOutcomeMark(correct: Boolean, modifier: Modifier = Modifier) {
+    val mark = if (correct) GColors.Emerald else GColors.Ruby
+    Canvas(modifier.semantics { contentDescription = "" }) {
+        drawCircle(color = Color.White, radius = size.minDimension / 2f)
+        drawCircle(color = mark, radius = size.minDimension / 2f, alpha = 0.92f)
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = size.minDimension * 0.12f, cap = StrokeCap.Round)
+        if (correct) {
+            val path = Path().apply {
+                moveTo(size.width * 0.27f, size.height * 0.52f)
+                lineTo(size.width * 0.43f, size.height * 0.68f)
+                lineTo(size.width * 0.75f, size.height * 0.32f)
+            }
+            drawPath(path, color = Color.White, style = stroke)
+        } else {
+            drawLine(Color.White, Offset(size.width * 0.3f, size.height * 0.3f), Offset(size.width * 0.7f, size.height * 0.7f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            drawLine(Color.White, Offset(size.width * 0.7f, size.height * 0.3f), Offset(size.width * 0.3f, size.height * 0.7f), strokeWidth = stroke.width, cap = StrokeCap.Round)
         }
     }
 }
