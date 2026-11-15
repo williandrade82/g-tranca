@@ -2,6 +2,7 @@ package com.gtranca.engine
 
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.HandPenalty
+import com.gtranca.engine.model.bonusFor
 import com.gtranca.engine.model.Meld
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Rank
@@ -50,15 +51,12 @@ fun scoreRound(state: RoundState, rules: RuleSet = RuleSet.DEFAULT): List<SideSc
 /**
  * §3.6 / §12.1 bônus da distribuição certeira para o [side]: `rules.dealGuessBonusPoints` por palpite certo (mão
  * ou morto) de quem palpitou e é deste lado. Zero se o parâmetro estiver desligado ([RoundState.dealGuess] é
- * `null` nesse caso) ou se nenhum dos dois palpites certos caiu neste lado.
+ * `null` nesse caso) ou se nenhum dos dois palpites certos caiu neste lado. Delega em [bonusFor] (pura, pública),
+ * para a interface poder refazer o mesmo cálculo a partir do [PlayerView.dealGuess] (ex.: o total ao vivo da
+ * barra de placar, §17.11) sem reimplementar a regra.
  */
-private fun dealGuessBonus(state: RoundState, side: Side, rules: RuleSet): Int {
-    val guess = state.dealGuess ?: return 0
-    var bonus = 0
-    if (guess.hand?.correct == true && state.mode.sideOf(guess.dealerSeat) == side) bonus += rules.dealGuessBonusPoints
-    if (guess.morto?.correct == true && state.mode.sideOf(guess.mortoDealerSeat) == side) bonus += rules.dealGuessBonusPoints
-    return bonus
-}
+private fun dealGuessBonus(state: RoundState, side: Side, rules: RuleSet): Int =
+    state.dealGuess.bonusFor(state.mode, side, rules.dealGuessBonusPoints)
 
 /**
  * §12.1 valor das cartas na mesa do lado [side], por categoria: todas as cartas de todos os conjuntos do lado

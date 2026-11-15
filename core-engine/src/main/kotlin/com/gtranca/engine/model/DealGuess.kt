@@ -52,6 +52,21 @@ fun dealGuessSeats(mode: GameMode, firstSeat: Seat): Pair<Seat, Seat> {
 }
 
 /**
+ * §3.6 / §12.1 bônus do [side] pelos palpites certos (mão e/ou morto) que caíram nele: [points] por acerto (0, 1
+ * ou 2 acertos). `this` nulo (regra desligada, ou partida salva antiga) sempre rende 0. Pura e sem depender do
+ * motor (`RoundState`, interno): recebe só o [DealGuess] público ([PlayerView.dealGuess]), para a interface poder
+ * refazer o mesmo cálculo que [com.gtranca.engine.scoreRound] já faz (ex.: o total ao vivo da barra de placar,
+ * §17.11) sem reimplementar a regra. Delegada por `Scoring.scoreRound`, única dona do cálculo.
+ */
+fun DealGuess?.bonusFor(mode: GameMode, side: Side, points: Int): Int {
+    if (this == null) return 0
+    var bonus = 0
+    if (hand?.correct == true && mode.sideOf(dealerSeat) == side) bonus += points
+    if (morto?.correct == true && mode.sideOf(mortoDealerSeat) == side) bonus += points
+    return bonus
+}
+
+/**
  * §3.6 faixa de números que a barra do palpite da mão oferece (ajuste de 14/11/2026): **35..55** em duplas,
  * **12..32** em individual — fixa, não depende mais do tamanho do baralho restante. O alvo de verdade
  * ([dealGuessHandTarget]) está sempre dentro dela (44 em duplas, 22 em individual).

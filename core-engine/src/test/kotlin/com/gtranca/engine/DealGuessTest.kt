@@ -6,6 +6,7 @@ import com.gtranca.engine.model.DealGuess
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.Phase
+import com.gtranca.engine.model.bonusFor
 import com.gtranca.engine.model.dealGuessAction
 import com.gtranca.engine.model.dealGuessHandRange
 import com.gtranca.engine.model.dealGuessHandTarget
@@ -234,6 +235,27 @@ class DealGuessTest {
         val scores = scoreRound(state)
         scores[0].dealGuessBonus shouldBe 0
         scores[1].dealGuessBonus shouldBe 0
+    }
+
+    @Test
+    fun `§3_6 §12_1 bonusFor e a mesma conta usada por scoreRound, exposta a parte do RoundState`() {
+        // A função pública usada pela UI (ex.: total ao vivo da barra de placar) deve bater com scoreRound.
+        val guess = DealGuess(
+            dealerSeat = Seat(3),
+            mortoDealerSeat = Seat(2),
+            hand = Guess(1, 45, correct = true),
+            morto = Guess(1, 23, correct = true),
+        )
+        guess.bonusFor(GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(3)), 100) shouldBe 100 // lado 1: acertou a mão
+        guess.bonusFor(GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(2)), 100) shouldBe 100 // lado 0: acertou o morto
+        // Só a mão certa (morto errado): o lado do morto não recebe nada.
+        val onlyHand = guess.copy(morto = Guess(1, 13, correct = false))
+        onlyHand.bonusFor(GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(2)), 100) shouldBe 0
+        // Os dois acertos no mesmo lado somam.
+        val sameSide = guess.copy(dealerSeat = Seat(0), mortoDealerSeat = Seat(2))
+        sameSide.bonusFor(GameMode.DUPLAS, Side(0), 100) shouldBe 200
+        // `null` (regra desligada) nunca rende bônus.
+        (null as DealGuess?).bonusFor(GameMode.DUPLAS, Side(0), 100) shouldBe 0
     }
 
     @Test
