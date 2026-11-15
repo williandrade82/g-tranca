@@ -86,10 +86,25 @@ partida depois da 1ª (`GameViewModel.dealGuessPrompt` retornava `null` na fase 
      **conflado** — na virada de partida, com o anfitrião em `PacingPolicy.FREE` (nunca espera ninguém), a tela pode
      nunca ver a vista exata em que um palpite "acabou de resolver" (só a seguinte, já adiantada); o reconhecimento
      correspondente nunca seria enviado e o portão travaria a mesa pelos 300 s do limite de segurança **a cada
-     virada de partida** — pior que o problema que resolveria. Isso é seguro por outro motivo: a reação em tela
-     cheia (`DealGuessRevealOverlay`) cobre a tela inteira e consome qualquer toque, então nada do que avança por
-     trás dela fica visível ou clicável até o próprio toque a fechar (§16.6, princípio de fluidez). Ver KDoc de
-     `TableDriver.guessRevealDone` (`:app`).
+     virada de partida** — pior que o problema que resolveria.
+   - **Mas o risco de conflação em si era real** (achado numa 2ª rodada de revisão): sem nenhum tratamento, a
+     mesma virada de partida podia fazer a tela nunca ver a vista "ainda sem o palpite" — e sem ela para comparar,
+     `handleDealGuessTransition` nunca detecta a transição, então a **pílula de um palpite de outro assento**
+     (robô ou outro humano) podia nunca aparecer (não trava nada, mas perde a reação — o sintoma cosmético do
+     plano original). Causa raiz: `GameController.recordEvent` exclui de propósito `Action.GuessDealRange` de
+     `turnEvents` (pílula/detalhe da vez não devem registrá-lo), então `SnapshotPacer.othersPlayed` nunca
+     reconhecia um palpite de outro assento como "alguém jogou" — e só essa checagem já impõe a pausa
+     (`paceMillis`) que dá tempo à tela de ver a vista intermediária, igual a qualquer jogada de robô
+     (telas-app.md 3.8.2: "mesma pausa de pensando"). **Corrigido** sem nenhum sinal de volta da tela (diferente
+     do portão revertido, que dependia de `guessRevealDone`): `othersPlayed` agora também reconhece um palpite
+     resolvido **de outro assento** (não `viewerSeat`) como "alguém jogou", impondo a mesma pausa fixa e limitada
+     de sempre — sem risco de travar, só de demorar `paceMillis` (tipicamente centenas de ms). Testes:
+     `SnapshotPacerTest` (unidade, no `othersPlayed`) e `DealGuessGuestTest` (ponta a ponta, com um `SnapshotPacer`
+     de verdade alimentando um `GameViewModel` real — falha sem a correção, passa com ela).
+   - A reação em tela cheia do próprio jogador (`DealGuessRevealOverlay`) continua sem portão (e não precisa):
+     ela cobre a tela inteira e consome qualquer toque, então nada do que avança por trás dela fica visível ou
+     clicável até o próprio toque a fechar (§16.6, princípio de fluidez). Ver KDoc de `TableDriver.guessRevealDone`
+     e de `SnapshotPacer.othersPlayed` (`:app`).
 3. `docs/telas-app.md` 3.8.2 **não precisou mudar**: já descrevia o comportamento correto (modal só para quem
    palpita; pílula para os demais, em qualquer mesa) — só não funcionava ainda no multijogador local; agora funciona
    como o texto sempre disse.
