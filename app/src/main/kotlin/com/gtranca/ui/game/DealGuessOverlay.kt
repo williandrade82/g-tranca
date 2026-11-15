@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -317,8 +318,11 @@ private const val PARTNER_GUESS_ENTER_MILLIS = 450
 /**
  * Quanto o cartão fica parado e visível na posição de repouso, antes de começar a sair — pedido do usuário: 4 s
  * para o parceiro (duplas, 14/11/2026), **1,5 s para o próprio jogador** (15/11/2026, [DealGuessSideReaction.own],
- * substitui a antiga tela cheia que só fechava no toque — [GameViewModel.OWN_GUESS_REACTION_MILLIS] zera o estado
- * exatamente quando este repouso termina, o que também libera [GameUiState.isDealGuessing]/o monte).
+ * substitui a antiga tela cheia que só fechava no toque). Mesma relação que já valia pro parceiro: este valor
+ * conduz só a ANIMAÇÃO (entrada → repouso → saída, ~450 ms + este valor + ~450 ms); [GameViewModel.OWN_GUESS_REACTION_MILLIS]
+ * (também 1,5 s, mas contado a partir do nascimento da reação, não do início do repouso) é quem de fato zera
+ * [GameUiState.ownGuessReaction] e libera [GameUiState.isDealGuessing]/o monte — um pouco ANTES de a animação
+ * terminar de verdade (a carta continua visível, conduzida sozinha por este `Composable`, até sair da mesa).
  */
 private const val PARTNER_GUESS_REST_MILLIS = 4_000L
 private const val OWN_GUESS_REST_MILLIS = 1_500L
@@ -478,7 +482,8 @@ fun GuessSideReactionOverlay(reaction: DealGuessSideReaction?, tableRect: Rect?,
 @Composable
 private fun GuessOutcomeMark(correct: Boolean, modifier: Modifier = Modifier) {
     val mark = if (correct) GColors.Emerald else GColors.Ruby
-    Canvas(modifier.semantics { contentDescription = "" }) {
+    // Decorativo: o texto do cartão já anuncia o resultado (contentDescription do Box de texto, acima).
+    Canvas(modifier.clearAndSetSemantics {}) {
         drawCircle(color = Color.White, radius = size.minDimension / 2f)
         drawCircle(color = mark, radius = size.minDimension / 2f, alpha = 0.92f)
         val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = size.minDimension * 0.12f, cap = StrokeCap.Round)

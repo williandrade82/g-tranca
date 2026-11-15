@@ -274,6 +274,11 @@ class DealGuessViewModelTest {
         // A 1ª jogada de verdade já começou no motor, mas o monte continua escondido até a reação própria terminar.
         afterGuess.isDealGuessing shouldBe true
         afterGuess.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
+        // §3.6 BUG em potencial: a antiga tela cheia consumia qualquer toque por baixo; a reação pequena de agora
+        // não cobre a tela, então sem gating explícito `canDraw` ficaria `true` (e tocável) com o monte ainda
+        // escondido — em individual, `mortoDealerSeat` é sempre quem abre a partida (`firstSeat`), então é
+        // exatamente este caso (humano palpitando o morto) que exporia o vazamento.
+        afterGuess.canDraw shouldBe false
 
         advanceTimeBy(GameViewModel.OWN_GUESS_REACTION_MILLIS)
         runCurrent()
@@ -282,6 +287,11 @@ class DealGuessViewModelTest {
         afterReaction.ownGuessReaction.shouldBeNull()
         afterReaction.isDealGuessing shouldBe false
         afterReaction.dealGuessPrompt.shouldBeNull()
+        // Sem conferir `canDraw` aqui: `humanMortoDealerGame` não evita uma troca de 3 vermelho do início da vez
+        // (§3.5) na mesma semente, que também bloquearia `legal` por `ownSwapPending` (um motivo diferente, nada a
+        // ver com a reação própria) — confundiria esta prova, que é só sobre o timer dela. O vazamento de
+        // `canDraw` durante a janela (o que importa corrigir) já está provado acima (`afterGuess.canDraw shouldBe
+        // false`); a prova de que ele some depois de liberado está na corrida com o 3 vermelho, abaixo.
     }
 
     /**
@@ -381,6 +391,12 @@ class DealGuessViewModelTest {
             runCurrent()
         }
         vm.uiState.value.ownSwapPending shouldBe false
+        // §3.6 `canDraw` continua bloqueado enquanto a reação própria (1,5 s) ainda está à vista — mesmo gate que
+        // evita o vazamento provado em "palpite errado do morto mostra a reacao propria..." (acima); só depois do
+        // timer é que o monte (e `canDraw`) voltam a valer.
+        vm.uiState.value.canDraw shouldBe false
+        advanceTimeBy(GameViewModel.OWN_GUESS_REACTION_MILLIS)
+        runCurrent()
         vm.uiState.value.canDraw shouldBe true
 
         // E o jogo segue normalmente: a próxima jogada publica botões novos de verdade.

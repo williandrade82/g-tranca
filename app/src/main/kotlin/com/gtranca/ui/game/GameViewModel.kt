@@ -238,7 +238,11 @@ data class GameUiState(
     val partnerGuessReaction: DealGuessSideReaction? = null,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
-    private val legal: List<Action> get() = if (ownSwapPending || turnHeld) emptyList() else snapshot.humanLegal
+    // §3.6 (15/11/2026): a antiga tela cheia da reação própria consumia qualquer toque por baixo; a reação pequena
+    // de agora não cobre a tela, então sem este gate `canDraw`/outros controles ficariam ativos (e tocáveis) por
+    // 1,5 s com o monte ainda escondido — em individual, o morto é sempre quem abre a partida (`firstSeat`), então
+    // a própria vez já começa no instante em que a reação nasce.
+    private val legal: List<Action> get() = if (ownSwapPending || turnHeld || ownGuessReaction != null) emptyList() else snapshot.humanLegal
     /** §3.6 fases de palpite da distribuição certeira (não são "jogar", "comprar" etc.: nenhum outro controle vale). */
     private val dealGuessPhase: Boolean get() = snapshot.view.phase == Phase.DEAL_GUESS_HAND || snapshot.view.phase == Phase.DEAL_GUESS_MORTO
     val awaitingDraw: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW
@@ -1395,12 +1399,15 @@ class GameViewModel(
         const val PARTNER_GUESS_REACTION_MILLIS: Long = 3_000
 
         /**
-         * §3.6 (ajuste de 15/11/2026, pedido do usuário) quanto tempo a reação pequena do PRÓPRIO jogador
-         * ([GameUiState.ownGuessReaction]) fica à vista antes de desaparecer sozinha — substitui a antiga tela
-         * cheia que só fechava no toque. Ao contrário de [PARTNER_GUESS_REACTION_MILLIS] (que não bloqueia nada),
-         * este valor **é** o tempo de repouso que [GuessSideReactionOverlay] usa para a reação do próprio jogador
-         * (`restMillis`, quando `own == true`): zerar este estado é o que faz [GameUiState.isDealGuessing] voltar a
-         * `false` e o monte reaparecer, igual à antiga regra "escondido até o toque fechar a reação".
+         * §3.6 (ajuste de 15/11/2026, pedido do usuário) quanto tempo depois de armado ([reactToGuess]) este
+         * estado ([GameUiState.ownGuessReaction]) continua preenchido — substitui a antiga tela cheia que só
+         * fechava no toque. Ao contrário de [PARTNER_GUESS_REACTION_MILLIS] (puramente cosmético: a reação do
+         * parceiro nunca bloqueia nada), zerar este estado **também** faz [GameUiState.isDealGuessing] voltar a
+         * `false` e o monte reaparecer — igual à antiga regra "escondido até o toque fechar a reação", só que com
+         * um timer fixo em vez de um toque. O valor (1,5 s) é o pedido do usuário para a duração **visível** da
+         * reação; não precisa (e hoje não coincide exatamente com) o fim da animação de entrada/repouso/saída que
+         * [GuessSideReactionOverlay] conduz por conta própria (a carta pode continuar visível, saindo da mesa, por
+         * mais algumas centenas de ms depois deste timer zerar o estado — mesma folga que já existia pro parceiro).
          */
         const val OWN_GUESS_REACTION_MILLIS: Long = 1_500
 

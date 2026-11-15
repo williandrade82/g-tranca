@@ -982,6 +982,4 @@
     <string name="deal_guess_partner_numbers">Esperado: %1$d cartas | Palpite do parceiro: %2$d cartas.</string>
     <!-- Mesmo 2º parágrafo, para a reação pequena do PRÓPRIO jogador (15/11/2026, substitui a antiga tela cheia). -->
     <string name="deal_guess_own_numbers">Esperado: %1$d cartas | Seu palpite: %2$d cartas.</string>
-    <string name="deal_guess_outcome_hit">Você acertou o palpite.</string>
-    <string name="deal_guess_outcome_miss">Você não acertou o palpite.</string>
 </resources>
