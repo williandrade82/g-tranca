@@ -1,11 +1,14 @@
 package com.gtranca.ui.game
 
 import com.gtranca.ai.Difficulty
+import com.gtranca.engine.Action
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.dealGuessHandRange
 import com.gtranca.engine.model.dealGuessHandTarget
+import com.gtranca.engine.model.dealGuessMortoRange
 import com.gtranca.engine.model.dealGuessMortoTarget
 import com.gtranca.game.GameConfig
 import io.kotest.matchers.nulls.shouldBeNull
@@ -109,7 +112,50 @@ class DealGuessViewModelTest {
         state.isDealGuessing shouldBe true
         state.dealGuessPrompt.shouldNotBeNull()
         state.dealGuessPrompt!!.stage shouldBe DealGuessStage.HAND
-        (state.dealGuessPrompt!!.totalStages > 0) shouldBe true
+        state.dealGuessPrompt!!.range shouldBe dealGuessHandRange(state.snapshot.view.mode)
+    }
+
+    /**
+     * §3.6 (ajuste de 15/11/2026, faixa fixa): a faixa oferecida na barra é sempre a mesma, por papel/modo —
+     * 35..55 na mão em duplas, 12..32 na mão em individual, 12..32 no morto em qualquer modo.
+     */
+    @Test
+    fun `§3_6 a faixa da mao e 12-32 em individual e 35-55 em duplas`() = runTest(dispatcher) {
+        val individual = humanDealerGame()
+        individual.uiState.value.dealGuessPrompt!!.range shouldBe (12..32)
+
+        var duplas: GameViewModel? = null
+        for (seed in 1L..200L) {
+            val candidate = newGame(seed, mode = GameMode.DUPLAS)
+            if (candidate.uiState.value.snapshot.view.dealGuess?.dealerSeat == Seat(0)) {
+                duplas = candidate
+                break
+            }
+        }
+        val game = duplas ?: error("Nenhuma semente com o assento 0 abrindo a partida em duplas em 200 tentativas")
+        game.uiState.value.dealGuessPrompt!!.range shouldBe (35..55)
+    }
+
+    @Test
+    fun `§3_6 a faixa do morto e sempre 12-32, em qualquer modo`() = runTest(dispatcher) {
+        val vm = humanMortoDealerGame()
+        vm.uiState.value.dealGuessPrompt!!.range shouldBe dealGuessMortoRange()
+        vm.uiState.value.dealGuessPrompt!!.range shouldBe (12..32)
+    }
+
+    /**
+     * §3.6 a faixa mostrada na barra nunca oferece um número que o motor rejeitaria: todo número de
+     * [DealGuessPrompt.range] tem o candidato correspondente em `humanLegal` (a única fonte de jogadas válidas).
+     */
+    @Test
+    fun `§3_6 todo numero da faixa do prompt tem uma acao legal correspondente`() = runTest(dispatcher) {
+        val vm = humanDealerGame()
+        val state = vm.uiState.value
+        val prompt = state.dealGuessPrompt.shouldNotBeNull()
+        val legalNumbers = state.snapshot.humanLegal.filterIsInstance<Action.GuessDealRange>()
+            .map { it.end - it.start }
+            .toSet()
+        prompt.range.toSet() shouldBe legalNumbers
     }
 
     /**
@@ -164,7 +210,7 @@ class DealGuessViewModelTest {
         val mode = vm.uiState.value.snapshot.view.mode
         val target = dealGuessHandTarget(mode, rules)
 
-        vm.onGuessDealRange(0, target)
+        vm.onGuessDealNumber(target)
         // §3.6 só o que já está pronto agora: `advanceUntilIdle` adiantaria o relógio virtual além do tempo da
         // pílula (ela já teria sumido sozinha antes da conferência abaixo).
         runCurrent()
@@ -206,7 +252,7 @@ class DealGuessViewModelTest {
         val mortoTarget = dealGuessMortoTarget(beforeMorto.snapshot.view.rules)
 
         // Larguras diferentes da certa sempre erram (§3.6): "largura certa + 1" nunca é o alvo.
-        vm.onGuessDealRange(0, mortoTarget + 1)
+        vm.onGuessDealNumber(mortoTarget + 1)
         // §3.6 idem: só o que já está pronto agora, antes da pílula sumir sozinha.
         runCurrent()
 
@@ -234,42 +280,59 @@ class DealGuessViewModelTest {
      * `dealGuess.hand.start`/`.end` chegam **sempre** `0`/`width`, nunca o par que o jogador tocou de verdade. A
      * reação de erro (`DealGuessRevealOverlay`) precisa mostrar o que foi tocado, não o que o motor normalizou.
      */
-    @Test
-    fun `§3_6 o motor so guarda a largura do palpite, nunca o par tocado`() = runTest(dispatcher) {
-        val vm = humanDealerGame()
-        val view0 = vm.uiState.value.snapshot.view
-        val target = dealGuessHandTarget(view0.mode, view0.rules)
-        vm.onGuessDealRange(10, 10 + target)
-        runCurrent()
-        val hand = vm.uiState.value.snapshot.view.dealGuess?.hand.shouldNotBeNull()
-        hand.start shouldBe 0
-        hand.end shouldBe target
-    }
-
     /**
-     * §3.6 item 2: a reação de erro mostra o Início/Fim que o PRÓPRIO jogador deste aparelho tocou (não "0" e "a
-     * largura", que é tudo que `dealGuess.hand` guarda — ver teste acima). Vem de `Local.dealGuessTaps`, guardado em
-     * [GameViewModel.onGuessDealRange] no toque, não do motor.
+     * §3.6 (ajuste de 15/11/2026, toque único): o motor codifica exatamente o número tocado (`start` fixo em 1,
+     * `dealGuessAction`); não há mais um par (início, fim) distinto do número escolhido.
      */
     @Test
-    fun `§3_6 a reacao de erro mostra o Inicio e o Fim que o proprio jogador tocou de verdade`() = runTest(dispatcher) {
+    fun `§3_6 o motor guarda exatamente o numero tocado (start fixo em 1)`() = runTest(dispatcher) {
         val vm = humanDealerGame()
         val view0 = vm.uiState.value.snapshot.view
-        val handStages = com.gtranca.engine.model.dealGuessHandStages(view0.rules)
         val target = dealGuessHandTarget(view0.mode, view0.rules)
-        val wrongWidth = if (target + 1 <= handStages) target + 1 else target - 1
-        val tappedStart = 5
-        val tappedEnd = tappedStart + wrongWidth
+        vm.onGuessDealNumber(target)
+        runCurrent()
+        val hand = vm.uiState.value.snapshot.view.dealGuess?.hand.shouldNotBeNull()
+        hand.start shouldBe com.gtranca.engine.model.DEAL_GUESS_FIXED_START
+        hand.end shouldBe com.gtranca.engine.model.DEAL_GUESS_FIXED_START + target
+        hand.width shouldBe target
+    }
 
-        vm.onGuessDealRange(tappedStart, tappedEnd)
+    /** §3.6 a reação de erro mostra o número que o PRÓPRIO jogador tocou (`DealGuessReveal.width`). */
+    @Test
+    fun `§3_6 a reacao de erro mostra o numero que o proprio jogador tocou de verdade`() = runTest(dispatcher) {
+        val vm = humanDealerGame()
+        val view0 = vm.uiState.value.snapshot.view
+        val range = dealGuessHandRange(view0.mode)
+        val target = dealGuessHandTarget(view0.mode, view0.rules)
+        val wrongNumber = if (target + 1 <= range.last) target + 1 else target - 1
+
+        vm.onGuessDealNumber(wrongNumber)
         runCurrent()
 
         val reveal = vm.uiState.value.dealGuessReveal.shouldNotBeNull()
         reveal.correct shouldBe false
         reveal.partner shouldBe false
-        reveal.start shouldBe tappedStart
-        reveal.end shouldBe tappedEnd
-        reveal.width shouldBe wrongWidth
+        reveal.width shouldBe wrongNumber
+    }
+
+    /**
+     * §3.6 um toque fora da faixa fixa do papel/modo não corresponde a nenhuma ação em `legalActions`: a tela
+     * nunca decide por conta própria, então o toque é ignorado (nada é enviado ao motor, o prompt continua lá).
+     */
+    @Test
+    fun `§3_6 um toque fora da faixa nao envia nada ao motor`() = runTest(dispatcher) {
+        val vm = humanDealerGame()
+        val range = vm.uiState.value.dealGuessPrompt!!.range
+
+        vm.onGuessDealNumber(range.first - 1)
+        runCurrent()
+        vm.uiState.value.snapshot.view.dealGuess?.hand.shouldBeNull()
+        vm.uiState.value.dealGuessPrompt.shouldNotBeNull()
+
+        vm.onGuessDealNumber(range.last + 1)
+        runCurrent()
+        vm.uiState.value.snapshot.view.dealGuess?.hand.shouldBeNull()
+        vm.uiState.value.dealGuessPrompt.shouldNotBeNull()
     }
 
     /**
@@ -297,7 +360,7 @@ class DealGuessViewModelTest {
         beforeMorto.dealGuessPrompt.shouldNotBeNull()
         val mortoTarget = dealGuessMortoTarget(beforeMorto.snapshot.view.rules)
 
-        vm.onGuessDealRange(0, mortoTarget)
+        vm.onGuessDealNumber(mortoTarget)
         runCurrent()
 
         // Os dois avisos chegam juntos: a reação do palpite (por cima) e "Baixar 3 vermelho" do início da vez.
@@ -337,7 +400,7 @@ class DealGuessViewModelTest {
         vm.uiState.value.dealPending shouldBe false
 
         val view0 = vm.uiState.value.snapshot.view
-        vm.onGuessDealRange(0, dealGuessHandTarget(view0.mode, view0.rules))
+        vm.onGuessDealNumber(dealGuessHandTarget(view0.mode, view0.rules))
         runCurrent()
         vm.uiState.value.dealPending shouldBe false
 

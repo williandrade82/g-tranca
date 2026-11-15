@@ -13,6 +13,7 @@ import com.gtranca.engine.model.RuleError
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.SideTable
+import com.gtranca.engine.model.dealGuessAction
 import com.gtranca.engine.model.dealGuessMortoTarget
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameSnapshot
@@ -100,7 +101,7 @@ class DealGuessGuestTest {
         val seatView = SeatView.of(
             view = view, roundNumber = 2, stage = TableStage.PLAYING, totals = listOf(0, 0), winner = null,
             history = null, turnEvents = List(2) { emptyList() }, turnRedThrees = List(2) { emptyList() },
-            thinkingSeat = null, legal = listOf(Action.GuessDealRange(0, mortoTarget)), requestId = 9,
+            thinkingSeat = null, legal = listOf(dealGuessAction(mortoTarget)), requestId = 9,
         )
         // Ida e volta pela rede de verdade (§16.4/§16.6): é assim que a vista chega ao convidado, não um objeto em
         // memória compartilhado com o anfitrião.
@@ -129,9 +130,9 @@ class DealGuessGuestTest {
         prompt.target shouldBe dealGuessMortoTarget(rules)
 
         // E o jogador consegue mesmo agir: a tela envia o palpite ao condutor da mesa.
-        vm.onGuessDealRange(0, prompt.target)
+        vm.onGuessDealNumber(prompt.target)
         advanceUntilIdle()
-        driver.submitted shouldBe listOf(Action.GuessDealRange(0, prompt.target))
+        driver.submitted shouldBe listOf(dealGuessAction(prompt.target))
     }
 
     @Test
