@@ -33,8 +33,10 @@ interface TableDriver {
 
     /**
      * §3.6 a interface reconheceu a reação (pílula ou tela cheia) do palpite resolvido da partida [roundNumber]
-     * ([hand] = mão, `false` = morto): libera o próximo pedido do jogo local. Sem efeito na mesa multijogador (a
-     * sincronização do palpite entre aparelhos é uma fase futura separada).
+     * ([hand] = mão, `false` = morto): libera o próximo pedido do jogo local ([LocalTableDriver]) ou a próxima vista
+     * da fila na mesa multijogador local (`MultiplayerDriver`, via `SnapshotPacer.guessRevealDone`) — mesmo princípio
+     * de [presentationDone] para as trocas de 3 vermelho. Sem efeito no jogo online por enquanto (`:online-client`;
+     * fora do escopo desta correção, ver `docs/plano-distribuicao-certeira.md`).
      */
     fun guessRevealDone(roundNumber: Int, hand: Boolean) {}
 

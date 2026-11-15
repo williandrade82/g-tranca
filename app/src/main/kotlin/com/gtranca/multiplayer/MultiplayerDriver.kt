@@ -46,6 +46,7 @@ class MultiplayerDriver private constructor(
     paceMillis: () -> Long,
     dealWaitMillis: (() -> Long)?,
     presentationWaitMillis: (() -> Long)?,
+    guessRevealWaitMillis: (() -> Long)?,
     initial: GameSnapshot,
     /** §17.3 a mesa espera o seletor de boosters deste aparelho antes de mostrar cada partida (a tela do app liga; os testes não). */
     private val withBoosters: Boolean,
@@ -75,6 +76,7 @@ class MultiplayerDriver private constructor(
         paceMillis = paceMillis,
         dealWaitMillis = dealWaitMillis ?: { if (paceMillis() > 0) (DEAL_MILLIS * dealDelayScale).toLong() + WAIT_GRACE_MILLIS else 0 },
         presentationWaitMillis = presentationWaitMillis ?: { if (paceMillis() > 0) PRESENTATION_WAIT_MILLIS else 0 },
+        guessRevealWaitMillis = guessRevealWaitMillis ?: { if (paceMillis() > 0) GUESS_REVEAL_WAIT_MILLIS else 0 },
         boostersGate = if (withBoosters) ::awaitBoosters else null,
         publish = { snapshot ->
             shown = snapshot
@@ -193,6 +195,9 @@ class MultiplayerDriver private constructor(
 
     override fun dealAnimationDone(roundNumber: Int) = pacer.dealAnimationDone(roundNumber)
 
+    /** §3.6 repassa ao [pacer] (mesmo princípio de [presentationDone] para as trocas de 3 vermelho). */
+    override fun guessRevealDone(roundNumber: Int, hand: Boolean) = pacer.guessRevealDone(roundNumber, hand)
+
     override fun continueToNextRound() {
         when (val role = table.role.value) {
             is MpRole.Hosting -> role.host?.continueRound()
@@ -225,21 +230,29 @@ class MultiplayerDriver private constructor(
         private const val PRESENTATION_WAIT_MILLIS: Long = 20_000
 
         /**
+         * §3.6 limite da espera pelo reconhecimento da reação do palpite ([TableDriver.guessRevealDone]): bem generoso,
+         * como a rede de segurança equivalente do jogo local (`GameController.GUESS_REVEAL_SAFETY_MILLIS`) — é o tempo até
+         * o jogador olhar e tocar a reação de +100 pontos, não uma animação; nunca deve disparar em condições normais.
+         */
+        private const val GUESS_REVEAL_WAIT_MILLIS: Long = 300_000
+
+        /**
          * Espera a primeira vista do assento deste aparelho e cria o condutor da tela. [paceMillis] é a pausa antes de cada
-         * jogada de outro assento; as esperas pela tela ([dealWaitMillis], [presentationWaitMillis]) têm o padrão do jogo
-         * local quando há pausa, e nenhuma sem pausa.
+         * jogada de outro assento; as esperas pela tela ([dealWaitMillis], [presentationWaitMillis], [guessRevealWaitMillis])
+         * têm o padrão do jogo local quando há pausa, e nenhuma sem pausa.
          */
         suspend fun create(
             table: MultiplayerTable,
             scope: CoroutineScope,
             dealWaitMillis: (() -> Long)? = null,
             presentationWaitMillis: (() -> Long)? = null,
+            guessRevealWaitMillis: (() -> Long)? = null,
             withBoosters: Boolean = false,
             paceMillis: () -> Long,
         ): MultiplayerDriver {
             // A primeira vista da fila (a distribuição, se o jogo acabou de começar; no reingresso, a atual).
             val first = table.feed.receive()
-            return MultiplayerDriver(table, scope, paceMillis, dealWaitMillis, presentationWaitMillis, first, withBoosters)
+            return MultiplayerDriver(table, scope, paceMillis, dealWaitMillis, presentationWaitMillis, guessRevealWaitMillis, first, withBoosters)
         }
 
         /** Nome do erro do motor recebido na recusa → o erro (para o texto em pt-BR); desconhecido = `null`. */
