@@ -1,6 +1,5 @@
 package com.gtranca.net
 
-import com.gtranca.engine.Action
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.DealGuess
@@ -41,7 +40,7 @@ class SeatViewTest {
     private fun seatViewOf(view: PlayerView): SeatView = SeatView.of(
         view = view, roundNumber = 2, stage = TableStage.PLAYING, totals = listOf(0, 0), winner = null, history = null,
         turnEvents = List(2) { emptyList() }, turnRedThrees = List(2) { emptyList() }, thinkingSeat = null,
-        legal = listOf(Action.GuessDealRange(0, 22)), requestId = 7,
+        legal = listOf(com.gtranca.engine.model.dealGuessAction(22)), requestId = 7,
     )
 
     @Test
