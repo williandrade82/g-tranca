@@ -76,28 +76,37 @@ import kotlin.math.roundToInt
 private const val DEAL_GUESS_CYCLE_MILLIS = 2_600
 
 /**
- * §3.6 estágio ao vivo do indicador (0 a [totalStages]), um relógio só (não um `Animatable` por carta): sobe e desce
- * em ciclo com o tempo real do quadro ([withFrameNanos]), **independente** da escala de animação do sistema — é a
- * mecânica do minijogo, não um efeito cosmético, então continua rodando mesmo com "remover animações" ligado. Para
- * de vez quando [frozen] não é nulo (2º toque).
+ * §3.6 (ajuste de 15/11/2026, toque único) número que o indicador mostra em [elapsedMs] desde o início do ciclo,
+ * sempre dentro de [range] (nunca fora dela, nem na mão nem no morto — a faixa é fixa por papel/modo,
+ * `dealGuessHandRange`/`dealGuessMortoRange`). Pura (sem Compose) para ser testável direto na JVM: sobe do
+ * início ao fim de [range] no 1º meio-ciclo e desce de volta no 2º, em ciclo contínuo de `2 * cycleMillis`.
+ */
+internal fun dealGuessStageAt(elapsedMs: Long, range: IntRange, cycleMillis: Int = DEAL_GUESS_CYCLE_MILLIS): Int {
+    val span = range.last - range.first
+    if (span <= 0) return range.first
+    val period = cycleMillis * 2
+    val phase = elapsedMs % period
+    val progress = if (phase < cycleMillis) phase.toFloat() / cycleMillis else 2f - phase.toFloat() / cycleMillis
+    val offset = (progress * span).roundToInt().coerceIn(0, span)
+    return range.first + offset
+}
+
+/**
+ * §3.6 estágio ao vivo do indicador (sempre dentro de [range]), um relógio só (não um `Animatable` por carta): sobe
+ * e desce em ciclo com o tempo real do quadro ([withFrameNanos]), **independente** da escala de animação do
+ * sistema — é a mecânica do minijogo, não um efeito cosmético, então continua rodando mesmo com "remover
+ * animações" ligado. Para de vez quando [frozen] não é nulo (o toque único que resolve o palpite).
  */
 @Composable
-private fun dealGuessLiveStage(totalStages: Int, frozen: Int?): Int {
-    var stage by remember(totalStages) { mutableStateOf(0) }
-    LaunchedEffect(totalStages, frozen) {
-        if (frozen != null || totalStages <= 0) return@LaunchedEffect
+private fun dealGuessLiveStage(range: IntRange, frozen: Int?): Int {
+    var stage by remember(range) { mutableStateOf(range.first) }
+    LaunchedEffect(range, frozen) {
+        if (frozen != null) return@LaunchedEffect
         val start = withFrameNanos { it }
         while (true) {
             withFrameNanos { now ->
                 val elapsedMs = (now - start) / 1_000_000
-                val period = DEAL_GUESS_CYCLE_MILLIS * 2
-                val phase = elapsedMs % period
-                val progress = if (phase < DEAL_GUESS_CYCLE_MILLIS) {
-                    phase.toFloat() / DEAL_GUESS_CYCLE_MILLIS
-                } else {
-                    2f - phase.toFloat() / DEAL_GUESS_CYCLE_MILLIS
-                }
-                stage = (progress * totalStages).roundToInt().coerceIn(0, totalStages)
+                stage = dealGuessStageAt(elapsedMs, range)
             }
         }
     }
@@ -105,19 +114,15 @@ private fun dealGuessLiveStage(totalStages: Int, frozen: Int?): Int {
 }
 
 /**
- * §3.6 topo/base (frações de 0 a 1) da faixa verde já marcada, a partir do toque **bruto** ([start], `null` antes
- * do 1º toque) e do estágio atual do indicador ([stage], 0 a [totalStages]). Extraída à parte (testável sem
- * Compose) pelo bug relatado 14/11/2026: [DealGuessModal] pré-calculava `lo = minOf(start, stage)` para os campos
- * de texto e passava esse `lo` (sempre `<= stage`, por construção) como se fosse o toque bruto para a barra — então,
- * quando o indicador voltava a subir acima do toque inicial (`stage < start`), `lo` degenerava para `== stage` a
- * cada recomposição e a faixa nunca tinha altura. A correção é passar [start] sempre bruto para esta função (nunca
- * um valor já pré-ordenado); ela mesma faz `minOf`/`maxOf` das duas frações cruas, cobrindo os dois sentidos.
+ * §3.6 fração (0 a 1) da barra preenchida do topo ([range.first]) até o estágio atual [stage] — mantém, no toque
+ * único, a mesma leitura visual de "faixa preenchida" que a barra já tinha (14/11/2026), sem precisar de um 1º
+ * toque: o preenchimento sempre nasce no topo e cresce/encolhe com o indicador. Extraída à parte (testável sem
+ * Compose).
  */
-internal fun dealGuessBand(start: Int?, stage: Int, totalStages: Int): Pair<Float, Float>? {
-    if (start == null || totalStages <= 0) return null
-    val startFraction = (start.toFloat() / totalStages).coerceIn(0f, 1f)
-    val stageFraction = (stage.toFloat() / totalStages).coerceIn(0f, 1f)
-    return minOf(startFraction, stageFraction) to maxOf(startFraction, stageFraction)
+internal fun dealGuessFillFraction(stage: Int, range: IntRange): Float {
+    val span = range.last - range.first
+    if (span <= 0) return 0f
+    return ((stage - range.first).toFloat() / span).coerceIn(0f, 1f)
 }
 
 /**
@@ -137,41 +142,36 @@ private const val INDICATOR_HUB_Y = 88f / 164f
 private const val INDICATOR_WIDTH_FRACTION = 0.24f
 
 /**
- * §3.6, telas-app.md 3.8.2 (14/11/2026, reescrita em `Canvas`): a barra de palpite — **trilho azul sempre visível,
- * de ponta a ponta** ([GColors.RoyalBlue]) e o **segmento verde** ([GColors.Emerald]) da faixa já marcada
- * ([band], `null` antes do 1º toque). Eixo do `Canvas`: y cresce para baixo, então o estágio 0 fica no **topo** e
- * o último na **base**. O indicador (imagem de verdade, não mais um triângulo desenhado aqui) é posicionado por
- * [DealGuessModal], fora deste `Canvas`, porque precisa das dimensões em dp da arte de fundo inteira.
+ * §3.6, telas-app.md 3.8.2 (reescrita em `Canvas`): a barra de palpite — **trilho azul sempre visível, de ponta a
+ * ponta** ([GColors.RoyalBlue]) e o **preenchimento verde** ([GColors.Emerald]) do topo até o estágio atual
+ * ([fill], 0 a 1, [dealGuessFillFraction]). Eixo do `Canvas`: y cresce para baixo, então o estágio mínimo da faixa
+ * fica no **topo** e o máximo na **base**. O indicador (imagem de verdade, não um triângulo desenhado aqui) é
+ * posicionado por [DealGuessModal], fora deste `Canvas`, porque precisa das dimensões em dp da arte de fundo inteira.
  */
 @Composable
-private fun DealGuessGauge(band: Pair<Float, Float>?, modifier: Modifier = Modifier) {
+private fun DealGuessGauge(fill: Float, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val corner = CornerRadius(size.width / 2f)
         // Trilho: sempre visível, do topo à base (nunca escondido pelo preenchimento).
         drawRoundRect(color = GColors.RoyalBlue, size = size, cornerRadius = corner)
-        if (band != null) {
-            val top = band.first * size.height
-            val bottom = band.second * size.height
-            if (bottom > top) {
-                drawRoundRect(color = GColors.Emerald, topLeft = Offset(0f, top), size = Size(size.width, bottom - top), cornerRadius = corner)
-            }
+        val bottom = fill.coerceIn(0f, 1f) * size.height
+        if (bottom > 0f) {
+            drawRoundRect(color = GColors.Emerald, size = Size(size.width, bottom), cornerRadius = corner)
         }
     }
 }
 
 /**
- * §3.6, telas-app.md 3.8.2: modal "Cartas para a distribuição" / "Cartas para o Morto". Só aparece na tela de quem
- * está palpitando. Dois toques: o 1º marca Início (o indicador continua); o 2º para o indicador e resolve Início/Fim
- * (o maior vira Fim, nunca invertido) — então [onGuess] envia o palpite ao motor. A tela nunca decide sozinha se
- * acertou: só mostra os números tocados; o resultado chega depois, em [DealGuessRevealOverlay].
+ * §3.6, telas-app.md 3.8.2 (ajuste de 15/11/2026, toque único): modal "Cartas para a distribuição" / "Cartas para o
+ * Morto". Só aparece na tela de quem está palpitando. O indicador percorre, ida e volta, só os números de
+ * [DealGuessPrompt.range]; um único toque marca o número do estágio naquele instante como o palpite e já o envia
+ * ao motor ([onGuess]). A tela nunca decide sozinha se acertou: só mostra o número tocado; o resultado chega
+ * depois, em [DealGuessRevealOverlay].
  */
 @Composable
-fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int, Int) -> Unit) {
-    var start by remember(prompt) { mutableStateOf<Int?>(null) }
+fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int) -> Unit) {
     var frozen by remember(prompt) { mutableStateOf<Int?>(null) }
-    val stage = dealGuessLiveStage(prompt.totalStages, frozen)
-    val lo = start?.let { minOf(it, stage) }
-    val hi = start?.let { maxOf(it, stage) }
+    val stage = dealGuessLiveStage(prompt.range, frozen)
     val title = stringResource(if (prompt.stage == DealGuessStage.HAND) R.string.deal_guess_title_hand else R.string.deal_guess_title_morto)
     Box(
         Modifier
@@ -180,20 +180,16 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int, Int) -> Unit) {
             .background(Color.Black.copy(alpha = 0.55f))
             .clickable(remember { MutableInteractionSource() }, indication = null) {
                 if (frozen != null) return@clickable // já resolvido: espera o motor (sem toque duplo)
-                if (start == null) {
-                    start = stage
-                } else {
-                    frozen = stage
-                    onGuess(minOf(start!!, stage), maxOf(start!!, stage))
-                }
+                frozen = stage
+                onGuess(stage)
             }
             .semantics(mergeDescendants = true) { contentDescription = title; liveRegion = LiveRegionMode.Polite }
             .testTag("deal-guess-modal"),
         contentAlignment = Alignment.Center,
     ) {
-        // §3.6 item 4 do relato 14/11/2026: o conteúdo mora num cartão de fundo sólido (`loungeDialog`, mesmo
-        // estilo dos demais modais do jogo), não solto sobre o scrim — mas o `clickable` continua no `Box` de fora,
-        // em qualquer ponto da tela (inclusive fora do cartão): é assim que o 1º/2º toque funcionam.
+        // §3.6: o conteúdo mora num cartão de fundo sólido (`loungeDialog`, mesmo estilo dos demais modais do
+        // jogo), não solto sobre o scrim — mas o `clickable` continua no `Box` de fora, em qualquer ponto da tela
+        // (inclusive fora do cartão): é assim que o toque único funciona.
         val panelShape = RoundedCornerShape(Corner.lg)
         Column(
             Modifier
@@ -229,20 +225,16 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int, Int) -> Unit) {
                 val hollowTop = maxHeight * HOLLOW_TOP
                 val hollowWidth = maxWidth * HOLLOW_WIDTH
                 val hollowHeight = maxHeight * HOLLOW_HEIGHT
+                val fraction = dealGuessFillFraction(stage, prompt.range)
                 DealGuessGauge(
-                    // §3.6 (bug 14/11/2026): `start` bruto, nunca pré-ordenado, vai para `dealGuessBand` — é ela
-                    // quem decide topo/base da faixa verde com `minOf`/`maxOf` das duas frações cruas; um `lo` já
-                    // ordenado aqui fazia a faixa degenerar sempre que o indicador volta a subir acima do 1º toque.
-                    // `lo`/`hi` continuam servindo só os campos de texto abaixo, sempre ordenados.
-                    dealGuessBand(start, stage, prompt.totalStages),
+                    fraction,
                     Modifier
                         .offset(x = hollowLeft, y = hollowTop)
                         .size(hollowWidth, hollowHeight)
                         .testTag("deal-guess-gauge"),
                 )
-                // Indicador: a imagem de verdade (`deal_guess_indicator`, não mais um triângulo desenhado), com a
-                // ponta encostada na borda externa do trilho esquerdo, na altura do estágio atual.
-                val fraction = if (prompt.totalStages <= 0) 0f else (stage.toFloat() / prompt.totalStages).coerceIn(0f, 1f)
+                // Indicador: a imagem de verdade (`deal_guess_indicator`, não um triângulo desenhado), com a ponta
+                // encostada na borda externa do trilho esquerdo, na altura do estágio atual.
                 val indicatorWidth = maxWidth * INDICATOR_WIDTH_FRACTION
                 val indicatorHeight = indicatorWidth / INDICATOR_ASPECT
                 val railOuterLeft = maxWidth * RAIL_OUTER_LEFT
@@ -265,15 +257,9 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int, Int) -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(Spacing.lg))
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                DealGuessField(stringResource(R.string.deal_guess_start_label), lo, Modifier.testTag("deal-guess-start"))
-                DealGuessField(stringResource(R.string.deal_guess_end_label), hi, Modifier.testTag("deal-guess-end"))
-                DealGuessField(
-                    stringResource(R.string.deal_guess_total_label),
-                    if (lo != null && hi != null) hi - lo else null,
-                    Modifier.testTag("deal-guess-total"),
-                )
-            }
+            // §3.6 (toque único, 15/11/2026): um único campo, com o número que o indicador mostra agora (atualizado
+            // a cada quadro) — nunca mais Início/Fim/Total, que só faziam sentido com dois toques.
+            DealGuessField(stringResource(R.string.deal_guess_number_label), stage, Modifier.testTag("deal-guess-number"))
         }
     }
 }
@@ -295,10 +281,10 @@ private fun DealGuessField(label: String, value: Int?, modifier: Modifier = Modi
 
 /**
  * §3.6, telas-app.md 3.8.2: reação em tela cheia do palpite resolvido (vitória: +100 pontos, confete e som de
- * canastra; erro, 14/11/2026 simplificada: só o banner a 75% da largura da tela e, embaixo dele, os três campos
- * Início/Fim/Total que o jogador tocou, sem borda piscando nem outro efeito) — exclusiva de quem palpitou de
- * verdade (`role == YOU`; o parceiro, em duplas, usa [PartnerGuessReactionOverlay], pequena e não bloqueante).
- * Fica até o toque ([onDismiss], que libera o motor para o próximo palpite ou a 1ª jogada de verdade).
+ * canastra; erro, simplificada: só o banner a 75% da largura da tela e, embaixo dele, o número que o jogador
+ * tocou, sem borda piscando nem outro efeito) — exclusiva de quem palpitou de verdade (`role == YOU`; o parceiro,
+ * em duplas, usa [PartnerGuessReactionOverlay], pequena e não bloqueante). Fica até o toque ([onDismiss], que
+ * libera o motor para o próximo palpite ou a 1ª jogada de verdade).
  */
 @Composable
 fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
@@ -334,8 +320,8 @@ fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
                 Text(closeText, color = GColors.Ivory.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
             }
         } else {
-            // telas-app.md 3.8.2 (14/11/2026): sem borda âmbar nem outro drama — só o banner a 75% da tela e,
-            // embaixo, os campos que o jogador tocou (mesmo visual do modal de palpite, `DealGuessField`).
+            // telas-app.md 3.8.2 (toque único, 15/11/2026): sem borda âmbar nem outro drama — só o banner a 75% da
+            // tela e, embaixo, o número que o jogador tocou (mesmo visual do modal de palpite, `DealGuessField`).
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.testTag("deal-guess-miss")) {
                 Image(
                     painterResource(R.drawable.deal_guess_miss),
@@ -344,13 +330,9 @@ fun DealGuessRevealOverlay(reveal: DealGuessReveal, onDismiss: () -> Unit) {
                     contentScale = ContentScale.FillWidth,
                 )
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // §3.6 esta tela é exclusiva de quem palpitou de verdade (role == YOU): `reveal.start`/`.end`
-                    // sempre vêm do toque deste aparelho. O Total (largura) vem do motor e aparece sempre.
-                    DealGuessField(stringResource(R.string.deal_guess_start_label), reveal.start, Modifier.testTag("deal-guess-reveal-start"))
-                    DealGuessField(stringResource(R.string.deal_guess_end_label), reveal.end, Modifier.testTag("deal-guess-reveal-end"))
-                    DealGuessField(stringResource(R.string.deal_guess_total_label), reveal.width, Modifier.testTag("deal-guess-reveal-total"))
-                }
+                // §3.6 esta tela é exclusiva de quem palpitou de verdade (role == YOU): `reveal.width` é o número
+                // que este aparelho tocou de verdade (o motor fixa `start` em 1, `dealGuessAction`).
+                DealGuessField(stringResource(R.string.deal_guess_number_label), reveal.width, Modifier.testTag("deal-guess-reveal-number"))
                 Spacer(Modifier.height(16.dp))
                 Text(
                     text, color = GColors.Ivory, textAlign = TextAlign.Center,

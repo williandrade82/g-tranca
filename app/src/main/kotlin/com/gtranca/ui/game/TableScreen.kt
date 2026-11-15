@@ -239,8 +239,8 @@ interface TableEvents {
     fun onConfirmResign()
     fun onDismissResign()
 
-    /** §3.6 o jogador tocou duas vezes na barra: [start] e [end] são os estágios marcados (a tela normaliza). */
-    fun onGuessDealRange(start: Int, end: Int) = Unit
+    /** §3.6 (toque único, 15/11/2026) o jogador tocou a barra com o indicador no estágio [number]. */
+    fun onGuessDealNumber(number: Int) = Unit
 
     /** §3.6 toque que fecha a reação em tela cheia do palpite resolvido (vitória ou "não foi dessa vez"). */
     fun onDealGuessRevealDismissed() = Unit
@@ -613,7 +613,7 @@ private fun TableScreenContent(
     // a reação em tela cheia, só de quem palpitou de verdade — por cima de tudo o mais da mesa. A reação pequena do
     // parceiro (duplas) é composta lá dentro, antes do `FlightsLayer` (acima), para ficar atrás das cartas voando.
     if (onReviewContinue == null) {
-        state.dealGuessPrompt?.let { prompt -> DealGuessModal(prompt, events::onGuessDealRange) }
+        state.dealGuessPrompt?.let { prompt -> DealGuessModal(prompt, events::onGuessDealNumber) }
         // §3.6 tela cheia e bloqueante: só do próprio jogador (`role == YOU`). O parceiro (duplas) usa a reação
         // pequena de dentro da mesa (acima), que não bloqueia nada.
         state.dealGuessReveal?.let { reveal -> DealGuessRevealOverlay(reveal, events::onDealGuessRevealDismissed) }

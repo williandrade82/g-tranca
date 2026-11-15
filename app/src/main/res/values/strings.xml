@@ -967,10 +967,8 @@
     <string name="deal_guess_title_hand">Cartas para a distribuição</string>
     <string name="deal_guess_title_morto">Cartas para o Morto</string>
     <string name="deal_guess_target">Selecione %1$d cartas para receber 100 pontos.</string>
-    <string name="deal_guess_instructions">Toque uma vez para iniciar a seleção, toque a segunda vez para definir as cartas. Chance única!</string>
-    <string name="deal_guess_start_label">Início</string>
-    <string name="deal_guess_end_label">Fim</string>
-    <string name="deal_guess_total_label">Total</string>
+    <string name="deal_guess_instructions">Toque na tela para escolher o número de cartas. Chance única!</string>
+    <string name="deal_guess_number_label">Número</string>
     <string name="deal_guess_win_you">Você acertou em cheio!</string>
     <string name="deal_guess_win_partner_hand">O seu parceiro acertou em cheio o número de cartas para a distribuição!</string>
     <string name="deal_guess_win_partner_morto">O seu parceiro acertou em cheio o número de cartas para o Morto!</string>
