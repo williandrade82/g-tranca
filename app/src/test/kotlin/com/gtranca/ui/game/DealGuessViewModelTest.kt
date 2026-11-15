@@ -11,6 +11,7 @@ import com.gtranca.engine.model.dealGuessHandTarget
 import com.gtranca.engine.model.dealGuessMortoRange
 import com.gtranca.engine.model.dealGuessMortoTarget
 import com.gtranca.game.GameConfig
+import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -651,5 +652,51 @@ class DealGuessViewModelTest {
         sawPartnerReaction.shouldBeTrue()
         sawReactionDisappear.shouldBeTrue()
         openingWasTrueWhileReacting.shouldBeFalse()
+    }
+
+    /**
+     * §3.6 (15/11/2026, pedido do usuário) os selos permanentes da pílula (`DealGuessBadges`, `TableScreen.kt`) são
+     * derivados direto de `view.dealGuess` ([TableAnimations.dealGuessBadges]) — ao contrário da pílula/reação
+     * transitória (`dealGuessPills`/`ownGuessReaction`/`partnerGuessReaction`, que somem em poucos segundos),
+     * `dealGuess` continua presente bem depois de todas elas sumirem sozinhas, e também depois de uma jogada de
+     * verdade (a `view.dealGuess` só é reiniciado numa partida nova, `RoundState`, não a cada ação). O reset entre
+     * partidas em si é responsabilidade do motor (`:core-engine`, `MatchTest`/`MatchSimulationPropertyTest`): não é
+     * duplicado aqui.
+     */
+    @Test
+    fun `§3_6 view_dealGuess (selos permanentes) continua presente apos as reacoes transitorias sumirem e apos jogar`() = runTest(dispatcher) {
+        val vm = humanDealerGame()
+        val view0 = vm.uiState.value.snapshot.view
+        vm.onGuessDealNumber(dealGuessHandTarget(view0.mode, view0.rules))
+        runCurrent()
+
+        // Adianta alem de TODAS as reacoes transitorias (pilula, reacao propria e do parceiro) — nenhuma delas
+        // precisa estar viva para os selos permanentes continuarem corretos.
+        val pastAllTransientReactions = maxOf(
+            GameViewModel.DEAL_GUESS_PILL_MILLIS,
+            GameViewModel.OWN_GUESS_REACTION_MILLIS,
+            GameViewModel.PARTNER_GUESS_REACTION_MILLIS,
+        ) + 500
+        advanceTimeBy(pastAllTransientReactions)
+        runCurrent()
+
+        val settled = vm.uiState.value
+        settled.dealGuessPills.shouldBeEmpty()
+        settled.ownGuessReaction.shouldBeNull()
+        settled.partnerGuessReaction.shouldBeNull()
+        val dealGuess = settled.snapshot.view.dealGuess.shouldNotBeNull()
+        dealGuess.hand.shouldNotBeNull()
+        dealGuess.morto.shouldNotBeNull()
+        dealGuessBadges(dealGuess, dealGuess.dealerSeat) shouldBe listOf(DealGuessStage.HAND to dealGuess.hand!!.correct)
+        dealGuessBadges(dealGuess, dealGuess.mortoDealerSeat) shouldBe listOf(DealGuessStage.MORTO to dealGuess.morto!!.correct)
+
+        // Uma jogada de verdade (compra) não reinicia nem apaga o palpite já resolvido desta partida.
+        if (settled.canDraw) {
+            vm.onDraw()
+            runCurrent()
+            vm.uiState.value.snapshot.view.dealGuess.shouldNotBeNull()
+            vm.uiState.value.snapshot.view.dealGuess?.hand.shouldNotBeNull()
+            vm.uiState.value.snapshot.view.dealGuess?.morto.shouldNotBeNull()
+        }
     }
 }

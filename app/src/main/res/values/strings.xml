@@ -982,4 +982,10 @@
     <string name="deal_guess_partner_numbers">Esperado: %1$d cartas | Palpite do parceiro: %2$d cartas.</string>
     <!-- Mesmo 2º parágrafo, para a reação pequena do PRÓPRIO jogador (15/11/2026, substitui a antiga tela cheia). -->
     <string name="deal_guess_own_numbers">Esperado: %1$d cartas | Seu palpite: %2$d cartas.</string>
+    <!-- Selos permanentes na pílula do assento (15/11/2026), até o fim da partida: §3.8.2. -->
+    <string name="deal_guess_badge_points">+100pts</string>
+    <string name="deal_guess_badge_hit_hand">Acertou o palpite da distribuição: mais 100 pontos.</string>
+    <string name="deal_guess_badge_hit_morto">Acertou o palpite do Morto: mais 100 pontos.</string>
+    <string name="deal_guess_badge_miss_hand">Não acertou o palpite da distribuição.</string>
+    <string name="deal_guess_badge_miss_morto">Não acertou o palpite do Morto.</string>
 </resources>

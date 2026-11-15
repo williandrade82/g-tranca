@@ -4,6 +4,7 @@ import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.DealGuess
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.Seat
@@ -104,6 +105,27 @@ internal fun ownHandCover(dealPending: Boolean, handHidden: Boolean): OwnHandCov
     dealPending -> OwnHandCover.DEALING
     handHidden -> OwnHandCover.HIDDEN
     else -> OwnHandCover.NONE
+}
+
+/**
+ * §3.6 (15/11/2026, pedido do usuário) selos PERMANENTES do resultado do palpite da distribuição certeira, por
+ * assento, até o fim da PARTIDA — ao contrário da pílula/reação transitória (`dealGuessPills`, `GameViewModel`'s
+ * `ownGuessReaction`/`partnerGuessReaction`, que somem sozinhas em segundos), [dealGuess] (`PlayerView.dealGuess`,
+ * parte do `RoundState`) só muda de novo na partida seguinte — nenhum estado novo precisa ser guardado na UI, só
+ * ler direto o que o motor já manda.
+ *
+ * Um mesmo [seat] pode, em tese, acumular um selo pela mão (`dealGuess.dealerSeat`) e outro pelo morto
+ * (`dealGuess.mortoDealerSeat`); na prática [dealGuessSeats] garante que os dois papéis caem sempre em assentos
+ * diferentes (duplas ou individual), então nunca os dois juntos — a lista aceita até dois mesmo assim, sem custo
+ * extra, caso essa garantia um dia mude. Cada etapa só entra na lista depois de resolvida (`hand`/`morto`
+ * não-nulos); `null` (regra desligada) ou etapa ainda não resolvida: nenhum selo para ela.
+ */
+internal fun dealGuessBadges(dealGuess: DealGuess?, seat: Seat): List<Pair<DealGuessStage, Boolean>> {
+    if (dealGuess == null) return emptyList()
+    val badges = mutableListOf<Pair<DealGuessStage, Boolean>>()
+    if (dealGuess.dealerSeat == seat) dealGuess.hand?.let { badges += DealGuessStage.HAND to it.correct }
+    if (dealGuess.mortoDealerSeat == seat) dealGuess.morto?.let { badges += DealGuessStage.MORTO to it.correct }
+    return badges
 }
 
 /**

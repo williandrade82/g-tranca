@@ -9,6 +9,8 @@ import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.DealGuess
+import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.Phase
@@ -747,5 +749,39 @@ class TableAnimationsTest {
         ownHandCover(dealPending = true, handHidden = false) shouldBe OwnHandCover.DEALING
         ownHandCover(dealPending = false, handHidden = true) shouldBe OwnHandCover.HIDDEN
         ownHandCover(dealPending = false, handHidden = false) shouldBe OwnHandCover.NONE
+    }
+
+    /**
+     * §3.6 (15/11/2026, pedido do usuário) selos permanentes por assento: [dealGuessBadges] só devolve a etapa
+     * (mão/morto) cujo [seat] é mesmo o `dealerSeat`/`mortoDealerSeat` correspondente, e só depois de resolvida.
+     */
+    @Test
+    fun `§3_6 dealGuessBadges devolve so a etapa do assento, ja resolvida`() {
+        val dealGuess = DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(2), hand = Guess(0, 44, true), morto = null)
+
+        dealGuessBadges(dealGuess, Seat(1)) shouldBe listOf(DealGuessStage.HAND to true)
+        // mortoDealerSeat ainda não resolveu o morto (`morto == null`): nenhum selo pra ele ainda.
+        dealGuessBadges(dealGuess, Seat(2)) shouldBe emptyList()
+        // Um terceiro assento (nem dealerSeat nem mortoDealerSeat): nenhum selo.
+        dealGuessBadges(dealGuess, Seat(0)) shouldBe emptyList()
+    }
+
+    /** Sem a regra ligada (`dealGuess == null`, `PlayerView.dealGuess` padrão): nenhum selo para ninguém. */
+    @Test
+    fun `§3_6 dealGuessBadges devolve lista vazia sem a regra ligada`() {
+        dealGuessBadges(null, Seat(0)) shouldBe emptyList()
+    }
+
+    /**
+     * Em duplas ou individual, [dealGuessSeats] garante que `dealerSeat` e `mortoDealerSeat` nunca coincidem — mas
+     * [dealGuessBadges] aceita os dois mesmo assim (até dois selos no mesmo assento), sem custo extra, caso essa
+     * garantia um dia mude: prova direta, construindo um `DealGuess` artificial com os dois papéis no MESMO assento
+     * (nunca ocorre de verdade, só pra provar que o código aceita).
+     */
+    @Test
+    fun `§3_6 dealGuessBadges aceita, em tese, os dois selos no mesmo assento`() {
+        val dealGuess = DealGuess(dealerSeat = Seat(0), mortoDealerSeat = Seat(0), hand = Guess(0, 44, true), morto = Guess(0, 22, false))
+
+        dealGuessBadges(dealGuess, Seat(0)) shouldBe listOf(DealGuessStage.HAND to true, DealGuessStage.MORTO to false)
     }
 }

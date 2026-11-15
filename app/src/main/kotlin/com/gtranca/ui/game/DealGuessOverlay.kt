@@ -62,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.gtranca.R
 import com.gtranca.ui.sound.LocalSound
@@ -497,6 +498,92 @@ private fun GuessOutcomeMark(correct: Boolean, modifier: Modifier = Modifier) {
         } else {
             drawLine(Color.White, Offset(size.width * 0.3f, size.height * 0.3f), Offset(size.width * 0.7f, size.height * 0.7f), strokeWidth = stroke.width, cap = StrokeCap.Round)
             drawLine(Color.White, Offset(size.width * 0.7f, size.height * 0.3f), Offset(size.width * 0.3f, size.height * 0.7f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+        }
+    }
+}
+
+/**
+ * §3.6 (15/11/2026, pedido do usuário) selos PERMANENTES do resultado do palpite da distribuição certeira, na
+ * pílula do assento [seat] (`SeatPill`, `TableScreen.kt`) — em **todas** as telas, inclusive a do próprio jogador
+ * (junto do avatar da própria mão, não só na pílula dos outros assentos) e a do parceiro, não só "nos demais
+ * aparelhos" como a reação transitória (`dealGuessPills`). Ficam até o fim da PARTIDA ([dealGuessBadges] lê
+ * direto `PlayerView.dealGuess`, que só muda na próxima partida — nenhum estado novo na UI) e aparecem **junto**
+ * com a reação já existente da pílula (confete/borda dourada no acerto, tremor no erro), não a substituem.
+ *
+ * Até dois selos (mão e morto) — mas [dealGuessBadges] documenta que [seat] nunca acumula os dois na prática
+ * ([dealGuessSeats] garante assentos diferentes para os dois papéis, em qualquer modo).
+ */
+@Composable
+fun DealGuessBadges(dealGuess: com.gtranca.engine.model.DealGuess?, seat: com.gtranca.engine.model.Seat, modifier: Modifier = Modifier) {
+    val badges = dealGuessBadges(dealGuess, seat)
+    if (badges.isEmpty()) return
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        badges.forEach { (stage, correct) -> key(stage) { DealGuessBadge(stage, correct) } }
+    }
+}
+
+/** Texto do selo de acerto ("+100pts") exibido junto da arte do baralho cortada no erro. */
+private fun dealGuessBadgeTextRes(stage: DealGuessStage, correct: Boolean): Int = when {
+    correct && stage == DealGuessStage.HAND -> R.string.deal_guess_badge_hit_hand
+    correct -> R.string.deal_guess_badge_hit_morto
+    stage == DealGuessStage.HAND -> R.string.deal_guess_badge_miss_hand
+    else -> R.string.deal_guess_badge_miss_morto
+}
+
+/** Tamanho do selo (quadrado, pequeno — uma pílula já é compacta em telas de 360dp). */
+private val DEAL_GUESS_BADGE_SIZE = 18.dp
+
+@Composable
+private fun DealGuessBadge(stage: DealGuessStage, correct: Boolean) {
+    val text = stringResource(dealGuessBadgeTextRes(stage, correct))
+    val tag = "deal-guess-badge-${if (correct) "hit" else "miss"}-${if (stage == DealGuessStage.HAND) "hand" else "morto"}"
+    if (correct) {
+        // Selo "+100pts": cápsula dourada/esmeralda — não é a imagem do baralho (essa é só do erro, abaixo).
+        Box(
+            Modifier
+                .background(GColors.Emerald, RoundedCornerShape(50))
+                .border(1.dp, GColors.Gold, RoundedCornerShape(50))
+                .padding(horizontal = 4.dp, vertical = 1.dp)
+                .semantics { contentDescription = text }
+                .testTag(tag),
+        ) {
+            Text(
+                stringResource(R.string.deal_guess_badge_points),
+                color = GColors.Midnight,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+            )
+        }
+    } else {
+        // Selo de erro: recorte quadrado da arte do baralho (telas-app.md 3.8.2: "a imagem do baralho") com um
+        // círculo vermelho cortado por cima, desenhado em Canvas (mesmo padrão de GuessOutcomeMark/DealGuessGauge).
+        Box(
+            Modifier
+                .size(DEAL_GUESS_BADGE_SIZE)
+                .clip(RoundedCornerShape(3.dp))
+                .semantics { contentDescription = text }
+                .testTag(tag),
+        ) {
+            Image(
+                painterResource(R.drawable.deal_guess_background),
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+            Canvas(Modifier.matchParentSize()) {
+                val stroke = size.minDimension * 0.16f
+                drawCircle(
+                    color = GColors.Ruby,
+                    radius = size.minDimension / 2f - stroke / 2f,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+                )
+                drawLine(
+                    GColors.Ruby,
+                    Offset(size.width * 0.22f, size.height * 0.22f),
+                    Offset(size.width * 0.78f, size.height * 0.78f),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+            }
         }
     }
 }

@@ -1001,6 +1001,9 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     if (dealGuessReaction?.correct == false) {
         Box(Modifier.matchParentSize().testTag("deal-guess-pill-shake"))
     }
+    // §3.6 (15/11/2026) selos permanentes do palpite (até o fim da partida, junto da reação transitória acima, não
+    // no lugar dela) — no canto para não truncar o nome/mão numa pílula estreita (duplas, 360dp).
+    DealGuessBadges(snapshot.view.dealGuess, seat, Modifier.align(Alignment.TopEnd).padding(2.dp))
     }
 }
 
@@ -1689,7 +1692,13 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
                         .semantics { contentDescription = ownLastText }
                         .testTag("own-last-play"),
                     contentAlignment = Alignment.Center,
-                ) { GMedallion(Modifier.size(34.dp), active = state.isHumanTurn) { PersonaAvatar(it, 28.dp) } }
+                ) {
+                    GMedallion(Modifier.size(34.dp), active = state.isHumanTurn) { PersonaAvatar(it, 28.dp) }
+                    // §3.6 (15/11/2026): o selo permanente do palpite aparece "em TODAS as telas, inclusive a do
+                    // próprio jogador" — aqui, perto do próprio avatar (a mesa não tem uma pílula do próprio
+                    // assento, §1 do glossário: ela só existe para OS OUTROS jogadores).
+                    DealGuessBadges(state.snapshot.view.dealGuess, state.snapshot.viewerSeat, Modifier.align(Alignment.TopEnd))
+                }
             }
             // §17.3 os boosters do jogo, à direita do avatar.
             BoosterStrip(state)
