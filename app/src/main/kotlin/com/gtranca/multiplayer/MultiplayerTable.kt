@@ -769,13 +769,18 @@ class MultiplayerTable(
             },
             scope.launch {
                 var was: GuestStatus? = null
+                var staked = false
                 guest.status.collect { status ->
                     val rules = guest.rules.value
                     when (status) {
                         GuestStatus.Playing -> {
                             // §16.13 quem estava na sala debita a aposta ao começar (quem entra no meio: StakeDebit).
-                            if (was == GuestStatus.Lobby && rules != null) {
+                            // §16.5, §16.15 uma queda de verdade bem depois do Pronto passa por Reconnecting antes de
+                            // Playing (nunca volta a Lobby): sem o staked aqui esse jogador entraria sem pagar a
+                            // aposta; staked impede debitar de novo numa reconexão normal em jogo já começado.
+                            if (!staked && (was == GuestStatus.Lobby || was == GuestStatus.Reconnecting) && rules != null) {
                                 if (rules.stake > 0) coins.debit(rules.stake)
+                                staked = true
                             }
                             if (was == GuestStatus.Reconnecting || was == GuestStatus.Resigned) _resigned.value = false
                         }

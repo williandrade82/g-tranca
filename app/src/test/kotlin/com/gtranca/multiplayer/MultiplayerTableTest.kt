@@ -243,6 +243,43 @@ class MultiplayerTableTest {
     }
 
     @Test
+    fun `§16_5 §16_13 §16_15 queda de verdade na sala logo apos o Pronto ainda debita a aposta uma vez (nao zero, nao em dobro)`() = runTest {
+        val seed = 201L
+        val stake = 50
+        val network = MemoryNetwork()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(dispatcher + Job())
+        val robots = listOf("jovem", "sobrio", "atleta")
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = 500, stake = stake, rules = NO_DEAL_GUESS)
+        val rules = TableRules("Mesa da família", GameMode.DUPLAS, config.rules, 500, stake, Difficulty.FACIL.id, robots)
+        val guestCoins = FakeCoins()
+        val bots: (GameConfig) -> ((Seat, kotlin.random.Random) -> com.gtranca.ai.BotPlayer) = { { seat, _ -> testBot(seed, seat) } }
+        val hostTransport = network.transport()
+        val guestTransport = network.transport()
+        val host = MultiplayerTable(hostTransport, scope, FakeCoins(), dispatcher, bots, newSeed = { seed })
+        val guest = MultiplayerTable(guestTransport, scope, guestCoins, dispatcher, bots, newSeed = { seed })
+        host.host(rules, "Ana", "mesa-1", lobby(robots, seed, 1))
+        runCurrent()
+        guest.join("mesa-1", "Beto", inviteKey = "k1")
+        runCurrent() // o convidado chega na sala e manda Pronto, antes do "Prepare-se!" terminar no anfitrião
+        // Bloqueia a reconexão para o anfitrião terminar o início (started=true) com o convidado ainda fora: só assim
+        // o reingresso (abaixo) chega direto em Playing sem passar de novo por Lobby, como no rádio real (a conexão
+        // caiu de fato 1–2 s depois do Pronto, quando o anfitrião já tinha concluído o início, não antes).
+        network.block(guestTransport.id)
+        network.drop(guestTransport.id)
+        advanceTimeBy(com.gtranca.net.PREPARE_MILLIS + 100)
+        runCurrent()
+        network.unblock(guestTransport.id)
+        // Achado do rules-auditor na correção do §16.15 (lostLocked cobrindo GuestStatus.Lobby, antes só Closed/"Mesa
+        // encerrada" direto): sem o staked em watchGuest(), esse reingresso (Lobby → Reconnecting → Playing, nunca
+        // volta a Lobby) pulava o "§16.13 quem estava na sala debita a aposta ao começar", que só disparava com
+        // was == Lobby.
+        advanceUntilIdle()
+        guest.mySeat shouldBe Seat(1)
+        guestCoins.debits shouldBe listOf(stake)
+    }
+
+    @Test
     fun `§16_2 sala, inicio, jogo completo pela tela e moedas de cada aparelho`() = runTest {
         val seed = 41L
         val t = setup(seed, guestSeat = 2)
