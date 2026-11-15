@@ -678,6 +678,45 @@ class GameViewModelTest {
         after.confirmResign shouldBe false
     }
 
+    /** Driver mínimo só para alimentar o [GameViewModel] com vistas fabricadas (sem mesa multijogador de verdade). */
+    private class FakeDriver(initial: com.gtranca.game.GameSnapshot) : com.gtranca.game.TableDriver {
+        val flow = kotlinx.coroutines.flow.MutableStateFlow(initial)
+        override val state: kotlinx.coroutines.flow.StateFlow<com.gtranca.game.GameSnapshot> = flow
+        override fun awaitingHuman() = false
+        override fun submit(action: Action, requestId: Long) = false
+        override fun explain(action: Action, requestId: Long) = null
+        override var dealDelayScale: Double = 1.0
+        override fun continueToNextRound() {}
+        override fun resign() {}
+        override suspend fun run() = kotlinx.coroutines.awaitCancellation()
+    }
+
+    @Test
+    fun `§13_1 adversario desiste antes da 1a partida acabar - o vencedor ve o fim do jogo sem travar (history vazio)`() = runTest(dispatcher) {
+        // §13.1 GameController.resign() nunca pontua a partida em andamento: na mesa multijogador, quem GANHA por
+        // desistência do outro lado (snapshot.resigned = false, só quem desistiu tem isso marcado) pode chegar em
+        // Stage.GAME_OVER com history ainda vazio, se a desistência aconteceu na 1ª partida. RoundSummaryScreen
+        // (EndScreen.FINAL_TABLE/ROUND_POINTS) usa history.last() e derrubava o app desse lado (achado em dispositivo
+        // real: o anfitrião desistiu cedo e o convidado fechou sozinho ao tocar "Seguir").
+        val reference = newGame(seed = 21, mode = GameMode.INDIVIDUAL)
+        val initial = reference.uiState.value.snapshot
+        initial.history.shouldBeEmpty()
+        val driver = FakeDriver(initial)
+        val vm = GameViewModel(
+            initial.config, gameSeed = 21, computeDispatcher = dispatcher,
+            externalDriver = driver, multiplayer = true, animationMillis = 0,
+        )
+        advanceUntilIdle()
+        driver.flow.value = initial.copy(
+            stage = Stage.GAME_OVER,
+            winner = initial.view.side,
+            humanLegal = emptyList(),
+        )
+        advanceUntilIdle()
+        vm.uiState.value.endScreen shouldBe EndScreen.FINAL
+        vm.uiState.value.snapshot.resigned shouldBe false
+    }
+
     @Test
     fun `duplas - humano no assento 0 ve so a propria mao e a jogada dos tres bots`() = runTest(dispatcher) {
         val vm = newGame(seed = 4, mode = GameMode.DUPLAS)

@@ -1038,6 +1038,11 @@ class GameViewModel(
     private fun endScreen(snapshot: GameSnapshot, step: Int): EndScreen? = when {
         snapshot.stage == Stage.PLAYING -> null
         snapshot.resigned -> EndScreen.FINAL
+        // §13.1 quem desistiu nunca pontua a partida em andamento (GameController.resign()): se isso aconteceu ainda
+        // na 1ª partida, o lado que ganhou chega aqui com Stage.GAME_OVER e history vazio (ele não desistiu, então
+        // snapshot.resigned acima é só do lado de quem desistiu, não do vencedor) - RoundSummaryScreen (FINAL_TABLE/
+        // ROUND_POINTS) usa history.last() e travava o app.
+        snapshot.stage == Stage.GAME_OVER && snapshot.history.isEmpty() -> EndScreen.FINAL
         snapshot.stage == Stage.ROUND_OVER -> if (step == 0) EndScreen.FINAL_TABLE else EndScreen.ROUND_POINTS
         else -> EndScreen.entries[step.coerceAtMost(EndScreen.entries.lastIndex)]
     }
