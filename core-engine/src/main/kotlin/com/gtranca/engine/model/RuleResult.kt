@@ -55,7 +55,10 @@ enum class ActionError : RuleError {
      * (o palpite pendente precisa ser resolvido antes de comprar, baixar ou descartar).
      */
     NOT_GUESS_PHASE,
-    /** §3.6 `start`/`end` do palpite fora de `0..total de estágios` da fase (ver `dealGuessHandStages`/`dealGuessMortoStages`). */
+    /**
+     * §3.6 palpite fora do formato fixo de toque único: `start != 1` ([DEAL_GUESS_FIXED_START]) ou o número
+     * escolhido (`end - start`) fora da faixa fixa do papel/modo (`dealGuessHandRange`/`dealGuessMortoRange`).
+     */
     GUESS_RANGE_OUT_OF_BOUNDS,
 }
 

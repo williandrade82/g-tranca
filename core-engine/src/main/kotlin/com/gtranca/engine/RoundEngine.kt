@@ -13,9 +13,10 @@ import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.engine.model.SideTable
-import com.gtranca.engine.model.dealGuessHandStages
+import com.gtranca.engine.model.DEAL_GUESS_FIXED_START
+import com.gtranca.engine.model.dealGuessHandRange
 import com.gtranca.engine.model.dealGuessHandTarget
-import com.gtranca.engine.model.dealGuessMortoStages
+import com.gtranca.engine.model.dealGuessMortoRange
 import com.gtranca.engine.model.dealGuessMortoTarget
 
 /**
@@ -178,29 +179,31 @@ object RoundEngine {
     }
 
     /**
-     * §3.6 resolve o palpite da mão ([Phase.DEAL_GUESS_HAND]) ou do morto ([Phase.DEAL_GUESS_MORTO]). O motor só
-     * exige `0 <= start, end <= totalStages` (quem resolve a dinâmica de toque de "o menor vira início" é a UI);
-     * aqui normaliza-se o par e compara-se a largura normalizada com o alvo (44/22 cartas na mão, conforme o modo;
-     * 22 no morto). O palpite da mão passa a vez para quem palpita o morto; o do morto resolve, e então começa de
-     * verdade a vez do [RoundState.firstSeat] ([beginTurn], §3.5) — nenhuma carta troca de lugar neste passo.
+     * §3.6 resolve o palpite da mão ([Phase.DEAL_GUESS_HAND]) ou do morto ([Phase.DEAL_GUESS_MORTO]). Desde o
+     * ajuste de 14/11/2026 (toque único), o motor só aceita o formato fixo de [com.gtranca.engine.model.dealGuessAction]:
+     * `start == `[DEAL_GUESS_FIXED_START]` (1) e `end - start` (o número escolhido) dentro da faixa fixa do papel/
+     * modo ([dealGuessHandRange] / [dealGuessMortoRange]) — qualquer outro par é recusado, mesmo que estivesse
+     * dentro do baralho inteiro de antes. O palpite da mão passa a vez para quem palpita o morto; o do morto
+     * resolve, e então começa de verdade a vez do [RoundState.firstSeat] ([beginTurn], §3.5) — nenhuma carta
+     * troca de lugar neste passo.
      */
     private fun guessDealRange(state: RoundState, seat: Seat, start: Int, end: Int, rules: RuleSet): RuleResult<RoundState> {
         val guess = state.dealGuess ?: return fail(ActionError.NOT_GUESS_PHASE)
-        val totalStages = when (state.phase) {
-            Phase.DEAL_GUESS_HAND -> dealGuessHandStages(rules)
+        val range = when (state.phase) {
+            Phase.DEAL_GUESS_HAND -> dealGuessHandRange(state.mode)
             Phase.DEAL_GUESS_MORTO -> {
-                val handWidth = guess.hand?.width ?: return fail(ActionError.NOT_GUESS_PHASE)
-                dealGuessMortoStages(state.mode, rules, handWidth)
+                guess.hand ?: return fail(ActionError.NOT_GUESS_PHASE)
+                dealGuessMortoRange()
             }
             else -> return fail(ActionError.NOT_GUESS_PHASE)
         }
-        if (start < 0 || start > totalStages || end < 0 || end > totalStages) return fail(ActionError.GUESS_RANGE_OUT_OF_BOUNDS)
-        val lo = minOf(start, end)
-        val hi = maxOf(start, end)
+        if (start != DEAL_GUESS_FIXED_START) return fail(ActionError.GUESS_RANGE_OUT_OF_BOUNDS)
+        val number = end - start
+        if (number !in range) return fail(ActionError.GUESS_RANGE_OUT_OF_BOUNDS)
         return when (state.phase) {
             Phase.DEAL_GUESS_HAND -> {
                 val target = dealGuessHandTarget(state.mode, rules)
-                val resolved = Guess(lo, hi, hi - lo == target)
+                val resolved = Guess(start, end, number == target)
                 RuleResult.Ok(
                     state.copy(
                         dealGuess = guess.copy(hand = resolved),
@@ -211,7 +214,7 @@ object RoundEngine {
             }
             Phase.DEAL_GUESS_MORTO -> {
                 val target = dealGuessMortoTarget(rules)
-                val resolved = Guess(lo, hi, hi - lo == target)
+                val resolved = Guess(start, end, number == target)
                 val afterGuess = state.copy(
                     dealGuess = guess.copy(morto = resolved),
                     phase = Phase.AWAITING_DRAW,

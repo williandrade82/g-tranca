@@ -1,5 +1,6 @@
 package com.gtranca.engine.model
 
+import com.gtranca.engine.Action
 import com.gtranca.engine.RuleSet
 import kotlinx.serialization.Serializable
 
@@ -50,8 +51,12 @@ fun dealGuessSeats(mode: GameMode, firstSeat: Seat): Pair<Seat, Seat> {
     return dealerSeat to mode.previousSeat(dealerSeat)
 }
 
-/** §3.6 estágios da barra do palpite da mão: um por carta do baralho embaralhado do perfil (104, ou 96 com §1). */
-fun dealGuessHandStages(rules: RuleSet): Int = Deck.size(rules)
+/**
+ * §3.6 faixa de números que a barra do palpite da mão oferece (ajuste de 14/11/2026): **35..55** em duplas,
+ * **12..32** em individual — fixa, não depende mais do tamanho do baralho restante. O alvo de verdade
+ * ([dealGuessHandTarget]) está sempre dentro dela (44 em duplas, 22 em individual).
+ */
+fun dealGuessHandRange(mode: GameMode): IntRange = if (mode == GameMode.DUPLAS) 35..55 else 12..32
 
 /**
  * §3.6 alvo (largura certa) do palpite da mão: total de cartas distribuídas às mãos (§3.1) — `cardsPerHand`
@@ -67,11 +72,22 @@ fun dealGuessHandTarget(mode: GameMode, rules: RuleSet): Int = rules.cardsPerHan
 fun dealGuessMortoTarget(rules: RuleSet): Int = rules.cardsPerMorto * rules.mortoCount
 
 /**
- * §3.6 estágios da barra do palpite do morto: o total do baralho menos a largura escolhida no palpite da mão
- * ([handGuessWidth]), limitado entre **22** (mínimo) e **60** em duplas ou **82** em individual (máximo) — valores
- * fixos do documento, não derivados do tamanho do baralho do perfil.
+ * §3.6 faixa de números que a barra do palpite do morto oferece (ajuste de 14/11/2026): **12..32**, em
+ * qualquer modo — fixa, não depende mais da largura escolhida no palpite da mão nem do baralho do perfil.
+ * O alvo de verdade ([dealGuessMortoTarget]) está sempre dentro dela (22).
  */
-fun dealGuessMortoStages(mode: GameMode, rules: RuleSet, handGuessWidth: Int): Int {
-    val max = if (mode == GameMode.DUPLAS) 60 else 82
-    return (Deck.size(rules) - handGuessWidth).coerceIn(22, max)
-}
+fun dealGuessMortoRange(): IntRange = 12..32
+
+/**
+ * §3.6 "o valor de seleção inicial será sempre um": o `start` fixo de todo [Action.GuessDealRange] do minijogo
+ * de palpite, em qualquer papel ou modo. O número escolhido pelo jogador (dentro de [dealGuessHandRange] /
+ * [dealGuessMortoRange]) vira `end` somando esse fixo — ver [dealGuessAction].
+ */
+const val DEAL_GUESS_FIXED_START: Int = 1
+
+/**
+ * §3.6 codifica o [number] escolhido pelo jogador (um único toque) como o [Action.GuessDealRange] de `start`
+ * fixo ([DEAL_GUESS_FIXED_START]). Único jeito suportado de montar essa ação: `:ai` e a interface devem
+ * chamar esta função, nunca construir [Action.GuessDealRange] à mão, para não errar o deslocamento de +1.
+ */
+fun dealGuessAction(number: Int): Action = Action.GuessDealRange(DEAL_GUESS_FIXED_START, DEAL_GUESS_FIXED_START + number)

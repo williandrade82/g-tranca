@@ -9,8 +9,9 @@ import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Suit
-import com.gtranca.engine.model.dealGuessHandStages
-import com.gtranca.engine.model.dealGuessMortoStages
+import com.gtranca.engine.model.dealGuessAction
+import com.gtranca.engine.model.dealGuessHandRange
+import com.gtranca.engine.model.dealGuessMortoRange
 
 /**
  * Enumeração COMPLETA, a menos de cartas idênticas, das ações válidas (ver [RoundEngine.legalActions]).
@@ -26,9 +27,10 @@ import com.gtranca.engine.model.dealGuessMortoStages
  * Cada candidato é então conferido por [RoundEngine.step]; só os aceitos são devolvidos.
  *
  * §3.6 nas fases de palpite da distribuição certeira ([Phase.DEAL_GUESS_HAND] / [Phase.DEAL_GUESS_MORTO]), a única
- * classe de ação é [Action.GuessDealRange]: como o resultado (acerto ou erro) só depende da **largura** (`end -
- * start`), a equivalência de classe aqui é "mesma largura" (em vez de "mesma cópia do baralho"), representada por
- * um candidato `GuessDealRange(0, width)` por largura possível (`0..totalStages`).
+ * classe de ação é [Action.GuessDealRange]: como o resultado (acerto ou erro) só depende do **número escolhido**
+ * (`end - start`, com `start` sempre 1, toque único desde 14/11/2026), a equivalência de classe aqui é "mesmo
+ * número" (em vez de "mesma cópia do baralho"), representada por um candidato [dealGuessAction] por número
+ * possível na faixa fixa do papel/modo ([dealGuessHandRange] / [dealGuessMortoRange]).
  */
 internal object LegalActions {
 
@@ -37,8 +39,8 @@ internal object LegalActions {
     fun generate(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
         if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
         val candidates: Sequence<Action> = when (state.phase) {
-            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandStages(rules))
-            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(mortoGuessStages(state, rules))
+            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandRange(state.mode))
+            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(dealGuessMortoRange())
             Phase.AWAITING_DRAW ->
                 sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
             Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
@@ -55,8 +57,8 @@ internal object LegalActions {
     fun generateReference(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
         if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
         val candidates: Sequence<Action> = when (state.phase) {
-            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandStages(rules))
-            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(mortoGuessStages(state, rules))
+            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandRange(state.mode))
+            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(dealGuessMortoRange())
             Phase.AWAITING_DRAW ->
                 sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
             Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
@@ -65,17 +67,9 @@ internal object LegalActions {
         return candidates.distinct().filter { isValid(state, seat, it, rules) }.toList()
     }
 
-    /** §3.6 estágios da barra do palpite do morto, a partir da largura já resolvida do palpite da mão. */
-    private fun mortoGuessStages(state: RoundState, rules: RuleSet): Int {
-        val handWidth = checkNotNull(state.dealGuess?.hand?.width) {
-            "Fase DEAL_GUESS_MORTO sem palpite da mão resolvido: ${state.dealGuess}"
-        }
-        return dealGuessMortoStages(state.mode, rules, handWidth)
-    }
-
-    /** §3.6 um [Action.GuessDealRange] por largura possível (`0..totalStages`); ver KDoc da classe. */
-    private fun dealGuessCandidates(totalStages: Int): Sequence<Action> =
-        (0..totalStages).asSequence().map { width -> Action.GuessDealRange(0, width) }
+    /** §3.6 um [dealGuessAction] por número possível na faixa fixa do papel/modo; ver KDoc da classe. */
+    private fun dealGuessCandidates(range: IntRange): Sequence<Action> =
+        range.asSequence().map { number -> dealGuessAction(number) }
 
     /**
      * Validação rápida dos candidatos de baixar, acrescentar e pegar o lixo, com o mesmo resultado de [RoundEngine.step]
