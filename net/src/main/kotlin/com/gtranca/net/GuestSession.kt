@@ -471,6 +471,7 @@ class GuestSession(
      * da busca, assume (§16.10).
      */
     private fun lostLocked() {
+        log("connection lost (status=${_status.value})")
         link?.close()
         link = null
         // §16.11 com o resultado e o prêmio já recebidos, o jogo acabou para este aparelho: não há o que reingressar.
@@ -509,26 +510,38 @@ class GuestSession(
             0
         }
         var backoff = RETRY_MIN_MILLIS
+        var attempt = 0
+        log("reconnect start rank=$rank")
         while (true) {
-            if (!reconnecting()) return
+            if (!reconnecting()) { log("reconnect aborted (status changed)"); return }
+            attempt++
             val window = if (rank > 0) rank * successorGraceMillis else absentLimitMillis
+            log("reconnect discover attempt=$attempt window=$window ms")
             val advert = withTimeoutOrNull(window) { transport.discover().mapNotNull { it.preferred(tableId) }.first() }
             if (advert == null) {
+                log("reconnect table not found after $window ms")
                 mutex.withLock {
                     if (!reconnecting()) return
                     val state = successorState
                     if (rank > 0 && state != null) {
+                        log("reconnect giving up as successor rank=$rank: taking over")
                         takeOverRank = rank
                         _status.value = GuestStatus.TakingOver
                         _takeOver.value = state
                     } else {
+                        log("reconnect giving up: table closed")
                         _status.value = GuestStatus.Closed
                         successorState = null
                     }
                 }
                 return
             }
-            if (runCatching { connectAndHello(advert, if (_status.value == GuestStatus.WaitingApproval) requestedSeat else seat) }.isSuccess) return
+            log("reconnect table found, connecting")
+            if (runCatching { connectAndHello(advert, if (_status.value == GuestStatus.WaitingApproval) requestedSeat else seat) }.isSuccess) {
+                log("reconnect connect ok attempt=$attempt")
+                return
+            }
+            log("reconnect connect failed attempt=$attempt, retry in $backoff ms")
             delay(backoff)
             backoff = minOf(backoff * 2, RETRY_MAX_MILLIS)
         }

@@ -873,6 +873,7 @@ class HostSession(
             return false
         }
         // §16.8 com o jogo em andamento, quem cai continua na sala (reservado a ele) e pode reingressar pelo token.
+        log("member disconnected mid-game seat=${member.info.seat}")
         updateLocked(member) { it.copy(connected = false) }
         refreshSuccessorsLocked()
         publishRosterLocked(broadcast = true)
