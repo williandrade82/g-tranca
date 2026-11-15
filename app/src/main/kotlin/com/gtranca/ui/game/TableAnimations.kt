@@ -3,11 +3,15 @@ package com.gtranca.ui.game
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.DealGuess
+import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.Side
+import com.gtranca.engine.model.bonusFor
 import com.gtranca.engine.model.dealGuessSeats
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.RedThreeNotice
@@ -127,6 +131,17 @@ internal fun dealGuessBadges(dealGuess: DealGuess?, seat: Seat): List<Pair<DealG
     if (dealGuess.mortoDealerSeat == seat) dealGuess.morto?.let { badges += DealGuessStage.MORTO to it.correct }
     return badges
 }
+
+/**
+ * §17.11 / §3.6 total ao vivo da barra de placar (booster "placar", `TableScoreBar`/`SideArea`) do [side]:
+ * [tableTotal] ([com.gtranca.engine.tablePoints], o que já está na mesa) mais o bônus da distribuição certeira
+ * já resolvido ([DealGuess.bonusFor]). O bônus conta desde o início da partida (antes de qualquer carta baixada,
+ * §3.6 resolve antes da 1ª vez) e não depende de nenhuma animação de carta — some sempre, sem esperar nada
+ * "pousar" na mesa. Zero se [dealGuess] for `null` (regra desligada, ou partida salva antiga) ou nenhum dos dois
+ * palpites certos tiver caído neste lado.
+ */
+internal fun liveSideTotal(tableTotal: Int, dealGuess: DealGuess?, mode: GameMode, side: Side, rules: RuleSet): Int =
+    tableTotal + dealGuess.bonusFor(mode, side, rules.dealGuessBonusPoints)
 
 /**
  * Deriva as animações da mesa das diferenças entre dois snapshots e dos eventos públicos ([GameSnapshot.turnEvents]).

@@ -531,6 +531,8 @@ private fun TableScreenContent(
                             sideTag = "opponent",
                             scoreboard = scoreboard,
                             mortoTaken = view.hasTakenMorto(view.mode.sides.first { it != view.side }),
+                            dealGuess = view.dealGuess,
+                            mode = view.mode,
                         )
                         CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
                         SideArea(
@@ -551,6 +553,8 @@ private fun TableScreenContent(
                             onNewMeld = if (state.canCreateNew) events::onNewMeld else null,
                             scoreboard = scoreboard,
                             mortoTaken = view.hasTakenMorto(view.side),
+                            dealGuess = view.dealGuess,
+                            mode = view.mode,
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -1068,6 +1072,9 @@ private fun SideArea(
     onNewMeld: (() -> Unit)? = null,
     scoreboard: Boolean = false,
     mortoTaken: Boolean = false,
+    /** §3.6 bônus da distribuição certeira, somado ao total ao vivo deste lado (`view.dealGuess`/`view.mode`). */
+    dealGuess: com.gtranca.engine.model.DealGuess?,
+    mode: com.gtranca.engine.model.GameMode,
 ) {
     // Destaque pulsante dos jogos que recebem a seleção (e do conjunto vazio).
     val glow = if (addable.isEmpty() && onNewMeld == null) 0f else {
@@ -1077,10 +1084,12 @@ private fun SideArea(
     val rules = LocalTableRules.current
     val landing = LocalLanding.current
     // §17.11 o total só muda quando nada do lado está voando (a jogada pousou).
-    val total = if (!scoreboard) null else settledValue(
+    val tableTotal = if (!scoreboard) null else settledValue(
         com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, mortoTaken, rules),
         settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
     )
+    // §3.6 o bônus da distribuição certeira já resolvido soma aqui fora, sem esperar nenhuma carta pousar.
+    val total = tableTotal?.let { liveSideTotal(it, dealGuess, mode, com.gtranca.engine.model.Side(side), rules) }
     Column(
         Modifier.fillMaxWidth()
             .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
@@ -1307,10 +1316,13 @@ private fun TableScoreBar(state: GameUiState, modifier: Modifier = Modifier) {
     fun total(side: com.gtranca.engine.model.Side): Int? {
         val melds = view.tables[side.index].melds
         val redThrees = state.redThrees[side.index]
-        return settledValue(
+        val tableTotal = settledValue(
             com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, view.hasTakenMorto(side), rules),
             settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
         )
+        // §3.6 o bônus da distribuição certeira já resolvido soma aqui fora, sem esperar nenhuma carta pousar
+        // (ele não depende de carta nenhuma): a mesa pode estar vazia e o total já refletir o palpite certo.
+        return tableTotal?.let { liveSideTotal(it, view.dealGuess, view.mode, side, rules) }
     }
     fun personas(side: com.gtranca.engine.model.Side): List<com.gtranca.game.Persona> {
         // O jogador (ou o adversário mais próximo na vez) primeiro: é a imagem de dentro, perto do centro.

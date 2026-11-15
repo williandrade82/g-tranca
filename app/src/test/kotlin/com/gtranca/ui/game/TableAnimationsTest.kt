@@ -3,6 +3,7 @@ package com.gtranca.ui.game
 import com.gtranca.ai.Difficulty
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.PlayerView
@@ -783,5 +784,50 @@ class TableAnimationsTest {
         val dealGuess = DealGuess(dealerSeat = Seat(0), mortoDealerSeat = Seat(0), hand = Guess(0, 44, true), morto = Guess(0, 22, false))
 
         dealGuessBadges(dealGuess, Seat(0)) shouldBe listOf(DealGuessStage.HAND to true, DealGuessStage.MORTO to false)
+    }
+
+    /**
+     * §17.11 / §3.6 [liveSideTotal] soma o bônus da distribuição certeira ao total da mesa, mesmo com a mesa
+     * ainda vazia (0): o bônus se resolve antes da 1ª vez da partida, não depende de nenhuma carta baixada.
+     */
+    @Test
+    fun `§3_6 §17_11 liveSideTotal soma 100 por acerto mesmo com a mesa vazia`() {
+        val dealGuess = DealGuess(
+            dealerSeat = Seat(3),
+            mortoDealerSeat = Seat(2),
+            hand = Guess(1, 45, correct = true),
+            morto = Guess(1, 23, correct = true),
+        )
+        // lado 1 (assento 3) acertou a mão: +100 em cima do total (0) da mesa vazia.
+        liveSideTotal(0, dealGuess, GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(3)), RuleSet.DEFAULT) shouldBe 100
+        // lado 0 (assento 2) acertou o morto: +100.
+        liveSideTotal(0, dealGuess, GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(2)), RuleSet.DEFAULT) shouldBe 100
+        // Em cima de um total da mesa que já tem -100 de morto não pego, acertar o palpite zera a conta.
+        liveSideTotal(-100, dealGuess, GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(3)), RuleSet.DEFAULT) shouldBe 0
+    }
+
+    @Test
+    fun `§3_6 §17_11 liveSideTotal soma 200 quando os dois acertos ja resolvidos caem no mesmo lado`() {
+        val dealGuess = DealGuess(
+            dealerSeat = Seat(0),
+            mortoDealerSeat = Seat(2),
+            hand = Guess(1, 45, correct = true),
+            morto = Guess(1, 23, correct = true),
+        )
+        liveSideTotal(0, dealGuess, GameMode.DUPLAS, Side(0), RuleSet.DEFAULT) shouldBe 200
+    }
+
+    @Test
+    fun `§3_6 §17_11 liveSideTotal nao soma nada sem acerto, sem dealGuess ou com o parametro desligado`() {
+        // Sem a regra ligada (dealGuess null, PlayerView.dealGuess padrão): nenhum bônus.
+        liveSideTotal(0, null, GameMode.INDIVIDUAL, Side(0), RuleSet.DEFAULT) shouldBe 0
+        // Palpite errado: nenhum bônus para o lado dele.
+        val miss = DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(0), hand = Guess(1, 23, correct = false))
+        liveSideTotal(0, miss, GameMode.INDIVIDUAL, Side(1), RuleSet.DEFAULT) shouldBe 0
+        // rules.dealGuessBonusPoints = 0 (equivalente a desligado): nenhum bônus mesmo com acerto.
+        val hit = DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(0), hand = Guess(1, 23, correct = true))
+        liveSideTotal(0, hit, GameMode.INDIVIDUAL, Side(1), RuleSet.DEFAULT.copy(dealGuessBonusPoints = 0)) shouldBe 0
+        // O total da mesa sempre passa adiante, sem bônus nenhum.
+        liveSideTotal(-100, null, GameMode.INDIVIDUAL, Side(0), RuleSet.DEFAULT) shouldBe -100
     }
 }
