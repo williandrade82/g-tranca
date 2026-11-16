@@ -399,6 +399,42 @@ class RecruitmentTest {
         ana.scope.cancel()
     }
 
+    /**
+     * §16.15 achado 15/11/2026 (relato real, 2 celulares): o recrutado fica em silêncio justo no instante do
+     * "Começar Partida" — no rádio de verdade ele está ocupado saindo da conexão de recrutamento e entrando na
+     * mesa do jogo de verdade (`GuestSession.join`), o que pode levar mais que os 4 s de [Recruitment.DEAD_AFTER_MILLIS]
+     * num rádio lento. Antes da correção, `startPending` virava `false` assim que [Recruitment.sendStart] despachava
+     * a mensagem, ANTES de [closeAfterConfirm] (que ia encerrar essa mesma conexão de propósito, em até
+     * [Recruitment.START_CONFIRM_MILLIS]) rodar — deixando uma janela em que o batimento cardíaco podia declarar a
+     * conexão "morta" (e acionar o assento VAGO, §16.8/§16.9) para uma transição normal, não uma queda de verdade.
+     * Este teste simula o silêncio (nenhum pacote chega nem sai do recrutado) desde ANTES do "Começar Partida" até
+     * depois — exatamente o padrão visto nos logs reais (`heartbeat dead ... silent=4250 ms`, ~1,6 s depois de "rec
+     * start sent") — e prova que, mesmo assim, o batimento nunca declara essa conexão morta.
+     */
+    @Test
+    fun `§16_15 silencio do radio ao redor do Comecar Partida nao e dado como caida antes do fechamento planejado`() = runTest {
+        val net = MemoryNetwork()
+        val (ana, others) = recruiter(net, "kb" to "Bia")
+        val bia = others.single()
+        ana.r.call(2, ana.presenceOf("kb"))
+        runCurrent()
+        ana.r.fillWithRobots(TEST_PERSONAS, seed = 5)
+        runCurrent()
+        bia.r.accept()
+        runCurrent()
+        // O rádio da Bia fica mudo a partir de agora (como no aparelho real, ocupado entrando na mesa do jogo de
+        // verdade): nada chega nem sai entre os dois. Como no relato real, o silêncio já vem de antes do toque em
+        // "Começar Partida" (3,8 s — perto do limite de 4 s de [Recruitment.DEAD_AFTER_MILLIS], mas sem cruzá-lo
+        // ainda): é só DEPOIS do início, já dentro da janela que `startPending` devia proteger, que o acúmulo
+        // cruza o limite — exatamente o instante em que a correção importa.
+        net.tap = { d -> if (d.from == bia.transport.id || d.to == bia.transport.id) emptyList() else listOf(d) }
+        advanceTimeBy(3_800)
+        runCurrent()
+        ana.r.start("mesa1", TEST_PERSONAS, 1).shouldNotBeNull()
+        ana.logs.any { it.startsWith("heartbeat dead") } shouldBe false
+        ana.scope.cancel()
+    }
+
     @Test
     fun `§16_2 de ponta a ponta - chamar, aceitar, mover, completar e comecar termina em GameStarted com os lugares da tela`() = runTest {
         val net = MemoryNetwork()

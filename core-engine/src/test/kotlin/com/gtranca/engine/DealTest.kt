@@ -91,7 +91,7 @@ class DealTest {
     fun `monte diminui uma carta por reposicao do primeiro jogador`(mode: GameMode) {
         // §3.3 + §3.5 só o primeiro jogador troca no início da partida: monte = 60/38 − nº de reposições dele
         (0L until 50L).forEach { seed ->
-            val state = dealRound(mode, Random(seed))
+            val state = dealRound(mode, Random(seed), NO_DEAL_GUESS)
             val replacements = state.redThrees.sumOf { it.size }
             state.stock shouldHaveSize baseStockSize(mode) - replacements
         }
@@ -142,7 +142,7 @@ class DealTest {
     @Test
     fun `assento inicial e assento da vez sao o primeiro jogador`() {
         // §4.1 o primeiro jogador inicia a partida
-        val state = dealFromOrderedDeck(GameMode.DUPLAS, orderedDeck(), firstSeat = Seat(3))
+        val state = dealFromOrderedDeck(GameMode.DUPLAS, orderedDeck(), firstSeat = Seat(3), rules = NO_DEAL_GUESS)
         state.firstSeat shouldBe Seat(3)
         state.currentSeat shouldBe Seat(3)
     }
@@ -170,7 +170,7 @@ class DealTest {
         // trocada; a dos demais é exatamente a distribuída, com os 3 vermelhos
         (0L until 200L).forEach { seed ->
             val first = Seat((seed % mode.seatCount).toInt())
-            val state = dealRound(mode, Random(seed), firstSeat = first)
+            val state = dealRound(mode, Random(seed), rules = NO_DEAL_GUESS, firstSeat = first)
             val pure = distributeOrderedDeck(mode, Deck.shuffled(Random(seed)), first)
             state.hands.forEach { it shouldHaveSize 11 }
             state.handOf(first).none { it.isRedThree } shouldBe true
@@ -185,7 +185,7 @@ class DealTest {
     fun `3 vermelho do primeiro jogador e baixado e reposto do topo do monte antes da primeira compra`() {
         // §3.5 + §6.5 no início da vez do primeiro jogador, antes de comprar
         val deck = orderedDeck(mapOf(0 to "3H", 44 to "KS"))
-        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0), NO_DEAL_GUESS)
         state.redThreesOf(Side(0)) shouldContainExactly listOf(c("3H"))
         state.redThreesOf(Side(1)).shouldBeEmpty()
         state.handOf(Seat(0)) shouldContain c("KS")
@@ -211,7 +211,7 @@ class DealTest {
                 47 to "QD",
             ),
         )
-        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0), NO_DEAL_GUESS)
         state.redThreesOf(Side(0)) shouldContainExactly listOf(c("3H"), c("3D"), c("3H'"))
         state.handOf(Seat(0)) shouldContain c("KS")
         state.handOf(Seat(0)) shouldHaveSize 11
@@ -226,7 +226,7 @@ class DealTest {
     fun `com o assento 1 iniciando so ele troca`() {
         // §3.5 a ordem de jogada define quem começa: o assento 0 mantém o 3 vermelho
         val deck = orderedDeck(mapOf(0 to "3H", 1 to "3D", 44 to "KS", 45 to "QD"))
-        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(1))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(1), NO_DEAL_GUESS)
         state.handOf(Seat(1)) shouldContain c("KS")
         state.handOf(Seat(0)) shouldContain c("3D")
         state.redThreesOf(Side(1)) shouldContainExactly listOf(c("3H"))
@@ -246,7 +246,7 @@ class DealTest {
                 67 to "QD",
             ),
         )
-        val state = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(1))
+        val state = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(1), NO_DEAL_GUESS)
         state.handOf(Seat(1)) shouldContain c("KS")
         state.handOf(Seat(2)) shouldContain c("3H")
         state.handOf(Seat(3)) shouldContain c("3D")
@@ -267,7 +267,7 @@ class DealTest {
                 68 to "QD",  // topo do monte depois do início da vez do assento 3: ele compra
             ),
         )
-        val dealt = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(3))
+        val dealt = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(3), NO_DEAL_GUESS)
         dealt.redThreesOf(Side(1)) shouldContainExactly listOf(c("3H"), c("3H'"))
         dealt.handOf(Seat(3)) shouldContain c("KS")
         dealt.redThreesOf(Side(0)).shouldBeEmpty()
@@ -292,7 +292,7 @@ class DealTest {
     fun `quatro 3 vermelhos na mesma mao sao todos repostos no inicio da vez`() {
         // §6.5 cada 3 vermelho baixado gera uma reposição
         val deck = orderedDeck(mapOf(0 to "3H", 2 to "3D", 4 to "3H'", 6 to "3D'"))
-        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0), NO_DEAL_GUESS)
         state.redThreesOf(Side(0)) shouldHaveSize 4
         state.handOf(Seat(0)) shouldHaveSize 11
         state.handOf(Seat(0)).none { it.isRedThree } shouldBe true
@@ -305,7 +305,7 @@ class DealTest {
     fun `registro do inicio da vez segue a ordem real das trocas inclusive em cadeia`() {
         // §3.5 trocas públicas, na ordem em que aconteceram: a cadeia (§6.5) do primeiro jogador, com atTurnStart
         val deck = orderedDeck(mapOf(0 to "3H", 1 to "3D'", 44 to "3D", 45 to "3H'", 46 to "KS", 47 to "QD"))
-        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(0), NO_DEAL_GUESS)
         state.redThreeLog shouldContainExactly listOf(
             laid(0, "3H", atTurnStart = true),
             laid(0, "3D", atTurnStart = true, chained = true),
@@ -318,7 +318,7 @@ class DealTest {
     fun `registro comeca pelo primeiro jogador`() {
         // §3.5 com o assento 1 iniciando, só a troca dele está no registro
         val deck = orderedDeck(mapOf(0 to "3H", 1 to "3D", 44 to "KS", 45 to "QD"))
-        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(1))
+        val state = dealFromOrderedDeck(GameMode.INDIVIDUAL, deck, Seat(1), NO_DEAL_GUESS)
         state.redThreeLog shouldContainExactly listOf(laid(1, "3H", atTurnStart = true))
     }
 
@@ -332,7 +332,7 @@ class DealTest {
                 4 to "3H'", // assento 0 (2ª carta) → lado 0
             ),
         )
-        val dealt = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(0))
+        val dealt = dealFromOrderedDeck(GameMode.DUPLAS, deck, Seat(0), NO_DEAL_GUESS)
         dealt.redThreeLog shouldContainExactly listOf(laid(0, "3H'", atTurnStart = true))
         // a vez passa: assento 1 e depois assento 2 baixam os seus no início de cada vez
         val s = dealt.drawAndDiscard().drawAndDiscard()
@@ -357,7 +357,7 @@ class DealTest {
     fun `registro bate com os 3 vermelhos de cada lado`(mode: GameMode) {
         // §3.5 / §6.5 um item por 3 vermelho baixado, nenhum da distribuição (atDeal sempre falso)
         (0L until 200L).forEach { seed ->
-            val state = dealRound(mode, Random(seed))
+            val state = dealRound(mode, Random(seed), NO_DEAL_GUESS)
             state.redThreeLogViolation() shouldBe null
             state.redThreeLog.none { it.atDeal } shouldBe true
         }

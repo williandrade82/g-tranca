@@ -1,5 +1,6 @@
 package com.gtranca.ai.hard
 
+import com.gtranca.ai.pastDealGuess
 import com.gtranca.engine.dealRound
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.determinize
@@ -16,7 +17,9 @@ class SampledWorldTest {
     fun `vista de um mundo sorteado e igual a do motor, inclusive o registro de 3 vermelhos`() {
         // §3.5 / §6.5 o registro de quem baixou cada 3 vermelho é público e entra na vista dos jogadores simulados
         for (mode in GameMode.entries) {
-            val state = (0L until 500L).map { dealRound(mode, Random(it)) }.first { it.redThreeLog.isNotEmpty() }
+            // §3.6 dealRound agora pausa nas fases de palpite antes da 1ª vez; resolve-as para chegar ao estado
+            // de início da partida (§3.5), onde o 3 vermelho do primeiro jogador já foi trocado.
+            val state = (0L until 500L).map { dealRound(mode, Random(it)).pastDealGuess() }.first { it.redThreeLog.isNotEmpty() }
             for (seat in mode.seats) state.sampledView(seat) shouldBe state.viewFor(seat)
         }
     }

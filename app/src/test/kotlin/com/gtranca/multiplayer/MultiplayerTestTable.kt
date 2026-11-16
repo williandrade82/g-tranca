@@ -3,6 +3,7 @@ package com.gtranca.multiplayer
 import com.gtranca.ai.BotPlayer
 import com.gtranca.ai.Difficulty
 import com.gtranca.ai.createBot
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Seat
 import com.gtranca.game.GameConfig
@@ -48,8 +49,15 @@ internal suspend fun TestScope.openTable(
     network: MemoryNetwork = MemoryNetwork(),
     stake: Int = 0,
     skillBoosters: Boolean = true,
+    /**
+     * §3.6 a fase de palpite já funciona aqui de forma genérica (os condutores de teste só seguem `legal`, como
+     * fariam com qualquer outra ação): fica ligada por padrão, como em qualquer mesa nova (§14.2 base: sim). Alguns
+     * testes passam [com.gtranca.game.NO_DEAL_GUESS] porque comparam a mesa com um assento VAGO/reconectando, área
+     * ainda sem a sincronização específica do palpite entre aparelhos (pendência registrada no resumo da tarefa).
+     */
+    rules: RuleSet = RuleSet.DEFAULT,
 ): TestTable {
-    val config = GameConfig(mode, Difficulty.FACIL, targetScore = targetScore, stake = stake, skillBoosters = skillBoosters)
+    val config = GameConfig(mode, Difficulty.FACIL, targetScore = targetScore, rules = rules, stake = stake, skillBoosters = skillBoosters)
     val rules = TableRules("Mesa de teste", mode, config.rules, targetScore, stake = stake, difficulty = Difficulty.FACIL.id, skillBoosters = skillBoosters)
     val dispatcher = StandardTestDispatcher(testScheduler)
     // Sessões no relógio virtual, fora do `backgroundScope` (que o `advanceUntilIdle` não roda); os coletores só suspendem.

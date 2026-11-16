@@ -24,8 +24,11 @@ import org.junit.jupiter.api.Test
 class MultiplayerBoostersTest {
 
     @Test
-    fun `§17_9 a versao do protocolo subiu para 19`() {
-        PROTOCOL_VERSION shouldBe 19
+    fun `§3_6 a versao do protocolo subiu para 20`() {
+        // §3.6 protocolo 20 (SeatView.dealGuess, ver SeatViewTest em :net): este teste não é sobre boosters, só fixa
+        // o número para flagrar qualquer bump futuro sem o commit correspondente de documentação/plano. Era
+        // "§17_9 ... subiu para 19" antes desta correção (skillBoosters); renomeado para o número atual.
+        PROTOCOL_VERSION shouldBe 20
     }
 
     @Test

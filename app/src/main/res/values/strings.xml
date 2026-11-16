@@ -62,6 +62,8 @@
     <string name="hand_hide">Esconder cartas</string>
     <string name="hand_show">Mostrar cartas</string>
     <string name="card_hidden">Carta escondida</string>
+    <!-- §3.8.1/§3.8.2 (15/11/2026): a mão virada de costas enquanto a distribuição inicial ainda está acontecendo. -->
+    <string name="card_dealing">Carta sendo distribuída</string>
     <string name="msg_show_cards_to_play">Mostre suas cartas para jogar</string>
     <string name="own_last_play">Ver a sua última jogada</string>
     <string name="own_last_play_title">Sua última jogada</string>
@@ -434,6 +436,8 @@
     <string name="score_dirty_canastas">Canastras sujas</string>
     <string name="score_go_out">Batida</string>
     <string name="score_morto_not_taken">Morto não pego</string>
+    <!-- §3.6 / §12.1 bônus do minijogo "distribuição certeira", resolvido antes da 1ª vez da partida. -->
+    <string name="score_deal_guess_bonus">Distribuição certeira</string>
     <string name="score_table_header">Cartas na mesa</string>
     <string name="score_table_red_threes">3 vermelhos (+5)</string>
     <string name="score_table_four_to_ten">4 a 10 (+8)</string>
@@ -669,6 +673,7 @@
     <string name="tour_summary_dirty">Canastra suja: um jogo com 7 cartas ou mais que usa coringa (o 2). Vale menos que a limpa.</string>
     <string name="tour_summary_go_out">Batida: o lado de quem bateu (ficou sem cartas no fim) ganha este bônus.</string>
     <string name="tour_summary_morto">Morto não pego: o lado que terminou a partida sem pegar o morto perde estes pontos.</string>
+    <string name="tour_summary_deal_guess_bonus">Distribuição certeira: o lado de quem acertou o palpite da mão e/ou do morto no começo da partida ganha este bônus, um para cada acerto.</string>
     <string name="tour_summary_table_section">Cartas na mesa: aqui contam todas as cartas que o lado baixou nos jogos, mesmo as que não viraram canastra.</string>
     <string name="tour_summary_table_red_threes">O 3 vermelho baixado também vale como carta, além do bônus lá de cima.</string>
     <string name="tour_summary_table_low">Cartas de 4 a 10 baixadas na mesa: cada uma soma o valor desta linha.</string>
@@ -695,8 +700,7 @@
     <string name="tour_sel_table">A mesa: você fica embaixo. Toque num robô ou jogador e depois num lugar, ou ao contrário; toque em dois lugares para trocar. A dica embaixo da mesa explica cada passo.</string>
     <string name="tour_sel_robots">Os robôs que podem ocupar os lugares. O que já está sentado fica esmaecido. Para tirar alguém da mesa, toque nele e depois num item desta lista.</string>
     <string name="tour_sel_multiplayer">Com o Wi-Fi ligado, você chama jogadores por perto. Eles aparecem aqui; quem você chamou fica com o selo Chamado até responder.</string>
-    <string name="tour_sel_fill">Preenche os lugares vagos com robôs.</string>
-    <string name="tour_sel_start">Fica ativo quando todos os lugares estão preenchidos e ninguém está sendo chamado.</string>
+    <string name="tour_sel_start">Preenche os lugares vagos com robôs e começa; só fica inativo com alguém sendo chamado.</string>
     <string name="tables_select_players">Selecionar jogadores</string>
     <string name="tables_recruiters_title">Jogadores recrutando</string>
     <string name="tables_recruiters_empty">Ninguém recrutando por perto</string>
@@ -707,7 +711,6 @@
     <string name="selection_robots">Robôs</string>
     <string name="selection_multiplayer">Multiplayer</string>
     <string name="selection_nobody_free">Ninguém livre por perto</string>
-    <string name="selection_fill">Completar com robôs</string>
     <string name="selection_start">Começar Partida</string>
     <string name="selection_cannot_call">Não deu para chamar esse jogador</string>
     <string name="selection_summary">%1$s · %2$s · %3$d moedas · %4$s</string>
@@ -962,4 +965,28 @@
     <string name="profile_online_server">Servidor online</string>
     <string name="profile_online_server_hint">Temporário, só neste aparelho. Endereço (IP ou nome) do servidor do jogo online, com porta se houver (ex.: 192.168.0.10:8080). Vazio desliga o online.</string>
     <string name="profile_online_server_invalid">Endereço inválido. Use IP ou nome, com :porta se houver.</string>
+
+    <!-- §3.6, 3.8.2 docs/telas-app.md: minijogo "distribuição certeira" -->
+    <string name="deal_guess_title_hand">Cartas para a distribuição</string>
+    <string name="deal_guess_title_morto">Cartas para o Morto</string>
+    <string name="deal_guess_target">Selecione %1$d cartas para receber 100 pontos.</string>
+    <string name="deal_guess_instructions">Toque na tela para escolher o número de cartas. Chance única!</string>
+    <string name="deal_guess_number_label">Número</string>
+    <string name="deal_guess_win_you">Você acertou em cheio!</string>
+    <string name="deal_guess_win_partner_hand">O seu parceiro acertou em cheio o número de cartas para a distribuição!</string>
+    <string name="deal_guess_win_partner_morto">O seu parceiro acertou em cheio o número de cartas para o Morto!</string>
+    <string name="deal_guess_miss_you_hand">Você não acertou o número de cartas para a distribuição.</string>
+    <string name="deal_guess_miss_you_morto">Você não acertou o número de cartas para o Morto.</string>
+    <string name="deal_guess_miss_partner_hand">O seu parceiro não acertou o número de cartas para a distribuição.</string>
+    <string name="deal_guess_miss_partner_morto">O seu parceiro não acertou o número de cartas para o Morto.</string>
+    <!-- Cartão pequeno do parceiro (14/11/2026): 2º parágrafo fixo com o alvo da regra e a largura que ele escolheu. -->
+    <string name="deal_guess_partner_numbers">Esperado: %1$d cartas | Palpite do parceiro: %2$d cartas.</string>
+    <!-- Mesmo 2º parágrafo, para a reação pequena do PRÓPRIO jogador (15/11/2026, substitui a antiga tela cheia). -->
+    <string name="deal_guess_own_numbers">Esperado: %1$d cartas | Seu palpite: %2$d cartas.</string>
+    <!-- Selos permanentes na pílula do assento (15/11/2026), até o fim da partida: §3.8.2. -->
+    <string name="deal_guess_badge_points">+100pts</string>
+    <string name="deal_guess_badge_hit_hand">Acertou o palpite da distribuição: mais 100 pontos.</string>
+    <string name="deal_guess_badge_hit_morto">Acertou o palpite do Morto: mais 100 pontos.</string>
+    <string name="deal_guess_badge_miss_hand">Não acertou o palpite da distribuição.</string>
+    <string name="deal_guess_badge_miss_morto">Não acertou o palpite do Morto.</string>
 </resources>

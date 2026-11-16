@@ -34,13 +34,17 @@ class MatchTest {
     }
 
     /** Jogo com totais prévios e a partida atual já encerrada com [finishedRound]. */
-    private fun matchAt(totals: List<Int>, target: Int = 3000, finishedRound: com.gtranca.engine.model.RoundState) =
-        startMatch(GameMode.INDIVIDUAL, target, Random(1)).copy(totals = totals, currentRound = finishedRound)
+    private fun matchAt(
+        totals: List<Int>,
+        target: Int = 3000,
+        finishedRound: com.gtranca.engine.model.RoundState,
+        rules: RuleSet = RuleSet.DEFAULT,
+    ) = startMatch(GameMode.INDIVIDUAL, target, Random(1), rules).copy(totals = totals, currentRound = finishedRound)
 
     @Test
     fun `iniciar o jogo distribui a primeira partida`() {
         // §2 jogo com múltiplas partidas; §14 pontuação-alvo padrão 3000
-        val m = startMatch(GameMode.DUPLAS, random = Random(5))
+        val m = startMatch(GameMode.DUPLAS, random = Random(5), rules = NO_DEAL_GUESS)
         m.targetScore shouldBe 3000
         m.totals shouldContainExactly listOf(0, 0)
         m.history.shouldBeEmpty()
@@ -73,6 +77,12 @@ class MatchTest {
     }
 
     @Test
+    fun `firstSeat explicito ignora o sorteio da 1a partida`() {
+        val m = startMatch(GameMode.DUPLAS, random = Random(1), firstSeat = Seat(2))
+        m.currentRound.firstSeat shouldBe Seat(2)
+    }
+
+    @Test
     fun `nao se encerra partida em andamento nem duas vezes`() {
         val m = startMatch(GameMode.INDIVIDUAL, random = Random(1))
         shouldThrow<IllegalArgumentException> { m.finishRound() }
@@ -95,7 +105,7 @@ class MatchTest {
     fun `abaixo do alvo o jogo continua`() {
         // §13 só termina com algum lado ≥ alvo
         // 2638 + 361 = 2999, um ponto abaixo do alvo
-        val m = matchAt(listOf(2638, 0), finishedRound = roundWith("3H", "")).finishRound()
+        val m = matchAt(listOf(2638, 0), finishedRound = roundWith("3H", ""), rules = NO_DEAL_GUESS).finishRound()
         m.totals shouldContainExactly listOf(2999, 256)
         m.winner shouldBe null
         val next = m.startNextRound()
@@ -167,7 +177,7 @@ class MatchTest {
     fun `proxima partida comeca pelo jogador seguinte ao que iniciou a anterior`() {
         // §4.1 sorteio só na 1ª partida; depois, o próximo no sentido anti-horário (§4.2) inicia,
         // com ou sem vencedor na partida anterior
-        var m = startMatch(GameMode.DUPLAS, random = Random(42))
+        var m = startMatch(GameMode.DUPLAS, random = Random(42), rules = NO_DEAL_GUESS)
         val firsts = mutableListOf(m.currentRound.firstSeat)
         repeat(5) {
             val finished = roundWith("3H", "3D", GameMode.DUPLAS).copy(firstSeat = m.currentRound.firstSeat)
@@ -196,7 +206,7 @@ class MatchTest {
     @Test
     fun `jogar acao atualiza a partida atual`() {
         // §4.3 ações passam pelo RoundEngine
-        val m = startMatch(GameMode.INDIVIDUAL, random = Random(3))
+        val m = startMatch(GameMode.INDIVIDUAL, random = Random(3), rules = NO_DEAL_GUESS)
         val after = m.play(m.currentRound.currentSeat, Action.DrawFromStock)
         after.currentRound.phase shouldBe Phase.PLAYING
         shouldThrow<IllegalArgumentException> { after.play(after.currentRound.currentSeat, Action.DrawFromStock) }

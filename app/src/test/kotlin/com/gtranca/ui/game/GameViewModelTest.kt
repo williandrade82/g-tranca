@@ -9,6 +9,7 @@ import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.HandOrder
 import com.gtranca.game.HandSort
 import com.gtranca.game.HumanTurnResolver
@@ -66,7 +67,7 @@ class GameViewModelTest {
         boosters: List<String> = emptyList(),
     ): GameViewModel {
         val vm = GameViewModel(
-            GameConfig(mode, Difficulty.FACIL, target),
+            GameConfig(mode, Difficulty.FACIL, target, rules = NO_DEAL_GUESS),
             gameSeed = seed,
             computeDispatcher = dispatcher,
             botDelayMillis = botDelayMillis,
@@ -420,7 +421,7 @@ class GameViewModelTest {
         var checked = 0
         for (seed in 1L..80L) {
             val vm = GameViewModel(
-                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
                 gameSeed = seed,
                 computeDispatcher = dispatcher,
                 botDelayMillis = 0,
@@ -464,7 +465,7 @@ class GameViewModelTest {
             for (mode in GameMode.entries) {
                 for (seed in 1L..120L) {
                     val vm = GameViewModel(
-                        GameConfig(mode, Difficulty.FACIL, 3000),
+                        GameConfig(mode, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
                         gameSeed = seed,
                         computeDispatcher = dispatcher,
                         botDelayMillis = 0,
@@ -474,7 +475,8 @@ class GameViewModelTest {
                     )
                     val log = vm.uiState.value.snapshot.view.redThreeLog
                     val own = log.filter { it.seat == Seat(0) && it.atTurnStart }
-                    val dealtOwn = vm.uiState.value.flights.filter { it.to == AnimAnchor.OwnHand && it.from == AnimAnchor.Stock }
+                    // §3.8.1 a distribuição inicial entra de fora da mesa (AnimAnchor.DealEntry), nunca do monte.
+                    val dealtOwn = vm.uiState.value.flights.filter { it.to == AnimAnchor.OwnHand && it.from is AnimAnchor.DealEntry }
                     val handSize = vm.uiState.value.snapshot.view.hand.size
                     if (own.isNotEmpty()) {
                         // A distribuição dá 11 cartas: as da mão (menos as repostas, que chegam depois) e os 3 vermelhos originais;
@@ -545,7 +547,7 @@ class GameViewModelTest {
         normal.uiState.value.animationMillis shouldBe 0L
         // Os atrasos dos voos da distribuição também crescem 30%.
         fun delays(slow: Boolean): List<Long> = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 7, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 7, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450, slowAnimations = slow,
         ).uiState.value.flights.map { it.delayMillis - com.gtranca.net.PREPARE_MILLIS }
         val fast = delays(false)
@@ -558,7 +560,7 @@ class GameViewModelTest {
     @Test
     fun `Prepare-se sobre a mesa dura 1,5 s e a distribuicao da 1a partida so comeca depois`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 5, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 5, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 450,
         )
         val start = vm.uiState.value
@@ -579,7 +581,7 @@ class GameViewModelTest {
         for (seed in 1L..60L) {
             // Sem avançar o tempo antes de começar a observar (as animações dos bots duram 1 s cada).
             val vm = GameViewModel(
-                GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+                GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
                 gameSeed = seed,
                 computeDispatcher = dispatcher,
                 botDelayMillis = 0,
@@ -676,6 +678,45 @@ class GameViewModelTest {
         after.confirmResign shouldBe false
     }
 
+    /** Driver mínimo só para alimentar o [GameViewModel] com vistas fabricadas (sem mesa multijogador de verdade). */
+    private class FakeDriver(initial: com.gtranca.game.GameSnapshot) : com.gtranca.game.TableDriver {
+        val flow = kotlinx.coroutines.flow.MutableStateFlow(initial)
+        override val state: kotlinx.coroutines.flow.StateFlow<com.gtranca.game.GameSnapshot> = flow
+        override fun awaitingHuman() = false
+        override fun submit(action: Action, requestId: Long) = false
+        override fun explain(action: Action, requestId: Long) = null
+        override var dealDelayScale: Double = 1.0
+        override fun continueToNextRound() {}
+        override fun resign() {}
+        override suspend fun run() = kotlinx.coroutines.awaitCancellation()
+    }
+
+    @Test
+    fun `§13_1 adversario desiste antes da 1a partida acabar - o vencedor ve o fim do jogo sem travar (history vazio)`() = runTest(dispatcher) {
+        // §13.1 GameController.resign() nunca pontua a partida em andamento: na mesa multijogador, quem GANHA por
+        // desistência do outro lado (snapshot.resigned = false, só quem desistiu tem isso marcado) pode chegar em
+        // Stage.GAME_OVER com history ainda vazio, se a desistência aconteceu na 1ª partida. RoundSummaryScreen
+        // (EndScreen.FINAL_TABLE/ROUND_POINTS) usa history.last() e derrubava o app desse lado (achado em dispositivo
+        // real: o anfitrião desistiu cedo e o convidado fechou sozinho ao tocar "Seguir").
+        val reference = newGame(seed = 21, mode = GameMode.INDIVIDUAL)
+        val initial = reference.uiState.value.snapshot
+        initial.history.shouldBeEmpty()
+        val driver = FakeDriver(initial)
+        val vm = GameViewModel(
+            initial.config, gameSeed = 21, computeDispatcher = dispatcher,
+            externalDriver = driver, multiplayer = true, animationMillis = 0,
+        )
+        advanceUntilIdle()
+        driver.flow.value = initial.copy(
+            stage = Stage.GAME_OVER,
+            winner = initial.view.side,
+            humanLegal = emptyList(),
+        )
+        advanceUntilIdle()
+        vm.uiState.value.endScreen shouldBe EndScreen.FINAL
+        vm.uiState.value.snapshot.resigned shouldBe false
+    }
+
     @Test
     fun `duplas - humano no assento 0 ve so a propria mao e a jogada dos tres bots`() = runTest(dispatcher) {
         val vm = newGame(seed = 4, mode = GameMode.DUPLAS)
@@ -754,7 +795,7 @@ class GameViewModelTest {
 
     private fun TestScope.gameWithSwaps(seed: Long, source: RedThreeSwapSource, swapMillis: Long): GameViewModel {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000),
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
             gameSeed = seed,
             computeDispatcher = dispatcher,
             botDelayMillis = 0,

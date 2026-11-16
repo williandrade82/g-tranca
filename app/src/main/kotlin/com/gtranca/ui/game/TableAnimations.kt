@@ -3,19 +3,39 @@ package com.gtranca.ui.game
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.Action
 import com.gtranca.engine.DiscardPlan
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.DealGuess
+import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.RoundResult
 import com.gtranca.engine.model.Seat
+import com.gtranca.engine.model.Side
+import com.gtranca.engine.model.bonusFor
+import com.gtranca.engine.model.dealGuessSeats
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.RedThreeNotice
+import com.gtranca.game.SeatRole
 import com.gtranca.game.cardClass
+
+/** Borda da mesa por onde uma leva da distribuição inicial entra, vinda de fora da tela (telas.md 3.8.1). */
+enum class TableEdge { TOP, LEFT, RIGHT, BOTTOM }
 
 /** Ponto lógico da mesa de onde sai ou aonde chega uma carta animada; a tela sabe onde cada um está. */
 sealed interface AnimAnchor {
     data object Stock : AnimAnchor
     data object DiscardPile : AnimAnchor
     data class Morto(val index: Int) : AnimAnchor
+
+    /**
+     * Origem da distribuição inicial da partida (telas.md 3.8.1): fora da mesa, pela borda [edge] — o lado de quem
+     * distribui aquela leva (mão ou morto), nunca o monte (`Stock`). A tela calcula o ponto geométrico a partir dos
+     * limites da mesa ([TableBounds]); não corresponde a nenhum elemento já desenhado.
+     */
+    data class DealEntry(val edge: TableEdge) : AnimAnchor
+
+    /** Limites visíveis da mesa (coordenadas da tela): referência para calcular o ponto de entrada de [DealEntry]. */
+    data object TableBounds : AnimAnchor
 
     /** Outro assento (mão representada por cartas viradas). */
     data class SeatHand(val seat: Int) : AnimAnchor
@@ -72,6 +92,56 @@ data class CardFlight(
 
 /** §7 um conjunto virou canastra (limpa ou suja) neste instante: destaque curto. */
 data class CanastaFlash(val id: Long, val side: Int, val meldId: Int, val clean: Boolean)
+
+/**
+ * §3.8.1/§3.8.2 (15/11/2026, pedido do usuário) qual verso (se algum) cobre as cartas da própria mão na mesa:
+ * [DEALING] enquanto a distribuição inicial ainda está em andamento (`GameUiState.dealPending`, "não é uma jogada
+ * nem precisa ser sincronizado pela rede: é só apresentação local" — vira sozinho, sem toque, quando a distribuição
+ * termina); [HIDDEN] é o "Esconder cartas" do multijogador local (`GameUiState.handHidden`, um toque do jogador).
+ * [DEALING] tem prioridade sobre [HIDDEN] quando os dois coincidem (a distribuição é transitória; o "esconder" é
+ * uma escolha explícita, que continua valendo depois). Pura (sem Compose), testável na JVM — `CardFlow`,
+ * `TableScreen.kt`, só lê o resultado.
+ */
+internal enum class OwnHandCover { NONE, DEALING, HIDDEN }
+
+/** Ver [OwnHandCover]. */
+internal fun ownHandCover(dealPending: Boolean, handHidden: Boolean): OwnHandCover = when {
+    dealPending -> OwnHandCover.DEALING
+    handHidden -> OwnHandCover.HIDDEN
+    else -> OwnHandCover.NONE
+}
+
+/**
+ * §3.6 (15/11/2026, pedido do usuário) selos PERMANENTES do resultado do palpite da distribuição certeira, por
+ * assento, até o fim da PARTIDA — ao contrário da pílula/reação transitória (`dealGuessPills`, `GameViewModel`'s
+ * `ownGuessReaction`/`partnerGuessReaction`, que somem sozinhas em segundos), [dealGuess] (`PlayerView.dealGuess`,
+ * parte do `RoundState`) só muda de novo na partida seguinte — nenhum estado novo precisa ser guardado na UI, só
+ * ler direto o que o motor já manda.
+ *
+ * Um mesmo [seat] pode, em tese, acumular um selo pela mão (`dealGuess.dealerSeat`) e outro pelo morto
+ * (`dealGuess.mortoDealerSeat`); na prática [dealGuessSeats] garante que os dois papéis caem sempre em assentos
+ * diferentes (duplas ou individual), então nunca os dois juntos — a lista aceita até dois mesmo assim, sem custo
+ * extra, caso essa garantia um dia mude. Cada etapa só entra na lista depois de resolvida (`hand`/`morto`
+ * não-nulos); `null` (regra desligada) ou etapa ainda não resolvida: nenhum selo para ela.
+ */
+internal fun dealGuessBadges(dealGuess: DealGuess?, seat: Seat): List<Pair<DealGuessStage, Boolean>> {
+    if (dealGuess == null) return emptyList()
+    val badges = mutableListOf<Pair<DealGuessStage, Boolean>>()
+    if (dealGuess.dealerSeat == seat) dealGuess.hand?.let { badges += DealGuessStage.HAND to it.correct }
+    if (dealGuess.mortoDealerSeat == seat) dealGuess.morto?.let { badges += DealGuessStage.MORTO to it.correct }
+    return badges
+}
+
+/**
+ * §17.11 / §3.6 total ao vivo da barra de placar (booster "placar", `TableScoreBar`/`SideArea`) do [side]:
+ * [tableTotal] ([com.gtranca.engine.tablePoints], o que já está na mesa) mais o bônus da distribuição certeira
+ * já resolvido ([DealGuess.bonusFor]). O bônus conta desde o início da partida (antes de qualquer carta baixada,
+ * §3.6 resolve antes da 1ª vez) e não depende de nenhuma animação de carta — some sempre, sem esperar nada
+ * "pousar" na mesa. Zero se [dealGuess] for `null` (regra desligada, ou partida salva antiga) ou nenhum dos dois
+ * palpites certos tiver caído neste lado.
+ */
+internal fun liveSideTotal(tableTotal: Int, dealGuess: DealGuess?, mode: GameMode, side: Side, rules: RuleSet): Int =
+    tableTotal + dealGuess.bonusFor(mode, side, rules.dealGuessBonusPoints)
 
 /**
  * Deriva as animações da mesa das diferenças entre dois snapshots e dos eventos públicos ([GameSnapshot.turnEvents]).
@@ -179,17 +249,37 @@ object TableAnimations {
         }
         val mortoPlaces = view.mortoSizes.indices.map { m -> DealPlace(AnimAnchor.Morto(m), view.mortoSizes[m]) { null } }
 
+        // As cartas entram de fora da mesa, pelo lado de quem distribui aquela leva (telas.md 3.8.1): a mão vem do
+        // dealerSeat, cada morto do mortoDealerSeat (os dois mortos pelo mesmo lado) — nunca do monte.
+        val (dealerSeat, mortoDealerSeat) = dealGuessSeats(view.mode, view.firstSeat)
+        val seatEntry = AnimAnchor.DealEntry(dealEntryEdge(SeatRole.of(view.mode, dealerSeat, viewer)))
+        val mortoEntry = AnimAnchor.DealEntry(dealEntryEdge(SeatRole.of(view.mode, mortoDealerSeat, viewer)))
+
         val flights = mutableListOf<CardFlight>()
         var cursor = 0L
-        (dealGroups(seatPlaces, style) + dealGroups(mortoPlaces, style)).forEach { group ->
-            group.forEachIndexed { i, (target, card) ->
-                flights += CardFlight(nextId(), AnimAnchor.Stock, target, card, cursor + STAGGER_MILLIS * i)
+        fun emit(groups: List<List<Pair<AnimAnchor, Card?>>>, entry: AnimAnchor) {
+            groups.forEach { group ->
+                group.forEachIndexed { i, (target, card) ->
+                    flights += CardFlight(nextId(), entry, target, card, cursor + STAGGER_MILLIS * i)
+                }
+                // O próximo lote já começa na metade do caminho do atual (não espera ele pousar): mais ágil sem perder
+                // a leitura de "lote por lote", para os dois estilos, assentos e mortos.
+                cursor += STAGGER_MILLIS * (group.size - 1) + durationMillis / 2
             }
-            // O próximo lote já começa na metade do caminho do atual (não espera ele pousar): mais ágil sem perder
-            // a leitura de "lote por lote", para os dois estilos, assentos e mortos.
-            cursor += STAGGER_MILLIS * (group.size - 1) + durationMillis / 2
         }
+        emit(dealGroups(seatPlaces, style), seatEntry)
+        emit(dealGroups(mortoPlaces, style), mortoEntry)
         return flights
+    }
+
+    /** Borda da tela por onde entra a leva de quem distribui, do ponto de vista de quem vê a tela (telas.md 3.8.1):
+     * parceiro ou único adversário = de cima; adversário à esquerda = da esquerda; à direita = da direita; o
+     * próprio jogador (ele sorteado para distribuir) = de baixo, perto de onde fica a própria mão. */
+    private fun dealEntryEdge(role: SeatRole): TableEdge = when (role) {
+        SeatRole.PARTNER, SeatRole.OPPONENT -> TableEdge.TOP
+        SeatRole.LEFT_OPPONENT -> TableEdge.LEFT
+        SeatRole.RIGHT_OPPONENT -> TableEdge.RIGHT
+        SeatRole.YOU -> TableEdge.BOTTOM
     }
 
     /** Eventos novos de cada assento entre [old] e [new], na mesma partida. */
@@ -280,6 +370,8 @@ object TableAnimations {
                 is Action.AddToMeld -> action.cards.take(MAX_CARDS_PER_MOVE).forEachIndexed { i, card ->
                     flights += CardFlight(nextId(), from, AnimAnchor.Meld(side, action.meldId.value), card, STAGGER_MILLIS * i)
                 }
+                // §3.6 o palpite nunca aparece em `turnEvents` (GameController.recordEvent o descarta): sem voo.
+                is Action.GuessDealRange -> Unit
             }
         }
         // Batida: as cartas que saem da mão na última ação voam em câmera lenta e crescendo (docs/telas.md 3.9).
@@ -357,6 +449,8 @@ object TableAnimations {
                     }
                     event.takenFromDiscard.size - handCards.size
                 }
+                // §3.6 nunca aparece aqui (filtrado em `GameController.recordEvent`).
+                is Action.GuessDealRange -> 0
             }
             if (size <= 0) return index
         }

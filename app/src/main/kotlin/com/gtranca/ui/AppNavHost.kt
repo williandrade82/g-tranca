@@ -575,7 +575,8 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             boosterInventory = data.inventory,
                         )
                     } else {
-                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory)
+                        // forcePartnerDeals: TEMPORÁRIO (pedido do usuário, 2026-11-14, ajustado 14/11/2026) — ver GameController.forcePartnerDeals.
+                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory, forcePartnerDeals = true)
                     }
                 }
                 session.started = true
@@ -1021,10 +1022,19 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
         onDispose { if (!started) com.gtranca.multiplayer.MultiplayerHub.closeRecruiting() }
     }
     val start: () -> Unit = start@{
-        if (!vm.canStart || starting || started) return@start
+        // §16.2 "Começar Partida" só fica inativo com um Chamado pendente; faltando gente, completa com robôs aqui.
+        if (vm.layout.hasCalled || starting || started) return@start
         starting = true
         scope.launch {
             val live = rec
+            if (!vm.layout.isFull) {
+                if (live != null) {
+                    live.fillWithRobots(com.gtranca.game.Tables.personaPool, vm.seed)
+                    live.layout.value?.let(vm::onRemoteLayout)
+                } else {
+                    vm.onFill()
+                }
+            }
             if (live != null && vm.hasRemotes) {
                 // §16.2 em rede: os recrutados entram direto; a camada "Prepare-se!" cobre a tela até o jogo começar.
                 val tableId = com.gtranca.net.nearby.newTableId()

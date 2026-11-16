@@ -71,8 +71,13 @@ data class SideScore(
      * no JSON; o motor sempre preenche.
      */
     val tableCards: TableCards = TableCards.ZERO,
+    /**
+     * §3.6 / §12.1 bônus da distribuição certeira (0, 100 ou 200: um palpite certo de cada papel que caiu
+     * neste lado). Zero por padrão para o histórico salvo antes da regra existir continuar legível.
+     */
+    val dealGuessBonus: Int = 0,
 ) {
     val total: Int
         get() = redThrees.points + cleanCanastas.points + dirtyCanastas.points + goOut + tableCards.points +
-            mortoNotTaken + hand.points
+            mortoNotTaken + hand.points + dealGuessBonus
 }

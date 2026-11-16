@@ -154,6 +154,7 @@ private fun PlayerView.sample(
         redThreeLog = redThreeLog.toList(), // §3.5 / §6.5 público: o mundo sorteado tem o mesmo registro
         turnsBegun = turnsBegun,
         unsettledMortoSeats = unsettledMortoSeats.toList(),
+        dealGuess = dealGuess, // §3.6 público: o mundo sorteado tem o mesmo estado de palpite
     )
 }
 

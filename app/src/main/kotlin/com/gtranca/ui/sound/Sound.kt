@@ -88,7 +88,8 @@ object SoundMap {
         // 3 vermelho: o som já tocou com o aviso da troca (SwapAnnouncement); a chegada à mesa fica em silêncio.
         is AnimAnchor.RedThrees, is AnimAnchor.RedThreeCard -> null
         else -> when (flight.from) {
-            AnimAnchor.Stock, is AnimAnchor.Morto, AnimAnchor.DiscardPile, is AnimAnchor.DiscardCard -> SoundEffect.FLIP
+            // A distribuição inicial (telas.md 3.8.1) entra de fora da mesa, não do monte, mas é o mesmo gesto.
+            AnimAnchor.Stock, is AnimAnchor.DealEntry, is AnimAnchor.Morto, AnimAnchor.DiscardPile, is AnimAnchor.DiscardCard -> SoundEffect.FLIP
             else -> null
         }
     }

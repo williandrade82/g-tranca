@@ -42,6 +42,9 @@ import kotlin.random.Random
  *    Cooperação em duplas: cartas que cabem nos conjuntos do lado (inclusive os do parceiro, §6.4),
  *    sobretudo as que fecham canastra, têm utilidade alta e não são descartadas.
  *
+ * 0. **Distribuição certeira** (§3.6/§14.5), antes da 1ª vez: acerta a largura do palpite com
+ *    probabilidade [MEDIUM_DEAL_GUESS_ACCURACY] (15%, [chooseDealGuess]).
+ *
  * A memória ([PublicHistory]) vem só de [observe] e é zerada em [onNewRound]. Cada assento tem a
  * sua instância. Só escolhe entre as ações recebidas; nunca valida regras (usa [Meld.add] apenas
  * para estimar se uma carta serve num conjunto já na mesa).
@@ -60,6 +63,8 @@ class MediumBot(
     override fun chooseAction(view: PlayerView, legal: List<Action>): Action {
         require(legal.isNotEmpty()) { "Sem ações legais" }
         val chosen = when (view.phase) {
+            Phase.DEAL_GUESS_HAND, Phase.DEAL_GUESS_MORTO ->
+                chooseDealGuess(view, legal, random, MEDIUM_DEAL_GUESS_ACCURACY)
             Phase.AWAITING_DRAW -> chooseDraw(view, legal)
             Phase.PLAYING -> chooseMeld(view, legal) ?: chooseDiscard(view, legal) ?: chooseMeld(view, legal, force = true)
             Phase.FINISHED -> null
@@ -82,6 +87,9 @@ class MediumBot(
         if (legal.size <= 1) return legal
         val result = LinkedHashSet<Action>()
         when (view.phase) {
+            // §3.6 o palpite da distribuição certeira não entra na busca do Difícil (ver HardBot.chooseAction):
+            // é resolvido direto por sorteio, fora da árvore. Nunca chega aqui; sem candidatas, cai no `ifEmpty`.
+            Phase.DEAL_GUESS_HAND, Phase.DEAL_GUESS_MORTO -> Unit
             Phase.AWAITING_DRAW -> {
                 chooseDraw(view, legal)?.let(result::add)
                 legal.filter { it == Action.DrawFromStock || it == Action.DeclineDraw }.forEach(result::add)

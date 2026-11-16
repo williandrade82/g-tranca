@@ -8,6 +8,7 @@ import com.gtranca.engine.PlayerView
 import com.gtranca.engine.RoundEngine
 import com.gtranca.engine.finishRound
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundRecord
@@ -146,6 +147,16 @@ class GameController(
      */
     private val onSave: ((SaveSnapshot) -> Unit)? = null,
     private val pacing: PacingPolicy = PacingPolicy.LOCAL_ANIMATED,
+    /**
+     * TEMPORÁRIO (pedido do usuário, 2026-11-14, ajustado 14/11/2026), `false` por padrão (não afeta nenhum teste
+     * nem a reprodução bit-a-bit do `:sim`): sem sorteio do 1º jogador da 1ª partida de um jogo novo enquanto
+     * testamos a distribuição certeira (§3.6) — em duplas, o **parceiro** de [viewerSeat] (o anfitrião/humano deste
+     * aparelho) é sempre `dealGuess.dealerSeat` (quem distribui a mão), pra testar mais rápido a reação pequena do
+     * parceiro (telas-app.md 3.8.2); em individual não há parceiro, então o parâmetro não tem efeito. Ligado só no
+     * ponto de entrada real de um jogo novo local (`AppNavHost.startGame`/`GameRoute`); remover (e este parâmetro)
+     * depois dos testes.
+     */
+    private val forcePartnerDeals: Boolean = false,
 ) {
     init {
         require(players.size == config.mode.seatCount) { "Um jogador por assento: ${config.mode.seatCount}" }
@@ -187,6 +198,16 @@ class GameController(
     private val awaitingPresentation = AtomicReference<PresentationKey?>(null)
 
     /**
+     * §3.6 palpite da distribuição certeira que o controlador espera a interface reconhecer antes de pedir a
+     * próxima jogada (a reação em tela cheia, quando houver, só fecha com o toque do jogador): a partida e qual
+     * fase ([hand] = mão, `false` = morto) acabou de resolver. `null` se nada em aberto. Ver [guessRevealDone].
+     */
+    private data class GuessRevealKey(val roundNumber: Int, val hand: Boolean)
+
+    private val awaitingGuessReveal = AtomicReference<GuessRevealKey?>(null)
+    private val guessRevealSignal = Channel<Unit>(Channel.CONFLATED)
+
+    /**
      * Trava única do estado do jogo: aplicar uma ação, encerrar/iniciar partida, publicar o snapshot e desistir
      * (§13.1) acontecem sob ela. Assim a desistência, vinda da thread principal, nunca intercala com o laço (que
      * roda em [computeDispatcher]): ou a ação/pontuação já aconteceu antes, ou não acontece mais. Nunca suspender
@@ -195,7 +216,16 @@ class GameController(
     private val lock = Any()
 
     @Volatile
-    private var match: Match = restored?.match ?: startMatch(config.mode, config.targetScore, Random(gameSeed), config.rules)
+    private var match: Match = restored?.match ?: startMatch(
+        config.mode, config.targetScore, Random(gameSeed), config.rules,
+        // [forcePartnerDeals]: dealGuessSeats (§3.6) faz dealerSeat = previousSeat(firstSeat) — para o parceiro de
+        // viewerSeat (mesmo lado, assento oposto em duplas, §1.1) ser sempre o dealerSeat, o firstSeat é o seguinte
+        // a ele (§4.2). Só em duplas: em individual não há parceiro, então o parâmetro não altera o sorteio.
+        firstSeat = if (!forcePartnerDeals || config.mode != GameMode.DUPLAS) null else {
+            val partnerSeat = Seat((viewerSeat.index + 2) % config.mode.seatCount)
+            config.mode.nextSeat(partnerSeat)
+        },
+    )
 
     @Volatile
     private var turnEvents: List<List<PublicEvent>> = List(config.mode.seatCount) { emptyList() }
@@ -351,7 +381,18 @@ class GameController(
             resuming = false
             // A pausa da distribuição vem antes da espera das trocas do início da vez: elas só são encenadas depois da
             // distribuição, então o tempo total é o maior dos dois, e não a soma (sem pausa morta depois do "Baixar").
-            if (freshDeal && animated() && dealDelayMillis > 0) awaitDealAnimation(match.roundNumber)
+            // §3.6 com o palpite da distribuição certeira ligado, a partida começa numa dessas fases em vez de já
+            // esperar a animação da distribuição: ela só acontece depois dos dois palpites resolvidos (mais abaixo,
+            // junto do `GuessDealRange` que sai de [Phase.DEAL_GUESS_MORTO]). Na 1ª partida, o 1º palpite ainda espera o
+            // "Prepare-se!" (como a distribuição esperaria, sem a regra).
+            val startPhase = match.currentRound.phase
+            if (freshDeal && animated() && dealDelayMillis > 0) {
+                if (startPhase == Phase.DEAL_GUESS_HAND || startPhase == Phase.DEAL_GUESS_MORTO) {
+                    if (match.roundNumber == 1) delay(com.gtranca.net.PREPARE_MILLIS)
+                } else {
+                    awaitDealAnimation(match.roundNumber)
+                }
+            }
             if (waitDeal) presentationSignal.receive()
             while (true) {
                 val round = synchronized(lock) {
@@ -421,6 +462,21 @@ class GameController(
                     // Inclui as trocas do início da vez do PRÓXIMO jogador (§3.5), feitas na mesma passagem de vez.
                     val wait = animated() && after.phase != Phase.FINISHED && after.redThreeLog.size > round.redThreeLog.size
                     if (wait) awaitingPresentation.set(PresentationKey(match.roundNumber, after.redThreeLog.size))
+                    // §3.6 BUG (relatado 2026-11-14): quando o palpite do morto resolve na MESMA ação que o início da
+                    // vez do dealer (`RoundEngine.beginTurn`, acima, pode trocar um 3 vermelho dele), a interface
+                    // publica os dois avisos juntos (a reação do palpite, zIndex mais alto, e "Baixar 3 vermelho") — e
+                    // o jogador pode tocar no de cima (fechar a reação) ANTES de a troca ser confirmada. Arma a espera
+                    // aqui, antes de publicar o snapshot e antes de esperar [presentationSignal]: o canal é conflado
+                    // (`guessRevealSignal`), então um toque que chegue adiantado fica guardado até [guessRevealSignal]
+                    // ser mesmo esperado, em vez de se perder (motivo do travamento: o motor nunca mais publicava o
+                    // próximo pedido). Descarta primeiro qualquer sinal perdido de uma espera anterior já desarmada
+                    // pelo tempo limite (ver abaixo) para não resolver esta de cara.
+                    val guessKey = (action as? Action.GuessDealRange)?.takeIf { animated() }
+                        ?.let { GuessRevealKey(match.roundNumber, round.phase == Phase.DEAL_GUESS_HAND) }
+                    if (guessKey != null) {
+                        guessRevealSignal.tryReceive()
+                        awaitingGuessReveal.set(guessKey)
+                    }
                     // Durante a encenação, quem trocou continua "jogando" (a vez passa ao humano só depois): o texto e o
                     // destaque seguem o adversário em vez de um "Aguarde…" neutro (cada vista exclui o próprio assento).
                     publishLocked(Stage.PLAYING, thinkingSeat = after.redThreeLog.lastOrNull()?.seat.takeIf { wait })
@@ -428,6 +484,23 @@ class GameController(
                 }
                 if (waitSwaps == null) continue
                 if (waitSwaps) presentationSignal.receive()
+                // §3.6 depois de resolver um palpite, espera a interface reconhecer a reação (pílula sempre; tela cheia
+                // só no toque, quando é a vez do jogador ou do parceiro dele) antes de pedir o próximo palpite ou a 1ª
+                // jogada de verdade. Sem humano/ritmo animado (bots, `:sim`, anfitrião de mesa multijogador em
+                // `PacingPolicy.FREE`), segue direto: ninguém vai reconhecer nada ([guessKey] fica `null`).
+                if (action is Action.GuessDealRange && animated()) {
+                    val key = GuessRevealKey(match.roundNumber, round.phase == Phase.DEAL_GUESS_HAND)
+                    // Rede de segurança: sem o toque (bug na interface, app em segundo plano etc.), segue depois de um
+                    // tempo bem generoso em vez de travar o jogo para sempre — a reação "fica até o toque" (§3.8.2 do
+                    // telas-app.md) em condições normais, então isto nunca deve disparar de verdade.
+                    val acknowledged = withTimeoutOrNull(GUESS_REVEAL_SAFETY_MILLIS) { guessRevealSignal.receive() } != null
+                    if (!acknowledged) awaitingGuessReveal.compareAndSet(key, null)
+                    // O palpite do morto é o último: só depois dele a animação da distribuição começa (adiada do
+                    // início da partida, ver acima), antes da 1ª jogada de verdade.
+                    if (round.phase == Phase.DEAL_GUESS_MORTO && dealDelayMillis > 0) {
+                        awaitDealAnimation(match.roundNumber)
+                    }
+                }
             }
             synchronized(lock) {
                 // §13.1 a partida que terminou depois da desistência nunca é pontuada.
@@ -462,6 +535,20 @@ class GameController(
     /** A interface terminou de animar a distribuição da partida [roundNumber]: libera a 1ª jogada (e as trocas do início). */
     fun dealAnimationDone(roundNumber: Int) {
         dealAnimationSignal.trySend(roundNumber)
+    }
+
+    /**
+     * §3.6 a interface reconheceu o palpite resolvido ([hand] = mão, `false` = morto) da partida [roundNumber]: libera o
+     * próximo pedido (o palpite seguinte, ou a 1ª jogada de verdade, depois dos dois resolvidos). Sem reação em tela
+     * cheia (não é a vez nem do jogador nem do parceiro dele), a interface chama isto assim que mostra só a pílula, sem
+     * esperar toque nenhum; com reação em tela cheia, só no toque de "Toque na tela para fechar.". Ignorada se o
+     * controlador não espera por este palpite (jogo sem humano, ou pedido já liberado). Devolve se foi aceita.
+     */
+    fun guessRevealDone(roundNumber: Int, hand: Boolean): Boolean {
+        val key = GuessRevealKey(roundNumber, hand)
+        val current = awaitingGuessReveal.get() ?: return false
+        if (current != key || !awaitingGuessReveal.compareAndSet(current, null)) return false
+        return guessRevealSignal.trySend(Unit).isSuccess
     }
 
     /** Ponto de salvamento: repassa a foto do jogo (sob a trava; a gravação fica fora do laço). */
@@ -586,6 +673,9 @@ class GameController(
         event.action == Action.DrawFromStock || event.action == Action.DeclineDraw || event.action is Action.TakeDiscardPile
 
     private fun recordEvent(event: PublicEvent) {
+        // §3.6 o palpite da distribuição certeira não é uma jogada da vez (a vez do assento sorteado para abrir a
+        // partida só começa depois dos dois resolvidos, §4.3): não entra no registro da pílula nem do detalhe.
+        if (event.action is Action.GuessDealRange) return
         val index = event.seat.index
         val startsTurn = startsTurn(event)
         turnEvents = turnEvents.mapIndexed { i, events ->
@@ -688,6 +778,14 @@ class GameController(
 
         /** Folga da espera pelo aviso da interface de que a distribuição terminou (rede de segurança). */
         private const val DEAL_SIGNAL_GRACE_MILLIS: Long = 4_000
+
+        /**
+         * §3.6 rede de segurança da reação do palpite (`guessRevealSignal`): espera o toque do jogador por até isto
+         * antes de seguir sozinho. Bem mais generoso que [DEAL_SIGNAL_GRACE_MILLIS] (que só espera uma animação de
+         * duração conhecida): aqui é um toque humano, que pode legitimamente demorar; em condições normais, com a
+         * correção de 2026-11-14 (armar a espera antes de publicar o snapshot, não depois), isto nunca deve disparar.
+         */
+        private const val GUESS_REVEAL_SAFETY_MILLIS: Long = 300_000
 
         /** Eventos que cabem em [events] sem o consumidor ler. */
         private const val EVENT_BUFFER: Int = 512

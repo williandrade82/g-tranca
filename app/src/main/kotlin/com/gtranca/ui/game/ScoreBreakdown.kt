@@ -1,5 +1,6 @@
 package com.gtranca.ui.game
 
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.ScoreLine
 import com.gtranca.engine.model.SideScore
 
@@ -22,6 +23,10 @@ enum class ScoreItem(val section: ScoreSection) {
     DIRTY_CANASTAS(ScoreSection.SPECIAL),
     GO_OUT(ScoreSection.SPECIAL),
     MORTO_NOT_TAKEN(ScoreSection.SPECIAL),
+    /** §3.6 / §12.1 bônus da distribuição certeira (0 ou 1 palpite certo deste lado — nunca 2: `dealerSeat` e
+     * `mortoDealerSeat` caem sempre em lados opostos); depois do morto não pego, por ser um bônus adicional que
+     * não vem de cartas, igual a batida e ao morto. */
+    DEAL_GUESS_BONUS(ScoreSection.SPECIAL),
     TABLE_RED_THREES(ScoreSection.TABLE),
     TABLE_FOUR_TO_TEN(ScoreSection.TABLE),
     TABLE_FACES(ScoreSection.TABLE),
@@ -42,12 +47,19 @@ object ScoreBreakdown {
     /** Linha: quantidade (`null` quando não se aplica, ex.: batida) e pontos. */
     data class Line(val count: Int?, val points: Int)
 
-    fun lines(score: SideScore): Map<ScoreItem, Line> = linkedMapOf(
+    fun lines(score: SideScore, rules: RuleSet = RuleSet.DEFAULT): Map<ScoreItem, Line> = linkedMapOf(
         ScoreItem.RED_THREES to score.redThrees.line(),
         ScoreItem.CLEAN_CANASTAS to score.cleanCanastas.line(),
         ScoreItem.DIRTY_CANASTAS to score.dirtyCanastas.line(),
         ScoreItem.GO_OUT to Line(null, score.goOut),
         ScoreItem.MORTO_NOT_TAKEN to Line(null, score.mortoNotTaken),
+        // §3.6 / §12.1 a quantidade é só para a coluna de quantidade (0 ou 1 palpite certo deste lado, nunca 2 —
+        // ver KDoc de DEAL_GUESS_BONUS acima); o valor já vem pronto de SideScore.dealGuessBonus, nunca
+        // recalculado aqui.
+        ScoreItem.DEAL_GUESS_BONUS to Line(
+            if (rules.dealGuessBonusPoints == 0) 0 else score.dealGuessBonus / rules.dealGuessBonusPoints,
+            score.dealGuessBonus,
+        ),
         ScoreItem.TABLE_RED_THREES to score.tableCards.redThrees.line(),
         ScoreItem.TABLE_FOUR_TO_TEN to score.tableCards.fourToTen.line(),
         ScoreItem.TABLE_FACES to score.tableCards.faceCardsAndAces.line(),

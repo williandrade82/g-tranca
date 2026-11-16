@@ -9,6 +9,9 @@ import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Suit
+import com.gtranca.engine.model.dealGuessAction
+import com.gtranca.engine.model.dealGuessHandRange
+import com.gtranca.engine.model.dealGuessMortoRange
 
 /**
  * Enumeração COMPLETA, a menos de cartas idênticas, das ações válidas (ver [RoundEngine.legalActions]).
@@ -22,6 +25,12 @@ import com.gtranca.engine.model.Suit
  * - acréscimo/plano de lixo: idem, com o resultado contendo o conjunto existente (e o topo do lixo);
  * - coringa no topo do lixo (§5.4): ele ocupa a vaga do coringa, e a mão entra só com naturais.
  * Cada candidato é então conferido por [RoundEngine.step]; só os aceitos são devolvidos.
+ *
+ * §3.6 nas fases de palpite da distribuição certeira ([Phase.DEAL_GUESS_HAND] / [Phase.DEAL_GUESS_MORTO]), a única
+ * classe de ação é [Action.GuessDealRange]: como o resultado (acerto ou erro) só depende do **número escolhido**
+ * (`end - start`, com `start` sempre 1, toque único desde 14/11/2026), a equivalência de classe aqui é "mesmo
+ * número" (em vez de "mesma cópia do baralho"), representada por um candidato [dealGuessAction] por número
+ * possível na faixa fixa do papel/modo ([dealGuessHandRange] / [dealGuessMortoRange]).
  */
 internal object LegalActions {
 
@@ -30,6 +39,8 @@ internal object LegalActions {
     fun generate(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
         if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
         val candidates: Sequence<Action> = when (state.phase) {
+            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandRange(state.mode))
+            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(dealGuessMortoRange())
             Phase.AWAITING_DRAW ->
                 sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
             Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
@@ -46,6 +57,8 @@ internal object LegalActions {
     fun generateReference(state: RoundState, seat: Seat, rules: RuleSet): List<Action> {
         if (state.phase == Phase.FINISHED || seat != state.currentSeat) return emptyList()
         val candidates: Sequence<Action> = when (state.phase) {
+            Phase.DEAL_GUESS_HAND -> dealGuessCandidates(dealGuessHandRange(state.mode))
+            Phase.DEAL_GUESS_MORTO -> dealGuessCandidates(dealGuessMortoRange())
             Phase.AWAITING_DRAW ->
                 sequenceOf(Action.DrawFromStock, Action.DeclineDraw) + discardPileCandidates(state, seat)
             Phase.PLAYING -> createCandidates(state, seat) + addCandidates(state, seat) + discardCandidates(state, seat)
@@ -53,6 +66,10 @@ internal object LegalActions {
         }
         return candidates.distinct().filter { isValid(state, seat, it, rules) }.toList()
     }
+
+    /** §3.6 um [dealGuessAction] por número possível na faixa fixa do papel/modo; ver KDoc da classe. */
+    private fun dealGuessCandidates(range: IntRange): Sequence<Action> =
+        range.asSequence().map { number -> dealGuessAction(number) }
 
     /**
      * Validação rápida dos candidatos de baixar, acrescentar e pegar o lixo, com o mesmo resultado de [RoundEngine.step]

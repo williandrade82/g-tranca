@@ -11,6 +11,7 @@ import com.gtranca.game.BotSeatPlayer
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameEvent
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Stage
 import com.gtranca.net.ActionRejected
 import com.gtranca.net.Delivery
@@ -38,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -152,7 +154,12 @@ class MultiplayerHostTest {
     @Test
     fun `§16_1 jogada fora da vez, ilegal, repetida ou de outro assento e recusada sem alterar o jogo`() = runTest {
         val seed = 41L
-        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), targetScore = 3000)
+        // §3.6 motivo real (checado em 14/11/2026, depois da correção de `SeatView.dealGuess`/protocolo 20 — a
+        // comparação `toPlayerView(...) shouldBe hostSide.view` abaixo passa igual com a regra ligada): o teste
+        // depende da sequência exata de pedidos/recusas (STALE_REQUEST vs. NOT_YOUR_TURN) desta semente; o
+        // minijogo do palpite insere jogadas extras (§3.6) que mudam essa numeração. Nada a ver com vazamento ou
+        // sincronização do campo — é só o roteiro deste teste, feito antes de §3.6 existir.
+        val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), targetScore = 3000, rules = NO_DEAL_GUESS)
         val rejections = ConcurrentHashMap<Seat, MutableList<ActionRejected>>()
         table.guests.forEach { (seat, guest) ->
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -314,6 +321,16 @@ class MultiplayerHostTest {
         val network = MemoryNetwork()
         val scanner = LeakScanner(seed)
         network.tap = scanner.tap()
+        // §3.6 checado em 14/11/2026 (depois da correção de `SeatView.dealGuess`/protocolo 20): a regra agora fica
+        // ligada (removido o `NO_DEAL_GUESS` de antes). A hipótese inicial ("a pausa do §16.8 não reconhece fase de
+        // palpite") não se confirmou — `MultiplayerHost.evaluatePause` é agnóstico de fase (só olha
+        // `humanRequestId > 0`), e um coletor manual respondendo ao palpite pendente de `stays` destrava o jogo
+        // normalmente. O que precisou do `runCurrent()` abaixo é outra coisa, do próprio arranjo do teste: chamar
+        // `driveGuests` para só um assento e, de seguida, `driveHost`, sem nenhum ponto intermediário, faz os dois
+        // `backgroundScope.launch(StandardTestDispatcher(...))` ficarem só agendados — um único `advanceUntilIdle()`
+        // no fim não bastava para o coletor do palpite de `stays` chegar a responder antes do resto. Mesmo padrão
+        // usado sem problema nos outros testes deste arquivo quando dirigem TODOS os convidados de uma vez; aqui o
+        // conjunto parcial (só `stays`) parece ser o que expõe a ordem de agendamento.
         val table = openTable(GameMode.DUPLAS, seed, listOf(Seat(1), Seat(2), Seat(3)), stake = 100, network = network)
         scanner.registerTable(table)
         scanner.watch(this, table.host)
@@ -360,6 +377,9 @@ class MultiplayerHostTest {
 
         // O jogo segue até a vez do outro assento VAGO (o anfitrião e quem ficou jogam como o bot deles).
         driveGuests(table, seed, guests = mapOf(stays to stayer))
+        // §3.6 deixa o coletor do palpite pendente de `stays` responder antes de agendar o de `driveHost` (ver nota
+        // acima); sem isso, um único `advanceUntilIdle()` no fim não resolvia o palpite do morto a tempo.
+        runCurrent()
         driveHost(table, seed)
         advanceUntilIdle()
         table.host.decision.value?.seat shouldBe offTurn

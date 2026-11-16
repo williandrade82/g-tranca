@@ -3,12 +3,15 @@ package com.gtranca.ui.game
 import com.gtranca.ai.Difficulty
 import com.gtranca.ai.createBot
 import com.gtranca.engine.Action
+import com.gtranca.engine.RuleSet
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.PublicEvent
 import com.gtranca.engine.PlayerView
 import com.gtranca.engine.model.RuleResult
 import com.gtranca.engine.DiscardPlan
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.DealGuess
+import com.gtranca.engine.model.Guess
 import com.gtranca.engine.model.MortoStatus
 import com.gtranca.engine.model.RedThreeLaid
 import com.gtranca.engine.model.Phase
@@ -20,10 +23,13 @@ import com.gtranca.game.BotSeatPlayer
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameSnapshot
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Stage
 import com.gtranca.game.botSeed
 import com.gtranca.game.cardClass
+import androidx.compose.ui.geometry.Rect
 import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +65,7 @@ class TableAnimationsTest {
         val mode = GameMode.DUPLAS
         val seed = 21L
         val controller = GameController(
-            GameConfig(mode, Difficulty.MEDIO, targetScore = 1000), seed,
+            GameConfig(mode, Difficulty.MEDIO, targetScore = 1000, rules = NO_DEAL_GUESS), seed,
             mode.seats.map { BotSeatPlayer(createBot(Difficulty.MEDIO, Random(botSeed(seed, it.index)))) },
             // Pausa de 1 ms: o laço suspende a cada jogada e o coletor vê cada snapshot (o StateFlow é conflado).
             computeDispatcher = dispatcher, botDelayMillis = 1,
@@ -122,7 +128,7 @@ class TableAnimationsTest {
     @Test
     fun `§4_3 compra do humano voa do monte para a mao com a carta comprada e a animacao some sozinha`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 3, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 3, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 400,
         )
         advanceUntilIdle()
@@ -147,7 +153,7 @@ class TableAnimationsTest {
     @Test
     fun `animacoes desligadas nao geram voos`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 3, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 3, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
         )
         advanceUntilIdle()
@@ -178,8 +184,8 @@ class TableAnimationsTest {
             tables = listOf(SideTable(), SideTable()), redThreeLog = redThreeLog,
         )
 
-    private fun snapshot(view: PlayerView, events: List<List<PublicEvent>>) = GameSnapshot(
-        GameConfig(GameMode.DUPLAS, Difficulty.MEDIO, 3000), Seat(0), view, 1, listOf(0, 0), emptyList(), Stage.PLAYING,
+    private fun snapshot(view: PlayerView, events: List<List<PublicEvent>>, viewerSeat: Seat = Seat(0)) = GameSnapshot(
+        GameConfig(GameMode.DUPLAS, Difficulty.MEDIO, 3000), viewerSeat, view, 1, listOf(0, 0), emptyList(), Stage.PLAYING,
         null, emptyList(), null, events,
     )
 
@@ -290,7 +296,7 @@ class TableAnimationsTest {
     @Test
     fun `escala do sistema - expiracao acompanha a escala e escala 0 nao gera voos`() = runTest(dispatcher) {
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 3, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 3, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 400,
         )
         advanceUntilIdle()
@@ -329,7 +335,7 @@ class TableAnimationsTest {
         // Jogo só de bots: acha um destaque de canastra e confere que ele some do estado depois da duração.
         // Com a canastra de 7 cartas (§7.1) nem toda semente fecha uma: procura uma que feche.
         var vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000), gameSeed = 1, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, rules = NO_DEAL_GUESS), gameSeed = 1, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 300,
         )
         var seen = false
@@ -340,7 +346,7 @@ class TableAnimationsTest {
                 seed++
                 guard = 0
                 vm = GameViewModel(
-                    GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000), gameSeed = seed, computeDispatcher = dispatcher,
+                    GameConfig(GameMode.INDIVIDUAL, Difficulty.MEDIO, 3000, rules = NO_DEAL_GUESS), gameSeed = seed, computeDispatcher = dispatcher,
                     botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 300,
                 )
                 continue
@@ -428,7 +434,7 @@ class TableAnimationsTest {
         var checked = false
         seeds@ for (seed in 1L..150L) {
             val vm = GameViewModel(
-                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000), gameSeed = seed, computeDispatcher = dispatcher,
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 1_000_000, rules = NO_DEAL_GUESS), gameSeed = seed, computeDispatcher = dispatcher,
                 botDelayMillis = 0, swapAnimationMillis = 1_000, animationMillis = 300,
             )
             // Voos na ordem em que aparecem na tela.
@@ -488,7 +494,11 @@ class TableAnimationsTest {
 
         // 4 assentos × 3 cartas + 2 mortos × 11 cartas: os mortos são distribuídos por completo, não só 1 carta.
         flights.size shouldBe 4 * 3 + 2 * 11
-        flights.all { it.from == AnimAnchor.Stock } shouldBe true
+        // §3.8.1 entram de fora da mesa, nunca do monte: view() tem firstSeat 0, logo dealerSeat é o assento 3
+        // (anterior a quem começa, §4.2), visto do assento 0 (viewer) como LEFT_OPPONENT; mortoDealerSeat é o 2
+        // (anterior ao anterior), PARTNER.
+        flights.take(12).all { it.from == AnimAnchor.DealEntry(TableEdge.LEFT) } shouldBe true
+        flights.drop(12).all { it.from == AnimAnchor.DealEntry(TableEdge.TOP) } shouldBe true
         // Lote de 3 para cada assento, em rodízio a partir de quem começa.
         flights.take(12).map { it.to } shouldBe listOf(
             AnimAnchor.OwnHand, AnimAnchor.OwnHand, AnimAnchor.OwnHand,
@@ -530,7 +540,9 @@ class TableAnimationsTest {
 
         // 4 assentos × 3 cartas + 2 mortos × 11 cartas: os mortos são distribuídos por completo, não só 1 carta.
         flights.size shouldBe 4 * 3 + 2 * 11
-        flights.all { it.from == AnimAnchor.Stock } shouldBe true
+        // §3.8.1 entram de fora da mesa (mesmos papéis do teste de lotes de 3 acima: dealerSeat 3 = LEFT, mortoDealerSeat 2 = TOP).
+        flights.take(12).all { it.from == AnimAnchor.DealEntry(TableEdge.LEFT) } shouldBe true
+        flights.drop(12).all { it.from == AnimAnchor.DealEntry(TableEdge.TOP) } shouldBe true
         // Rodízio a partir de quem começa: você, assento 1, 2, 3, e de novo (3 levas, a mão é de 3 cartas).
         flights.take(12).map { it.to } shouldBe List(3) {
             listOf(AnimAnchor.OwnHand, AnimAnchor.SeatHand(1), AnimAnchor.SeatHand(2), AnimAnchor.SeatHand(3))
@@ -549,6 +561,60 @@ class TableAnimationsTest {
         val lastSeatWaveEnd = flights.take(12).maxOf { it.delayMillis }
         (mortoFlights.first().delayMillis >= lastSeatWaveEnd + dur / 2) shouldBe true
         flights.map { it.id }.toSet().size shouldBe flights.size
+    }
+
+    @Test
+    fun `telas_md 3_8_1 distribuicao inicial entra de fora da mesa pelo lado de quem distribui, nunca do monte`() {
+        // §3.6 dealerSeat é o anterior a firstSeat (§4.2) e mortoDealerSeat o anterior a esse. A direção na tela é
+        // o papel de quem distribui visto do assento que vê a tela (SeatRole.of): parceiro/único adversário = de
+        // cima, à esquerda = da esquerda, à direita = da direita, o próprio = de baixo. Os pares abaixo (firstSeat,
+        // hand edge, morto edge) são fixos, calculados à mão a partir de SeatRole.of (não recalculados aqui com a
+        // mesma função da produção: um swap de (seat, viewer) no código não seria detectado se o teste repetisse a conta).
+        val hand = listOf(c("4S"), c("7H"), c("KD"))
+
+        // Duplas, viewer sempre o assento 0: varre os 4 valores de firstSeat, cobrindo os 4 papéis possíveis de
+        // dealerSeat/mortoDealerSeat, inclusive o próprio viewer sorteado para distribuir (firstSeat 1 e 2).
+        data class DuplasCase(val firstSeat: Seat, val handEdge: TableEdge, val mortoEdge: TableEdge)
+        listOf(
+            DuplasCase(Seat(0), TableEdge.LEFT, TableEdge.TOP), // dealerSeat 3 (LEFT_OPPONENT), mortoDealerSeat 2 (PARTNER)
+            DuplasCase(Seat(1), TableEdge.BOTTOM, TableEdge.LEFT), // dealerSeat 0 (YOU), mortoDealerSeat 3 (LEFT_OPPONENT)
+            DuplasCase(Seat(2), TableEdge.RIGHT, TableEdge.BOTTOM), // dealerSeat 1 (RIGHT_OPPONENT), mortoDealerSeat 0 (YOU)
+            DuplasCase(Seat(3), TableEdge.TOP, TableEdge.RIGHT), // dealerSeat 2 (PARTNER), mortoDealerSeat 1 (RIGHT_OPPONENT)
+        ).forEach { case ->
+            val v = view(hand).copy(firstSeat = case.firstSeat, handSizes = listOf(3, 3, 3, 3))
+            var id = 0L
+            val flights = TableAnimations.deal(snapshot(v, List(4) { emptyList() }), hand, { id++ })
+            flights.none { it.from == AnimAnchor.Stock } shouldBe true
+            flights.filter { it.to == AnimAnchor.OwnHand || it.to is AnimAnchor.SeatHand }
+                .all { it.from == AnimAnchor.DealEntry(case.handEdge) } shouldBe true
+            flights.filter { it.to is AnimAnchor.Morto }.all { it.from == AnimAnchor.DealEntry(case.mortoEdge) } shouldBe true
+        }
+
+        // Individual: só 2 assentos; dealerSeat é o OUTRO assento (nunca quem abre a partida) e mortoDealerSeat
+        // volta a ser o próprio firstSeat (§3.6) — a mão e os mortos entram de lados diferentes, viewer = Seat(0).
+        data class IndividualCase(val firstSeat: Seat, val handEdge: TableEdge, val mortoEdge: TableEdge)
+        listOf(
+            IndividualCase(Seat(0), TableEdge.TOP, TableEdge.BOTTOM), // dealerSeat 1 (OPPONENT), mortoDealerSeat 0 (YOU)
+            IndividualCase(Seat(1), TableEdge.BOTTOM, TableEdge.TOP), // dealerSeat 0 (YOU), mortoDealerSeat 1 (OPPONENT)
+        ).forEach { case ->
+            val v = view(hand).copy(mode = GameMode.INDIVIDUAL, firstSeat = case.firstSeat, handSizes = listOf(3, 3))
+            var id = 0L
+            val flights = TableAnimations.deal(snapshot(v, List(2) { emptyList() }), hand, { id++ })
+            flights.filter { it.to == AnimAnchor.OwnHand || it.to is AnimAnchor.SeatHand }
+                .all { it.from == AnimAnchor.DealEntry(case.handEdge) } shouldBe true
+            flights.filter { it.to is AnimAnchor.Morto }.all { it.from == AnimAnchor.DealEntry(case.mortoEdge) } shouldBe true
+        }
+
+        // O viewer também pode não ser o assento 0 (duplas): com firstSeat 0, dealerSeat é 3 e mortoDealerSeat é 2;
+        // vistos do assento 2 (viewer), 3 é RIGHT_OPPONENT (da direita) e 2 é o próprio viewer (YOU, de baixo).
+        val vOtherViewer = view(hand).copy(firstSeat = Seat(0), handSizes = listOf(3, 3, 3, 3))
+        var id2 = 0L
+        val flights2 = TableAnimations.deal(snapshot(vOtherViewer, List(4) { emptyList() }, viewerSeat = Seat(2)), hand, { id2++ })
+        // A própria mão do viewer (assento 2, que não é quem distribui aqui) entra do mesmo lado que as dos outros:
+        // a mão inteira (todos os assentos) tem uma única entrada, a direção de dealerSeat.
+        flights2.filter { it.to == AnimAnchor.OwnHand || it.to is AnimAnchor.SeatHand }
+            .all { it.from == AnimAnchor.DealEntry(TableEdge.RIGHT) } shouldBe true
+        flights2.filter { it.to is AnimAnchor.Morto }.all { it.from == AnimAnchor.DealEntry(TableEdge.BOTTOM) } shouldBe true
     }
 
     @Test
@@ -624,5 +690,148 @@ class TableAnimationsTest {
         flights.size shouldBe 3
         // a ordem da lista é a do histórico e cada voo começa depois de o anterior pousar
         flights.zipWithNext().forEach { (a, b) -> (b.delayMillis >= a.delayMillis + dur) shouldBe true }
+    }
+
+    /**
+     * §3.8.1 R12 (correção de 15/11/2026, bug relatado pelo usuário): a origem do voo da distribuição do PRÓPRIO
+     * jogador (`TableEdge.BOTTOM`) sai perto do topo de [AnimAnchor.OwnHand] (a própria mão), não do fundo da tela
+     * inteira ([AnimAnchor.TableBounds], que inclui a barra de comandos) — ver [dealEntryOrigin].
+     */
+    @Test
+    fun `§3_8_1 R12 BOTTOM usa o topo da propria mao, nao o fundo da tela inteira`() {
+        val tableBounds = Rect(0f, 0f, 360f, 800f)
+        val ownHandBounds = Rect(0f, 500f, 360f, 580f)
+        val margin = 40f
+
+        val origin = dealEntryOrigin(TableEdge.BOTTOM, tableBounds, ownHandBounds, margin).shouldNotBeNull()
+
+        // Perto do topo da mão (margem para fora, ou seja, ainda mais para cima) — nunca perto do fundo da tela.
+        origin.center.y shouldBe (ownHandBounds.top - margin)
+        origin.center.x shouldBe ownHandBounds.center.x
+        (origin.center.y < tableBounds.bottom - margin) shouldBe true
+    }
+
+    /** Sem [AnimAnchor.OwnHand] ainda medido (1º quadro): cai no cálculo antigo ([dealEntryPoint] com [TableBounds]), rede de segurança. */
+    @Test
+    fun `§3_8_1 R12 BOTTOM sem a propria mao medida ainda cai no calculo antigo (TableBounds)`() {
+        val tableBounds = Rect(0f, 0f, 360f, 800f)
+        val margin = 40f
+
+        val origin = dealEntryOrigin(TableEdge.BOTTOM, tableBounds, null, margin).shouldNotBeNull()
+
+        origin shouldBe dealEntryPoint(tableBounds, TableEdge.BOTTOM, margin)
+    }
+
+    /** Os outros três lados (TOP/LEFT/RIGHT) não têm o mesmo bug: continuam ancorados em [TableBounds], sem olhar [AnimAnchor.OwnHand]. */
+    @Test
+    fun `§3_8_1 R12 TOP LEFT RIGHT continuam ancorados no TableBounds, ignorando a propria mao`() {
+        val tableBounds = Rect(0f, 0f, 360f, 800f)
+        val ownHandBounds = Rect(0f, 500f, 360f, 580f)
+        val margin = 40f
+
+        listOf(TableEdge.TOP, TableEdge.LEFT, TableEdge.RIGHT).forEach { edge ->
+            dealEntryOrigin(edge, tableBounds, ownHandBounds, margin) shouldBe dealEntryPoint(tableBounds, edge, margin)
+        }
+    }
+
+    /** Sem nenhum dos dois retângulos medidos ainda: nenhum ponto de origem (nunca quebra, a carta só espera). */
+    @Test
+    fun `§3_8_1 R12 sem nenhum retangulo medido, dealEntryOrigin devolve null`() {
+        dealEntryOrigin(TableEdge.BOTTOM, null, null, 40f).shouldBeNull()
+    }
+
+    /**
+     * §3.8.1/§3.8.2 (15/11/2026): [OwnHandCover.DEALING] (distribuição em andamento) tem prioridade sobre
+     * [OwnHandCover.HIDDEN] ("Esconder cartas" do multijogador) quando os dois valem ao mesmo tempo.
+     */
+    @Test
+    fun `§3_8_1 §3_8_2 ownHandCover prioriza DEALING sobre HIDDEN`() {
+        ownHandCover(dealPending = true, handHidden = true) shouldBe OwnHandCover.DEALING
+        ownHandCover(dealPending = true, handHidden = false) shouldBe OwnHandCover.DEALING
+        ownHandCover(dealPending = false, handHidden = true) shouldBe OwnHandCover.HIDDEN
+        ownHandCover(dealPending = false, handHidden = false) shouldBe OwnHandCover.NONE
+    }
+
+    /**
+     * §3.6 (15/11/2026, pedido do usuário) selos permanentes por assento: [dealGuessBadges] só devolve a etapa
+     * (mão/morto) cujo [seat] é mesmo o `dealerSeat`/`mortoDealerSeat` correspondente, e só depois de resolvida.
+     */
+    @Test
+    fun `§3_6 dealGuessBadges devolve so a etapa do assento, ja resolvida`() {
+        val dealGuess = DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(2), hand = Guess(0, 44, true), morto = null)
+
+        dealGuessBadges(dealGuess, Seat(1)) shouldBe listOf(DealGuessStage.HAND to true)
+        // mortoDealerSeat ainda não resolveu o morto (`morto == null`): nenhum selo pra ele ainda.
+        dealGuessBadges(dealGuess, Seat(2)) shouldBe emptyList()
+        // Um terceiro assento (nem dealerSeat nem mortoDealerSeat): nenhum selo.
+        dealGuessBadges(dealGuess, Seat(0)) shouldBe emptyList()
+    }
+
+    /** Sem a regra ligada (`dealGuess == null`, `PlayerView.dealGuess` padrão): nenhum selo para ninguém. */
+    @Test
+    fun `§3_6 dealGuessBadges devolve lista vazia sem a regra ligada`() {
+        dealGuessBadges(null, Seat(0)) shouldBe emptyList()
+    }
+
+    /**
+     * Em duplas ou individual, [dealGuessSeats] garante que `dealerSeat` e `mortoDealerSeat` nunca coincidem — mas
+     * [dealGuessBadges] aceita os dois mesmo assim (até dois selos no mesmo assento), sem custo extra, caso essa
+     * garantia um dia mude: prova direta, construindo um `DealGuess` artificial com os dois papéis no MESMO assento
+     * (nunca ocorre de verdade, só pra provar que o código aceita).
+     */
+    @Test
+    fun `§3_6 dealGuessBadges aceita, em tese, os dois selos no mesmo assento`() {
+        val dealGuess = DealGuess(dealerSeat = Seat(0), mortoDealerSeat = Seat(0), hand = Guess(0, 44, true), morto = Guess(0, 22, false))
+
+        dealGuessBadges(dealGuess, Seat(0)) shouldBe listOf(DealGuessStage.HAND to true, DealGuessStage.MORTO to false)
+    }
+
+    /**
+     * §17.11 / §3.6 [liveSideTotal] soma o bônus da distribuição certeira ao total da mesa, mesmo com a mesa
+     * ainda vazia (0): o bônus se resolve antes da 1ª vez da partida, não depende de nenhuma carta baixada.
+     */
+    @Test
+    fun `§3_6 §17_11 liveSideTotal soma 100 por acerto mesmo com a mesa vazia`() {
+        val dealGuess = DealGuess(
+            dealerSeat = Seat(3),
+            mortoDealerSeat = Seat(2),
+            hand = Guess(1, 45, correct = true),
+            morto = Guess(1, 23, correct = true),
+        )
+        // lado 1 (assento 3) acertou a mão: +100 em cima do total (0) da mesa vazia.
+        liveSideTotal(0, dealGuess, GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(3)), RuleSet.DEFAULT) shouldBe 100
+        // lado 0 (assento 2) acertou o morto: +100.
+        liveSideTotal(0, dealGuess, GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(2)), RuleSet.DEFAULT) shouldBe 100
+        // Em cima de um total da mesa que já tem -100 de morto não pego, acertar o palpite zera a conta.
+        liveSideTotal(-100, dealGuess, GameMode.DUPLAS, GameMode.DUPLAS.sideOf(Seat(3)), RuleSet.DEFAULT) shouldBe 0
+    }
+
+    @Test
+    fun `§3_6 §17_11 liveSideTotal soma 200 quando os dois acertos ja resolvidos caem no mesmo lado`() {
+        // Estado hipotético, não alcançável por dealGuessSeats (dealerSeat e mortoDealerSeat ficam sempre em
+        // lados opostos, §12.1, docs/rules-traceability.md §12.1 "distribuição certeira") — mesmo DealGuess
+        // montado à mão do par em DealGuessTest ("os dois acertos do mesmo lado somam 200"), aqui só pra provar
+        // que liveSideTotal soma os dois bônus corretamente, sem depender de dealGuessSeats pra validar a soma.
+        val dealGuess = DealGuess(
+            dealerSeat = Seat(0),
+            mortoDealerSeat = Seat(2),
+            hand = Guess(1, 45, correct = true),
+            morto = Guess(1, 23, correct = true),
+        )
+        liveSideTotal(0, dealGuess, GameMode.DUPLAS, Side(0), RuleSet.DEFAULT) shouldBe 200
+    }
+
+    @Test
+    fun `§3_6 §17_11 liveSideTotal nao soma nada sem acerto, sem dealGuess ou com o parametro desligado`() {
+        // Sem a regra ligada (dealGuess null, PlayerView.dealGuess padrão): nenhum bônus.
+        liveSideTotal(0, null, GameMode.INDIVIDUAL, Side(0), RuleSet.DEFAULT) shouldBe 0
+        // Palpite errado: nenhum bônus para o lado dele.
+        val miss = DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(0), hand = Guess(1, 23, correct = false))
+        liveSideTotal(0, miss, GameMode.INDIVIDUAL, Side(1), RuleSet.DEFAULT) shouldBe 0
+        // rules.dealGuessBonusPoints = 0 (equivalente a desligado): nenhum bônus mesmo com acerto.
+        val hit = DealGuess(dealerSeat = Seat(1), mortoDealerSeat = Seat(0), hand = Guess(1, 23, correct = true))
+        liveSideTotal(0, hit, GameMode.INDIVIDUAL, Side(1), RuleSet.DEFAULT.copy(dealGuessBonusPoints = 0)) shouldBe 0
+        // O total da mesa sempre passa adiante, sem bônus nenhum.
+        liveSideTotal(-100, null, GameMode.INDIVIDUAL, Side(0), RuleSet.DEFAULT) shouldBe -100
     }
 }

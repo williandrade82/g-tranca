@@ -13,6 +13,7 @@ import com.gtranca.game.BotSeatPlayer
 import com.gtranca.game.GameConfig
 import com.gtranca.game.GameController
 import com.gtranca.game.GameSnapshot
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Stage
 import com.gtranca.game.botSeed
 import io.kotest.matchers.collections.shouldContainAll
@@ -90,7 +91,7 @@ class TurnRecordTest {
         val mode = GameMode.DUPLAS
         val seed = 21L
         val controller = GameController(
-            GameConfig(mode, Difficulty.MEDIO, targetScore = 1000), seed,
+            GameConfig(mode, Difficulty.MEDIO, targetScore = 1000, rules = NO_DEAL_GUESS), seed,
             mode.seats.map { BotSeatPlayer(createBot(Difficulty.MEDIO, Random(botSeed(seed, it.index)))) },
             computeDispatcher = dispatcher, botDelayMillis = 1,
         )

@@ -40,6 +40,9 @@ fun RuleError?.messageRes(): Int = when (this) {
     ActionError.NO_MORTO_AVAILABLE -> R.string.error_no_morto_available
     ActionError.NO_CANASTA_TO_GO_OUT -> R.string.error_no_canasta_to_go_out
     ActionError.MUST_KEEP_CARD_TO_DISCARD -> R.string.error_must_keep_card
+    // §3.6 não deveriam chegar à interface (a UI só manda larguras dentro dos limites do motor), mas o `when` precisa ser total.
+    ActionError.NOT_GUESS_PHASE -> R.string.msg_invalid_generic
+    ActionError.GUESS_RANGE_OUT_OF_BOUNDS -> R.string.msg_invalid_generic
     MeldError.TOO_FEW_CARDS -> R.string.error_too_few_cards
     MeldError.NO_CARDS -> R.string.error_no_cards
     MeldError.DUPLICATE_CARD -> R.string.error_duplicate_card
@@ -159,6 +162,8 @@ fun eventText(event: PublicEvent): String = when (val action = event.action) {
     is Action.CreateMeld -> stringResource(R.string.event_create_meld, action.cards.labels())
     is Action.AddToMeld -> stringResource(R.string.event_add_to_meld, action.cards.labels())
     is Action.Discard -> stringResource(R.string.event_discard, action.card.shortLabel)
+    // §3.6 o palpite nunca entra no registro da vez (GameController.recordEvent o descarta): branch só para o `when` ser total.
+    is Action.GuessDealRange -> ""
 }
 
 /** Frase curta de uma ação pública, sem as cartas (que aparecem desenhadas ao lado). */
@@ -172,6 +177,7 @@ fun eventShortText(event: PublicEvent): String = when (val action = event.action
     is Action.CreateMeld -> stringResource(R.string.event_create_meld_short)
     is Action.AddToMeld -> stringResource(R.string.event_add_to_meld_short)
     is Action.Discard -> stringResource(R.string.event_discard_short)
+    is Action.GuessDealRange -> ""
 }
 
 /** Frase curta de uma linha do registro (as cartas aparecem desenhadas ao lado). */

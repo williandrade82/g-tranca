@@ -47,6 +47,8 @@ internal fun RoundState.sampledView(seat: Seat, rules: RuleSet = RuleSet.DEFAULT
     turnsBegun = turnsBegun, // §3.5 público: quem ainda não começou pode ter 3 vermelho na mão
     unsettledMortoSeats = unsettledMortoSeats, // §9.4 público
     rules = rules, // §14.4 público
+    dealGuess = dealGuess, // §3.6 público (sem carta nenhuma; o Difícil resolve essa fase fora do ISMCTS, então
+    // nunca aparece numa simulação, mas o campo é copiado para esta vista bater com a vista real do motor)
 )
 
 /**

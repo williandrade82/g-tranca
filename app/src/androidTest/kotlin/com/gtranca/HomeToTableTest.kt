@@ -66,12 +66,10 @@ class HomeToTableTest {
         rule.waitUntil(10_000) { exists("tables-screen") }
     }
 
-    /** §16.3 "Selecionar jogadores" → mesa só com robôs: completar, Começar Partida e, depois do "Prepare-se!", o jogo. */
+    /** §16.3 "Selecionar jogadores" → mesa só com robôs: Começar Partida completa sozinho e, depois do "Prepare-se!", o jogo. */
     private fun chooseSeatsAndStart() {
         rule.onNodeWithTag("select-players").performClick()
         rule.waitUntil(10_000) { exists("player-selection") }
-        rule.onNodeWithTag("fill-with-robots").performClick()
-        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag("start-match") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(10_000) { exists("table-screen") }
     }
@@ -86,7 +84,6 @@ class HomeToTableTest {
         rule.onNodeWithTag("rules-details-close").performClick()
         rule.onNodeWithTag("select-players").performClick()
         rule.waitUntil(10_000) { exists("player-selection") }
-        rule.onNodeWithTag("start-match").assertIsNotEnabled()
         // tocar num lugar vago e depois num robô
         rule.onNodeWithTag("seat-1").performClick()
         rule.onNodeWithTag("robot-atleta").performClick()
@@ -100,8 +97,7 @@ class HomeToTableTest {
         rule.onNodeWithTag("seat-hint").assertExists()
         rule.onNodeWithTag("seat-1").performClick()
         rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertDoesNotExist()
-        rule.onNodeWithTag("fill-with-robots").performClick()
-        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag("start-match") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        // Começar Partida completa o resto sozinho com robôs.
         rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(10_000) { exists("table-screen") }
     }

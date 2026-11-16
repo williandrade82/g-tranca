@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gtranca.ai.Difficulty
 import com.gtranca.engine.RuleSet
@@ -46,7 +47,8 @@ class RecruitedTableScreenTest {
         rule.onNodeWithTag("recruited-seat-0").assertIsDisplayed()
         rule.onNodeWithTag("recruited-seat-3-called", useUnmergedTree = true).assertExists()
         rule.onNodeWithTag("recruited-summary").assertIsDisplayed()
-        rule.onNodeWithTag("recruited-waiting").assertIsDisplayed()
+        // A mesa (fotos inteiras, maiores) pode passar da tela: rola até o aviso, como um jogador faria.
+        rule.onNodeWithTag("recruited-waiting").performScrollTo().assertIsDisplayed()
         // só leitura: nada de lista de jogadores próximos
         rule.onNodeWithTag("selection-wifi").assertDoesNotExist()
         rule.onNodeWithTag("recruited-rules-details").performClick()

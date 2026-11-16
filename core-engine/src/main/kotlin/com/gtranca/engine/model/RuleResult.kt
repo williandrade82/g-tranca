@@ -49,6 +49,17 @@ enum class ActionError : RuleError {
      * ou pegar o lixo deve deixar pelo menos 2 cartas na mão.
      */
     MUST_KEEP_CARD_TO_DISCARD,
+    /**
+     * §3.6 ação incompatível com a fase de palpite da distribuição certeira: [Action.GuessDealRange] fora de
+     * [Phase.DEAL_GUESS_HAND] / [Phase.DEAL_GUESS_MORTO], ou qualquer outra ação **durante** uma dessas fases
+     * (o palpite pendente precisa ser resolvido antes de comprar, baixar ou descartar).
+     */
+    NOT_GUESS_PHASE,
+    /**
+     * §3.6 palpite fora do formato fixo de toque único: `start != 1` ([DEAL_GUESS_FIXED_START]) ou o número
+     * escolhido (`end - start`) fora da faixa fixa do papel/modo (`dealGuessHandRange`/`dealGuessMortoRange`).
+     */
+    GUESS_RANGE_OUT_OF_BOUNDS,
 }
 
 /** Motivos pelos quais um conjunto não pode ser criado ou receber cartas (§6, §7). */

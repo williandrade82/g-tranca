@@ -54,6 +54,15 @@
 - **Encenação na interface (não muda regra):** quando um jogador baixa **dois ou mais** 3 vermelhos de uma vez (os da mão no início da vez, §3.5, ou os que vieram no morto, §9.4), a troca é mostrada **de uma só vez**: os 3 vermelhos saem juntos da mão (ou do morto) para a área dos 3 vermelhos do lado, a segunda carta um pouco depois da primeira, e em seguida as reposições saem juntas do monte para a mão, também com a segunda um pouco depois. Um 3 vermelho que chega como reposição em cadeia (§6.5) é uma troca seguinte. A troca do **próprio jogador** é só um **aviso**, como a dos demais jogadores (sem botões nem confirmação), e fecha sozinha.
 - **Histórico da vez:** os 3 vermelhos que um jogador baixou na sua vez mais recente (no início dela ou durante a jogada, inclusive os do morto e as reposições em cadeia) aparecem **em primeiro lugar** no resumo da última jogada dele na pílula do jogador (símbolo ♥ com as cartas) e no detalhe que abre ao tocar no jogador, antes das demais ações da vez.
 
+### **3.6. Distribuição certeira** *(parâmetro `dealGuessBonusEnabled`; base: sim)*
+- Antes da distribuição, dois assentos **palpitam** a quantidade certa de cartas, por um jogo de pontaria numa barra; **o palpite não altera em nada** a distribuição real (ela continua exatamente como em §3.1/§3.2, sempre 11 cartas por mão e 11 por morto). Acertar só rende um **bônus de pontos** (§12.1).
+- **Quem palpita:** o jogador que distribui a mão é o **anterior** (sentido anti-horário, §4.2) ao jogador que abre a partida (§4.1); o jogador que distribui o morto é o **anterior** a esse. No modo individual (2 assentos), "o anterior" ao jogador que abre a partida é o **outro** jogador (que palpita a mão), e "o anterior a esse" volta a ser o próprio jogador que abre a partida (que palpita o morto e, por já ser quem inicia a partida, joga a seguir): os dois papéis ficam sempre em assentos diferentes, assim como em duplas.
+- **Palpite da mão:** o jogador escolhe, com um **único toque**, um número de cartas numa barra cujo indicador percorre, ida e volta, só os estágios entre **35 e 55** (modo duplas) ou **12 e 32** (modo individual) — não mais o baralho inteiro (ajuste de 14/11/2026, pra facilitar o jogo: faixa bem mais estreita que antes, sempre em torno do alvo de verdade). O toque marca o estágio em que o indicador estiver naquele instante como o número escolhido. Acerta e ganha o bônus se esse número for exatamente **44** (modo duplas) ou **22** (modo individual) — o total de cartas que as mãos de fato recebem (§3.1).
+- **Palpite do morto:** feito **depois** do palpite da mão, do mesmo jeito (um único toque), numa barra cujo indicador percorre os estágios entre **12 e 32**, em qualquer modo. Acerta e ganha o bônus se o número escolhido for exatamente **22** — o total de cartas que os dois mortos de fato recebem (§3.2).
+- A distribuição do morto só começa depois de resolvido o palpite do morto; a da mão, depois de resolvido o palpite da mão. Nenhuma carta do monte é mostrada antes disso (§3.3).
+- **Jogadores virtuais:** participam do palpite com uma taxa de acerto pelo seu nível (§14.5): Fácil 5%, Médio 15%, Difícil 25%. Quando não acertam, o número escolhido é qualquer outro dentro da faixa (35–55 ou 12–32, conforme o papel e o modo).
+- Com o parâmetro desligado, a fase de palpite não acontece: a distribuição começa direto, como hoje.
+
 ---
 
 # **4. Ordem de Jogada**
@@ -295,6 +304,7 @@ Ao final de cada partida (com ou sem vencedor), cada lado soma:
   - Não há 3 preto na mesa (nenhum 3 compõe conjuntos, §6.2).
   - Contam todas as cartas de todos os conjuntos do lado (canastras ou não) e os 3 vermelhos baixados, sempre (com ou sem vencedor, com ou sem canastra).
   - Exemplo: canastra limpa 4-5-6-7-8-9-10 de copas = 200 (canastra limpa) + 7 × 8 (cartas) = **256**.
+- **Distribuição certeira** (§3.6): **+100** para o lado de quem acertou o palpite da mão, e mais **+100** para o lado de quem acertou o palpite do morto — os dois assentos que palpitam (`dealerSeat` e `mortoDealerSeat`, §3.6) ficam sempre em lados diferentes, então os dois bônus nunca vão para o mesmo lado *(parâmetro `dealGuessBonusEnabled`; base: sim)*.
 
 ### **12.2. Penalidades (negativas)**
 - **Morto não pego**: –100 para cada lado que terminar a partida sem ter pego um morto — inclusive o lado que bate quando não havia mais morto disponível (§9.5).
@@ -358,6 +368,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 | `goOutRequiresCleanCanasta` — bater exige canastra limpa | §11.1 | sim / não | não |
 | `handBlackThreePoints` — cada 3 preto na mão no fim da partida | §12.2 | inteiro ≤ 0 | –5 |
 | `targetScore` — pontuação-alvo | §13, §14 | inteiro > 0 | 3.000 |
+| `dealGuessBonusEnabled` — palpite da distribuição certeira | §3.6, §12.1 | sim / não | sim |
 
 - Um perfil com valor **fora das faixas** da tabela não pode ser salvo nem usado numa mesa. Qualquer combinação de valores dentro das faixas é válida (ex.: grupos proibidos e 0 coringas = só sequências naturais).
 - Todas as demais regras deste documento são **fixas** em qualquer perfil (cartas por mão = 11, cartas por morto = 11, tamanho mínimo de conjunto = 3 e de canastra = 7, demais valores de pontuação etc.). No código, ficam no `RuleSet` com os valores-base e não são expostas ao jogador.
@@ -376,6 +387,7 @@ São os únicos pontos das regras que mudam de um perfil para outro. Cada um é 
 | `goOutRequiresCleanCanasta` | não | **sim** |
 | `handBlackThreePoints` | –5 | **–100** |
 | `targetScore` | 3.000 | 3.000 |
+| `dealGuessBonusEnabled` | sim | sim |
 
 - **Perfis personalizados:** o jogador pode **duplicar** qualquer perfil (da casa ou personalizado), dar um nome e alterar os parâmetros de §14.2. A origem fica registrada, e o app mostra o que difere dela.
 - No editor das regras personalizadas, o jogador pode **começar a partir** dos valores de qualquer perfil da casa e ajustá-los (os perfis da casa em si não mudam).
@@ -408,7 +420,7 @@ Os jogadores virtuais são **4 perfis de robô**, cada um com **visual**, **esti
 
 - **Nome e bordão:** cada perfil tem **um nome único e fixo**, o mesmo em qualquer nível, e um **bordão** exibido como texto decorativo: **Jovem — Bolt** ("Bora fechar essa mesa!"), **Sóbrio — Domino** ("Cada carta tem seu propósito."), **Atleta — Turbo** ("Agora é pra valer!"), **Alternativo — Zen** ("Calma parceiro! A próxima carta pode mudar tudo!"). O modelo de identidade (nome, sobrenome, abreviação, posição) **continua previsto** para os jogadores online futuros, mas **não é sorteado** para os robôs.
 
-- **Níveis:** **Iniciante** (dificuldade Fácil), **Maduro** (Médio) e **Sênior** (Difícil). Todos os personagens de uma mesa têm o nível da **dificuldade dos robôs** escolhida na montagem (§14.4). O nível aparece como insígnia de 1, 2 ou 3 estrelas junto da imagem.
+- **Níveis:** **Iniciante** (dificuldade Fácil), **Maduro** (Médio) e **Sênior** (Difícil). Todos os personagens de uma mesa têm o nível da **dificuldade dos robôs** escolhida na montagem (§14.4). O nível aparece como insígnia de 1, 2 ou 3 estrelas junto da imagem. A dificuldade também define a taxa de acerto no palpite da distribuição certeira (§3.6).
 - **Estilo × nível:** o nível define a força do jogador virtual; o estilo só muda **preferências entre jogadas legais** (por exemplo, quando pegar o lixo ou bater). **Nenhum estilo altera regra**, e o jogador virtual continua vendo apenas a informação visível a um jogador.
 - **Escolha e sorteio ao formar a mesa:** os personagens da mesa têm **perfis diferentes entre si**. Os que o jogador **escolhe** na seleção de jogadores (§14.4) ocupam o lugar escolhido; **Completar com robôs** sorteia, com a semente da mesa, personagens entre os **não usados** para os lugares VAGO. Quem recusa o convite, sai da mesa ou some **deixa o lugar VAGO** (não entra robô sorteado sozinho). O nome do personagem é o do seu perfil (acima), então não há nomes repetidos na mesa; o nome do jogador não influencia o sorteio. O perfil vale durante todo o jogo, e iniciar o jogo **não sorteia de novo**.
 - **Como são chamados:** na **comunicação** do jogo (avisos, janelas de decisão, "Vez de", detalhe da última jogada, tela de pontos, declaração do vencedor), pelo **nome** com a **imagem** do personagem. Em todos os modos (individual e duplas) o jogador virtual é chamado **só pelo nome**, **sem** a posição em relação ao jogador (não há mais `(dir)` nem `(esq)`). O jogador é "Você". Na **montagem da mesa**, cada personagem aparece com o retrato e o **nome**. Na **mesa de jogo** (o personagem já está sentado na sua posição), o nome vem **sem** a posição; só o parceiro leva a legenda "Parceiro". No **detalhe da última jogada** (o modal que abre ao tocar no jogador), o personagem aparece **inteiro** (sem recorte em círculo), na mesma imagem de **apresentação** da lista de robôs da seleção de jogadores, com o **bordão** logo abaixo da imagem e, depois, o nome.
@@ -555,7 +567,7 @@ flowchart TD
 - **Todos** conhecem a identificação (id, nome e ordem de entrada) de todos os demais; o token não faz parte dela.
 - **Reingresso:** com o token certo, o jogador volta ao assento enquanto este **não foi substituído nem ocupado**. Token desconhecido ou de outro assento é recusado.
 - **Sessão duplicada:** se o token certo chega por uma conexão nova enquanto o dono ainda aparece conectado, **a conexão nova assume** e a antiga recebe só um aviso de encerramento (para não tentar voltar nem assumir como sucessor), é fechada e não recebe mais nenhuma mensagem (nem o estado completo, se ele for sucessor, que ela descarta). A mesa fica anunciada durante todo o jogo (§16.7), então a conexão nova sempre a encontra. A nova recebe a vista atual e o jogo segue, mesmo que seja a vez dele.
-- **Reconexão do convidado:** quem cai tenta voltar sozinho, **sem limite de tentativas enquanto a mesa existir**: quem decide o que fazer com o assento é o anfitrião, pela pausa (§16.8). As tentativas são espaçadas (§16.15), para poupar bateria. A mesa **ausente da busca** pelo tempo de §16.15 é dada como encerrada.
+- **Reconexão do convidado:** quem cai tenta voltar sozinho, **sem limite de tentativas enquanto a mesa existir**: quem decide o que fazer com o assento é o anfitrião, pela pausa (§16.8). As tentativas são espaçadas (§16.15), para poupar bateria. A mesa **ausente da busca** pelo tempo de §16.15 é dada como encerrada. Vale **desde que o token existe** (a partir do *Welcome*, §16.2) — inclusive a queda **na sala, antes do início** (entre entrar na mesa e o anfitrião terminar "Começar Partida"): não é só uma reconexão de partida em andamento.
 - **Quem cai durante a pausa de outro assento** recebe, ao voltar, a pausa atual. Há **uma decisão por vez**: a do assento da vez.
 - **Fim de partida perdido:** se o jogador ainda não recebeu o pacote de fim da última partida (§16.11), ele é reenviado no reingresso, antes da vista atual; o jogador percorre as telas de resultado normalmente.
 - **Eventos simultâneos:** quem chega primeiro fica com o assento, o dono pelo token ou o candidato aprovado (§16.7). Se o dono volta antes, a vaga fecha e os pedidos para ela são recusados com **"A vaga foi preenchida."**; se o candidato é aprovado antes, o token do antigo dono deixa de valer.
@@ -761,11 +773,11 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
 - Com o b4 no jogo, a mesa mostra, **o tempo todo** (não só na vez do jogador):
   - no **canto superior direito da área de jogos de cada lado** (o próprio e o adversário; em duplas, a mesa da dupla), o **total da mesa** daquele lado;
   - no **canto superior direito de cada conjunto** baixado, o **valor daquele conjunto**.
-- Os valores seguem a tabela do §12.1, **só com o que está na mesa**:
+- Os valores seguem a tabela do §12.1, quase só com o que está na mesa — a única exceção é o bônus da distribuição certeira, abaixo, que não vem de carta nenhuma:
   - **valor do conjunto** = bônus de canastra (limpa **+200**, suja **+100**; nada se ainda não é canastra) + o valor de cada carta dele (4 a 10: **+8**; J, Q, K, A e coringa: **+10**). Ex.: canastra limpa 4-5-6-7-8-9-10 = **256**;
-  - **total da mesa** = soma dos valores dos conjuntos do lado + cada 3 vermelho baixado: **+5** mais **+100** se o lado já tem canastra, ou **–100** se ainda não tem (o valor muda na hora em que a 1ª canastra fecha) + o **morto não pego** (§12.2, o valor da regra da mesa, normalmente **–100**) enquanto o lado ainda não pegou o morto. Cada lado começa a partida em **–100**; pegar o morto **soma 100** ao total.
-- **Não entram** os pontos que só existem no fim da partida: batida (+100) e cartas na mão (§12.2). Só usa informação **visível** da mesa (§16.4).
-- O número muda quando a jogada **pousa** na mesa (fim da animação), não antes. Não é uma jogada e **não** muda `legalActions`. Sem o b4 na partida, nada disso aparece.
+  - **total da mesa** = soma dos valores dos conjuntos do lado + cada 3 vermelho baixado: **+5** mais **+100** se o lado já tem canastra, ou **–100** se ainda não tem (o valor muda na hora em que a 1ª canastra fecha) + o **morto não pego** (§12.2, o valor da regra da mesa, normalmente **–100**) enquanto o lado ainda não pegou o morto + o **bônus da distribuição certeira** (§3.6/§12.1, 100 por palpite certo da mão e/ou do morto que já caiu neste lado), assim que resolvido. Cada lado começa a partida em **–100** (mais 100 se já tiver acertado algum palpite da distribuição certeira, resolvido antes da 1ª vez — nunca 200 do mesmo lado: `dealerSeat` e `mortoDealerSeat` ficam sempre em lados diferentes, §12.1 — o total da mesa já reflete isso mesmo sem nenhuma carta baixada); pegar o morto **soma 100** ao total.
+- **Não entram** os pontos que só existem no fim da partida: batida (+100) e cartas na mão (§12.2). O bônus da distribuição certeira entra porque é informação pública resolvida antes da 1ª vez, não um bônus de fim de partida; ele já integrava o total oficial da partida (§12.1, `SideScore.dealGuessBonus`) desde que a regra existe — o b4 só passou a **exibi-lo** também ao vivo, sem mudar nenhum valor. Só usa informação **visível** da mesa (§16.4); sem a regra do §3.6 ligada (`dealGuessBonusEnabled`), essa parcela é sempre zero.
+- O número muda quando a jogada **pousa** na mesa (fim da animação), não antes — exceto o bônus da distribuição certeira, que soma assim que o palpite resolve, antes de qualquer carta baixar. Não é uma jogada e **não** muda `legalActions`. Sem o b4 na partida, nada disso aparece.
 
 #### **17.11.1. Barra de progressão**
 - Com o b4, o jogador vê também a **barra de progressão**, logo abaixo da barra de títulos, **fixa** (não rola com a mesa). Sem o b4, ela não aparece.
@@ -781,7 +793,7 @@ Boosters são itens do **inventário** do jogador que ele escolhe usar **no iní
   - quando um lado **passa de 1000**: a última animação, a mais forte, e, dali em diante, a escala acompanha o maior total (ele enche a metade da barra).
   - se um salto passa por mais de um marco, toca só a animação do maior.
 - **Marcação** de cada marco alcançado (500, 750, 1000), com o número embaixo, nas duas metades: na metade do lado que **já alcançou** aquele marco em algum momento da partida, uma **estrela**; na metade do lado que ainda não alcançou (o marco só aparece porque o outro lado chegou lá), só uma **fina linha vertical** no ponto.
-- **Toda** mudança de valor é animada: a barra cresce ou diminui até o novo valor e o número gira como um letreiro. O valor muda quando a jogada pousa (§17.11).
+- **Toda** mudança de valor é animada: a barra cresce ou diminui até o novo valor e o número gira como um letreiro. O valor muda quando a jogada pousa (§17.11, com a mesma exceção do bônus da distribuição certeira, que entra assim que resolvido).
 - **Fim da partida**: depois dos fogos de artifício, a barra recebe a **pontuação final da partida** de cada lado (§12, com batida e cartas na mão). Os dois números giram juntos em **0,5 s** e o novo valor aparece com um destaque; se um marco foi alcançado, toca a animação dele; só então aparece a arte de bateu ou perdeu e o fim de partida segue como antes.
 - Só usa informação visível (§16.4). Não é jogada, não muda `legalActions` nem a pontuação oficial (§12).
 

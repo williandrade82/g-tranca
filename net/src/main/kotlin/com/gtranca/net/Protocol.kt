@@ -8,6 +8,7 @@ import com.gtranca.engine.SeatBoosters
 import com.gtranca.engine.TableBoosters
 import com.gtranca.engine.GroupBetLedger
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.DealGuess
 import com.gtranca.engine.model.Match
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.MortoStatus
@@ -26,7 +27,7 @@ import kotlinx.serialization.Serializable
  * uma mensagem de outra versão recusa com [VERSION_MISMATCH_MESSAGE]. Suba a versão a cada mudança incompatível das
  * mensagens.
  */
-const val PROTOCOL_VERSION: Int = 19
+const val PROTOCOL_VERSION: Int = 20
 
 /** §16.1 texto mostrado a quem tenta jogar com outra versão (sem saber as versões). */
 const val VERSION_MISMATCH_MESSAGE: String =
@@ -154,6 +155,15 @@ data class SeatView(
     val thinkingSeat: Seat? = null,
     val legal: List<Action> = emptyList(),
     val requestId: Long = 0,
+    /**
+     * §3.6 estado público do minijogo "distribuição certeira" (igual a [PlayerView.dealGuess]/[RoundState.dealGuess]:
+     * inteiramente público, sem carta nenhuma). Protocolo 20: campo novo, com valor padrão `null` (compatível com JSON
+     * antigo e com `ignoreUnknownKeys = true`); mesmo assim a versão subiu, seguindo a convenção deste arquivo (ex.:
+     * `skillBoosters` em [TableRules], protocolo 19) de nunca deixar dois aparelhos com builds diferentes conversarem
+     * "quase" certo: sem o bump, um convidado com o app desatualizado leria esta mensagem sem erro (campo
+     * desconhecido ignorado) mas nunca veria o palpite — o mesmo travamento de hoje, só que silencioso.
+     */
+    val dealGuess: DealGuess? = null,
 ) {
     /** A [PlayerView] do assento, com as regras da mesa recebidas uma vez ([TableRules.rules]). */
     fun toPlayerView(rules: RuleSet): PlayerView = PlayerView(
@@ -161,6 +171,7 @@ data class SeatView(
         result = result, hand = hand, handSizes = handSizes, discardPile = discardPile, stockSize = stockSize,
         mortoStatus = mortoStatus, mortoSizes = mortoSizes, redThrees = redThrees, tables = tables,
         redThreeLog = redThreeLog, turnsBegun = turnsBegun, unsettledMortoSeats = unsettledMortoSeats, rules = rules,
+        dealGuess = dealGuess,
     )
 
     companion object {
@@ -186,6 +197,7 @@ data class SeatView(
             mortoSizes = view.mortoSizes, redThrees = view.redThrees, tables = view.tables, redThreeLog = view.redThreeLog,
             turnsBegun = view.turnsBegun, unsettledMortoSeats = view.unsettledMortoSeats, turnEvents = turnEvents,
             turnRedThrees = turnRedThrees, turnRedThreeAfter = turnRedThreeAfter, thinkingSeat = thinkingSeat, legal = legal, requestId = requestId,
+            dealGuess = view.dealGuess,
         )
     }
 }
@@ -332,8 +344,12 @@ data class RecruitStart(val tableId: String, val prepareMillis: Long = PREPARE_M
 /** §16.15 tempo mínimo do "Prepare-se! O jogo vai começar!" nos celulares da mesa. */
 const val PREPARE_MILLIS: Long = 1_500
 
-/** Limite do texto Base64 da foto aceito na mesa (~15 KB de JPEG); maior é descartado. */
-const val MAX_PHOTO_BASE64: Int = 20_480
+/**
+ * Limite do texto Base64 da foto aceito na mesa (~105 KB de JPEG); maior é descartado. A mesa de lugares mostra a foto
+ * **inteira** (docs/telas.md 3.3, não mais um recorte pequeno em círculo), por isso o limite subiu de ~15 KB: ainda é
+ * uma transferência única e direta (Nearby Bytes), não repetida.
+ */
+const val MAX_PHOTO_BASE64: Int = 143_360
 
 
 /**

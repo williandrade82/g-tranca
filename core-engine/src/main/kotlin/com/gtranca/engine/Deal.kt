@@ -1,11 +1,14 @@
 package com.gtranca.engine
 
 import com.gtranca.engine.model.Card
+import com.gtranca.engine.model.DealGuess
 import com.gtranca.engine.model.Deck
 import com.gtranca.engine.model.GameMode
+import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.RoundState
 import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.SideTable
+import com.gtranca.engine.model.dealGuessSeats
 import kotlin.random.Random
 
 /**
@@ -27,15 +30,30 @@ fun dealRound(
 }
 
 /**
- * Distribui a partir de um baralho já ordenado e começa a vez do primeiro jogador: [distributeOrderedDeck] seguida de
- * [RoundEngine.beginTurn] para [firstSeat] (§3.5: início da primeira vez, antes da compra).
+ * Distribui a partir de um baralho já ordenado: [distributeOrderedDeck] seguida, com `RuleSet.dealGuessBonusEnabled`
+ * desligado, de [RoundEngine.beginTurn] para [firstSeat] (§3.5: início da primeira vez, antes da compra) — exatamente
+ * o fluxo de antes da regra existir.
+ *
+ * Ligado (§3.6, base), a vez do [firstSeat] é **adiada**: a distribuição pura acontece igual, mas o estado volta com
+ * [Phase.DEAL_GUESS_HAND] e [RoundState.currentSeat] no assento que palpita a mão ([dealGuessSeats]); só depois de
+ * resolvido o segundo palpite (do morto, [Phase.DEAL_GUESS_MORTO]) é que [RoundEngine.beginTurn] roda para o
+ * [firstSeat] (ver `RoundEngine.guessDealRange`). O palpite em si não troca nenhuma carta (§3.6).
  */
 internal fun dealFromOrderedDeck(
     mode: GameMode,
     deck: List<Card>,
     firstSeat: Seat,
     rules: RuleSet = RuleSet.DEFAULT,
-): RoundState = RoundEngine.beginTurn(distributeOrderedDeck(mode, deck, firstSeat, rules), firstSeat, rules)
+): RoundState {
+    val dealt = distributeOrderedDeck(mode, deck, firstSeat, rules)
+    if (!rules.dealGuessBonusEnabled) return RoundEngine.beginTurn(dealt, firstSeat, rules)
+    val (dealerSeat, mortoDealerSeat) = dealGuessSeats(mode, firstSeat)
+    return dealt.copy(
+        currentSeat = dealerSeat,
+        phase = Phase.DEAL_GUESS_HAND,
+        dealGuess = DealGuess(dealerSeat, mortoDealerSeat),
+    )
+}
 
 /**
  * Distribuição pura a partir de um baralho já ordenado ([deck] índice 0 = primeira carta distribuída). **Nada é trocado**

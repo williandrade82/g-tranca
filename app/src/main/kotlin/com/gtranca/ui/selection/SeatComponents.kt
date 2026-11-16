@@ -7,14 +7,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,7 +34,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -81,6 +85,39 @@ fun RobotPhoto(profile: BotProfile, level: BotLevel, size: Dp, modifier: Modifie
         modifier.size(size).clip(CircleShape).background(GColors.Indigo),
         contentScale = ContentScale.Crop,
         alignment = Alignment.TopCenter,
+    )
+}
+
+/**
+ * A imagem de apresentação do robô **inteira** (sem recortar em círculo), do jeito que ela aparece na mesa de lugares
+ * (docs/telas.md 3.3): grande, do tamanho de [height] (a largura segue a proporção da imagem). [highlighted] marca a
+ * seleção pendente com uma moldura dourada.
+ */
+@Composable
+fun RobotStandee(profile: BotProfile, level: BotLevel, height: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
+    Image(
+        painterResource(characterRes(BotCharacter(profile, level), Pose.APRESENTACAO)),
+        null,
+        modifier
+            .height(height)
+            .then(if (highlighted) Modifier.border(3.dp, GColors.Gold, RoundedCornerShape(20.dp)) else Modifier),
+        contentScale = ContentScale.FillHeight,
+    )
+}
+
+/**
+ * A foto **inteira** na mesa de lugares (docs/telas.md 3.3) — do próprio jogador, do anfitrião ou de um Recrutado (já
+ * aceitou o convite) —, do tamanho de [height] em altura; sem foto, o medalhão com a inicial continua redondo.
+ * [highlighted] marca a seleção pendente com uma moldura dourada. Só para quem não leva mais selo nem anel de convite;
+ * o Chamado, ainda pendente, continua em [SealedAvatar], que precisa do círculo para os dois.
+ */
+@Composable
+fun PersonaStandee(persona: Persona, height: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
+    PersonaAvatar(
+        persona,
+        height,
+        modifier.then(if (highlighted) Modifier.border(3.dp, GColors.Gold, RoundedCornerShape(20.dp)) else Modifier),
+        crop = false,
     )
 }
 
@@ -148,15 +185,16 @@ fun SealedAvatar(
     }
 }
 
-/** O lugar VAGO: círculo tracejado com o texto. */
+/** O lugar VAGO: quadrado (cantos levemente arredondados) com o texto. */
 @Composable
-private fun VacantAvatar(size: Dp, highlighted: Boolean) {
+private fun VacantAvatar(size: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
     Box(
-        Modifier
+        modifier
             .size(size)
-            .clip(CircleShape)
+            .clip(shape)
             .background(GColors.Midnight.copy(alpha = 0.55f))
-            .border(if (highlighted) 3.dp else 1.5.dp, if (highlighted) GColors.Gold else GColors.Steel.copy(alpha = 0.7f), CircleShape),
+            .border(if (highlighted) 3.dp else 1.5.dp, if (highlighted) GColors.Gold else GColors.Steel.copy(alpha = 0.7f), shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(stringResource(R.string.selection_seat_vacant), color = GColors.Steel, style = MaterialTheme.typography.labelMedium)
@@ -187,7 +225,7 @@ private fun slotLook(
         }
         slot is Slot.Robot -> {
             val profile = BotProfile.entries.firstOrNull { it.code == slot.persona } ?: BotProfile.entries.first()
-            SlotLook(profile.botName, null, false, stringResource(R.string.a11y_robot_seated, profile.botName)) { RobotPhoto(profile, level, it) }
+            SlotLook(profile.botName, null, false, stringResource(R.string.a11y_robot_seated, profile.botName)) { RobotStandee(profile, level, it, highlighted) }
         }
         slot is Slot.Called -> {
             val persona = Persona(slot.name, color = slot.key.hashCode().mod(Persona.COLORS), photoBytes = photos[slot.key])
@@ -205,9 +243,10 @@ private fun slotLook(
 internal fun seatAt(bounds: Map<Int, Rect>, point: Offset): Int? = bounds.entries.firstOrNull { it.value.contains(point) }?.key
 
 /**
- * A mesa de lugares (docs/telas.md 3.3 e 3.13): feltro verde com aro de madeira; o jogador de [viewerSeat] embaixo, o
- * parceiro em cima e os adversários nas laterais. Interativa só para o recrutador ([interactive]): tocar escolhe/abre o
- * menu e arrastar um avatar troca ou move. Na tela do recrutado ([interactive] falso) é só leitura.
+ * A mesa de lugares (docs/telas.md 3.3 e 3.13): a imagem da mesa (a mesma do Início) com os lugares **acima** dela —
+ * em duplas, adversário esquerda / parceiro / adversário direita; no individual, só o adversário — e o jogador de
+ * [viewerSeat] sempre **embaixo**. Interativa só para o recrutador ([interactive]): tocar escolhe/abre o menu e
+ * arrastar um avatar troca ou move. Na tela do recrutado ([interactive] falso) é só leitura.
  */
 @Composable
 fun SeatTable(
@@ -230,89 +269,159 @@ fun SeatTable(
     val bounds = remember { mutableStateMapOf<Int, Rect>() }
     var dragFrom by remember { mutableStateOf<Int?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    Box(modifier.aspectRatio(if (mode.seatCount == 2) 1.15f else 1f), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize().padding(if (mode.seatCount == 2) 28.dp else 36.dp)) {
-            val radius = size.minDimension / 2
-            drawCircle(Brush.radialGradient(listOf(Felt, FeltDark), center, radius), radius)
-            drawCircle(Wood, radius, style = Stroke(radius * 0.09f))
-            drawCircle(GColors.Gold.copy(alpha = 0.5f), radius * 0.955f, style = Stroke(2f))
-            drawCircle(GColors.Gold.copy(alpha = 0.25f), radius * 0.35f, center, style = Stroke(2f))
+
+    @Composable
+    fun SeatItem(index: Int, avatarSize: Dp = SeatAvatar, modifier: Modifier = Modifier) {
+        val slot = layout.slots[index]
+        val picked = selectedSeat == index
+        val look = slotLook(index, slot, viewerSeat, self, hostName, level, photos, highlighted = picked)
+        val stateTag = when {
+            slot is Slot.Vacant -> "vacant"
+            slot is Slot.Called -> "called"
+            slot is Slot.Recruited -> "recruited"
+            else -> "filled"
         }
-        layout.slots.forEachIndexed { index, slot ->
-            val role = SeatRole.of(mode, Seat(index), Seat(viewerSeat))
-            val align = when (role) {
-                SeatRole.YOU -> Alignment.BottomCenter
-                SeatRole.PARTNER, SeatRole.OPPONENT -> Alignment.TopCenter
-                SeatRole.LEFT_OPPONENT -> Alignment.CenterStart
-                SeatRole.RIGHT_OPPONENT -> Alignment.CenterEnd
-            }
-            val picked = selectedSeat == index
-            val look = slotLook(index, slot, viewerSeat, self, hostName, level, photos, highlighted = picked)
-            val stateTag = when {
-                slot is Slot.Vacant -> "vacant"
-                slot is Slot.Called -> "called"
-                slot is Slot.Recruited -> "recruited"
-                else -> "filled"
-            }
-            val draggable = interactive && index != TableLayout.HOST_SEAT && slot != Slot.Vacant
-            val dragging = dragFrom == index
-            Column(
-                Modifier
-                    .align(align)
-                    .zIndex(if (dragging) 2f else 0f)
-                    .widthIn(max = 96.dp)
-                    .onGloballyPositioned { bounds[index] = it.boundsInRoot() }
-                    .graphicsLayer {
-                        if (dragging) {
-                            translationX = dragOffset.x
-                            translationY = dragOffset.y
-                        }
+        val draggable = interactive && index != TableLayout.HOST_SEAT && slot != Slot.Vacant
+        val dragging = dragFrom == index
+        Column(
+            modifier
+                .zIndex(if (dragging) 2f else 0f)
+                .widthIn(max = avatarSize + 24.dp)
+                .onGloballyPositioned { bounds[index] = it.boundsInRoot() }
+                .graphicsLayer {
+                    if (dragging) {
+                        translationX = dragOffset.x
+                        translationY = dragOffset.y
                     }
-                    .semantics(mergeDescendants = true) { contentDescription = look.describe }
-                    .testTag("$tagPrefix-$index")
-                    .then(if (interactive) Modifier.clickable { onSeatTap(index) } else Modifier)
-                    .then(
-                        if (draggable) {
-                            Modifier.pointerInput(index, layout) {
-                                detectDragGestures(
-                                    onDragStart = { dragFrom = index; dragOffset = Offset.Zero },
-                                    onDrag = { change, amount ->
-                                        change.consume()
-                                        dragOffset += amount
-                                    },
-                                    onDragEnd = {
-                                        val from = index
-                                        val origin = bounds[from]
-                                        val target = origin?.let { seatAt(bounds, it.center + dragOffset) }
-                                        dragFrom = null
-                                        dragOffset = Offset.Zero
-                                        if (target != null && target != from) onDrop(from, target)
-                                    },
-                                    onDragCancel = { dragFrom = null; dragOffset = Offset.Zero },
-                                )
-                            }
-                        } else Modifier,
-                    ),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                SealedAvatar(
-                    SeatAvatar, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
-                    highlighted = picked && slot != Slot.Vacant,
-                    calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
-                ) { look.avatar(SeatAvatar) }
-                Text(
-                    look.name,
-                    color = GColors.Champagne,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelMedium,
-                )
+                }
+                .semantics(mergeDescendants = true) { contentDescription = look.describe }
+                .testTag("$tagPrefix-$index")
+                .then(if (interactive) Modifier.clickable { onSeatTap(index) } else Modifier)
+                .then(
+                    if (draggable) {
+                        Modifier.pointerInput(index, layout) {
+                            detectDragGestures(
+                                onDragStart = { dragFrom = index; dragOffset = Offset.Zero },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount
+                                },
+                                onDragEnd = {
+                                    val from = index
+                                    val origin = bounds[from]
+                                    val target = origin?.let { seatAt(bounds, it.center + dragOffset) }
+                                    dragFrom = null
+                                    dragOffset = Offset.Zero
+                                    if (target != null && target != from) onDrop(from, target)
+                                },
+                                onDragCancel = { dragFrom = null; dragOffset = Offset.Zero },
+                            )
+                        }
+                    } else Modifier,
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // O nome fica acima da imagem, alinhado com ela (docs/telas.md 3.3): a posição de cada lugar (esquerda,
+            // centro, direita) já vem do Box de fora; aqui só muda a ordem (nome em cima, imagem embaixo).
+            Text(
+                look.name,
+                color = GColors.Champagne,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            when {
+                slot is Slot.Robot -> {
+                    // A imagem de apresentação inteira (sem recorte em círculo): não leva selo nem anel de convite.
+                    val profile = BotProfile.entries.firstOrNull { it.code == slot.persona } ?: BotProfile.entries.first()
+                    RobotStandee(profile, level, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
+                }
+                index == viewerSeat || slot is Slot.Host || slot is Slot.Recruited -> {
+                    // A foto inteira (própria, do anfitrião ou de quem já aceitou o convite): não leva mais selo nem
+                    // anel (o Recrutado já aceitou; só o Chamado, pendente, continua no círculo com os dois).
+                    val persona = when {
+                        index == viewerSeat -> self
+                        slot is Slot.Recruited -> Persona(slot.name, color = slot.key.hashCode().mod(Persona.COLORS), photoBytes = photos[slot.key])
+                        else -> Persona(hostName, color = hostName.hashCode().mod(Persona.COLORS))
+                    }
+                    PersonaStandee(persona, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
+                }
+                slot is Slot.Vacant -> {
+                    // Quadrado, não círculo: também não leva selo nem anel.
+                    VacantAvatar(avatarSize, picked, Modifier.testTag("$tagPrefix-$index-$stateTag"))
+                }
+                else -> {
+                    // Só sobra o Chamado: continua no círculo, que carrega o selo e o anel do convite.
+                    SealedAvatar(
+                        avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
+                        highlighted = picked,
+                        calledAt = (slot as? Slot.Called)?.let { calledAt[it.key] },
+                    ) { look.avatar(avatarSize) }
+                }
             }
         }
     }
+
+    // Acima da mesa (docs/telas.md 3.3): em duplas o parceiro fica em cima e mais à frente (maior, por cima no
+    // desenho) e os dois adversários um pouco abaixo dele, quase encostando na mesa; no individual, só o adversário,
+    // no mesmo tamanho do parceiro. O lugar de viewerSeat nunca entra aqui, fica embaixo da imagem.
+    val roleOf = layout.slots.indices.associateWith { SeatRole.of(mode, Seat(it), Seat(viewerSeat)) }
+    val partnerIndex = roleOf.entries.firstOrNull { it.value == SeatRole.PARTNER }?.key
+    val leftIndex = roleOf.entries.firstOrNull { it.value == SeatRole.LEFT_OPPONENT }?.key
+    val rightIndex = roleOf.entries.firstOrNull { it.value == SeatRole.RIGHT_OPPONENT }?.key
+    val soleOpponentIndex = roleOf.entries.firstOrNull { it.value == SeatRole.OPPONENT }?.key
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        if (partnerIndex != null) {
+            // zIndex à frente da mesa (vem depois, no mesmo Column): o parceiro e os adversários ficam por cima dela.
+            Box(Modifier.fillMaxWidth().zIndex(1f)) {
+                leftIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopStart).offset(x = -OpponentShift, y = OpponentDrop)) }
+                rightIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopEnd).offset(x = OpponentShift, y = OpponentDrop)) }
+                SeatItem(partnerIndex, PartnerAvatar, Modifier.align(Alignment.TopCenter))
+            }
+        } else if (soleOpponentIndex != null) {
+            Box(Modifier.fillMaxWidth()) {
+                SeatItem(soleOpponentIndex, PartnerAvatar, Modifier.align(Alignment.Center))
+            }
+        }
+        // BoxWithConstraints porque a mesa (30 % maior, docs/telas.md 3.3) passa da largura da coluna; o resto da tela
+        // não encolhe por causa disso (requiredWidth ignora as constraints de fora, só esta imagem transborda).
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            Image(
+                painterResource(R.drawable.home_table),
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .requiredWidth(maxWidth * TableWidthFraction)
+                    .aspectRatio(1080f / 316f)
+                    .offset(y = -TableRise)
+                    .padding(bottom = 4.dp),
+                contentScale = ContentScale.FillWidth,
+            )
+        }
+        SeatItem(viewerSeat)
+    }
 }
+
+/** Altura do parceiro (duplas) ou do único adversário (individual): maior, para ficar à frente dos demais (+30 %). */
+private val PartnerAvatar = 140.dp
+
+/** Altura dos adversários em duplas: um pouco menor que a do parceiro (+30 %). */
+private val OpponentAvatar = 104.dp
+
+/** Fração da largura da coluna que a mesa ocupa (+30 % sobre os 92 % de antes); pode passar de 100 %. */
+private const val TableWidthFraction = 1.2f
+
+/** Quanto os adversários descem em relação ao parceiro, quase encostando na mesa. */
+private val OpponentDrop = 18.dp
+
+/** Quanto os adversários deslocam para a própria borda (esquerda foge mais à esquerda, direita mais à direita):
+ * 40 % do tamanho do quadrado do avatar. */
+private val OpponentShift = OpponentAvatar * 0.4f
+
+/** Quanto a mesa sobe por cima dos perfis (docs/telas.md 3.3): precisa sobrepor pelo menos um pouco. */
+private val TableRise = 14.dp
 
 /** Tamanho do avatar de um lugar. */
 private val SeatAvatar = 56.dp

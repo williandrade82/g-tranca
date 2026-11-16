@@ -93,7 +93,7 @@ fun RoundSummaryScreen(
     val poses = leaderPoses(snapshot.totals, sides)
     val rules = LocalTableRules.current
     // Tour da tabela (docs/telas.md 3.16): sozinho na primeira vez; o ícone ao lado do título o mostra de novo.
-    com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.SUMMARY, com.gtranca.ui.tour.Tours.summarySteps(rules.noWilds), autoStart = true) { startTour ->
+    com.gtranca.ui.tour.TourHost(com.gtranca.ui.tour.Tours.SUMMARY, com.gtranca.ui.tour.Tours.summarySteps(rules.noWilds, rules.dealGuessBonusEnabled), autoStart = true) { startTour ->
     // docs/telas.md 3.10: modal semitransparente sobre a mesa final; topo e rodapé fixos, detalhes com rolagem no meio.
     BoxWithConstraints(
         Modifier
@@ -158,7 +158,7 @@ fun RoundSummaryScreen(
             HorizontalDivider(color = GColors.Divider, thickness = 2.dp)
             }
             // Tudo vem de ScoreBreakdown: a soma das linhas exibidas é o "Total da partida" de cada lado.
-            val lines = scores.map { ScoreBreakdown.lines(it) }
+            val lines = scores.map { ScoreBreakdown.lines(it, rules) }
             // Detalhes (rolagem): nunca menores que a altura mínima, para não sumirem em telas pequenas.
             Column(
                 Modifier
@@ -168,8 +168,10 @@ fun RoundSummaryScreen(
                     .verticalScroll(rememberScrollState())
                     .testTag("round-summary-details"),
             ) {
-            // §12.1 pontos especiais e §12.2 morto não pego.
-            ScoreItem.entries.filter { it.section == ScoreSection.SPECIAL }.forEach { item ->
+            // §12.1 pontos especiais e §12.2 morto não pego. Sem a regra do §3.6 ligada, a linha do bônus da
+            // distribuição certeira sempre daria "0" (nunca entra em SideScore.dealGuessBonus): some da tabela.
+            val specialHidden = if (rules.dealGuessBonusEnabled) emptySet() else setOf(ScoreItem.DEAL_GUESS_BONUS)
+            ScoreItem.entries.filter { it.section == ScoreSection.SPECIAL && it !in specialHidden }.forEach { item ->
                 val noCanasta = stringResource(R.string.score_red_threes_no_canasta)
                 ScoreRow(
                     stringResource(item.labelRes()),
@@ -314,6 +316,7 @@ private fun ScoreItem.labelRes(): Int = when (this) {
     ScoreItem.DIRTY_CANASTAS -> R.string.score_dirty_canastas
     ScoreItem.GO_OUT -> R.string.score_go_out
     ScoreItem.MORTO_NOT_TAKEN -> R.string.score_morto_not_taken
+    ScoreItem.DEAL_GUESS_BONUS -> R.string.score_deal_guess_bonus
     ScoreItem.TABLE_RED_THREES -> R.string.score_table_red_threes
     ScoreItem.TABLE_FOUR_TO_TEN -> R.string.score_table_four_to_ten
     ScoreItem.TABLE_FACES -> R.string.score_table_faces
@@ -339,7 +342,7 @@ private fun ScoreItem.examples(): List<Card>? = when (this) {
         listOf(Card(Rank.FOUR, Suit.CLUBS), Card(Rank.SEVEN, Suit.HEARTS), Card(Rank.TEN, Suit.SPADES))
     ScoreItem.TABLE_FACES, ScoreItem.HAND_FACES -> listOf(Card(Rank.JACK, Suit.DIAMONDS), Card(Rank.KING, Suit.SPADES), Card(Rank.ACE, Suit.HEARTS))
     ScoreItem.TABLE_WILDS, ScoreItem.HAND_WILDS -> listOf(Card(Rank.TWO, Suit.SPADES), Card(Rank.TWO, Suit.HEARTS))
-    ScoreItem.GO_OUT, ScoreItem.MORTO_NOT_TAKEN -> null
+    ScoreItem.GO_OUT, ScoreItem.MORTO_NOT_TAKEN, ScoreItem.DEAL_GUESS_BONUS -> null
 }
 
 /** §12 valor de cada carta (ou de cada canastra, batida e morto) pelas regras da mesa. */
@@ -350,6 +353,7 @@ private fun ScoreItem.unitValue(rules: com.gtranca.engine.RuleSet): String = sig
         ScoreItem.DIRTY_CANASTAS -> rules.dirtyCanastaPoints
         ScoreItem.GO_OUT -> rules.goOutPoints
         ScoreItem.MORTO_NOT_TAKEN -> rules.mortoNotTakenPoints
+        ScoreItem.DEAL_GUESS_BONUS -> rules.dealGuessBonusPoints
         ScoreItem.TABLE_RED_THREES -> rules.tableRedThreePoints
         ScoreItem.TABLE_FOUR_TO_TEN -> rules.tableFourToTenPoints
         ScoreItem.TABLE_FACES -> rules.tableFaceCardOrAcePoints

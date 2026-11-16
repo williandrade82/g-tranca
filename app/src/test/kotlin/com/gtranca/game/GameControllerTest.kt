@@ -54,7 +54,7 @@ class GameControllerTest {
         "DUPLAS, 21, 0, 1736, 470",
     )
     fun `jogo so de bots reproduz o simulador`(mode: GameMode, seed: Long, winner: Int, total0: Int, total1: Int) = runTest {
-        val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 1000)
+        val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 1000, rules = NO_DEAL_GUESS)
         val controller = GameController(
             config, seed, simLikePlayers(mode, listOf(Difficulty.MEDIO, Difficulty.FACIL), seed),
             computeDispatcher = StandardTestDispatcher(testScheduler), botDelayMillis = 0,
@@ -104,7 +104,7 @@ class GameControllerTest {
         delay: Long = 0,
         seed: Long = 5,
         target: Int = 3000,
-        rules: com.gtranca.engine.RuleSet = com.gtranca.engine.RuleSet.DEFAULT,
+        rules: com.gtranca.engine.RuleSet = NO_DEAL_GUESS,
     ): Triple<GameController, HumanPlayer, SpyBot> {
         val human = HumanPlayer()
         val spy = SpyBot(seed)
@@ -344,7 +344,7 @@ class GameControllerTest {
         }
         val human = HumanPlayer()
         controller = GameController(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), 5, listOf(human, BotSeatPlayer(resigningBot)),
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), 5, listOf(human, BotSeatPlayer(resigningBot)),
             computeDispatcher = dispatcher, botDelayMillis = 0,
         )
         acknowledgeDeals(controller)
@@ -411,7 +411,7 @@ class GameControllerTest {
             val human = HumanPlayer()
             val spy = SpyBot(seed)
             val controller = GameController(
-                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), seed, listOf(human, BotSeatPlayer(spy)),
+                GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), seed, listOf(human, BotSeatPlayer(spy)),
                 computeDispatcher = dispatcher, botDelayMillis = 0,
             )
             val job = launch { controller.run() }

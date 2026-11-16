@@ -251,7 +251,20 @@ class GuestSession(
         this.token = token
         this.requestedSeat = seat
         this.inviteKey = inviteKey
-        collector = scope.launch { transport.events.collect { handle(it) } }
+        // §16: sem o try/catch, qualquer exceção em handle() matava este coletor (e, sem supervisor, talvez o
+        // escopo inteiro) em silêncio — achado numa investigação de regressão (15/11/2026): nenhuma pista
+        // sobrava nem no adb logcat. Nunca loga cartas nem tokens, só classe/mensagem da exceção.
+        collector = scope.launch {
+            transport.events.collect { event ->
+                try {
+                    handle(event)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("handle failed: ${e::class.qualifiedName}: ${e.message}")
+                }
+            }
+        }
         locateAndConnect(seat)
     }
 
@@ -454,10 +467,11 @@ class GuestSession(
     }
 
     /**
-     * A conexão caiu: no jogo (ou à espera da aprovação, §16.7), tenta voltar (§16.5); se for sucessor e a mesa sumiu
-     * da busca, assume (§16.10).
+     * A conexão caiu: no jogo, na sala antes do início (§16.2, §16.15) ou à espera da aprovação (§16.7), tenta voltar
+     * (§16.5); se for sucessor e a mesa sumiu da busca, assume (§16.10).
      */
     private fun lostLocked() {
+        log("connection lost (status=${_status.value})")
         link?.close()
         link = null
         // §16.11 com o resultado e o prêmio já recebidos, o jogo acabou para este aparelho: não há o que reingressar.
@@ -467,7 +481,10 @@ class GuestSession(
             return
         }
         when (_status.value) {
-            GuestStatus.Playing, GuestStatus.Reconnecting -> {
+            // §16.15 a queda pode acontecer bem na janela do início (Pronto confirmado, started ainda virando true no
+            // anfitrião): sem o reingresso aqui, uma queda real de rádio nesse instante ia direto para "Mesa encerrada"
+            // em vez de tentar voltar pelo token, que já existe desde o Welcome.
+            GuestStatus.Playing, GuestStatus.Reconnecting, GuestStatus.Lobby -> {
                 _status.value = GuestStatus.Reconnecting
                 scope.launch { reconnect() }
             }
@@ -496,26 +513,38 @@ class GuestSession(
             0
         }
         var backoff = RETRY_MIN_MILLIS
+        var attempt = 0
+        log("reconnect start rank=$rank")
         while (true) {
-            if (!reconnecting()) return
+            if (!reconnecting()) { log("reconnect aborted (status changed)"); return }
+            attempt++
             val window = if (rank > 0) rank * successorGraceMillis else absentLimitMillis
+            log("reconnect discover attempt=$attempt window=$window ms")
             val advert = withTimeoutOrNull(window) { transport.discover().mapNotNull { it.preferred(tableId) }.first() }
             if (advert == null) {
+                log("reconnect table not found after $window ms")
                 mutex.withLock {
                     if (!reconnecting()) return
                     val state = successorState
                     if (rank > 0 && state != null) {
+                        log("reconnect giving up as successor rank=$rank: taking over")
                         takeOverRank = rank
                         _status.value = GuestStatus.TakingOver
                         _takeOver.value = state
                     } else {
+                        log("reconnect giving up: table closed")
                         _status.value = GuestStatus.Closed
                         successorState = null
                     }
                 }
                 return
             }
-            if (runCatching { connectAndHello(advert, if (_status.value == GuestStatus.WaitingApproval) requestedSeat else seat) }.isSuccess) return
+            log("reconnect table found, connecting")
+            if (runCatching { connectAndHello(advert, if (_status.value == GuestStatus.WaitingApproval) requestedSeat else seat) }.isSuccess) {
+                log("reconnect connect ok attempt=$attempt")
+                return
+            }
+            log("reconnect connect failed attempt=$attempt, retry in $backoff ms")
             delay(backoff)
             backoff = minOf(backoff * 2, RETRY_MAX_MILLIS)
         }

@@ -88,7 +88,7 @@ class RestoreTest {
 
     private val mode = GameMode.DUPLAS
     private val seed = 21L
-    private val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 3000)
+    private val config = GameConfig(mode, Difficulty.MEDIO, targetScore = 3000, rules = NO_DEAL_GUESS)
 
     /** Joga só com bots e devolve as fotos salvas (todas), passando pelo JSON do arquivo salvo. */
     private suspend fun TestScope.savesOfABotGame(gameSeed: Long = seed): List<SavedGame> {
@@ -233,7 +233,7 @@ class RestoreTest {
     fun `§13_1 o jogo e salvo desde o inicio e a cada acao, e o fim e registrado uma vez depois das gravacoes`() = runTest(dispatcher) {
         val store = FakePersistence()
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 3, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 3, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
             gameId = "jogo-x", persistence = store, writes = writes(),
         )
@@ -369,7 +369,7 @@ class RestoreTest {
         val persistence = DataGamePersistence(files, stats, NoSettings)
         // 1ª sessão: jogo novo, uma jogada, sai (o salvo fica).
         val vm1 = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 5, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 5, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0, gameId = "g", persistence = persistence,
             writes = writes(),
         )
@@ -413,7 +413,7 @@ class RestoreTest {
     fun `falha de E-S ao gravar nao derruba o jogo - a fila segue e o fim ainda e registrado`() = runTest(dispatcher) {
         val store = FailingPersistence()
         val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000), gameSeed = 10, computeDispatcher = dispatcher,
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS), gameSeed = 10, computeDispatcher = dispatcher,
             botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0, gameId = "e", persistence = store,
             writes = writes(),
         )

@@ -4,6 +4,7 @@ import com.gtranca.ai.Difficulty
 import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Seat
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldNotBeEmpty
@@ -51,7 +52,7 @@ class DealRedThreeOrderTest {
                 for (screenLateBy in listOf(0L, 800L)) {
                     for (seed in 1L..40L) {
                         val vm = GameViewModel(
-                            GameConfig(mode, Difficulty.FACIL, 3000),
+                            GameConfig(mode, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
                             gameSeed = seed,
                             computeDispatcher = dispatcher,
                             botDelayMillis = 700,

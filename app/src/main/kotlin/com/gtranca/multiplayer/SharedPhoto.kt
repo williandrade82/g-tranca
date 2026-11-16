@@ -10,18 +10,24 @@ import java.io.ByteArrayOutputStream
 import java.util.Base64
 
 /**
- * §16.2 a foto do perfil para a mesa multijogador: reduzida a [SIZE] px e comprimida em JPEG (alvo de até ~15 KB), em
- * Base64. Jogador sem foto (ou foto ilegível) não envia nada.
+ * §16.2 a foto do perfil para a mesa multijogador: o lado maior reduzido a até [MAX_DIMENSION] px (sem esticar: mantém
+ * a proporção original, nunca aumenta uma foto menor) e comprimida em JPEG, em Base64. Mostrada **inteira** na mesa de
+ * lugares (docs/telas.md 3.3; antes só uma versão pequena e quadrada, cortada em círculo), por isso a qualidade e a
+ * proporção da foto original importam agora, não só o tamanho do arquivo. Jogador sem foto (ou foto ilegível) não
+ * envia nada.
  */
 object SharedPhoto {
-    const val SIZE: Int = 96
+    const val MAX_DIMENSION: Int = 240
 
     fun encode(context: Context, profile: PlayerProfile?): String? {
         if (profile?.hasPhoto != true) return null
         return runCatching {
             val source = BitmapFactory.decodeFile(ProfilePhoto.savedPath(context)) ?: return null
-            val scaled = Bitmap.createScaledBitmap(source, SIZE, SIZE, true)
-            var quality = 80
+            val scale = (MAX_DIMENSION.toFloat() / maxOf(source.width, source.height)).coerceAtMost(1f)
+            val w = (source.width * scale).toInt().coerceAtLeast(1)
+            val h = (source.height * scale).toInt().coerceAtLeast(1)
+            val scaled = Bitmap.createScaledBitmap(source, w, h, true)
+            var quality = 85
             var data: String
             do {
                 val out = ByteArrayOutputStream()

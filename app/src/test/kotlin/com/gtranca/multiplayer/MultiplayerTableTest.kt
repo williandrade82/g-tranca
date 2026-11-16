@@ -8,6 +8,7 @@ import com.gtranca.engine.model.GameMode
 import com.gtranca.engine.model.Phase
 import com.gtranca.engine.model.Seat
 import com.gtranca.game.GameConfig
+import com.gtranca.game.NO_DEAL_GUESS
 import com.gtranca.game.Persona
 import com.gtranca.game.Stage
 import com.gtranca.net.MemoryNetwork
@@ -88,7 +89,7 @@ class MultiplayerTableTest {
         val network = MemoryNetwork()
         val dispatcher = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(dispatcher + Job())
-        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = targetScore, stake = stake)
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = targetScore, stake = stake, rules = NO_DEAL_GUESS)
         val rules = TableRules("Mesa da família", GameMode.DUPLAS, config.rules, targetScore, stake, Difficulty.FACIL.id, robots)
         val hostCoins = FakeCoins()
         val guestCoins = FakeCoins()
@@ -239,6 +240,43 @@ class MultiplayerTableTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `§16_5 §16_13 §16_15 queda de verdade na sala logo apos o Pronto ainda debita a aposta uma vez (nao zero, nao em dobro)`() = runTest {
+        val seed = 201L
+        val stake = 50
+        val network = MemoryNetwork()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(dispatcher + Job())
+        val robots = listOf("jovem", "sobrio", "atleta")
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, targetScore = 500, stake = stake, rules = NO_DEAL_GUESS)
+        val rules = TableRules("Mesa da família", GameMode.DUPLAS, config.rules, 500, stake, Difficulty.FACIL.id, robots)
+        val guestCoins = FakeCoins()
+        val bots: (GameConfig) -> ((Seat, kotlin.random.Random) -> com.gtranca.ai.BotPlayer) = { { seat, _ -> testBot(seed, seat) } }
+        val hostTransport = network.transport()
+        val guestTransport = network.transport()
+        val host = MultiplayerTable(hostTransport, scope, FakeCoins(), dispatcher, bots, newSeed = { seed })
+        val guest = MultiplayerTable(guestTransport, scope, guestCoins, dispatcher, bots, newSeed = { seed })
+        host.host(rules, "Ana", "mesa-1", lobby(robots, seed, 1))
+        runCurrent()
+        guest.join("mesa-1", "Beto", inviteKey = "k1")
+        runCurrent() // o convidado chega na sala e manda Pronto, antes do "Prepare-se!" terminar no anfitrião
+        // Bloqueia a reconexão para o anfitrião terminar o início (started=true) com o convidado ainda fora: só assim
+        // o reingresso (abaixo) chega direto em Playing sem passar de novo por Lobby, como no rádio real (a conexão
+        // caiu de fato 1–2 s depois do Pronto, quando o anfitrião já tinha concluído o início, não antes).
+        network.block(guestTransport.id)
+        network.drop(guestTransport.id)
+        advanceTimeBy(com.gtranca.net.PREPARE_MILLIS + 100)
+        runCurrent()
+        network.unblock(guestTransport.id)
+        // Achado do rules-auditor na correção do §16.15 (lostLocked cobrindo GuestStatus.Lobby, antes só Closed/"Mesa
+        // encerrada" direto): sem o staked em watchGuest(), esse reingresso (Lobby → Reconnecting → Playing, nunca
+        // volta a Lobby) pulava o "§16.13 quem estava na sala debita a aposta ao começar", que só disparava com
+        // was == Lobby.
+        advanceUntilIdle()
+        guest.mySeat shouldBe Seat(1)
+        guestCoins.debits shouldBe listOf(stake)
     }
 
     @Test
@@ -668,7 +706,7 @@ class MultiplayerTableTest {
                 override suspend fun saveHandSort(id: String) = Unit
                 override suspend fun discard() { discarded++ }
             }
-            val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000, stake = 50)
+            val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000, stake = 50, rules = NO_DEAL_GUESS)
             val robots = mapOf(1 to "alternativo", 2 to "jovem", 3 to "atleta")
             val vm = com.gtranca.ui.game.GameViewModel(
                 config, gameSeed = 7, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
@@ -854,5 +892,89 @@ class MultiplayerTableTest {
         again.end.value shouldBe null
         advanceTimeBy(2_000)
         again.end.value shouldBe MpEnd.NotFound
+    }
+
+    /**
+     * §3.6/§16 relato grave de 15/11/2026 (2 celulares reais, mesma versão do APK, jogo novo, INDIVIDUAL,
+     * sem robôs): depois do recrutamento, o anfitrião tocava "Começar Partida" e: (tentativa 1) a tela do
+     * anfitrião "ficou pensando", depois o convidado foi desconectado e só então apareceu o seletor de boosters
+     * para o anfitrião sozinho; (tentativa 2) a mesa do convidado foi encerrada quase imediatamente e a do
+     * anfitrião ficou travada por ~30 s (bate com `BOOSTERS_WAIT_MILLIS = 35_000`). Reproduz com o caminho real de
+     * início de jogo (`MultiplayerTable.host`/`join`, não só `MultiplayerHost` direto como em
+     * `MultiplayerTestTable`), com as REGRAS PADRÃO da mesa real do app: `RuleSet.DEFAULT`
+     * (`dealGuessBonusEnabled = true`) e `skillBoosters = true` (o seletor de boosters do §17.3 entra no caminho,
+     * como no app de verdade — `MultiplayerDriver.create(..., withBoosters = true)`, igual a
+     * `AppNavHost.kt:411`), ambos os aparelhos com um [GameViewModel] real. Se alguma exceção for engolida em
+     * algum `catch` do caminho (`MultiplayerTable.runHost`, `watchGuest`, etc.), ela aparece aqui como falha do
+     * teste com stacktrace — o que nenhum `adb logcat` sem log explícito mostraria no dispositivo real.
+     */
+    @Test
+    fun `§3_6 §16 jogo novo individual, 2 humanos, regras padrao (boosters e palpite ligados) - inicia sem travar nem lancar excecao`() = runTest {
+        val seed = 150L
+        val network = MemoryNetwork()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(dispatcher + Job())
+        val config = GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, targetScore = 1000)
+        config.rules.dealGuessBonusEnabled shouldBe true // confere a premissa: regra padrão da mesa real
+        val rules = TableRules(
+            "Mesa de Ana", GameMode.INDIVIDUAL, config.rules, targetScore = 1000, stake = 0,
+            difficulty = Difficulty.FACIL.id, skillBoosters = true,
+        )
+        val hostTable = MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, newSeed = { seed })
+        val guestTable = MultiplayerTable(network.transport(), scope, FakeCoins(), dispatcher, newSeed = { seed })
+        var layout = com.gtranca.net.TableLayout.initial(GameMode.INDIVIDUAL).call(1, "k1", "Beto")!!.accept("k1")!!
+        val plan = com.gtranca.net.TablePlan(layout, com.gtranca.game.Tables.personaPool, seed)
+        hostTable.host(rules, "Ana", "mesa-1", plan)
+        runCurrent()
+        guestTable.join("mesa-1", "Beto", inviteKey = "k1")
+        advanceUntilIdle() // "Prepare-se!" (1,5 s) passa no relógio virtual: o jogo começa sozinho nos dois aparelhos
+
+        kotlinx.coroutines.Dispatchers.setMain(dispatcher)
+        try {
+            val hostDriver = MultiplayerDriver.create(hostTable, scope, withBoosters = true) { 0 }
+            val guestDriver = MultiplayerDriver.create(guestTable, scope, withBoosters = true) { 0 }
+            val hostPersonas = hostTable.personas(Persona("Ana"), "VAGO") { it }
+            val guestPersonas = guestTable.personas(Persona("Beto"), "VAGO") { it }
+            val hostVm = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(rules), animationMillis = 0, swapAnimationMillis = 0,
+                externalDriver = hostDriver, externalPersonas = hostPersonas, multiplayer = true,
+            )
+            val guestVm = com.gtranca.ui.game.GameViewModel(
+                MultiplayerTable.configOf(rules), animationMillis = 0, swapAnimationMillis = 0,
+                externalDriver = guestDriver, externalPersonas = guestPersonas, multiplayer = true,
+            )
+            advanceUntilIdle()
+
+            // Os dois confirmam o seletor de boosters (§17.3), como o jogador faria tocando "Seguir" — sem
+            // escolher nenhum (lista vazia é uma confirmação válida).
+            if (hostVm.uiState.value.boosterSelectorPending) hostVm.onBoostersConfirmed(emptyList())
+            if (guestVm.uiState.value.boosterSelectorPending) guestVm.onBoostersConfirmed(emptyList())
+            advanceUntilIdle()
+
+            // Alguém (anfitrião ou convidado, conforme o sorteio do dealerSeat/mortoDealerSeat) responde ao
+            // palpite da mão e do morto, como o toque único faria (`TableEvents.onGuessDealNumber`).
+            repeat(4) {
+                val hostPrompt = hostVm.uiState.value.dealGuessPrompt
+                if (hostPrompt != null) hostVm.onGuessDealNumber((hostPrompt.range.first + hostPrompt.range.last) / 2)
+                val guestPrompt = guestVm.uiState.value.dealGuessPrompt
+                if (guestPrompt != null) guestVm.onGuessDealNumber((guestPrompt.range.first + guestPrompt.range.last) / 2)
+                // §3.6 (15/11/2026): a reação do próprio palpite não bloqueia mais nada (some sozinha, sem toque).
+                advanceUntilIdle()
+            }
+
+            // O morto já resolveu (currentSeat em AWAITING_DRAW): quem abre a partida compra, completando a
+            // transição para a 1ª jogada de verdade — prova de que o jogo chegou lá mesmo, não só perto.
+            if (hostVm.uiState.value.canDraw) hostVm.onDraw()
+            if (guestVm.uiState.value.canDraw) guestVm.onDraw()
+            advanceUntilIdle()
+
+            // O jogo chegou de verdade à 1ª jogada (não ficou parado no seletor de boosters nem no palpite).
+            hostVm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
+            guestVm.uiState.value.snapshot.view.phase shouldBe Phase.PLAYING
+            hostTable.end.value shouldBe null
+            guestTable.end.value shouldBe null
+        } finally {
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
     }
 }

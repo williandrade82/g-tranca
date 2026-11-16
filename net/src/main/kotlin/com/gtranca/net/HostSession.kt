@@ -367,7 +367,20 @@ class HostSession(
     /** Publica a mesa e passa a atender os convidados em [scope]. */
     suspend fun open(scope: CoroutineScope) {
         this.scope = scope
-        collector = scope.launch { transport.events.collect { handle(it) } }
+        // §16: sem o try/catch, qualquer exceção em handle() matava este coletor (e, sem supervisor, talvez o
+        // escopo inteiro) em silêncio — a mesa parava de atender qualquer convidado sem nenhuma pista (achado numa
+        // investigação de regressão, 15/11/2026). Nunca loga cartas nem tokens, só classe/mensagem da exceção.
+        collector = scope.launch {
+            transport.events.collect { event ->
+                try {
+                    handle(event)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("handle failed: ${e::class.qualifiedName}: ${e.message}")
+                }
+            }
+        }
         // §16.10 outro anfitrião da mesma mesa que prevaleça (só com o jogo em andamento).
         watcher = scope.launch {
             transport.discover().collect { list ->
@@ -860,6 +873,7 @@ class HostSession(
             return false
         }
         // §16.8 com o jogo em andamento, quem cai continua na sala (reservado a ele) e pode reingressar pelo token.
+        log("member disconnected mid-game seat=${member.info.seat}")
         updateLocked(member) { it.copy(connected = false) }
         refreshSuccessorsLocked()
         publishRosterLocked(broadcast = true)

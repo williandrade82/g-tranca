@@ -37,6 +37,8 @@ class LegalActionsCompletenessTest {
             is DiscardPlan.NewMeld -> "takeNew" to plan.handCards.cls()
             is DiscardPlan.AddToMeld -> Triple("takeAdd", plan.meldId, plan.handCards.cls())
         }
+        // §3.6 este teste nunca monta cenários na fase de palpite (scenario() só gera AWAITING_DRAW/PLAYING).
+        is Action.GuessDealRange -> error("cenário deste teste não cobre a fase de palpite da distribuição certeira")
     }
 
     private fun <T> List<T>.subsets(): List<List<T>> =

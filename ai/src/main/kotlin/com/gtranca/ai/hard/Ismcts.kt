@@ -250,6 +250,9 @@ internal fun passesOverride(mean: Double, standardError: Double, visits: Int, co
  */
 internal fun Action.key(): Action = when (this) {
     Action.DrawFromStock, Action.DeclineDraw -> this
+    // §3.6 palpite da distribuição certeira: sem cartas para canonicalizar; nunca aparece na árvore de busca
+    // (HardBot.chooseAction resolve essa fase fora do ISMCTS), mas o `when` exaustivo exige o braço.
+    is Action.GuessDealRange -> this
     is Action.Discard -> Action.Discard(card.canonical())
     is Action.CreateMeld -> Action.CreateMeld(cards.map { it.canonical() })
     is Action.AddToMeld -> Action.AddToMeld(meldId, cards.map { it.canonical() })

@@ -6,6 +6,16 @@ import kotlinx.serialization.Serializable
 /** Fase da partida (§4.3). */
 @Serializable
 enum class Phase {
+    /**
+     * §3.6 antes da 1ª vez, com `RuleSet.dealGuessBonusEnabled`: o assento de [DealGuess.dealerSeat] palpita a
+     * largura da distribuição da mão. Só existe com o parâmetro ligado; desligado, a partida começa direto em
+     * [AWAITING_DRAW], como antes da regra existir.
+     */
+    DEAL_GUESS_HAND,
+
+    /** §3.6 depois do palpite da mão: o assento de [DealGuess.mortoDealerSeat] palpita o morto. */
+    DEAL_GUESS_MORTO,
+
     /** Etapa 1: o jogador da vez deve comprar do monte ou pegar o lixo. */
     AWAITING_DRAW,
 

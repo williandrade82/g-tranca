@@ -1,5 +1,6 @@
 package com.gtranca.multiplayer
 
+import com.gtranca.engine.model.Phase
 import com.gtranca.game.GameSnapshot
 import com.gtranca.game.Stage
 import kotlinx.coroutines.channels.Channel
@@ -20,6 +21,15 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Assim a vista seguinte nunca "pula" a mesa para o fim antes de a anterior ser animada, e a vez do jogador só aparece
  * depois de tudo o que veio antes. Toda espera tem limite ([dealWaitMillis], [presentationWaitMillis]; 0 = não espera),
  * para a mesa nunca travar se a tela não avisar. Kotlin puro: testável na JVM com tempo virtual.
+ *
+ * **§3.6 o palpite da distribuição certeira não tem um portão equivalente aqui** (decisão de 14/11/2026, depois de
+ * uma versão revertida): o `GameViewModel` observa `[com.gtranca.game.TableDriver.state]`, um `StateFlow`
+ * **conflado** — ele garante o último valor publicado, não cada valor intermediário. Numa virada de partida em que
+ * o palpite resolve rápido (robô, `PacingPolicy.FREE`, sem atraso), a tela pode nunca ver a vista exata em que um
+ * palpite "acabou de resolver": só a seguinte, já adiantada. Um portão que espera `guessRevealDone` pelo
+ * reconhecimento dessa vista nunca vista travaria pelo limite de segurança inteiro a cada virada de partida — pior
+ * que o problema que resolveria. Ver KDoc de [com.gtranca.game.TableDriver.guessRevealDone] e
+ * `docs/plano-distribuicao-certeira.md`.
  */
 class SnapshotPacer(
     private val paceMillis: () -> Long,
@@ -76,12 +86,23 @@ class SnapshotPacer(
         if (next.stage == Stage.PLAYING && !next.resigned) boostersGate?.invoke(next.roundNumber)
     }
 
+    /** §3.6 [snapshot] está numa fase de palpite da distribuição certeira: a distribuição de verdade ainda não comecou. */
+    private fun inGuessPhase(snapshot: GameSnapshot): Boolean =
+        snapshot.view.phase == Phase.DEAL_GUESS_HAND || snapshot.view.phase == Phase.DEAL_GUESS_MORTO
+
     /** Depois de mostrar [next]: espera a distribuição (partida nova) e a encenação das trocas novas de 3 vermelho. */
     private suspend fun awaitStaging(previous: GameSnapshot?, next: GameSnapshot) {
         if (next.stage != Stage.PLAYING || next.resigned) return
         val round = next.roundNumber
         val newRound = previous == null || previous.roundNumber != round || previous.stage != Stage.PLAYING
-        if (newRound) {
+        // §3.6 com a distribuição certeira ligada, a partida nova chega primeiro numa fase de palpite
+        // ([Phase.DEAL_GUESS_HAND]/[Phase.DEAL_GUESS_MORTO]): a distribuição de verdade só é animada na tela depois
+        // dos dois palpites resolvidos (`GameViewModel.absorb`, `dealing`/`leavingGuessPhases`) — esperar aqui, só
+        // porque o número da partida mudou, travaria pelo [dealWaitMillis] inteiro sem motivo (nada para animar
+        // ainda), a cada partida. Só espera ao SAIR da fase de palpite (`leavingGuess`), que é quando a distribuição
+        // de verdade começa; sem a regra (nunca em fase de palpite), o comportamento é o de sempre.
+        val leavingGuess = previous != null && inGuessPhase(previous) && !inGuessPhase(next)
+        if ((newRound || leavingGuess) && !inGuessPhase(next)) {
             dealWaitMillis().takeIf { it > 0 }?.let { limit -> withTimeoutOrNull(limit) { dealt.first { it >= round } } }
         }
         val size = next.view.redThreeLog.size
@@ -94,11 +115,29 @@ class SnapshotPacer(
     }
 
     companion object {
-        /** Outro assento jogou desde a vista anterior (na mesma partida): é a vez de pausar para acompanhar. */
+        /**
+         * Outro assento jogou desde a vista anterior (na mesma partida): é a vez de pausar para acompanhar, como
+         * qualquer jogada de robô (telas-app.md 3.8.2: "mesma pausa de pensando antes de 'tocar'").
+         *
+         * §3.6 inclui também o palpite da distribuição certeira resolvido por **outro** assento (não
+         * [GameSnapshot.viewerSeat]): o motor exclui de propósito `Action.GuessDealRange` de `turnEvents`
+         * (`GameController.recordEvent`, pílula/detalhe da vez não devem registrá-lo), então sem este caso a
+         * checagem acima nunca via essa transição — e o palpite de um robô, resolvido sem demora
+         * (`PacingPolicy.FREE`), publicava sem pausa nenhuma. Isso não é só cosmético: o `StateFlow` que o
+         * [com.gtranca.ui.game.GameViewModel] observa é conflado, então, numa virada de partida (várias vistas em
+         * rajada, sem suspensão entre elas), a tela podia nunca ver a vista "ainda sem o palpite" — e sem ela para
+         * comparar, `handleDealGuessTransition` nunca detecta a transição: a pílula do robô nunca aparece. A pausa
+         * aqui garante a suspensão que falta, dando tempo ao coletor da tela de processar a vista anterior.
+         */
         fun othersPlayed(previous: GameSnapshot, next: GameSnapshot): Boolean {
             if (previous.stage != Stage.PLAYING || next.stage != Stage.PLAYING || previous.roundNumber != next.roundNumber) return false
             val viewer = next.viewerSeat.index
-            return next.turnEvents.indices.any { it != viewer && next.turnEvents[it] != previous.turnEvents.getOrNull(it) }
+            if (next.turnEvents.indices.any { it != viewer && next.turnEvents[it] != previous.turnEvents.getOrNull(it) }) return true
+            val before = previous.view.dealGuess
+            val after = next.view.dealGuess ?: return false
+            if (before?.hand == null && after.hand != null && after.dealerSeat != next.viewerSeat) return true
+            if (before?.morto == null && after.morto != null && after.mortoDealerSeat != next.viewerSeat) return true
+            return false
         }
     }
 }

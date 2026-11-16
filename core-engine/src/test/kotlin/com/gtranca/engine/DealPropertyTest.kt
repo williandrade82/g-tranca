@@ -24,7 +24,7 @@ class DealPropertyTest {
         // §1 104 cartas; §3 / §3.5 nenhuma carta criada ou perdida na distribuição
         for (mode in GameMode.entries) {
             checkAll(200, Arb.long()) { seed ->
-                val state = dealRound(mode, Random(seed))
+                val state = dealRound(mode, Random(seed), NO_DEAL_GUESS)
                 val all = state.allCards()
                 all shouldHaveSize Deck.SIZE
                 all.toSet() shouldHaveSize Deck.SIZE
@@ -41,7 +41,7 @@ class DealPropertyTest {
         checkAll(300, Arb.long(), Arb.enum<GameMode>(), Arb.int(0, 3)) { seed, mode, first ->
             val firstSeat = Seat(first % mode.seatCount)
             val deck = Deck.shuffled(Random(seed))
-            val state = dealFromOrderedDeck(mode, deck, firstSeat)
+            val state = dealFromOrderedDeck(mode, deck, firstSeat, NO_DEAL_GUESS)
             val order = mode.seatsInPlayOrder(firstSeat)
             val handCards = RuleSet.DEFAULT.cardsPerHand * mode.seatCount
             for (seat in mode.seats) {

@@ -35,7 +35,7 @@ class RoundSimulationPropertyTest {
 
     private fun play(mode: GameMode, seed: Long, maxActions: Int = 5_000): Outcome {
         val random = Random(seed)
-        var state = dealRound(mode, random)
+        var state = dealRound(mode, random, NO_DEAL_GUESS)
         checkInvariants(state)
         var count = 0
         while (state.phase != Phase.FINISHED && count < maxActions) {

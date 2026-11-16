@@ -18,6 +18,13 @@ import com.gtranca.engine.model.cards
 fun c(text: String): Card = Card.parse(text)
 
 /**
+ * §3.6 regras de teste sem a fase de palpite da distribuição certeira: usadas pelos testes que tratam de outras
+ * seções (§3.1–§11) e não querem resolver os dois palpites antes de chegar em [Phase.AWAITING_DRAW], mantendo o
+ * fluxo de antes da regra existir.
+ */
+val NO_DEAL_GUESS: RuleSet = RuleSet.DEFAULT.copy(dealGuessBonusEnabled = false)
+
+/**
  * Builder de cenários de teste: monta mãos, monte, lixo, mortos e mesa exatos, sem embaralhar.
  * Não completa as 104 cartas (os cenários são pequenos); só a simulação verifica essa invariante.
  */

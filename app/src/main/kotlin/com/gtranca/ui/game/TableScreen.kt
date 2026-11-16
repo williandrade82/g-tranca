@@ -238,6 +238,14 @@ interface TableEvents {
     fun onResign()
     fun onConfirmResign()
     fun onDismissResign()
+
+    /**
+     * §3.6 (toque único, 15/11/2026) o jogador tocou a barra com o indicador no estágio [number]. Devolve se o
+     * motor aceitou de verdade (`true`): um toque pode ser ignorado (fora da faixa naquele instante, corrida de
+     * estado no multijogador/online, §16.8/§16.9) sem que a tela trave esperando um toque que nunca chegou ao
+     * motor — [DealGuessModal] só "congela" a barra quando a devolução for `true`, senão deixa tocar de novo.
+     */
+    fun onGuessDealNumber(number: Int): Boolean = false
 }
 
 /** Texto claro para controles desabilitados sobre o verde (contraste ≥ 4,5:1 com o verde escuro e o da mesa). */
@@ -307,8 +315,10 @@ private fun TableScreenContent(
     val turnSound = LocalSound.current
     val turnGate = remember { com.gtranca.ui.sound.TurnSoundGate() }
     val turnNumber = state.snapshot.view.turnsBegun
-    LaunchedEffect(state.isHumanTurn, state.snapshot.roundNumber, turnNumber) {
-        if (onReviewContinue == null && turnGate.shouldPlay(state.isHumanTurn, state.snapshot.roundNumber, turnNumber)) {
+    // §3.6 o palpite da distribuição certeira não é "a vez" de jogar (§4.3): sem o som nem o aviso de vez de sempre.
+    val isHumanPlayTurn = state.isHumanTurn && !state.isDealGuessing
+    LaunchedEffect(isHumanPlayTurn, state.snapshot.roundNumber, turnNumber) {
+        if (onReviewContinue == null && turnGate.shouldPlay(isHumanPlayTurn, state.snapshot.roundNumber, turnNumber)) {
             turnSound.play(com.gtranca.ui.sound.SoundEffect.TURN)
         }
     }
@@ -422,7 +432,7 @@ private fun TableScreenContent(
 
     // Tour guiado (docs/telas.md 3.16): sozinho só na 1ª vez em que é a vez do jogador, depois das animações iniciais.
     val tourReady = onReviewContinue == null && com.gtranca.ui.tour.Tours.tableReady(
-        isHumanTurn = state.isHumanTurn,
+        isHumanTurn = isHumanPlayTurn,
         dealPending = state.dealPending,
         animating = state.flights.isNotEmpty(),
         swapShowing = state.banner != null || state.reveal != null || state.ownSwapPending,
@@ -465,7 +475,11 @@ private fun TableScreenContent(
     ) { padding ->
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing) {
             var headerHeightPx by remember { mutableStateOf(0) }
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            // Limites visíveis da mesa (telas.md 3.8.1): referência para o ponto de entrada da distribuição inicial
+            // (AnimAnchor.DealEntry), fora desta área. Ocupa a tela toda até a barra de comandos (inclui a área de
+            // ações debaixo da mão) — por isso TableEdge.BOTTOM (R12, o próprio jogador) usa AnimAnchor.OwnHand em
+            // vez deste `Box`, perto da mão de verdade em vez do fundo da tela inteira (dealEntryOrigin, abaixo).
+            Box(Modifier.fillMaxSize().padding(padding).anchor(AnimAnchor.TableBounds)) {
                 Column(Modifier.fillMaxSize()) {
                     // A barra superior fica à frente das animações da mesa (docs/telas.md 3.8, camadas): mede-se a base dela para
                     // cortar os voos e os fogos ali, de modo que passem por baixo.
@@ -517,6 +531,8 @@ private fun TableScreenContent(
                             sideTag = "opponent",
                             scoreboard = scoreboard,
                             mortoTaken = view.hasTakenMorto(view.mode.sides.first { it != view.side }),
+                            dealGuess = view.dealGuess,
+                            mode = view.mode,
                         )
                         CenterArea(state, events, onShowDiscardPile = { showDiscardPile = true })
                         SideArea(
@@ -537,6 +553,8 @@ private fun TableScreenContent(
                             onNewMeld = if (state.canCreateNew) events::onNewMeld else null,
                             scoreboard = scoreboard,
                             mortoTaken = view.hasTakenMorto(view.side),
+                            dealGuess = view.dealGuess,
+                            mode = view.mode,
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -547,6 +565,16 @@ private fun TableScreenContent(
                     if (onReviewContinue != null) ReviewContinueBar(onReviewContinue, reviewBanner) else StatusAndActions(state, events)
                 }
                 Box(Modifier.fillMaxSize().drawWithContent { clipRect(top = headerHeightPx.toFloat()) { this@drawWithContent.drawContent() } }) {
+                // §3.6 telas-app.md 3.8.2 (15/11/2026): composta ANTES do `FlightsLayer` (abaixo), de propósito —
+                // sem `zIndex` nenhum, ela fica por baixo das cartas da distribuição quando elas passam pela mesma
+                // área (a área de jogos do próprio lado), nunca as cobrindo. A reação do PRÓPRIO jogador
+                // ([ownGuessReaction]) substitui a antiga tela cheia bloqueante; usa a mesma função da do parceiro
+                // ([partnerGuessReaction]), só com [DealGuessSideReaction.own] diferente.
+                if (onReviewContinue == null) {
+                    val sideArea = anchors[AnimAnchor.SideArea(view.side.index)]
+                    GuessSideReactionOverlay(state.ownGuessReaction, tableViewport, sideArea)
+                    GuessSideReactionOverlay(state.partnerGuessReaction, tableViewport, sideArea)
+                }
                 FlightsLayer(state.flights, anchors, state.animationMillis, { readyFlights[it] == true }) { id ->
                     arrived[id] = true
                     // O som acompanha a chegada da carta ao destino.
@@ -593,6 +621,12 @@ private fun TableScreenContent(
     }
     // "Prepare-se!" (docs/telas-app.md): 1,5 s sobre a mesa já montada, antes da distribuição da 1ª partida.
     if (state.opening) com.gtranca.ui.selection.GetReadyOverlay()
+    // §3.6 minijogo "distribuição certeira" (telas-app.md 3.8.2): o modal de seleção, só na tela de quem palpita —
+    // por cima de tudo o mais da mesa. As reações (própria e do parceiro) são compostas dentro da mesa, antes do
+    // `FlightsLayer` (acima), para ficar atrás das cartas voando; nenhuma delas bloqueia o modal seguinte (15/11/2026).
+    if (onReviewContinue == null) {
+        state.dealGuessPrompt?.let { prompt -> DealGuessModal(prompt, events::onGuessDealNumber) }
+    }
     }
 
     if (showLegend) LegendDialog(view.rules, snapshot.config.targetScore) { showLegend = false }
@@ -868,13 +902,23 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
     val events = snapshot.shownTurnEvents(seat.index)
     val shape = RoundedCornerShape(Corner.sm)
     val detailHint = stringResource(R.string.seat_detail_hint)
+    // §3.6 reação reduzida do palpite da distribuição certeira (telas-app.md 3.8.2): confete + borda dourada no acerto,
+    // tremor curto no erro; também aparece no próprio aparelho (feedback geral, "não custa mostrar sempre").
+    val dealGuessReaction = state.dealGuessPills[seat.index]
+    val dealGuessShake = dealGuessShakeOffset(dealGuessReaction)
+    Box(modifier) {
     Column(
-        modifier
+        Modifier
             .heightIn(min = minHeight)
             .clip(shape)
             .clickable(enabled = events.isNotEmpty() || snapshot.turnRedThrees.getOrNull(seat.index).orEmpty().isNotEmpty(), onClickLabel = detailHint, role = Role.Button) { onSeatClick(seat.index) }
             .background(GColors.Indigo.copy(alpha = if (thinking) 0.95f else 0.75f), shape)
-            .border(if (thinking) 2.dp else 1.dp, if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f), shape)
+            .border(
+                if (thinking || dealGuessReaction?.correct == true) 2.dp else 1.dp,
+                if (dealGuessReaction?.correct == true) GColors.Gold else if (thinking) TableAccent else GColors.Gold.copy(alpha = 0.3f),
+                shape,
+            )
+            .graphicsLayer { translationX = dealGuessShake }
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .anchor(AnimAnchor.SeatPill(seat.index))
             .testTag("seat-${seat.index}"),
@@ -950,6 +994,46 @@ private fun SeatPill(state: GameUiState, seat: Seat, modifier: Modifier, onSeatC
             LastTurnSymbols(events, Modifier.testTag("seat-last-turn-${seat.index}"), turnReds, snapshot.turnRedThreeAfter.getOrNull(seat.index).orEmpty())
         }
     }
+    // §3.6 confete reduzido sobre a pílula, só no acerto (telas-app.md 3.8.2): reaproveita o padrão pequeno de CharacterPortrait.kt.
+    if (dealGuessReaction?.correct == true) {
+        com.gtranca.ui.persona.PoseEffectOverlay(
+            com.gtranca.ui.persona.PoseEffect.CONFETTI,
+            cycleMillis = 1200,
+            modifier = Modifier.matchParentSize().clip(shape).testTag("deal-guess-pill-burst"),
+        )
+    }
+    if (dealGuessReaction?.correct == false) {
+        Box(Modifier.matchParentSize().testTag("deal-guess-pill-shake"))
+    }
+    // §3.6 (15/11/2026) selos permanentes do palpite (até o fim da partida, junto da reação transitória acima, não
+    // no lugar dela) — no canto para não truncar o nome/mão numa pílula estreita (duplas, 360dp).
+    DealGuessBadges(snapshot.view.dealGuess, seat, Modifier.align(Alignment.TopEnd).padding(2.dp))
+    }
+}
+
+/** §3.6 deslocamento horizontal (px) do tremor da pílula no erro do palpite (telas-app.md 3.8.2): curto, amortecido. */
+@Composable
+private fun dealGuessShakeOffset(reaction: DealGuessPillReaction?): Float {
+    val offset = remember { androidx.compose.animation.core.Animatable(0f) }
+    val amplitude = with(LocalDensity.current) { 6.dp.toPx() }
+    LaunchedEffect(reaction?.id) {
+        if (reaction != null && !reaction.correct) {
+            offset.snapTo(0f)
+            offset.animateTo(
+                0f,
+                animationSpec = androidx.compose.animation.core.keyframes {
+                    durationMillis = 400
+                    0f at 0
+                    amplitude at 60
+                    -amplitude at 140
+                    (amplitude * 0.5f) at 220
+                    (-amplitude * 0.5f) at 300
+                    0f at 400
+                },
+            )
+        }
+    }
+    return offset.value
 }
 
 /** Nome curto do assento para a pílula (cabe em um terço da largura). */
@@ -988,6 +1072,9 @@ private fun SideArea(
     onNewMeld: (() -> Unit)? = null,
     scoreboard: Boolean = false,
     mortoTaken: Boolean = false,
+    /** §3.6 bônus da distribuição certeira, somado ao total ao vivo deste lado (`view.dealGuess`/`view.mode`). */
+    dealGuess: com.gtranca.engine.model.DealGuess?,
+    mode: com.gtranca.engine.model.GameMode,
 ) {
     // Destaque pulsante dos jogos que recebem a seleção (e do conjunto vazio).
     val glow = if (addable.isEmpty() && onNewMeld == null) 0f else {
@@ -997,10 +1084,12 @@ private fun SideArea(
     val rules = LocalTableRules.current
     val landing = LocalLanding.current
     // §17.11 o total só muda quando nada do lado está voando (a jogada pousou).
-    val total = if (!scoreboard) null else settledValue(
+    val tableTotal = if (!scoreboard) null else settledValue(
         com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, mortoTaken, rules),
         settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
     )
+    // §3.6 o bônus da distribuição certeira já resolvido soma aqui fora, sem esperar nenhuma carta pousar.
+    val total = tableTotal?.let { liveSideTotal(it, dealGuess, mode, com.gtranca.engine.model.Side(side), rules) }
     Column(
         Modifier.fillMaxWidth()
             .background(GColors.Midnight.copy(alpha = 0.28f), RoundedCornerShape(Corner.sm))
@@ -1227,10 +1316,13 @@ private fun TableScoreBar(state: GameUiState, modifier: Modifier = Modifier) {
     fun total(side: com.gtranca.engine.model.Side): Int? {
         val melds = view.tables[side.index].melds
         val redThrees = state.redThrees[side.index]
-        return settledValue(
+        val tableTotal = settledValue(
             com.gtranca.engine.tablePoints(melds.map { it.meld }, redThrees.size, view.hasTakenMorto(side), rules),
             settled = melds.none { m -> m.meld.cards.any { it in landing } } && redThrees.none { it in landing },
         )
+        // §3.6 o bônus da distribuição certeira já resolvido soma aqui fora, sem esperar nenhuma carta pousar
+        // (ele não depende de carta nenhuma): a mesa pode estar vazia e o total já refletir o palpite certo.
+        return tableTotal?.let { liveSideTotal(it, view.dealGuess, view.mode, side, rules) }
     }
     fun personas(side: com.gtranca.engine.model.Side): List<com.gtranca.game.Persona> {
         // O jogador (ou o adversário mais próximo na vez) primeiro: é a imagem de dentro, perto do centro.
@@ -1288,8 +1380,9 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // Monte à esquerda; os dois mortos agrupados à direita, afastados do monte.
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // §3.6 o monte fica escondido durante o palpite da distribuição certeira (nenhuma carta à vista, §3.3).
             val stockCount = countText(R.plurals.card_count, R.string.card_count_zero, view.stockSize)
-            val stockLabel = stringResource(R.string.stock) + ", " + stockCount
+            val stockLabel = stringResource(R.string.stock) + (if (state.isDealGuessing) "" else ", $stockCount")
             Row(
                 Modifier
                     .heightIn(min = 48.dp)
@@ -1301,10 +1394,15 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (view.stockSize > 0) DeckStack(view.stockSize, AnimAnchor.Stock) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
-                Column {
+                if (state.isDealGuessing) {
+                    Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
                     Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
-                    GCounterPill(view.stockSize.toString(), icon = { CardsGlyph(TableAccent) })
+                } else {
+                    if (view.stockSize > 0) DeckStack(view.stockSize, AnimAnchor.Stock) else Spacer(Modifier.width(CardSize.SMALL.width).anchor(AnimAnchor.Stock))
+                    Column {
+                        Text(stringResource(R.string.stock), color = OnTable, style = MaterialTheme.typography.labelMedium)
+                        GCounterPill(view.stockSize.toString(), icon = { CardsGlyph(TableAccent) })
+                    }
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -1606,7 +1704,13 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
                         .semantics { contentDescription = ownLastText }
                         .testTag("own-last-play"),
                     contentAlignment = Alignment.Center,
-                ) { GMedallion(Modifier.size(34.dp), active = state.isHumanTurn) { PersonaAvatar(it, 28.dp) } }
+                ) {
+                    GMedallion(Modifier.size(34.dp), active = state.isHumanTurn) { PersonaAvatar(it, 28.dp) }
+                    // §3.6 (15/11/2026): o selo permanente do palpite aparece "em TODAS as telas, inclusive a do
+                    // próprio jogador" — aqui, perto do próprio avatar (a mesa não tem uma pílula do próprio
+                    // assento, §1 do glossário: ela só existe para OS OUTROS jogadores).
+                    DealGuessBadges(state.snapshot.view.dealGuess, state.snapshot.viewerSeat, Modifier.align(Alignment.TopEnd))
+                }
             }
             // §17.3 os boosters do jogo, à direita do avatar.
             BoosterStrip(state)
@@ -1696,17 +1800,37 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
                 CardEmphasis.DIMMED -> notWithSelectionText
                 CardEmphasis.NONE -> ""
             }
-            if (state.handHidden) {
-                // Mão escondida: só o verso (nada revelado); tocar avisa para mostrar as cartas.
-                val hiddenText = stringResource(R.string.card_hidden)
-                Box(
-                    Modifier
-                        .anchor(AnimAnchor.HandCard(card))
-                        .clickable(onClickLabel = hiddenText) { events.onCardClick(card) }
-                        .semantics { contentDescription = hiddenText }
-                        .testTag("hand-card-hidden"),
-                ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
-                return@forEach
+            // §3.8.1/§3.8.2 (15/11/2026): [OwnHandCover.DEALING] (distribuição em andamento, só apresentação
+            // local) tem prioridade sobre [OwnHandCover.HIDDEN] ("Esconder cartas" do multijogador) — ver
+            // [ownHandCover]. Nenhum dos dois é uma jogada: nenhum entra em `legalActions`.
+            when (ownHandCover(state.dealPending, state.handHidden)) {
+                OwnHandCover.DEALING -> {
+                    // Não é uma jogada nem precisa ser sincronizado pela rede (a distribuição que conta é a desta
+                    // tela); vira sozinha, sem toque nenhum, quando `dealPending` zera (`dealDone`). Sem clique
+                    // (não é uma escolha do jogador, como `handHidden` é) nem seleção.
+                    val dealingText = stringResource(R.string.card_dealing)
+                    Box(
+                        Modifier
+                            .anchor(AnimAnchor.HandCard(card))
+                            .alpha(if (card in landing) 0f else 1f)
+                            .semantics { contentDescription = dealingText }
+                            .testTag("hand-card-dealing"),
+                    ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
+                    return@forEach
+                }
+                OwnHandCover.HIDDEN -> {
+                    // Mão escondida: só o verso (nada revelado); tocar avisa para mostrar as cartas.
+                    val hiddenText = stringResource(R.string.card_hidden)
+                    Box(
+                        Modifier
+                            .anchor(AnimAnchor.HandCard(card))
+                            .clickable(onClickLabel = hiddenText) { events.onCardClick(card) }
+                            .semantics { contentDescription = hiddenText }
+                            .testTag("hand-card-hidden"),
+                    ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
+                    return@forEach
+                }
+                OwnHandCover.NONE -> Unit
             }
             PlayingCard(
                 card,
@@ -2149,14 +2273,51 @@ private fun Map<AnimAnchor, Rect>.tableTarget(anchor: AnimAnchor): Rect? = when 
     else -> null
 }
 
-private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?): Rect? = when (anchor) {
+private fun Map<AnimAnchor, Rect>.resolve(anchor: AnimAnchor, card: Card?, dealMarginPx: Float = 0f): Rect? = when (anchor) {
     is AnimAnchor.OwnHand -> card?.let { this[AnimAnchor.HandCard(it)] } ?: this[anchor]
     is AnimAnchor.DiscardPile -> card?.let { this[AnimAnchor.DiscardCard(it)] } ?: this[anchor]
     is AnimAnchor.Meld ->
         card?.let { this[AnimAnchor.MeldCard(anchor.side, anchor.meldId, it)] } ?: this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
     is AnimAnchor.RedThrees ->
         card?.let { this[AnimAnchor.RedThreeCard(anchor.side, it)] } ?: this[anchor] ?: this[AnimAnchor.SideArea(anchor.side)]
+    // Distribuição inicial (telas.md 3.8.1): sem elemento próprio na tela, o ponto é calculado a partir dos
+    // limites da mesa, bem fora da borda pedida (a carta visivelmente entra vindo de fora) — BOTTOM (R12, o
+    // próprio jogador) prefere [AnimAnchor.OwnHand], perto da própria mão, em vez do fundo da tela inteira.
+    is AnimAnchor.DealEntry -> dealEntryOrigin(anchor.edge, this[AnimAnchor.TableBounds], this[AnimAnchor.OwnHand], dealMarginPx)
     else -> this[anchor]
+}
+
+/** Ponto bem fora de [bounds], pela [edge] pedida, para a origem de [AnimAnchor.DealEntry] (telas.md 3.8.1). A
+ * coordenada perpendicular à borda é o centro da mesa nessa direção: não precisa alinhar a nenhum elemento. */
+internal fun dealEntryPoint(bounds: Rect, edge: TableEdge, margin: Float): Rect {
+    val point = when (edge) {
+        TableEdge.TOP -> Offset(bounds.center.x, bounds.top - margin)
+        TableEdge.BOTTOM -> Offset(bounds.center.x, bounds.bottom + margin)
+        TableEdge.LEFT -> Offset(bounds.left - margin, bounds.center.y)
+        TableEdge.RIGHT -> Offset(bounds.right + margin, bounds.center.y)
+    }
+    return Rect(point, Size.Zero)
+}
+
+/**
+ * §3.8.1 R12 (correção de 15/11/2026, bug relatado pelo usuário): a origem da leva da distribuição do PRÓPRIO
+ * jogador ([TableEdge.BOTTOM], `SeatRole.YOU -> TableEdge.BOTTOM` em `TableAnimations.dealEntryEdge`) saía do
+ * **fundo da tela inteira** (`AnimAnchor.TableBounds`, um `Box` que ocupa até a barra de ações embaixo da mão —
+ * `TableScreen.kt`, `Modifier.fillMaxSize().padding(padding).anchor(AnimAnchor.TableBounds)`), não perto da mão
+ * como os demais lados saem perto do respectivo elemento. Em vez de recalcular "o contorno visível da mesa" (o
+ * fundo real já fica longe da mão, atrás de toda a área de comandos), usa [ownHandBounds] (`AnimAnchor.OwnHand`)
+ * como a referência: um ponto a partir do **topo** desse retângulo, com a mesma margem [margin] "para fora" dos
+ * demais lados (ou seja, ainda mais para cima, fora da mão, dentro da área de jogos/mesa) — a carta nasce
+ * visivelmente fora da área antes de voar para dentro da mão, igual aos outros lados. Os outros três lados
+ * (TOP/LEFT/RIGHT) não têm o mesmo bug (a posição deles já corresponde às bordas reais da mesa) e continuam em
+ * [dealEntryPoint] com [tableBounds]. Sem [ownHandBounds] ainda medido (1º quadro), cai no cálculo antigo como
+ * rede de segurança, para nunca ficar sem nenhum ponto de origem.
+ */
+internal fun dealEntryOrigin(edge: TableEdge, tableBounds: Rect?, ownHandBounds: Rect?, margin: Float): Rect? {
+    if (edge == TableEdge.BOTTOM && ownHandBounds != null) {
+        return Rect(Offset(ownHandBounds.center.x, ownHandBounds.top - margin), Size.Zero)
+    }
+    return tableBounds?.let { dealEntryPoint(it, edge, margin) }
 }
 
 /** Fase de um voo no relógio compartilhado: antes do seu atraso, voando, ou já pousado. */
@@ -2217,15 +2378,24 @@ private fun FlyingCard(
     val density = LocalDensity.current
     val half = with(density) { Offset(size.width.toPx() / 2, size.height.toPx() / 2) }
     val arcPx = with(density) { 36.dp.toPx() }
-    val flips = flight.card != null && flight.from == AnimAnchor.Stock
+    // Margem generosa (ao menos o tamanho da carta) para AnimAnchor.DealEntry: a carta nasce visivelmente fora da
+    // mesa, não apenas encostada na borda (telas.md 3.8.1). Sem efeito nos demais tipos de âncora.
+    val dealMarginPx = with(density) { maxOf(size.width, size.height).toPx() + 24.dp.toPx() }
+    // A distribuição inicial entra de fora da mesa (AnimAnchor.DealEntry), não do monte, mas também é informação
+    // oculta virando de costas para frente (telas.md 3.8.1) — EXCETO para a própria mão ([AnimAnchor.OwnHand]):
+    // enquanto a distribuição ainda está em andamento essas cartas ficam de costas até TODA ela terminar
+    // ([GameUiState.dealPending], telas-app.md 3.8.2), nunca virando no meio do voo — sem isso a carta mostraria a
+    // face por um instante e voltaria a ficar de costas ao pousar (coberta pelo `CardBack` real da mão).
+    val dealingToOwnHand = flight.to == AnimAnchor.OwnHand && flight.from is AnimAnchor.DealEntry
+    val flips = flight.card != null && !dealingToOwnHand && (flight.from == AnimAnchor.Stock || flight.from is AnimAnchor.DealEntry)
     // Progresso (0..1) desta carta a cada quadro: derivado do relógio compartilhado, nunca da sua própria animação.
     fun t(): Float = FastOutSlowInEasing.transform(((clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis).coerceIn(0f, 1f))
     Box(
         Modifier
             .offset {
                 // Lido a cada quadro: acompanha rolagem e o conjunto novo que aparece no destino.
-                val from = anchors.resolve(flight.from, flight.card)?.center ?: return@offset IntOffset(-10_000, -10_000)
-                val to = anchors.resolve(flight.to, flight.card)?.center ?: from
+                val from = anchors.resolve(flight.from, flight.card, dealMarginPx)?.center ?: return@offset IntOffset(-10_000, -10_000)
+                val to = anchors.resolve(flight.to, flight.card, dealMarginPx)?.center ?: from
                 val t = t()
                 // Trajeto em curva: sobe um pouco no meio do caminho.
                 val arc = Offset(0f, -arcPx * sin(PI.toFloat() * t))
@@ -2247,7 +2417,8 @@ private fun FlyingCard(
         // Derivado à parte: só recompõe quando o booleano muda (no cruzamento dos 50%), não a cada quadro.
         val showFace by remember {
             derivedStateOf {
-                flight.card != null && (!flips || (clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis >= 0.5f)
+                flight.card != null && !dealingToOwnHand &&
+                    (!flips || (clock.floatValue - readyAtMillis - delayMillis) / cardDurationMillis >= 0.5f)
             }
         }
         if (showFace) PlayingCard(flight.card!!, size = size, describe = false) else CardBack(size = size, describe = false)

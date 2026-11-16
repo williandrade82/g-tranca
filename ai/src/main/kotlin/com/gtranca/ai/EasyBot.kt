@@ -30,6 +30,9 @@ import kotlin.random.Random
  * Erros propositais: em cada decisão, com probabilidade [mistakeRate], o bot compra do monte em vez de
  * pegar o lixo, deixa de baixar (e passa ao descarte) ou descarta uma carta qualquer.
  *
+ * 0. **Distribuição certeira** (§3.6/§14.5), antes da 1ª vez: acerta a largura do palpite com
+ *    probabilidade [EASY_DEAL_GUESS_ACCURACY] (5%), independente de [mistakeRate] ([chooseDealGuess]).
+ *
  * Só escolhe entre as ações recebidas; nunca valida regras.
  */
 class EasyBot(
@@ -45,6 +48,8 @@ class EasyBot(
     override fun chooseAction(view: PlayerView, legal: List<Action>): Action {
         require(legal.isNotEmpty()) { "Sem ações legais" }
         val chosen = when (view.phase) {
+            Phase.DEAL_GUESS_HAND, Phase.DEAL_GUESS_MORTO ->
+                chooseDealGuess(view, legal, random, EASY_DEAL_GUESS_ACCURACY)
             Phase.AWAITING_DRAW -> chooseDraw(view, legal)
             Phase.PLAYING -> chooseMeld(view, legal) ?: chooseDiscard(view, legal)
             Phase.FINISHED -> null
