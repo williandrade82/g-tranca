@@ -344,8 +344,12 @@ data class RecruitStart(val tableId: String, val prepareMillis: Long = PREPARE_M
 /** §16.15 tempo mínimo do "Prepare-se! O jogo vai começar!" nos celulares da mesa. */
 const val PREPARE_MILLIS: Long = 1_500
 
-/** Limite do texto Base64 da foto aceito na mesa (~15 KB de JPEG); maior é descartado. */
-const val MAX_PHOTO_BASE64: Int = 20_480
+/**
+ * Limite do texto Base64 da foto aceito na mesa (~105 KB de JPEG); maior é descartado. A mesa de lugares mostra a foto
+ * **inteira** (docs/telas.md 3.3, não mais um recorte pequeno em círculo), por isso o limite subiu de ~15 KB: ainda é
+ * uma transferência única e direta (Nearby Bytes), não repetida.
+ */
+const val MAX_PHOTO_BASE64: Int = 143_360
 
 
 /**

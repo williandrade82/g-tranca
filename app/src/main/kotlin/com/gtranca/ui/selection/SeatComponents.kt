@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -104,10 +106,10 @@ fun RobotStandee(profile: BotProfile, level: BotLevel, height: Dp, highlighted: 
 }
 
 /**
- * A foto do próprio jogador (ou do anfitrião) **inteira** na mesa de lugares (docs/telas.md 3.3), do tamanho de
- * [height] em altura; sem foto, o medalhão com a inicial continua redondo. [highlighted] marca a seleção pendente com
- * uma moldura dourada. Só para quem nunca leva selo nem anel de convite (o próprio jogador e o anfitrião); Chamado e
- * Recrutado continuam em [SealedAvatar], que precisa do círculo para o selo e o anel.
+ * A foto **inteira** na mesa de lugares (docs/telas.md 3.3) — do próprio jogador, do anfitrião ou de um Recrutado (já
+ * aceitou o convite) —, do tamanho de [height] em altura; sem foto, o medalhão com a inicial continua redondo.
+ * [highlighted] marca a seleção pendente com uma moldura dourada. Só para quem não leva mais selo nem anel de convite;
+ * o Chamado, ainda pendente, continua em [SealedAvatar], que precisa do círculo para os dois.
  */
 @Composable
 fun PersonaStandee(persona: Persona, height: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
@@ -336,9 +338,14 @@ fun SeatTable(
                     val profile = BotProfile.entries.firstOrNull { it.code == slot.persona } ?: BotProfile.entries.first()
                     RobotStandee(profile, level, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
                 }
-                index == viewerSeat || slot is Slot.Host -> {
-                    // A foto do próprio jogador ou do anfitrião, inteira: nunca leva selo nem anel de convite.
-                    val persona = if (index == viewerSeat) self else Persona(hostName, color = hostName.hashCode().mod(Persona.COLORS))
+                index == viewerSeat || slot is Slot.Host || slot is Slot.Recruited -> {
+                    // A foto inteira (própria, do anfitrião ou de quem já aceitou o convite): não leva mais selo nem
+                    // anel (o Recrutado já aceitou; só o Chamado, pendente, continua no círculo com os dois).
+                    val persona = when {
+                        index == viewerSeat -> self
+                        slot is Slot.Recruited -> Persona(slot.name, color = slot.key.hashCode().mod(Persona.COLORS), photoBytes = photos[slot.key])
+                        else -> Persona(hostName, color = hostName.hashCode().mod(Persona.COLORS))
+                    }
                     PersonaStandee(persona, avatarSize, highlighted = picked, modifier = Modifier.testTag("$tagPrefix-$index-$stateTag"))
                 }
                 slot is Slot.Vacant -> {
@@ -346,7 +353,7 @@ fun SeatTable(
                     VacantAvatar(avatarSize, picked, Modifier.testTag("$tagPrefix-$index-$stateTag"))
                 }
                 else -> {
-                    // Só sobra Chamado e Recrutado: continuam no círculo, que carrega o selo e o anel do convite.
+                    // Só sobra o Chamado: continua no círculo, que carrega o selo e o anel do convite.
                     SealedAvatar(
                         avatarSize, look.seal, look.dim, Modifier.heightIn(min = 48.dp).testTag("$tagPrefix-$index-$stateTag"),
                         highlighted = picked,
@@ -378,21 +385,33 @@ fun SeatTable(
                 SeatItem(soleOpponentIndex, PartnerAvatar, Modifier.align(Alignment.Center))
             }
         }
-        Image(
-            painterResource(R.drawable.home_table),
-            contentDescription = null,
-            modifier = Modifier.fillMaxWidth(0.92f).aspectRatio(1080f / 316f).offset(y = -TableRise).padding(bottom = 4.dp),
-            contentScale = ContentScale.FillWidth,
-        )
+        // BoxWithConstraints porque a mesa (30 % maior, docs/telas.md 3.3) passa da largura da coluna; o resto da tela
+        // não encolhe por causa disso (requiredWidth ignora as constraints de fora, só esta imagem transborda).
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            Image(
+                painterResource(R.drawable.home_table),
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .requiredWidth(maxWidth * TableWidthFraction)
+                    .aspectRatio(1080f / 316f)
+                    .offset(y = -TableRise)
+                    .padding(bottom = 4.dp),
+                contentScale = ContentScale.FillWidth,
+            )
+        }
         SeatItem(viewerSeat)
     }
 }
 
-/** Altura do parceiro (duplas) ou do único adversário (individual): maior, para ficar à frente dos demais. */
-private val PartnerAvatar = 108.dp
+/** Altura do parceiro (duplas) ou do único adversário (individual): maior, para ficar à frente dos demais (+30 %). */
+private val PartnerAvatar = 140.dp
 
-/** Altura dos adversários em duplas: um pouco menor que a do parceiro. */
-private val OpponentAvatar = 80.dp
+/** Altura dos adversários em duplas: um pouco menor que a do parceiro (+30 %). */
+private val OpponentAvatar = 104.dp
+
+/** Fração da largura da coluna que a mesa ocupa (+30 % sobre os 92 % de antes); pode passar de 100 %. */
+private const val TableWidthFraction = 1.2f
 
 /** Quanto os adversários descem em relação ao parceiro, quase encostando na mesa. */
 private val OpponentDrop = 18.dp

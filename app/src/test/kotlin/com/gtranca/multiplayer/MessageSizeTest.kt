@@ -42,8 +42,10 @@ class MessageSizeTest {
     fun `§16_2 a foto do perfil no maior tamanho aceito cabe com folga numa mensagem`() {
         val codec = ProtocolCodec()
         val photo = "A".repeat(com.gtranca.net.MAX_PHOTO_BASE64)
-        codec.encode(1, com.gtranca.net.PlayerPhoto(3, photo)).size shouldBeLessThan 24_000
-        codec.encode(1, com.gtranca.net.Hello("Ana", photo = photo)).size shouldBeLessThan 24_000
+        // Mostrada inteira na mesa de lugares (docs/telas.md 3.3, não mais um recorte pequeno em círculo): o teto subiu
+        // de ~24 KB para ~150 KB; ainda uma fração do payload BYTES do Nearby (1 047 552 bytes), que o outro teste cobre.
+        codec.encode(1, com.gtranca.net.PlayerPhoto(3, photo)).size shouldBeLessThan 150_000
+        codec.encode(1, com.gtranca.net.Hello("Ana", photo = photo)).size shouldBeLessThan 150_000
         // Sem foto, o Hello não leva nada a mais.
         codec.encode(1, com.gtranca.net.Hello("Ana")).decodeToString().contains("photo") shouldBe false
     }
