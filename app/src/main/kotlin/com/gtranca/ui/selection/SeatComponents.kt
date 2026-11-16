@@ -376,8 +376,8 @@ fun SeatTable(
         if (partnerIndex != null) {
             // zIndex à frente da mesa (vem depois, no mesmo Column): o parceiro e os adversários ficam por cima dela.
             Box(Modifier.fillMaxWidth().zIndex(1f)) {
-                leftIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopStart).offset(x = OpponentInset, y = OpponentDrop)) }
-                rightIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopEnd).offset(x = -OpponentInset, y = OpponentDrop)) }
+                leftIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopStart).offset(x = -OpponentShift, y = OpponentDrop)) }
+                rightIndex?.let { SeatItem(it, OpponentAvatar, Modifier.align(Alignment.TopEnd).offset(x = OpponentShift, y = OpponentDrop)) }
                 SeatItem(partnerIndex, PartnerAvatar, Modifier.align(Alignment.TopCenter))
             }
         } else if (soleOpponentIndex != null) {
@@ -416,8 +416,9 @@ private const val TableWidthFraction = 1.2f
 /** Quanto os adversários descem em relação ao parceiro, quase encostando na mesa. */
 private val OpponentDrop = 18.dp
 
-/** Quanto os adversários entram por baixo do parceiro (robôs grandes e próximos uns dos outros). */
-private val OpponentInset = 26.dp
+/** Quanto os adversários deslocam para a própria borda (esquerda foge mais à esquerda, direita mais à direita):
+ * 40 % do tamanho do quadrado do avatar. */
+private val OpponentShift = OpponentAvatar * 0.4f
 
 /** Quanto a mesa sobe por cima dos perfis (docs/telas.md 3.3): precisa sobrepor pelo menos um pouco. */
 private val TableRise = 14.dp
