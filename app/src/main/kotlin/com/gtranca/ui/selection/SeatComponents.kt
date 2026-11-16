@@ -243,6 +243,13 @@ private fun slotLook(
 internal fun seatAt(bounds: Map<Int, Rect>, point: Offset): Int? = bounds.entries.firstOrNull { it.value.contains(point) }?.key
 
 /**
+ * A fração da largura da tela que a coluna de [SeatTable] ocupa (20 % menor que a largura toda, docs/telas.md 3.3):
+ * tanto na tela do anfitrião (`PlayerSelectionScreen`) quanto na do recrutado (`RecruitedTableScreen`), pra uma
+ * mesa de rede não aparecer maior que a outra (achado 16/11/2026).
+ */
+const val TABLE_WIDTH_FRACTION = 0.8f
+
+/**
  * A mesa de lugares (docs/telas.md 3.3 e 3.13): a imagem da mesa (a mesma do Início) com os lugares **acima** dela —
  * em duplas, adversário esquerda / parceiro / adversário direita; no individual, só o adversário — e o jogador de
  * [viewerSeat] sempre **embaixo**. Interativa só para o recrutador ([interactive]): tocar escolhe/abre o menu e

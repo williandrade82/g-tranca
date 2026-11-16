@@ -67,9 +67,6 @@ import com.gtranca.ui.tour.Tours
 import com.gtranca.ui.tour.tourTarget
 import kotlinx.coroutines.flow.collectLatest
 
-/** A fração da largura que a mesa de lugares ocupa (20 % menor que a largura toda, docs/telas.md 3.3). */
-private const val TABLE_WIDTH_FRACTION = 0.8f
-
 /** A dica de uma linha sob a mesa, conforme a seleção pendente (docs/telas.md 3.3). */
 internal fun selectionHintRes(sel: Selection?, layout: com.gtranca.net.TableLayout): Int = when (sel) {
     null -> R.string.selection_hint_idle
