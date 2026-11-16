@@ -1022,19 +1022,16 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
         onDispose { if (!started) com.gtranca.multiplayer.MultiplayerHub.closeRecruiting() }
     }
     val start: () -> Unit = start@{
-        // §16.2 "Começar Partida" só fica inativo com um Chamado pendente; faltando gente, completa com robôs aqui.
+        // §16.2 "Começar Partida" só fica inativo com um Chamado pendente; faltando gente, o botão só sorteia robôs
+        // nos lugares vagos (sem começar); só com a mesa cheia ele começa a partida.
         if (vm.layout.hasCalled || starting || started) return@start
+        if (!vm.layout.isFull) {
+            vm.onFill()
+            return@start
+        }
         starting = true
         scope.launch {
             val live = rec
-            if (!vm.layout.isFull) {
-                if (live != null) {
-                    live.fillWithRobots(com.gtranca.game.Tables.personaPool, vm.seed)
-                    live.layout.value?.let(vm::onRemoteLayout)
-                } else {
-                    vm.onFill()
-                }
-            }
             if (live != null && vm.hasRemotes) {
                 // §16.2 em rede: os recrutados entram direto; a camada "Prepare-se!" cobre a tela até o jogo começar.
                 val tableId = com.gtranca.net.nearby.newTableId()
@@ -1054,8 +1051,12 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
                 }
             } else {
                 // §16.3 mesa só com robôs: o jogo começa no próprio aparelho, sem rede (o "Prepare-se!" fica na mesa).
+                // Nunca passa por `live` (nem para encher os lugares, nem para encerrar o recrutamento): o
+                // recrutamento recém-aberto (`openTable`/`setFree`, acionados ao abrir esta tela) pode ainda estar
+                // ocupando o mutex com uma chamada Nearby em andamento — esperar por ele aqui era o que travava a
+                // tela ao tocar Iniciar na hora (achado 16/11/2026). `closeRecruiting()` fecha pelo hub, sem esperar.
                 started = true
-                live?.closeHosting()
+                com.gtranca.multiplayer.MultiplayerHub.closeRecruiting()
                 starting = false
                 navController.startGame(config, vm.seed, com.gtranca.game.Tables.relativeRobots(config.mode, com.gtranca.engine.model.Seat(0), vm.layout.robots))
             }

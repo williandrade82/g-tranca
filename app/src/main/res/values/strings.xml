@@ -700,7 +700,7 @@
     <string name="tour_sel_table">A mesa: você fica embaixo. Toque num robô ou jogador e depois num lugar, ou ao contrário; toque em dois lugares para trocar. A dica embaixo da mesa explica cada passo.</string>
     <string name="tour_sel_robots">Os robôs que podem ocupar os lugares. O que já está sentado fica esmaecido. Para tirar alguém da mesa, toque nele e depois num item desta lista.</string>
     <string name="tour_sel_multiplayer">Com o Wi-Fi ligado, você chama jogadores por perto. Eles aparecem aqui; quem você chamou fica com o selo Chamado até responder.</string>
-    <string name="tour_sel_start">Preenche os lugares vagos com robôs e começa; só fica inativo com alguém sendo chamado.</string>
+    <string name="tour_sel_start">Com lugar vago, sorteia robôs; com a mesa cheia, começa a partida. Só fica inativo com alguém sendo chamado.</string>
     <string name="tables_select_players">Selecionar jogadores</string>
     <string name="tables_recruiters_title">Jogadores recrutando</string>
     <string name="tables_recruiters_empty">Ninguém recrutando por perto</string>
@@ -712,6 +712,7 @@
     <string name="selection_multiplayer">Multiplayer</string>
     <string name="selection_nobody_free">Ninguém livre por perto</string>
     <string name="selection_start">Começar Partida</string>
+    <string name="selection_fill_robots">Sortear robôs / Começar Partida</string>
     <string name="selection_cannot_call">Não deu para chamar esse jogador</string>
     <string name="selection_summary">%1$s · %2$s · %3$d moedas · %4$s</string>
     <string name="a11y_seat_vacant">Lugar %1$d, vago</string>
