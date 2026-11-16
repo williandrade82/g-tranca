@@ -119,9 +119,10 @@ fun PlayerSelectionScreen(
             "player-selection",
             bottom = {
                 BottomButton(stringResource(R.string.back), "selection-back", GButtonKind.Secondary, enabled = !starting, weight = 0.7f, onClick = onBack)
-                // §16.2 falta gente? "Começar Partida" completa com robôs antes de começar (onStart, em AppNavHost); só fica
-                // inativo com um Chamado pendente (não dá para decidir por ele).
-                BottomButton(stringResource(R.string.selection_start), "start-match", GButtonKind.Primary, enabled = !ui.layout.hasCalled && !starting, weight = 1.3f, onClick = onStart)
+                // §16.2 falta gente? o botão só sorteia robôs nos lugares vagos (onStart, em AppNavHost); com a mesa
+                // cheia ele começa a partida. Só fica inativo com um Chamado pendente (não dá para decidir por ele).
+                val startLabel = if (ui.layout.isFull) stringResource(R.string.selection_start) else stringResource(R.string.selection_fill_robots)
+                BottomButton(startLabel, "start-match", GButtonKind.Primary, enabled = !ui.layout.hasCalled && !starting, weight = 1.3f, onClick = onStart)
             },
             titleExtra = { TourButton(startTour) },
         ) {

@@ -55,6 +55,9 @@ class PersistenceFlowTest {
         rule.onNodeWithTag("difficulty-facil").performClick()
         rule.onNodeWithTag("select-players").performClick()
         rule.waitUntil(10_000) { exists("player-selection") }
+        // 1º toque em Começar Partida sorteia o robô que falta; o 2º começa.
+        rule.onNodeWithTag("start-match").performClick()
+        rule.waitForIdle()
         rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(30_000) {
             rule.onAllNodes(hasTestTag("action-draw") and isEnabled()).fetchSemanticsNodes().isNotEmpty()

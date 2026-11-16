@@ -1022,16 +1022,17 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
         onDispose { if (!started) com.gtranca.multiplayer.MultiplayerHub.closeRecruiting() }
     }
     val start: () -> Unit = start@{
-        // §16.2 "Começar Partida" só fica inativo com um Chamado pendente; faltando gente, completa com robôs aqui.
+        // §16.2 "Começar Partida" só fica inativo com um Chamado pendente; faltando gente, o botão só sorteia robôs
+        // nos lugares vagos (sem começar); só com a mesa cheia ele começa a partida.
         if (vm.layout.hasCalled || starting || started) return@start
+        if (!vm.layout.isFull) {
+            vm.onFill()
+            return@start
+        }
         starting = true
         scope.launch {
             val live = rec
             if (live != null && vm.hasRemotes) {
-                if (!vm.layout.isFull) {
-                    live.fillWithRobots(com.gtranca.game.Tables.personaPool, vm.seed)
-                    live.layout.value?.let(vm::onRemoteLayout)
-                }
                 // §16.2 em rede: os recrutados entram direto; a camada "Prepare-se!" cobre a tela até o jogo começar.
                 val tableId = com.gtranca.net.nearby.newTableId()
                 // §16.2, §16.15 ordem do início: 1) plano; 2) larga a leitura dos eventos; 3) abre a mesa e ANUNCIA; 4) só então envia
@@ -1057,8 +1058,7 @@ private fun PlayerSelectionDestination(route: SelectionRoute, data: GameData, na
                 started = true
                 com.gtranca.multiplayer.MultiplayerHub.closeRecruiting()
                 starting = false
-                val seats = if (vm.layout.isFull) vm.layout else vm.layout.fillWithRobots(com.gtranca.game.Tables.personaPool, kotlin.random.Random(vm.seed))
-                navController.startGame(config, vm.seed, com.gtranca.game.Tables.relativeRobots(config.mode, com.gtranca.engine.model.Seat(0), seats.robots))
+                navController.startGame(config, vm.seed, com.gtranca.game.Tables.relativeRobots(config.mode, com.gtranca.engine.model.Seat(0), vm.layout.robots))
             }
         }
     }

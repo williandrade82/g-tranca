@@ -66,10 +66,12 @@ class HomeToTableTest {
         rule.waitUntil(10_000) { exists("tables-screen") }
     }
 
-    /** §16.3 "Selecionar jogadores" → mesa só com robôs: Começar Partida completa sozinho e, depois do "Prepare-se!", o jogo. */
+    /** §16.3 "Selecionar jogadores" → mesa só com robôs: o 1º toque em "Começar Partida" sorteia os robôs que faltam; o 2º começa (depois do "Prepare-se!", o jogo). */
     private fun chooseSeatsAndStart() {
         rule.onNodeWithTag("select-players").performClick()
         rule.waitUntil(10_000) { exists("player-selection") }
+        rule.onNodeWithTag("start-match").performClick()
+        rule.waitForIdle()
         rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(10_000) { exists("table-screen") }
     }
@@ -97,7 +99,9 @@ class HomeToTableTest {
         rule.onNodeWithTag("seat-hint").assertExists()
         rule.onNodeWithTag("seat-1").performClick()
         rule.onNodeWithTag("seat-1-vacant", useUnmergedTree = true).assertDoesNotExist()
-        // Começar Partida completa o resto sozinho com robôs.
+        // 1º toque em Começar Partida sorteia o resto com robôs; o 2º começa.
+        rule.onNodeWithTag("start-match").performClick()
+        rule.waitForIdle()
         rule.onNodeWithTag("start-match").performClick()
         rule.waitUntil(10_000) { exists("table-screen") }
     }
