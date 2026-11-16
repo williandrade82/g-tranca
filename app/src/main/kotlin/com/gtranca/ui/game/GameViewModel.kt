@@ -369,8 +369,6 @@ class GameViewModel(
      * seguem com os mesmos. `null` = sem boosters (testes e mesa multijogador).
      */
     val boosterInventory: com.gtranca.data.InventoryRepository? = null,
-    /** TEMPORÁRIO (pedido do usuário, 2026-11-14, ajustado 14/11/2026): ver `GameController.forcePartnerDeals` (§3.6, testes). */
-    private val forcePartnerDeals: Boolean = false,
 ) : ViewModel(), TableEvents {
 
     private val config = config
@@ -534,7 +532,6 @@ class GameViewModel(
             restored = restored,
             // Só repassa a foto; serializar e gravar fica com o consumidor em IO (não atrasa o laço).
             onSave = if (persistence == null) null else ::enqueueSave,
-            forcePartnerDeals = forcePartnerDeals,
         ),
         human,
     )

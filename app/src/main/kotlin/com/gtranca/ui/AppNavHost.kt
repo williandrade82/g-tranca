@@ -575,8 +575,8 @@ private fun GameDestination(route: GameRoute, data: GameData, navController: Nav
                             boosterInventory = data.inventory,
                         )
                     } else {
-                        // forcePartnerDeals: TEMPORÁRIO (pedido do usuário, 2026-11-14, ajustado 14/11/2026) — ver GameController.forcePartnerDeals.
-                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory, forcePartnerDeals = true)
+                        // §4.1 jogador inicial da 1ª partida: aleatório (startMatch sorteia quando firstSeat não é passado).
+                        GameViewModel(route.toConfig(), gameSeed = route.seed ?: Random.nextLong(), gameId = newGameId, persistence = persistence, initialHand = ready.hand, playerProfile = ready.profile, playerPhoto = photoPath, slowAnimations = ready.slow, robots = route.robotMap(), initialBoosters = firstBoosters, boosterInventory = data.inventory)
                     }
                 }
                 session.started = true
