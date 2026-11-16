@@ -1918,6 +1918,12 @@ private fun ManualHandFlow(cards: List<Card>, state: GameUiState, events: TableE
     val bounds = remember { mutableStateMapOf<Card, Rect>() }
     var dragCard by remember { mutableStateOf<Card?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    // Posição da arrastada no instante em que o gesto começou: fixa, nunca atualizada durante o arrasto (ao
+    // contrário de bounds[card], que muda assim que ela troca de linha/posição em draft). O deslocamento visual é
+    // sempre calculado contra essa referência fixa, nunca contra a posição de layout atual — senão, ao mudar de
+    // linha, a carta "perdia a referência" e pulava pro layout novo somado ao deslocamento de antes (achado
+    // 16/11/2026).
+    var dragStartRect by remember { mutableStateOf<Rect?>(null) }
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
@@ -1946,17 +1952,29 @@ private fun ManualHandFlow(cards: List<Card>, state: GameUiState, events: TableE
                     .zIndex(if (dragging) 2f else 0f)
                     .onGloballyPositioned { bounds[card] = it.boundsInRoot() }
                     .graphicsLayer {
-                        translationX = if (dragging) dragOffset.x else animX.value
-                        translationY = if (dragging) dragOffset.y else animY.value
+                        if (dragging) {
+                            // Alvo = onde a carta deveria estar (referência fixa do início + o quanto o dedo já
+                            // andou); a tradução é só o ajuste entre isso e onde o layout ATUAL (que pode ter
+                            // mudado de linha, com `draft` reordenando) já a colocou.
+                            val start = dragStartRect
+                            val current = bounds[card]
+                            if (start != null && current != null) {
+                                translationX = (start.left + dragOffset.x) - current.left
+                                translationY = (start.top + dragOffset.y) - current.top
+                            }
+                        } else {
+                            translationX = animX.value
+                            translationY = animY.value
+                        }
                     }
                     .pointerInput(card) {
                         detectDragGestures(
-                            onDragStart = { dragCard = card; dragOffset = Offset.Zero },
+                            onDragStart = { dragCard = card; dragOffset = Offset.Zero; dragStartRect = bounds[card] },
                             onDrag = { change, amount ->
                                 change.consume()
                                 dragOffset += amount
-                                val origin = bounds[card] ?: return@detectDragGestures
-                                val point = origin.center + dragOffset
+                                val start = dragStartRect ?: return@detectDragGestures
+                                val point = start.center + dragOffset
                                 val target = bounds.entries.firstOrNull { (other, box) -> other != card && box.contains(point) }?.key
                                 val from = draft.indexOf(card)
                                 val to = target?.let { draft.indexOf(it) } ?: -1
@@ -1964,8 +1982,8 @@ private fun ManualHandFlow(cards: List<Card>, state: GameUiState, events: TableE
                                     draft = draft.toMutableList().apply { add(to, removeAt(from)) }
                                 }
                             },
-                            onDragEnd = { dragCard = null; dragOffset = Offset.Zero; events.onHandReorder(draft) },
-                            onDragCancel = { dragCard = null; dragOffset = Offset.Zero },
+                            onDragEnd = { dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; events.onHandReorder(draft) },
+                            onDragCancel = { dragCard = null; dragOffset = Offset.Zero; dragStartRect = null },
                         )
                     }
                 HandCardItem(card, state, events, strings, hasSelection, greenLed, landing, extra)
