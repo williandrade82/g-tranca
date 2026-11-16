@@ -69,6 +69,12 @@ class HandOrderTest {
     }
 
     @Test
+    fun `preferencia MANUAL grava sem SPECIAL (a separacao nao existe no arrasto)`() {
+        HandPrefs(HandSort.MANUAL, separateSpecial = false).id shouldBe "MANUAL"
+        HandPrefs.parse("MANUAL") shouldBe HandPrefs(HandSort.MANUAL, false)
+    }
+
+    @Test
     fun `coluna fixa ganha mais uma carta de largura quando ha mais 2-3 que linhas`() {
         // 7 cartas por linha sem a coluna; cada coluna tira uma do fluxo.
         val perRow = { columns: Int -> 7 - columns }

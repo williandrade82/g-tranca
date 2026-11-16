@@ -242,6 +242,78 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `16-11-2026 HandSort MANUAL semeia da mao exibida, arrasta, poe carta nova no fim e some a jogada`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        // Entra em MANUAL vendo a mão em Naipe (padrão): semeia exatamente essa ordem, sem embaralhar nada; sem
+        // coluna separada (MANUAL nunca separa).
+        val bySuit = vm.uiState.value.hand
+        vm.onSortChange(HandSort.MANUAL)
+        advanceUntilIdle()
+        vm.uiState.value.sort shouldBe HandSort.MANUAL
+        vm.uiState.value.customHand.shouldBeNull()
+        vm.uiState.value.hand shouldBe bySuit
+
+        // Arrasto: a 2ª carta vai pro começo.
+        val reordered = bySuit.toMutableList().apply { add(0, removeAt(1)) }
+        vm.onHandReorder(reordered)
+        advanceUntilIdle()
+        vm.uiState.value.hand shouldBe reordered
+
+        // Carta nova (compra do monte) sempre no fim, sem mudar a ordem das demais.
+        vm.onDraw()
+        advanceUntilIdle()
+        val afterDraw = vm.uiState.value.hand
+        afterDraw.dropLast(1) shouldBe reordered
+        afterDraw.size shouldBe reordered.size + 1
+
+        // Jogada (descarte) tira a carta do meio sem embaralhar o resto.
+        val discard = vm.uiState.value.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+        val discardedCard = vm.uiState.value.physical(listOf(discard.card)).first()
+        vm.select(listOf(discardedCard))
+        vm.onDiscard()
+        advanceUntilIdle()
+        vm.uiState.value.hand shouldBe afterDraw - discardedCard
+    }
+
+    @Test
+    fun `sair de MANUAL e voltar semeia de novo (nunca reaparece a ordem arrastada antiga)`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        val bySuit = vm.uiState.value.hand
+        vm.onSortChange(HandSort.MANUAL)
+        advanceUntilIdle()
+        val reordered = bySuit.reversed()
+        vm.onHandReorder(reordered)
+        advanceUntilIdle()
+        vm.uiState.value.hand shouldBe reordered
+
+        vm.onSortChange(HandSort.BY_RANK)
+        advanceUntilIdle()
+        val byRank = vm.uiState.value.hand
+        byRank shouldNotBe reordered // o critério de Valor não coincide com o arrasto que tínhamos feito
+
+        vm.onSortChange(HandSort.MANUAL)
+        advanceUntilIdle()
+        // Semeou da mão exibida em Valor agora, não da ordem arrastada de antes (essa nunca é gravada).
+        vm.uiState.value.hand shouldBe byRank
+    }
+
+    @Test
+    fun `abrir ja em MANUAL (preferencia do perfil) semeia da ordem natural, sem precisar de arrasto nenhum`() = runTest(dispatcher) {
+        // Como depois de restaurar o jogo salvo: `manualOrder` nasce vazio (nunca é gravado no perfil) e a mão se
+        // auto-semeia na 1ª tela, exatamente como se o jogador tivesse acabado de trocar para MANUAL.
+        val vm = GameViewModel(
+            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
+            gameSeed = 3, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
+            initialHand = com.gtranca.game.HandPrefs(HandSort.MANUAL),
+        )
+        advanceUntilIdle()
+        settle(vm)
+        vm.uiState.value.sort shouldBe HandSort.MANUAL
+        vm.uiState.value.customHand.shouldBeNull()
+        vm.uiState.value.hand shouldContainExactly vm.uiState.value.snapshot.view.hand
+    }
+
+    @Test
     fun `comprar, recusa explicada, baixar com a outra copia e descartar tocando no lixo`() = runTest(dispatcher) {
         // Procura uma semente em que o humano possa baixar depois de comprar.
         var vm: GameViewModel? = null

@@ -421,6 +421,12 @@ class GameViewModel(
         val selected: List<Card> = emptyList(),
         val sort: HandSort = HandSort.BY_SUIT,
         val separateSpecial: Boolean = true,
+        /**
+         * Ordem arrastada pelo jogador em `HandSort.MANUAL`: só o que ele já posicionou (o resto da mão entra no fim,
+         * pela ordem natural, em [build]). Nunca gravada no perfil — só o critério (`sort`) é; cada mão nova recomeça
+         * vazia e se auto-semeia na ordem natural.
+         */
+        val manualOrder: List<Card> = emptyList(),
         val newCards: Set<Card> = emptySet(),
         /** Trocas de 3 vermelho a encenar, em ordem; a primeira está na tela. */
         val swaps: List<RedThreeNotice> = emptyList(),
@@ -970,8 +976,15 @@ class GameViewModel(
             .flatMap { it.cards }
             .filter { it !in snapshot.view.hand }
         val visibleHand = snapshot.view.hand.filter { it !in hidden } + ownPending
-        val split = if (state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
-        val hand = split?.all ?: HandOrder.sort(visibleHand, state.sort)
+        // HandSort.MANUAL (16/11/2026, só apresentação: não é regra, não tem seção em definition.md): nunca separa
+        // (o jogador já controla toda posição) e nunca chama o comparador — a ordem é a última arrastada
+        // ([Local.manualOrder]), com as cartas que ainda não foram posicionadas (novas na mão, ou a 1ª vez neste
+        // modo) completando o fim, na ordem natural da mão.
+        val split = if (state.sort != HandSort.MANUAL && state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
+        val hand = when {
+            state.sort == HandSort.MANUAL -> state.manualOrder.filter { it in visibleHand } + visibleHand.filterNot { it in state.manualOrder }
+            else -> split?.all ?: HandOrder.sort(visibleHand, state.sort)
+        }
         val ownSwapPending = state.swaps.any { isOwn(it, snapshot) }
         val held = turnHeld(state)
         val legal = if (ownSwapPending || held) emptyList() else snapshot.humanLegal
@@ -1060,13 +1073,22 @@ class GameViewModel(
 
     override fun onClearSelection() = local.update { it.copy(selected = emptyList()) }
 
-    override fun onSortChange(sort: HandSort) = updatePrefs { it.copy(sort = sort) }
+    override fun onSortChange(sort: HandSort) = updatePrefs { prev ->
+        // Entrando em MANUAL: semeia com a mão que o jogador já estava vendo (no critério anterior), pra trocar de
+        // modo não embaralhar nada; `build` é puro, então chamá-lo aqui só lê o estado anterior, sem efeito colateral.
+        val seeded = if (sort == HandSort.MANUAL && prev.sort != HandSort.MANUAL) build(prev).hand else prev.manualOrder
+        prev.copy(sort = sort, manualOrder = seeded)
+    }
 
     override fun onSpecialColumnToggle() = updatePrefs { it.copy(separateSpecial = !it.separateSpecial) }
 
+    /** HandSort.MANUAL: o jogador soltou o arrasto nesta ordem. Só em memória; não é gravada no perfil. */
+    override fun onHandReorder(order: List<Card>) = local.update { it.copy(manualOrder = order) }
+
     private fun updatePrefs(change: (Local) -> Local) {
         val updated = local.updateAndGet(change)
-        val id = HandPrefs(updated.sort, updated.separateSpecial).id
+        // MANUAL não separa: grava sem o sufixo ":SPECIAL", mesmo que a chave tenha ficado ligada de antes.
+        val id = HandPrefs(updated.sort, updated.separateSpecial && updated.sort != HandSort.MANUAL).id
         persistence?.let { store -> writes.enqueue { store.saveHandSort(id) } }
     }
 

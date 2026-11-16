@@ -232,6 +232,7 @@
     <string name="sort_rank">Ordenar por valor</string>
     <string name="sort_suit">Ordenar por naipe</string>
     <string name="sort_special">Separar 3 pretos e coringas numa coluna à esquerda</string>
+    <string name="sort_manual">Ordenar arrastando as cartas</string>
     <string name="action_resign">Desistir</string>
     <string name="resign_title">Desistir do jogo?</string>
     <string name="resign_text">O outro lado será declarado vencedor.</string>
