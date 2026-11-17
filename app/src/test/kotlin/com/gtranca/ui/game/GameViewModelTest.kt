@@ -242,21 +242,17 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `16-11-2026 HandSort MANUAL semeia da mao exibida, arrasta, poe carta nova no fim e some a jogada`() = runTest(dispatcher) {
+    fun `16-11-2026 arrasto com posicao real diferente liga manualOverride, desliga separar, poe carta nova no fim e some a jogada`() = runTest(dispatcher) {
         val vm = newGame(seed = 3)
-        // Entra em MANUAL vendo a mão em Naipe (padrão): semeia exatamente essa ordem, sem embaralhar nada; sem
-        // coluna separada (MANUAL nunca separa).
-        val bySuit = vm.uiState.value.hand
-        vm.onSortChange(HandSort.MANUAL)
-        advanceUntilIdle()
-        vm.uiState.value.sort shouldBe HandSort.MANUAL
-        vm.uiState.value.customHand.shouldBeNull()
-        vm.uiState.value.hand shouldBe bySuit
+        val before = vm.uiState.value.hand
+        vm.uiState.value.manualOverride shouldBe false
 
         // Arrasto: a 2ª carta vai pro começo.
-        val reordered = bySuit.toMutableList().apply { add(0, removeAt(1)) }
+        val reordered = before.toMutableList().apply { add(0, removeAt(1)) }
         vm.onHandReorder(reordered)
         advanceUntilIdle()
+        vm.uiState.value.manualOverride shouldBe true
+        vm.uiState.value.customHand.shouldBeNull() // "separar" desligou sozinha; sem critério ativo não há coluna
         vm.uiState.value.hand shouldBe reordered
 
         // Carta nova (compra do monte) sempre no fim, sem mudar a ordem das demais.
@@ -276,41 +272,32 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `sair de MANUAL e voltar semeia de novo (nunca reaparece a ordem arrastada antiga)`() = runTest(dispatcher) {
+    fun `soltar no mesmo lugar (ou sem mudar nada de verdade) nao liga manualOverride`() = runTest(dispatcher) {
         val vm = newGame(seed = 3)
-        val bySuit = vm.uiState.value.hand
-        vm.onSortChange(HandSort.MANUAL)
+        val before = vm.uiState.value.hand
+        // "Arrasto" que a UI só chama ao soltar numa posição válida (nunca em área inválida): aqui a ordem
+        // devolvida é igual à exibida — representa soltar no próprio lugar.
+        vm.onHandReorder(before)
         advanceUntilIdle()
-        val reordered = bySuit.reversed()
-        vm.onHandReorder(reordered)
-        advanceUntilIdle()
-        vm.uiState.value.hand shouldBe reordered
-
-        vm.onSortChange(HandSort.BY_RANK)
-        advanceUntilIdle()
-        val byRank = vm.uiState.value.hand
-        byRank shouldNotBe reordered // o critério de Valor não coincide com o arrasto que tínhamos feito
-
-        vm.onSortChange(HandSort.MANUAL)
-        advanceUntilIdle()
-        // Semeou da mão exibida em Valor agora, não da ordem arrastada de antes (essa nunca é gravada).
-        vm.uiState.value.hand shouldBe byRank
+        vm.uiState.value.manualOverride shouldBe false
+        vm.uiState.value.hand shouldBe before
     }
 
     @Test
-    fun `abrir ja em MANUAL (preferencia do perfil) semeia da ordem natural, sem precisar de arrasto nenhum`() = runTest(dispatcher) {
-        // Como depois de restaurar o jogo salvo: `manualOrder` nasce vazio (nunca é gravado no perfil) e a mão se
-        // auto-semeia na 1ª tela, exatamente como se o jogador tivesse acabado de trocar para MANUAL.
-        val vm = GameViewModel(
-            GameConfig(GameMode.INDIVIDUAL, Difficulty.FACIL, 3000, rules = NO_DEAL_GUESS),
-            gameSeed = 3, computeDispatcher = dispatcher, botDelayMillis = 0, swapAnimationMillis = 0, animationMillis = 0,
-            initialHand = com.gtranca.game.HandPrefs(HandSort.MANUAL),
-        )
+    fun `sair do arrasto livre por Valor ou Naipe desliga manualOverride e nao reativa separar sozinho`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        val before = vm.uiState.value.hand
+        vm.onHandReorder(before.reversed())
         advanceUntilIdle()
-        settle(vm)
-        vm.uiState.value.sort shouldBe HandSort.MANUAL
+        vm.uiState.value.manualOverride shouldBe true
+
+        vm.onSortChange(HandSort.BY_RANK)
+        advanceUntilIdle()
+        vm.uiState.value.manualOverride shouldBe false
+        vm.uiState.value.sort shouldBe HandSort.BY_RANK
+        vm.uiState.value.hand.map { it.rank }.shouldBeSortedWith(compareBy { it.ordinal })
+        // "Separar" tinha desligado no arrasto; não volta sozinho só por sair do arrasto.
         vm.uiState.value.customHand.shouldBeNull()
-        vm.uiState.value.hand shouldContainExactly vm.uiState.value.snapshot.view.hand
     }
 
     @Test

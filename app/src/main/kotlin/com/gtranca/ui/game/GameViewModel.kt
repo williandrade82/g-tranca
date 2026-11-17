@@ -155,6 +155,9 @@ data class GameUiState(
     val highlighted: Set<Card>,
     val newCards: Set<Card>,
     val sort: HandSort,
+    /** O jogador arrastou uma carta para uma posição diferente: a mão não segue mais [sort] até ele tocar em
+     * Valor ou Naipe de novo (nem reseta sozinha numa distribuição nova, 16/11/2026). */
+    val manualOverride: Boolean,
     val redThrees: List<List<Card>>,
     val reveal: RedThreeReveal?,
     /** §6.5 há troca de 3 vermelho do humano ainda não confirmada ("Baixar 3 vermelho"): a mesa fica bloqueada. */
@@ -422,10 +425,13 @@ class GameViewModel(
         val sort: HandSort = HandSort.BY_SUIT,
         val separateSpecial: Boolean = true,
         /**
-         * Ordem arrastada pelo jogador em `HandSort.MANUAL`: só o que ele já posicionou (o resto da mão entra no fim,
-         * pela ordem natural, em [build]). Nunca gravada no perfil — só o critério (`sort`) é; cada mão nova recomeça
-         * vazia e se auto-semeia na ordem natural.
+         * O jogador arrastou uma carta da mão para uma posição diferente (16/11/2026): a mão ignora [sort] e usa
+         * [manualOrder] até ele tocar em Valor ou Naipe de novo ([onSortChange]) — não reseta sozinha numa
+         * distribuição nova. Nunca gravada no perfil (só [sort] é, via [updatePrefs]).
          */
+        val manualOverride: Boolean = false,
+        /** Ordem arrastada pelo jogador enquanto [manualOverride]: só o que ele já posicionou (o resto da mão entra
+         * no fim, pela ordem natural, em [build]). */
         val manualOrder: List<Card> = emptyList(),
         val newCards: Set<Card> = emptySet(),
         /** Trocas de 3 vermelho a encenar, em ordem; a primeira está na tela. */
@@ -976,13 +982,13 @@ class GameViewModel(
             .flatMap { it.cards }
             .filter { it !in snapshot.view.hand }
         val visibleHand = snapshot.view.hand.filter { it !in hidden } + ownPending
-        // HandSort.MANUAL (16/11/2026, só apresentação: não é regra, não tem seção em definition.md): nunca separa
+        // manualOverride (16/11/2026, só apresentação: não é regra, não tem seção em definition.md): nunca separa
         // (o jogador já controla toda posição) e nunca chama o comparador — a ordem é a última arrastada
         // ([Local.manualOrder]), com as cartas que ainda não foram posicionadas (novas na mão, ou a 1ª vez neste
         // modo) completando o fim, na ordem natural da mão.
-        val split = if (state.sort != HandSort.MANUAL && state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
+        val split = if (!state.manualOverride && state.separateSpecial) HandOrder.split(visibleHand, state.sort) else null
         val hand = when {
-            state.sort == HandSort.MANUAL -> state.manualOrder.filter { it in visibleHand } + visibleHand.filterNot { it in state.manualOrder }
+            state.manualOverride -> state.manualOrder.filter { it in visibleHand } + visibleHand.filterNot { it in state.manualOrder }
             else -> split?.all ?: HandOrder.sort(visibleHand, state.sort)
         }
         val ownSwapPending = state.swaps.any { isOwn(it, snapshot) }
@@ -997,6 +1003,7 @@ class GameViewModel(
             highlighted = if (com.gtranca.engine.BoosterCatalog.GREEN_LED in boosters) HumanTurnResolver.highlightedCards(hand, legal, state.selected) else emptySet(),
             newCards = state.newCards - hidden,
             sort = state.sort,
+            manualOverride = state.manualOverride,
             redThrees = snapshot.view.redThrees.map { side -> side.filter { it !in staged } },
             reveal = reveal,
             ownSwapPending = ownSwapPending,
@@ -1073,22 +1080,24 @@ class GameViewModel(
 
     override fun onClearSelection() = local.update { it.copy(selected = emptyList()) }
 
-    override fun onSortChange(sort: HandSort) = updatePrefs { prev ->
-        // Entrando em MANUAL: semeia com a mão que o jogador já estava vendo (no critério anterior), pra trocar de
-        // modo não embaralhar nada; `build` é puro, então chamá-lo aqui só lê o estado anterior, sem efeito colateral.
-        val seeded = if (sort == HandSort.MANUAL && prev.sort != HandSort.MANUAL) build(prev).hand else prev.manualOrder
-        prev.copy(sort = sort, manualOrder = seeded)
-    }
+    /** Toque em Valor/Naipe: único jeito de saír do arrasto livre ([Local.manualOverride]). */
+    override fun onSortChange(sort: HandSort) = updatePrefs { it.copy(sort = sort, manualOverride = false) }
 
     override fun onSpecialColumnToggle() = updatePrefs { it.copy(separateSpecial = !it.separateSpecial) }
 
-    /** HandSort.MANUAL: o jogador soltou o arrasto nesta ordem. Só em memória; não é gravada no perfil. */
-    override fun onHandReorder(order: List<Card>) = local.update { it.copy(manualOrder = order) }
+    /**
+     * O jogador soltou o arrasto nesta ordem (16/11/2026). Se não mudou nada de verdade (soltou no mesmo lugar ou
+     * numa área inválida), não faz nada — a mão continua no critério de antes. Só com uma posição realmente
+     * diferente liga [Local.manualOverride] (e desliga "separar", que não existe sem um critério ativo); nenhum
+     * dos dois é gravado no perfil.
+     */
+    override fun onHandReorder(order: List<Card>) = local.update { state ->
+        if (order == build(state).hand) state else state.copy(manualOverride = true, manualOrder = order, separateSpecial = false)
+    }
 
     private fun updatePrefs(change: (Local) -> Local) {
         val updated = local.updateAndGet(change)
-        // MANUAL não separa: grava sem o sufixo ":SPECIAL", mesmo que a chave tenha ficado ligada de antes.
-        val id = HandPrefs(updated.sort, updated.separateSpecial && updated.sort != HandSort.MANUAL).id
+        val id = HandPrefs(updated.sort, updated.separateSpecial).id
         persistence?.let { store -> writes.enqueue { store.saveHandSort(id) } }
     }
 

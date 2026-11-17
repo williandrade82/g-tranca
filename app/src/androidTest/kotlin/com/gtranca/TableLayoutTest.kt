@@ -294,9 +294,6 @@ class TableLayoutTest {
             check(left("hand-card-$it") >= special.right) { "$it dentro da coluna" }
             check(right("hand-card-$it") <= 360.dp + 0.5.dp) { "$it fora da tela" }
         }
-        // 16/11/2026: os critérios e a chave de separar vivem num menu só, atrás de um botão; a separação está
-        // ligada.
-        rule.onNodeWithTag("sort-button").performClick()
         rule.onNodeWithTag("sort-custom").assertIsOn()
         rule.onNodeWithTag("sort-by_rank").assertExists()
     }

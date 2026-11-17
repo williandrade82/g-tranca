@@ -4,17 +4,12 @@ import com.gtranca.engine.model.Card
 import com.gtranca.engine.model.Rank
 import com.gtranca.engine.model.Suit
 
-/**
- * Critério de ordem da mão na tela (só apresentação; não valida regra nenhuma). `MANUAL`: o jogador arrasta as
- * cartas pra posição que quiser; a disposição em si não é gravada (só o critério, como os demais), e cada mão nova
- * nasce na ordem de chegada.
- */
-enum class HandSort { BY_RANK, BY_SUIT, MANUAL }
+/** Critério de ordem da mão na tela (só apresentação; não valida regra nenhuma). */
+enum class HandSort { BY_RANK, BY_SUIT }
 
 /**
- * Preferência de ordem da mão: o critério e se os 3 pretos e coringas ficam separados numa coluna à esquerda
- * (o "separar"; não existe em `MANUAL`, onde o jogador já controla toda posição). Gravada como texto: `BY_SUIT`
- * ou `BY_SUIT:SPECIAL`.
+ * Preferência de ordem da mão: o critério e se os 3 pretos e coringas ficam separados numa coluna à esquerda (o
+ * "separar"). Gravada como texto: `BY_SUIT` ou `BY_SUIT:SPECIAL`.
  */
 data class HandPrefs(val sort: HandSort = HandSort.BY_SUIT, val separateSpecial: Boolean = true) {
     val id: String get() = sort.name + if (separateSpecial) ":$SPECIAL" else ""
@@ -50,7 +45,6 @@ data class CustomHand(val special: List<Card>, val rest: List<Card>) {
 
 object HandOrder {
 
-    // MANUAL nunca chama este comparador de verdade (a ordem vem do GameViewModel); o padrão aqui é só defensivo.
     private fun comparator(sort: HandSort) = if (sort == HandSort.BY_RANK) byRankThenSuit else bySuitThenRank
 
     /** Mão toda no critério [sort], sem separar nada. */

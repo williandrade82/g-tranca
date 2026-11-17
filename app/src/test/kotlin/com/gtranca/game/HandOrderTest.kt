@@ -69,9 +69,8 @@ class HandOrderTest {
     }
 
     @Test
-    fun `preferencia MANUAL grava sem SPECIAL (a separacao nao existe no arrasto)`() {
-        HandPrefs(HandSort.MANUAL, separateSpecial = false).id shouldBe "MANUAL"
-        HandPrefs.parse("MANUAL") shouldBe HandPrefs(HandSort.MANUAL, false)
+    fun `preferencia MANUAL de uma versao anterior cai no padrao (criterio removido)`() {
+        HandPrefs.parse("MANUAL") shouldBe HandPrefs()
     }
 
     @Test
