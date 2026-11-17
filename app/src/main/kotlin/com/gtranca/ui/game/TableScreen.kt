@@ -168,6 +168,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import androidx.compose.ui.zIndex
@@ -1887,6 +1888,7 @@ private fun CardFlow(
     // do gesto ficaria preso no valor de quando ele foi criado — por isso os dois passam por aqui.
     val currentToFullHand by rememberUpdatedState(toFullHand)
     val currentViewport by rememberUpdatedState(LocalTableViewport.current)
+    val currentState by rememberUpdatedState(state)
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
@@ -1903,17 +1905,23 @@ private fun CardFlow(
                 val animX = remember { Animatable(0f) }
                 val animY = remember { Animatable(0f) }
                 val rect = bounds[card]
+                // 17/11/2026: ida-e-volta rápida (ex.: arrastar pra fora da mão e `draft` reverter na sequência)
+                // cancela esta corrotina NO MEIO da 1ª animação (antes de `lastRect = rect` rodar, que ficava por
+                // último) — a 2ª rodada via `old == rect` e não animava nada de volta, deixando a carta desenhada
+                // deslocada do lugar pra sempre (resíduo do FLIP). `lastRect` agora grava ANTES de qualquer ponto
+                // de suspensão, e a animação parte de onde `animX`/`animY` já estão (nunca de 0), pra sempre
+                // zerar o que sobrou, mesmo sem a posição ter mudado desta vez.
                 LaunchedEffect(rect, dragging) {
+                    if (rect == null) return@LaunchedEffect
                     val old = lastRect
-                    if (rect != null) {
-                        if (old != null && !dragging && old.topLeft != rect.topLeft) {
-                            animX.snapTo(old.left - rect.left)
-                            animY.snapTo(old.top - rect.top)
-                            animX.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
-                            animY.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
-                        }
-                        lastRect = rect
+                    lastRect = rect
+                    if (dragging) return@LaunchedEffect
+                    if (old != null && old.topLeft != rect.topLeft) {
+                        animX.snapTo(animX.value + old.left - rect.left)
+                        animY.snapTo(animY.value + old.top - rect.top)
                     }
+                    launch { animX.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
+                    launch { animY.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
                 }
                 val extra = Modifier
                     .zIndex(if (dragging) 2f else 0f)
@@ -1935,19 +1943,25 @@ private fun CardFlow(
                             translationY = animY.value
                         }
                     }
-                    // `shown`/`state.selected` na chave (como `layout` já é em SeatComponents.kt): sem isso, um
-                    // gesto criado antes de uma carta chegar ou sair da mão, ou antes de selecionar esta carta,
-                    // ficaria com `draft`/a seleção velhos presos no closure (pointerInput só relança quando a
-                    // chave muda, nunca só porque `state` mudou de novo) — a vizinha arrastada não abriria espaço
-                    // pra carta nova de verdade, e `carryingThis` decidiria errado com base numa seleção velha.
+                    // `shown` na chave (como `layout` já é em SeatComponents.kt): sem isso, um gesto criado antes
+                    // de uma carta chegar ou sair da mão ficaria com `draft` velho preso no closure (pointerInput
+                    // só relança quando a chave muda, nunca só porque `state` mudou de novo) — a vizinha arrastada
+                    // não abriria espaço pra carta nova de verdade. `state.selected` NÃO entra mais na chave
+                    // (17/11/2026): entrava antes pra pegar a seleção fresca, mas cancela a corrotina de TODA
+                    // carta a cada seleção/deseleção (inclusive as que o dedo nunca tocou) — ver o guard em
+                    // `onDragCancel`. Em vez disso, `currentState` por `rememberUpdatedState` lê a seleção (e as
+                    // flags de legalidade) sempre atualizadas sem reiniciar o gesto.
                     // AfterLongPress (16/11/2026): toque rápido continua só selecionando (.toggleable abaixo); o
                     // arrasto só começa depois de segurar um instante — senão, com o arrasto sempre ativo em
                     // qualquer critério, toda carta "sequestra" o gesto e a mão de 3+ linhas não rola mais com o
                     // dedo sobre uma carta (pedido do usuário, confirmado via pergunta: opção recomendada).
-                    .pointerInput(card, shown, state.selected) {
-                        // Vale pra todo o gesto (onDragStart decide e as outras callbacks só leem): carta já
-                        // selecionada vira arrastar a seleção inteira até a mesa (baixar/descartar); senão, é
-                        // sempre reordenar a mão — nunca os dois no mesmo gesto.
+                    .pointerInput(card, shown) {
+                        // Vale pra todo o gesto (onDragStart decide e as outras callbacks só leem, exceto a
+                        // promoção em onDrag abaixo): carta já selecionada vira arrastar a seleção inteira até a
+                        // mesa (baixar/descartar); senão, começa reordenando a mão, mas PROMOVE pra carregar se o
+                        // dedo sair da área da mão sem ter mudado nada (pedido do usuário, 17/11/2026: arrastar
+                        // uma carta não selecionada direto pra mesa junta ela à seleção existente, ou vira a
+                        // seleção sozinha se não havia nenhuma — nunca os dois papéis ao mesmo tempo depois disso).
                         var carryingThis = false
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
@@ -1955,13 +1969,7 @@ private fun CardFlow(
                                 dragOffset = Offset.Zero
                                 val start = bounds[card]
                                 dragStartRect = start
-                                carryingThis = card in state.selected && start != null
-                                // Carregar pra mesa (e as cartas somem da mão) só é CONFIRMADO depois de um
-                                // pouco de movimento de verdade — ver onDrag. Só segurar (sem mover) não basta,
-                                // senão um toque de seleção um pouco mais longo que o normal já escondia a
-                                // seleção inteira sem o jogador ter arrastado nada (achado 17/11/2026: o limiar
-                                // de toque longo varia por aparelho/configuração de acessibilidade, então até um
-                                // toque comum podia cruzá-lo).
+                                carryingThis = card in currentState.selected && start != null
                                 if (!carryingThis) {
                                     dragStartOrder = draft
                                     dragStartSlots = draft.map { bounds[it] ?: Rect.Zero }
@@ -1970,55 +1978,71 @@ private fun CardFlow(
                             onDrag = { change, amount ->
                                 change.consume()
                                 dragOffset += amount
-                                if (carryingThis) {
-                                    var payload = tableDrag?.payload
-                                    if (payload == null) {
-                                        // Ainda não confirmado: exige um deslocamento mínimo (12dp, igual à
-                                        // margem de toque normal do Android) antes de esconder qualquer coisa.
-                                        val slopPx = 12.dp.toPx()
-                                        if (dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y < slopPx * slopPx) {
-                                            return@detectDragGesturesAfterLongPress
+                                if (!carryingThis) {
+                                    val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
+                                    val point = start.center + dragOffset
+                                    val handBounds = tableAnchors[AnimAnchor.OwnHand]
+                                    if (handBounds == null || handBounds.contains(point)) {
+                                        // Dentro da mão: reordena contra a grade fixa, como antes.
+                                        val slots = dragStartSlots
+                                        if (slots.isNotEmpty()) {
+                                            val to = slots.indices.minByOrNull { slots[it].distanceTo(point) }
+                                            val from = draft.indexOf(card)
+                                            if (to != null && from != -1 && to != from) {
+                                                draft = draft.toMutableList().apply {
+                                                    val removed = removeAt(from)
+                                                    add(to.coerceIn(0, size), removed)
+                                                }
+                                            }
                                         }
-                                        val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
-                                        payload = TableDragPayload(state.selected, start)
-                                        tableDrag?.payload = payload
+                                        return@detectDragGesturesAfterLongPress
                                     }
-                                    tableDrag?.offset = dragOffset
-                                    val point = payload.origin.center + dragOffset
-                                    val target = dropTarget(
-                                        point, tableAnchors, currentViewport, ownSide,
-                                        state.addableMelds, state.canCreateNew, state.canDiscardSelected,
-                                    )
-                                    if (target != payload.target) tableDrag?.payload = payload.copy(target = target)
-                                    return@detectDragGesturesAfterLongPress
-                                }
-                                val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
-                                val point = start.center + dragOffset
-                                // Fora da própria mão: área inválida pra reordenar (pedido do usuário) — a mão
-                                // volta pra ordem de antes do gesto e fica assim até o dedo voltar pra dentro.
-                                val handBounds = tableAnchors[AnimAnchor.OwnHand]
-                                if (handBounds != null && !handBounds.contains(point)) {
+                                    // Saiu da mão sem estar selecionada: devolve a mão pra ordem de antes (nunca
+                                    // chegou a reordenar de verdade) e promove — entra na seleção (junto com o
+                                    // que já estiver selecionado, ou sozinha) e passa a carregar daqui pra frente.
                                     draft = dragStartOrder
-                                    return@detectDragGesturesAfterLongPress
+                                    if (card !in currentState.selected) events.onCardClick(card)
+                                    carryingThis = true
+                                    tableDrag?.payload = TableDragPayload(currentState.selected + card, start)
                                 }
-                                val slots = dragStartSlots
-                                if (slots.isEmpty()) return@detectDragGesturesAfterLongPress
-                                val to = slots.indices.minByOrNull { slots[it].distanceTo(point) } ?: return@detectDragGesturesAfterLongPress
-                                val from = draft.indexOf(card)
-                                if (from != -1 && to != from) {
-                                    draft = draft.toMutableList().apply {
-                                        val removed = removeAt(from)
-                                        add(to.coerceIn(0, size), removed)
+                                var payload = tableDrag?.payload
+                                if (payload == null) {
+                                    // Ainda não confirmado (carta já estava selecionada ao começar o gesto): exige
+                                    // um deslocamento mínimo (12dp, igual à margem de toque normal do Android)
+                                    // antes de esconder qualquer coisa.
+                                    val slopPx = 12.dp.toPx()
+                                    if (dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y < slopPx * slopPx) {
+                                        return@detectDragGesturesAfterLongPress
                                     }
+                                    val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
+                                    payload = TableDragPayload(currentState.selected, start)
+                                    tableDrag?.payload = payload
                                 }
+                                tableDrag?.offset = dragOffset
+                                val point = payload.origin.center + dragOffset
+                                val target = dropTarget(
+                                    point, tableAnchors, currentViewport, ownSide,
+                                    currentState.addableMelds, currentState.canCreateNew, currentState.canDiscardSelected,
+                                )
+                                if (target != payload.target) tableDrag?.payload = payload.copy(target = target)
                             },
                             onDragEnd = {
                                 if (carryingThis) {
-                                    // Nada no alvo (soltou fora de qualquer área válida): a seleção só volta pro
-                                    // lugar de origem (nunca foi removida da mão de verdade).
-                                    tableDrag?.payload?.target?.let { target ->
-                                        when (target) {
-                                            is DropTarget.Meld -> events.onAddToMeld(MeldId(target.meldId))
+                                    // Recalcula o alvo agora (em vez de confiar só no que ficou de `onDrag`): um
+                                    // gesto rápido o bastante pode soltar sem outro evento de movimento depois da
+                                    // promoção, deixando `payload.target` parado em `null` mesmo em cima de um
+                                    // alvo válido. Nada no alvo (soltou fora de qualquer área válida): a seleção
+                                    // (incluindo uma promoção desta vez) só fica como está, sem baixar/descartar.
+                                    val payload = tableDrag?.payload
+                                    val target = payload?.let {
+                                        dropTarget(
+                                            it.origin.center + dragOffset, tableAnchors, currentViewport, ownSide,
+                                            currentState.addableMelds, currentState.canCreateNew, currentState.canDiscardSelected,
+                                        )
+                                    }
+                                    target?.let {
+                                        when (it) {
+                                            is DropTarget.Meld -> events.onAddToMeld(MeldId(it.meldId))
                                             DropTarget.NewMeld -> events.onNewMeld()
                                             DropTarget.Discard -> events.onDiscard()
                                         }
@@ -2038,12 +2062,8 @@ private fun CardFlow(
                             onDragCancel = {
                                 // 17/11/2026: `detectDragGesturesAfterLongPress` chama onDragCancel até pro
                                 // gesto OCIOSO (nunca chegou a virar toque longo) quando a corrotina dele é
-                                // cancelada — e `state.selected` na chave do pointerInput (acima) cancela a
-                                // de TODAS as cartas de uma vez a cada seleção/deseleção, mesmo as que o dedo
-                                // nunca tocou. Sem este guard, cada carta ociosa fazia `draft = dragStartOrder`
-                                // com o valor inicial (`emptyList()`, nunca chegou a ter um gesto de verdade) —
-                                // a mão sumia por completo a cada toque de seleção. Só quem é dono do arrasto
-                                // ativo (`dragCard == card`) pode tocar no estado compartilhado.
+                                // cancelada. Só quem é dono do arrasto ativo (`dragCard == card`) pode tocar no
+                                // estado compartilhado.
                                 if (dragCard != card) return@detectDragGesturesAfterLongPress
                                 if (carryingThis) tableDrag?.payload = null else draft = dragStartOrder
                                 dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
