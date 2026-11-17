@@ -1202,7 +1202,10 @@ private fun SideArea(
                         scoreTag = "meld-score-${meld.id.value}",
                     )
                 }
-                onNewMeld?.let { NewMeldSlot(if (dragActive) 0f else glow, hoveredTarget == DropTarget.NewMeld, Modifier.anchor(AnimAnchor.NewMeldSlot(side)), it) }
+                // 0.35f (não 0f) com o arrasto ativo: é o piso do próprio pulso — zerar apagaria o único
+                // contorno do "Novo jogo" (a borda tracejada), que some inteiro em qualquer arrasto, até um
+                // simples reordenar dentro da mão (achado do `advisor`).
+                onNewMeld?.let { NewMeldSlot(if (dragActive) 0.35f else glow, hoveredTarget == DropTarget.NewMeld, Modifier.anchor(AnimAnchor.NewMeldSlot(side)), it) }
             }
         }
     }
@@ -1992,8 +1995,9 @@ private fun CardFlow(
                         // que o gesto termine como reordenação, não é desfeito depois. Enquanto o dedo estiver
                         // dentro da mão, a seleção inteira (não só a carta tocada) se move junto, na ordem que já
                         // tinha na mão (`localGroup`/`blockMove`, abaixo). Se o dedo sair da área da mão, a
-                        // seleção passa a carregar até a mesa (baixar/descartar) em vez de reordenar —
-                        // `carryingThis` nunca volta a `false` depois disso.
+                        // seleção passa a carregar até a mesa (baixar/descartar) em vez de reordenar — e volta a
+                        // reordenar se o dedo voltar pra dentro da mão antes de soltar (`carryingThis` reflete só
+                        // onde o dedo está AGORA, não é um trinco).
                         var carryingThis = false
                         var localGroup = emptySet<Card>()
                         detectDragGesturesAfterLongPress(
@@ -2011,40 +2015,48 @@ private fun CardFlow(
                                 val groupSet = currentState.selected.toSet() + card
                                 localGroup = groupSet.intersect(dragStartOrder.toSet())
                                 // Ordem da mão, não a ordem do clique (pedido do usuário): quem monta o payload
-                                // (overlay, leque e o índice de cada carta em `topLeftFor`) usa esta lista.
-                                val ordered = currentState.hand.filter { it in groupSet }
+                                // (overlay, leque e o índice de cada carta em `topLeftFor`) usa esta lista. Pela
+                                // ordem VISÍVEL (`toFullHand`, que já junta as 2 colunas de "separar" na ordem
+                                // da tela), não a de `state.hand` puro — as duas divergem com "separar" ligado.
+                                val ordered = currentToFullHand(dragStartOrder).filter { it in groupSet }
                                 if (start != null) tableDrag?.payload = TableDragPayload(ordered, start)
                             },
                             onDrag = { change, amount ->
                                 change.consume()
                                 dragOffset += amount
-                                if (!carryingThis) {
-                                    val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
-                                    val point = start.center + dragOffset
-                                    val handBounds = tableAnchors[AnimAnchor.OwnHand]
-                                    if (handBounds == null || handBounds.contains(point)) {
-                                        // Dentro da mão: o bloco inteiro (`localGroup`) reordena junto, contra a
-                                        // grade fixa do início do gesto. Exige um deslocamento mínimo (12dp,
-                                        // margem de toque normal do Android) antes de reordenar: sem isso, uma
-                                        // seleção que não estivesse já junta na mão colapsaria num lugar contíguo
-                                        // no primeiro pixel do toque longo, sem o jogador ter arrastado nada.
-                                        val slopPx = 12.dp.toPx()
-                                        if (dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y >= slopPx * slopPx) {
-                                            val slots = dragStartSlots
-                                            if (slots.isNotEmpty()) {
-                                                val to = slots.indices.minByOrNull { slots[it].distanceTo(point) }
-                                                if (to != null) {
-                                                    val newDraft = blockMove(dragStartOrder, localGroup, to)
-                                                    if (newDraft != draft) draft = newDraft
-                                                }
+                                // 17/11/2026 (achado do `advisor`): `carryingThis` NÃO é mais um trinco — a mão
+                                // tem só 2 linhas e a barra de ações fica bem acima dela, então uma carta da
+                                // linha de cima sai da área da mão com pouquíssimo arrasto. Sem poder voltar a
+                                // reordenar ao reentrar, o gesto parecia quebrado (soltar dentro da mão não
+                                // fazia nada, a seleção voltava pro lugar). `blockMove` já recalcula do zero
+                                // contra `dragStartOrder` a cada frame — reentrar não precisa de nenhum estado
+                                // extra, só voltar a testar a posição normalmente.
+                                val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
+                                val point = start.center + dragOffset
+                                val handBounds = tableAnchors[AnimAnchor.OwnHand]
+                                if (handBounds == null || handBounds.contains(point)) {
+                                    carryingThis = false
+                                    // Dentro da mão: o bloco inteiro (`localGroup`) reordena junto, contra a
+                                    // grade fixa do início do gesto. Exige um deslocamento mínimo (12dp, margem
+                                    // de toque normal do Android) antes de reordenar: sem isso, uma seleção que
+                                    // não estivesse já junta na mão colapsaria num lugar contíguo no primeiro
+                                    // pixel do toque longo, sem o jogador ter arrastado nada.
+                                    val slopPx = 12.dp.toPx()
+                                    if (dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y >= slopPx * slopPx) {
+                                        val slots = dragStartSlots
+                                        if (slots.isNotEmpty()) {
+                                            val to = slots.indices.minByOrNull { slots[it].distanceTo(point) }
+                                            if (to != null) {
+                                                val newDraft = blockMove(dragStartOrder, localGroup, to)
+                                                if (newDraft != draft) draft = newDraft
                                             }
                                         }
-                                    } else {
-                                        // Saiu da mão: desfaz qualquer reordenação visual local (a seleção ainda
-                                        // não saiu de verdade da mão) e passa a carregar até a mesa.
-                                        draft = dragStartOrder
-                                        carryingThis = true
                                     }
+                                } else if (!carryingThis) {
+                                    // Saiu da mão agora: desfaz qualquer reordenação visual local (a seleção
+                                    // ainda não saiu de verdade da mão) e passa a carregar até a mesa.
+                                    draft = dragStartOrder
+                                    carryingThis = true
                                 }
                                 val payload = tableDrag?.payload ?: return@detectDragGesturesAfterLongPress
                                 tableDrag?.offset = dragOffset
