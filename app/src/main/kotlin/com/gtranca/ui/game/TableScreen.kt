@@ -2048,14 +2048,20 @@ private fun CardFlow(
                                 }
                                 val payload = tableDrag?.payload ?: return@detectDragGesturesAfterLongPress
                                 tableDrag?.offset = dragOffset
-                                // O alvo embaixo do dedo é testado onde a carta é DESENHADA (com a subida), não
-                                // onde o dedo fisicamente está — senão o jogador mira pela carta visível (mais
-                                // alta) e o destaque/alvo não bate (pedido do usuário, 17/11/2026).
-                                val point = payload.origin.center + dragOffset - Offset(0f, TableDragLift.toPx())
-                                val target = dropTarget(
-                                    point, tableAnchors, currentViewport, ownSide,
-                                    currentState.addableMelds, currentState.canCreateNew, currentState.canDiscardSelected,
-                                )
+                                // Só testa alvo da mesa depois de sair da mão (17/11/2026): com a subida de 56dp,
+                                // o ponto "visível" de uma carta na linha de cima já alcançaria os conjuntos ou o
+                                // lixo mesmo ainda dentro da mão — acenderia um destaque que soltar não cumpre
+                                // (só reordena).
+                                val target = if (carryingThis) {
+                                    // O alvo embaixo do dedo é testado onde a carta é DESENHADA (com a subida),
+                                    // não onde o dedo fisicamente está — senão o jogador mira pela carta visível
+                                    // (mais alta) e o destaque/alvo não bate (pedido do usuário, 17/11/2026).
+                                    val point = payload.origin.center + dragOffset - Offset(0f, TableDragLift.toPx())
+                                    dropTarget(
+                                        point, tableAnchors, currentViewport, ownSide,
+                                        currentState.addableMelds, currentState.canCreateNew, currentState.canDiscardSelected,
+                                    )
+                                } else null
                                 if (target != payload.target) tableDrag?.payload = payload.copy(target = target)
                             },
                             onDragEnd = {
@@ -2115,7 +2121,24 @@ private fun CardFlow(
                                     // Nunca saiu da mão: confirma a reordenação do bloco (mesmo que o bloco seja
                                     // só a carta tocada) e libera o overlay — a seleção feita ao pegar a carta
                                     // continua valendo de qualquer jeito (não é desfeita por ter só reordenado).
-                                    if (draft != dragStartOrder) events.onHandReorder(currentToFullHand(draft))
+                                    if (draft != dragStartOrder) {
+                                        val group = tableDrag?.payload?.cards ?: emptyList()
+                                        val full = currentToFullHand(draft)
+                                        val committed = if (group.isEmpty() || group.all { it in localGroup }) {
+                                            full
+                                        } else {
+                                            // "Separar" com a seleção espalhada pelas 2 colunas: o bloco só
+                                            // reordenou de verdade dentro da coluna tocada (`localGroup`); a(s)
+                                            // carta(s) da OUTRA coluna (ex.: um coringa) precisam ir junto, perto
+                                            // de onde o bloco local acabou — "todas as cartas se movem de uma vez"
+                                            // (pedido do usuário), não só as da coluna tocada.
+                                            val groupSet = group.toSet()
+                                            val rest = full.filterNot { it in groupSet }
+                                            val at = full.take(full.indexOfFirst { it in localGroup }).count { it !in groupSet }
+                                            rest.toMutableList().apply { addAll(at.coerceIn(0, size), group) }
+                                        }
+                                        events.onHandReorder(committed)
+                                    }
                                     tableDrag?.payload = null
                                 }
                                 dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
@@ -2779,7 +2802,10 @@ private fun TableDragOverlay(tableDrag: TableDragState) {
                     val point = dragCardTopLeft(payload, tableDrag.offset, index, density) - origin
                     IntOffset(point.x.roundToInt(), point.y.roundToInt())
                 },
-            ) { PlayingCard(card, size = CardSize.MEDIUM) }
+                // 17/11/2026: a mesma borda de "selecionada" da mão — senão, com a carta tocada entrando na
+                // seleção só ao começar o arrasto (e a cópia na mão escondida pelo overlay o tempo todo), o
+                // jogador nunca veria esse "marcada como selecionada" até soltar o dedo.
+            ) { PlayingCard(card, size = CardSize.MEDIUM, emphasis = CardEmphasis.SELECTED) }
         }
     }
 }
