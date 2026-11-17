@@ -130,6 +130,7 @@ import com.gtranca.game.PlanRanking
 import com.gtranca.game.HumanTurnResolver
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectDragGestures
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -152,6 +153,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.toSize
@@ -166,6 +168,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.NonCancellable
 import kotlin.math.PI
 import kotlin.math.roundToInt
+import androidx.compose.ui.zIndex
 import kotlin.math.sin
 import com.gtranca.R
 import com.gtranca.engine.Action
@@ -210,6 +213,9 @@ interface TableEvents {
     fun onClearSelection()
     fun onSortChange(sort: HandSort)
     fun onSpecialColumnToggle()
+
+    /** O jogador soltou o arrasto com a mão nesta ordem (16/11/2026); sem mudança real, a tela não chama isto. */
+    fun onHandReorder(order: List<Card>) = Unit
     fun onDraw()
     fun onTakeDiscardPile()
     fun onDiscardPileClick()
@@ -1718,7 +1724,7 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
             // §17.8 b3 Reações: ao lado do avatar.
             if (state.reactionsEnabled) ReactionsButton(state, events::onReaction)
             if (state.canHideHand) HideHandButton(state.handHidden, events::onToggleHideHand)
-            SortSelector(state.sort, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
+            SortSelector(state.sort, state.manualOverride, state.customHand != null, events::onSortChange, events::onSpecialColumnToggle)
         }
         // 7 cartas de 48dp por linha em 360dp; 2 linhas à vista (sobra mesa para os jogos), o resto rola. A margem
         // dentro da rolagem deixa a carta marcada crescer sem ser cortada pela borda.
@@ -1750,8 +1756,9 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
                             custom.special, state, events,
                             Modifier.width(HandCardSlot * columns).testTag("hand-special"),
                             maxPerRow = columns,
+                            toFullHand = { it + custom.rest },
                         )
-                        CardFlow(custom.rest, state, events, Modifier.weight(1f))
+                        CardFlow(custom.rest, state, events, Modifier.weight(1f), toFullHand = { custom.special + it })
                     }
                 }
             }
@@ -1759,16 +1766,52 @@ private fun HandArea(state: GameUiState, events: TableEvents, onOwnLastPlay: () 
     }
 }
 
+/** Textos repetidos de cada carta da mão, lidos uma só vez por tela (não por carta). */
+private data class HandCardStrings(
+    val selected: String,
+    val playable: String,
+    val completes: String,
+    val notWithSelection: String,
+    val opponentFits: String,
+    val opponentCloses: String,
+    val new: String,
+    val newDescription: String,
+    val dealing: String,
+    val hidden: String,
+)
+
 @Composable
-private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents, modifier: Modifier, maxPerRow: Int = Int.MAX_VALUE) {
-    val selectedText = stringResource(R.string.card_selected)
-    val playableText = stringResource(R.string.card_playable)
-    val completesText = stringResource(R.string.card_completes_selection)
-    val notWithSelectionText = stringResource(R.string.card_not_with_selection)
-    val opponentFitsText = stringResource(R.string.card_opponent_fits)
-    val opponentClosesText = stringResource(R.string.card_opponent_closes)
-    val newText = stringResource(R.string.card_new)
-    val newDescription = stringResource(R.string.card_new_description)
+private fun rememberHandCardStrings() = HandCardStrings(
+    selected = stringResource(R.string.card_selected),
+    playable = stringResource(R.string.card_playable),
+    completes = stringResource(R.string.card_completes_selection),
+    notWithSelection = stringResource(R.string.card_not_with_selection),
+    opponentFits = stringResource(R.string.card_opponent_fits),
+    opponentCloses = stringResource(R.string.card_opponent_closes),
+    new = stringResource(R.string.card_new),
+    newDescription = stringResource(R.string.card_new_description),
+    dealing = stringResource(R.string.card_dealing),
+    hidden = stringResource(R.string.card_hidden),
+)
+
+/**
+ * A mão flui em grade (ou numa coluna, limitada por [maxPerRow]) e cada carta pode ser arrastada pra outra posição
+ * — sempre, não só num critério específico (16/11/2026); as demais abrem espaço ao vivo (técnica "FLIP": ao medir a
+ * nova posição, a carta começa deslocada na posição antiga e anima até zero, em vez de pular). Só reordena a lista
+ * local durante o gesto; o resultado final vira [TableEvents.onHandReorder] ao soltar, remontado pra mão inteira
+ * por [toFullHand] (as colunas de "separar" chamam [CardFlow] duas vezes, cada uma só com a sua metade da mão).
+ * Desligado durante a distribuição e com a mão escondida (`HandCardItem` já devolve só o verso nesses dois casos).
+ */
+@Composable
+private fun CardFlow(
+    cards: List<Card>,
+    state: GameUiState,
+    events: TableEvents,
+    modifier: Modifier,
+    maxPerRow: Int = Int.MAX_VALUE,
+    toFullHand: (List<Card>) -> List<Card> = { it },
+) {
+    val strings = rememberHandCardStrings()
     val hasSelection = state.selected.isNotEmpty()
     val greenLed = com.gtranca.engine.BoosterCatalog.GREEN_LED in state.boosters
     val landing = LocalLanding.current
@@ -1776,79 +1819,211 @@ private fun CardFlow(cards: List<Card>, state: GameUiState, events: TableEvents,
     // em vez de reservar desde já os 11 lugares da mão final. Fora da distribuição (ex.: comprar do monte), o lugar
     // de uma carta a caminho continua reservado (alpha 0 abaixo), pra não embaralhar o resto da mão por 1 carta.
     val shown = if (state.dealPending) cards.filterNot { it in landing } else cards
+    val draggable = !state.dealPending && !state.handHidden
+    if (!draggable) {
+        FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(1.dp), verticalArrangement = Arrangement.spacedBy(4.dp), maxItemsInEachRow = maxPerRow) {
+            shown.forEach { card -> HandCardItem(card, state, events, strings, hasSelection, greenLed, landing) }
+        }
+        return
+    }
+    var draft by remember(shown) { mutableStateOf(shown) }
+    // Posição de cada carta (coordenadas da raiz): alimenta o FLIP das outras e o alvo de onde a arrastada está por
+    // cima, do mesmo jeito que o arrasto de lugares na Seleção de jogadores (`SeatComponents.kt`).
+    val bounds = remember { mutableStateMapOf<Card, Rect>() }
+    var dragCard by remember { mutableStateOf<Card?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    // Posição da arrastada no instante em que o gesto começou: fixa, nunca atualizada durante o arrasto (ao
+    // contrário de bounds[card], que muda assim que ela troca de linha/posição em draft). O deslocamento visual é
+    // sempre calculado contra essa referência fixa, nunca contra a posição de layout atual — senão, ao mudar de
+    // linha, a carta "perdia a referência" e pulava pro layout novo somado ao deslocamento de antes (achado
+    // 16/11/2026).
+    var dragStartRect by remember { mutableStateOf<Rect?>(null) }
+    // Grade de posições no instante em que o gesto começou (uma por índice de `draft`, na ordem de então): fica
+    // fixa durante todo o arrasto. O alvo do dedo é sempre comparado contra essa grade, nunca contra `bounds`
+    // ao vivo — senão, a cada troca de posição os próprios alvos mudam (o reflow do FlowRow recalcula `bounds`
+    // de todo mundo), criando um ciclo de realimentação que bagunça a mão e abre buracos entre as cartas
+    // (achado 16/11/2026: piorava ainda mais quando uma carta com destaque de seleção também mudava de
+    // tamanho/posição no meio do arrasto, pois isso também disparava `bounds` novo pra ela e pras vizinhas).
+    var dragStartSlots by remember { mutableStateOf<List<Rect>>(emptyList()) }
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         maxItemsInEachRow = maxPerRow,
     ) {
-        shown.forEach { card ->
-            val selected = card in state.selected
-            val isNew = card in state.newCards
-            val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
-            // §17.7 b2 Yellow-LED: círculo amarelo (e pulso) nas cartas que se encaixam no jogo do adversário.
-            val fit = state.opponentFits[card] ?: com.gtranca.engine.OpponentFit.NONE
-            val fitText = when (fit) {
-                com.gtranca.engine.OpponentFit.NONE -> ""
-                com.gtranca.engine.OpponentFit.FITS -> opponentFitsText
-                com.gtranca.engine.OpponentFit.CLOSES_CANASTA -> opponentClosesText
-            }
-            val emphasisText = when (emphasis) {
-                CardEmphasis.SELECTED -> selectedText
-                CardEmphasis.SUBTLE -> playableText
-                CardEmphasis.STRONG -> completesText
-                CardEmphasis.DIMMED -> notWithSelectionText
-                CardEmphasis.NONE -> ""
-            }
-            // §3.8.1/§3.8.2 (15/11/2026): [OwnHandCover.DEALING] (distribuição em andamento, só apresentação
-            // local) tem prioridade sobre [OwnHandCover.HIDDEN] ("Esconder cartas" do multijogador) — ver
-            // [ownHandCover]. Nenhum dos dois é uma jogada: nenhum entra em `legalActions`.
-            when (ownHandCover(state.dealPending, state.handHidden)) {
-                OwnHandCover.DEALING -> {
-                    // Não é uma jogada nem precisa ser sincronizado pela rede (a distribuição que conta é a desta
-                    // tela); vira sozinha, sem toque nenhum, quando `dealPending` zera (`dealDone`). Sem clique
-                    // (não é uma escolha do jogador, como `handHidden` é) nem seleção.
-                    val dealingText = stringResource(R.string.card_dealing)
-                    Box(
-                        Modifier
-                            .anchor(AnimAnchor.HandCard(card))
-                            .alpha(if (card in landing) 0f else 1f)
-                            .semantics { contentDescription = dealingText }
-                            .testTag("hand-card-dealing"),
-                    ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
-                    return@forEach
+        draft.forEach { card ->
+            key(card) {
+                val dragging = dragCard == card
+                var lastRect by remember { mutableStateOf<Rect?>(null) }
+                val animX = remember { Animatable(0f) }
+                val animY = remember { Animatable(0f) }
+                val rect = bounds[card]
+                LaunchedEffect(rect, dragging) {
+                    val old = lastRect
+                    if (rect != null) {
+                        if (old != null && !dragging && old.topLeft != rect.topLeft) {
+                            animX.snapTo(old.left - rect.left)
+                            animY.snapTo(old.top - rect.top)
+                            animX.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
+                            animY.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
+                        }
+                        lastRect = rect
+                    }
                 }
-                OwnHandCover.HIDDEN -> {
-                    // Mão escondida: só o verso (nada revelado); tocar avisa para mostrar as cartas.
-                    val hiddenText = stringResource(R.string.card_hidden)
-                    Box(
-                        Modifier
-                            .anchor(AnimAnchor.HandCard(card))
-                            .clickable(onClickLabel = hiddenText) { events.onCardClick(card) }
-                            .semantics { contentDescription = hiddenText }
-                            .testTag("hand-card-hidden"),
-                    ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
-                    return@forEach
-                }
-                OwnHandCover.NONE -> Unit
+                val extra = Modifier
+                    .zIndex(if (dragging) 2f else 0f)
+                    .onGloballyPositioned { bounds[card] = it.boundsInRoot() }
+                    .graphicsLayer {
+                        if (dragging) {
+                            // Alvo = onde a carta deveria estar (referência fixa do início + o quanto o dedo já
+                            // andou); a tradução é só o ajuste entre isso e onde o layout ATUAL (que pode ter
+                            // mudado de linha, com `draft` reordenando) já a colocou.
+                            val start = dragStartRect
+                            val current = bounds[card]
+                            if (start != null && current != null) {
+                                translationX = (start.left + dragOffset.x) - current.left
+                                translationY = (start.top + dragOffset.y) - current.top
+                            }
+                        } else {
+                            translationX = animX.value
+                            translationY = animY.value
+                        }
+                    }
+                    .pointerInput(card) {
+                        detectDragGestures(
+                            onDragStart = {
+                                dragCard = card
+                                dragOffset = Offset.Zero
+                                dragStartRect = bounds[card]
+                                dragStartSlots = draft.map { bounds[it] ?: Rect.Zero }
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragOffset += amount
+                                val start = dragStartRect ?: return@detectDragGestures
+                                val slots = dragStartSlots
+                                if (slots.isEmpty()) return@detectDragGestures
+                                val point = start.center + dragOffset
+                                val to = slots.indices.minByOrNull { slots[it].distanceTo(point) } ?: return@detectDragGestures
+                                val from = draft.indexOf(card)
+                                if (from != -1 && to != from) {
+                                    draft = draft.toMutableList().apply {
+                                        val removed = removeAt(from)
+                                        add(to.coerceIn(0, size), removed)
+                                    }
+                                }
+                            },
+                            onDragEnd = {
+                                dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
+                                events.onHandReorder(toFullHand(draft))
+                            },
+                            onDragCancel = {
+                                dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
+                            },
+                        )
+                    }
+                HandCardItem(card, state, events, strings, hasSelection, greenLed, landing, extra)
             }
-            PlayingCard(
-                card,
+        }
+    }
+}
+
+/** Distância (ao quadrado) de [point] até a borda de [this]; zero se [point] já está dentro. */
+private fun Rect.distanceTo(point: Offset): Float {
+    val dx = when {
+        point.x < left -> left - point.x
+        point.x > right -> point.x - right
+        else -> 0f
+    }
+    val dy = when {
+        point.y < top -> top - point.y
+        point.y > bottom -> point.y - bottom
+        else -> 0f
+    }
+    return dx * dx + dy * dy
+}
+
+/**
+ * Uma carta da mão: o verso (distribuindo ou escondida) ou a carta de verdade, com seleção, realce, encaixe no
+ * adversário e selo de nova. [extra] entra no fim da cadeia de modificadores (depois do toque/seleção): usado pelo
+ * arrasto de [CardFlow], que não muda nada do que a carta já faz sozinha.
+ */
+@Composable
+private fun HandCardItem(
+    card: Card,
+    state: GameUiState,
+    events: TableEvents,
+    strings: HandCardStrings,
+    hasSelection: Boolean,
+    greenLed: Boolean,
+    landing: Set<Card>,
+    extra: Modifier = Modifier,
+) {
+    val selected = card in state.selected
+    val isNew = card in state.newCards
+    val emphasis = handEmphasis(selected, card in state.highlighted, hasSelection, state.isHumanTurn, greenLed)
+    // §17.7 b2 Yellow-LED: círculo amarelo (e pulso) nas cartas que se encaixam no jogo do adversário.
+    val fit = state.opponentFits[card] ?: com.gtranca.engine.OpponentFit.NONE
+    val fitText = when (fit) {
+        com.gtranca.engine.OpponentFit.NONE -> ""
+        com.gtranca.engine.OpponentFit.FITS -> strings.opponentFits
+        com.gtranca.engine.OpponentFit.CLOSES_CANASTA -> strings.opponentCloses
+    }
+    val emphasisText = when (emphasis) {
+        CardEmphasis.SELECTED -> strings.selected
+        CardEmphasis.SUBTLE -> strings.playable
+        CardEmphasis.STRONG -> strings.completes
+        CardEmphasis.DIMMED -> strings.notWithSelection
+        CardEmphasis.NONE -> ""
+    }
+    // §3.8.1/§3.8.2 (15/11/2026): [OwnHandCover.DEALING] (distribuição em andamento, só apresentação
+    // local) tem prioridade sobre [OwnHandCover.HIDDEN] ("Esconder cartas" do multijogador) — ver
+    // [ownHandCover]. Nenhum dos dois é uma jogada: nenhum entra em `legalActions`.
+    when (ownHandCover(state.dealPending, state.handHidden)) {
+        OwnHandCover.DEALING -> {
+            // Não é uma jogada nem precisa ser sincronizado pela rede (a distribuição que conta é a desta
+            // tela); vira sozinha, sem toque nenhum, quando `dealPending` zera (`dealDone`). Sem clique
+            // (não é uma escolha do jogador, como `handHidden` é) nem seleção.
+            Box(
                 Modifier
                     .anchor(AnimAnchor.HandCard(card))
                     .alpha(if (card in landing) 0f else 1f)
-                    .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
-                    .semantics {
-                        stateDescription = listOf(emphasisText, fitText, if (isNew) newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
-                    }
-                    .testTag("hand-card-$card"),
-                size = CardSize.MEDIUM,
-                emphasis = emphasis,
-                badge = if (isNew) newText else null,
-                opponentFit = fit,
-            )
+                    .semantics { contentDescription = strings.dealing }
+                    .testTag("hand-card-dealing")
+                    .then(extra),
+            ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
+            return
         }
+        OwnHandCover.HIDDEN -> {
+            // Mão escondida: só o verso (nada revelado); tocar avisa para mostrar as cartas.
+            Box(
+                Modifier
+                    .anchor(AnimAnchor.HandCard(card))
+                    .clickable(onClickLabel = strings.hidden) { events.onCardClick(card) }
+                    .semantics { contentDescription = strings.hidden }
+                    .testTag("hand-card-hidden")
+                    .then(extra),
+            ) { com.gtranca.ui.cards.CardBack(size = CardSize.MEDIUM) }
+            return
+        }
+        OwnHandCover.NONE -> Unit
     }
+    PlayingCard(
+        card,
+        Modifier
+            .anchor(AnimAnchor.HandCard(card))
+            .alpha(if (card in landing) 0f else 1f)
+            .toggleable(value = selected, role = Role.Checkbox, onValueChange = { events.onCardClick(card) })
+            .semantics {
+                stateDescription = listOf(emphasisText, fitText, if (isNew) strings.newDescription else "").filter { it.isNotEmpty() }.joinToString(", ")
+            }
+            .testTag("hand-card-$card")
+            .then(extra),
+        size = CardSize.MEDIUM,
+        emphasis = emphasis,
+        badge = if (isNew) strings.new else null,
+        opponentFit = fit,
+    )
 }
 
 /**
@@ -1881,17 +2056,24 @@ private fun HideHandButton(hidden: Boolean, onToggle: () -> Unit) {
     ) { com.gtranca.ui.theme.EyeIcon(OnTable, crossed = hidden, size = 24.dp) }
 }
 
+/**
+ * "Ordem:" e três controles sempre visíveis: Valor e Naipe (nenhum marcado durante [manualOverride] — o jogador
+ * arrastou uma carta pra outra posição e a mão parou de seguir critério nenhum) e, à parte, a chave de separar os
+ * 3 pretos e coringas numa coluna à esquerda (some durante [manualOverride]: não existe sem um critério ativo;
+ * 16/11/2026).
+ */
 @Composable
-private fun SortSelector(current: HandSort, separate: Boolean, onChange: (HandSort) -> Unit, onToggleSpecial: () -> Unit) {
+private fun SortSelector(current: HandSort, manualOverride: Boolean, separate: Boolean, onChange: (HandSort) -> Unit, onToggleSpecial: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(R.string.hand_order), color = OnTable, style = MaterialTheme.typography.labelMedium)
         Row(Modifier.selectableGroup()) {
             listOf(HandSort.BY_RANK to R.string.sort_rank, HandSort.BY_SUIT to R.string.sort_suit).forEach { (sort, label) ->
+                val selected = sort == current && !manualOverride
                 val description = stringResource(label)
                 SortButton(
-                    selected = sort == current,
+                    selected = selected,
                     modifier = Modifier
-                        .selectable(selected = sort == current, role = Role.RadioButton, onClick = { onChange(sort) })
+                        .selectable(selected = selected, role = Role.RadioButton, onClick = { onChange(sort) })
                         .semantics { contentDescription = description }
                         .testTag("sort-${sort.name.lowercase()}"),
                 ) { color ->
@@ -1902,14 +2084,16 @@ private fun SortSelector(current: HandSort, separate: Boolean, onChange: (HandSo
                 }
             }
         }
-        val description = stringResource(R.string.sort_special)
-        SortButton(
-            selected = separate,
-            modifier = Modifier
-                .toggleable(value = separate, role = Role.Switch, onValueChange = { onToggleSpecial() })
-                .semantics { contentDescription = description }
-                .testTag("sort-custom"),
-        ) { color -> SplitColumnIcon(color, Modifier.size(20.dp)) }
+        if (!manualOverride) {
+            val description = stringResource(R.string.sort_special)
+            SortButton(
+                selected = separate,
+                modifier = Modifier
+                    .toggleable(value = separate, role = Role.Switch, onValueChange = { onToggleSpecial() })
+                    .semantics { contentDescription = description }
+                    .testTag("sort-custom"),
+            ) { color -> SplitColumnIcon(color, Modifier.size(20.dp)) }
+        }
     }
 }
 

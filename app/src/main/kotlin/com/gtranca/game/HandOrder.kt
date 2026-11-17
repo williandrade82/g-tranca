@@ -8,8 +8,8 @@ import com.gtranca.engine.model.Suit
 enum class HandSort { BY_RANK, BY_SUIT }
 
 /**
- * Preferência de ordem da mão: o critério e se os 3 pretos e coringas ficam separados numa coluna à esquerda
- * (o "separar"). Gravada como texto: `BY_SUIT` ou `BY_SUIT:SPECIAL`.
+ * Preferência de ordem da mão: o critério e se os 3 pretos e coringas ficam separados numa coluna à esquerda (o
+ * "separar"). Gravada como texto: `BY_SUIT` ou `BY_SUIT:SPECIAL`.
  */
 data class HandPrefs(val sort: HandSort = HandSort.BY_SUIT, val separateSpecial: Boolean = true) {
     val id: String get() = sort.name + if (separateSpecial) ":$SPECIAL" else ""
