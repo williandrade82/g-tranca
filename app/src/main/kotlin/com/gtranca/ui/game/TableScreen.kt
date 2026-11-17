@@ -132,6 +132,7 @@ import com.gtranca.game.HumanTurnResolver
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -1939,12 +1940,16 @@ private fun CardFlow(
                     // ficaria com `draft`/a seleção velhos presos no closure (pointerInput só relança quando a
                     // chave muda, nunca só porque `state` mudou de novo) — a vizinha arrastada não abriria espaço
                     // pra carta nova de verdade, e `carryingThis` decidiria errado com base numa seleção velha.
+                    // AfterLongPress (16/11/2026): toque rápido continua só selecionando (.toggleable abaixo); o
+                    // arrasto só começa depois de segurar um instante — senão, com o arrasto sempre ativo em
+                    // qualquer critério, toda carta "sequestra" o gesto e a mão de 3+ linhas não rola mais com o
+                    // dedo sobre uma carta (pedido do usuário, confirmado via pergunta: opção recomendada).
                     .pointerInput(card, shown, state.selected) {
                         // Vale pra todo o gesto (onDragStart decide e as outras callbacks só leem): carta já
                         // selecionada vira arrastar a seleção inteira até a mesa (baixar/descartar); senão, é
                         // sempre reordenar a mão — nunca os dois no mesmo gesto.
                         var carryingThis = false
-                        detectDragGestures(
+                        detectDragGesturesAfterLongPress(
                             onDragStart = {
                                 dragCard = card
                                 dragOffset = Offset.Zero
@@ -1963,7 +1968,7 @@ private fun CardFlow(
                                 change.consume()
                                 dragOffset += amount
                                 if (carryingThis) {
-                                    val payload = tableDrag?.payload ?: return@detectDragGestures
+                                    val payload = tableDrag?.payload ?: return@detectDragGesturesAfterLongPress
                                     tableDrag.offset = dragOffset
                                     val point = payload.origin.center + dragOffset
                                     val target = dropTarget(
@@ -1971,20 +1976,20 @@ private fun CardFlow(
                                         state.addableMelds, state.canCreateNew, state.canDiscardSelected,
                                     )
                                     if (target != payload.target) tableDrag.payload = payload.copy(target = target)
-                                    return@detectDragGestures
+                                    return@detectDragGesturesAfterLongPress
                                 }
-                                val start = dragStartRect ?: return@detectDragGestures
+                                val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
                                 val point = start.center + dragOffset
                                 // Fora da própria mão: área inválida pra reordenar (pedido do usuário) — a mão
                                 // volta pra ordem de antes do gesto e fica assim até o dedo voltar pra dentro.
                                 val handBounds = tableAnchors[AnimAnchor.OwnHand]
                                 if (handBounds != null && !handBounds.contains(point)) {
                                     draft = dragStartOrder
-                                    return@detectDragGestures
+                                    return@detectDragGesturesAfterLongPress
                                 }
                                 val slots = dragStartSlots
-                                if (slots.isEmpty()) return@detectDragGestures
-                                val to = slots.indices.minByOrNull { slots[it].distanceTo(point) } ?: return@detectDragGestures
+                                if (slots.isEmpty()) return@detectDragGesturesAfterLongPress
+                                val to = slots.indices.minByOrNull { slots[it].distanceTo(point) } ?: return@detectDragGesturesAfterLongPress
                                 val from = draft.indexOf(card)
                                 if (from != -1 && to != from) {
                                     draft = draft.toMutableList().apply {
