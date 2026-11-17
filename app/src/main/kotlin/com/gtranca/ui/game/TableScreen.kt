@@ -2004,6 +2004,11 @@ private fun CardFlow(
                             onDragStart = {
                                 dragCard = card
                                 dragOffset = Offset.Zero
+                                // 17/11/2026: o payload agora é publicado aqui (não mais só dentro de `onDrag`,
+                                // que escrevia os dois juntos) — sem zerar, um arrasto anterior deixaria
+                                // `tableDrag.offset` com o deslocamento de ONDE TINHA SOLTADO, e o grupo novo
+                                // nasceria desenhado lá (perto da mesa) até o primeiro movimento recalcular.
+                                tableDrag?.offset = Offset.Zero
                                 val start = bounds[card]
                                 dragStartRect = start
                                 dragStartOrder = draft
