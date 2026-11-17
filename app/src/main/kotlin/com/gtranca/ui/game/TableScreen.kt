@@ -92,6 +92,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -2659,12 +2660,21 @@ private val LocalTableViewport = staticCompositionLocalOf<Rect?> { null }
  * carregado ou o alvo em baixo mudam de verdade, bem mais raro, já que cada leitura dele recompõe toda carta da
  * mão e os dois lados da mesa (o destaque de quem vai receber a solta).
  */
-private class TableDragState(
+internal class TableDragState(
     private val scope: CoroutineScope,
     private val hand: () -> List<Card>,
     private val landing: () -> Set<Card>,
 ) {
-    var payload by mutableStateOf<TableDragPayload?>(null)
+    // 17/11/2026 (achado do `advisor`, bug real — não um ajuste cosmético): `referentialEqualityPolicy()`, NÃO
+    // a política padrão (`structuralEqualityPolicy`). `confirmDrop` depende de comparação `===` (`payload !==
+    // held`) pra saber se ainda é o dono do arrasto. Com a política padrão, escrever um `TableDragPayload`
+    // (data class) estruturalmente IGUAL ao que já estava lá — exatamente o caso de `onDragEnd`, que faz
+    // `payload.copy(target = target)` quando `onDrag` já tinha escrito o MESMO `target` — é tratado como
+    // no-op pelo `mutableStateOf`: a referência antiga continua lá. `confirmDrop` então acha que não é mais o
+    // dono (`payload !== held`) e desiste ANTES do `try/finally` — nunca despacha, nunca limpa o overlay, que
+    // fica preso até outro arrasto sobrescrever. Resolvido o bug "preciso tocar no botão depois de soltar"
+    // relatado pelo usuário (17/11/2026) com prints de conjunto, novo jogo e descarte todos presos na tela.
+    var payload by mutableStateOf<TableDragPayload?>(null, referentialEqualityPolicy())
     var offset by mutableStateOf(Offset.Zero)
 
     /** Cartas do grupo carregado cujo voo de verdade já começou a aparecer ([FlyingCard] saiu da fase `BEFORE`,
@@ -2764,7 +2774,7 @@ private class TableDragState(
     }
 }
 
-private data class TableDragPayload(val cards: List<Card>, val origin: Rect, val target: DropTarget? = null)
+internal data class TableDragPayload(val cards: List<Card>, val origin: Rect, val target: DropTarget? = null)
 
 private val LocalTableDrag = staticCompositionLocalOf<TableDragState?> { null }
 
