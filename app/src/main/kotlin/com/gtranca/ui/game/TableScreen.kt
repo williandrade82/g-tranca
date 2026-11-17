@@ -2187,8 +2187,8 @@ private fun HideHandButton(hidden: Boolean, onToggle: () -> Unit) {
 /**
  * "Ordem:" e três controles sempre visíveis: Valor e Naipe (nenhum marcado durante [manualOverride] — o jogador
  * arrastou uma carta pra outra posição e a mão parou de seguir critério nenhum) e, à parte, a chave de separar os
- * 3 pretos e coringas numa coluna à esquerda (some durante [manualOverride]: não existe sem um critério ativo;
- * 16/11/2026).
+ * 3 pretos e coringas numa coluna à esquerda (continua visível durante [manualOverride], só com aparência
+ * desativada — cinza, sem reagir ao toque — já que não existe sem um critério ativo; 16-17/11/2026).
  */
 @Composable
 private fun SortSelector(current: HandSort, manualOverride: Boolean, separate: Boolean, onChange: (HandSort) -> Unit, onToggleSpecial: () -> Unit) {
@@ -2212,30 +2212,39 @@ private fun SortSelector(current: HandSort, manualOverride: Boolean, separate: B
                 }
             }
         }
-        if (!manualOverride) {
-            val description = stringResource(R.string.sort_special)
-            SortButton(
-                selected = separate,
-                modifier = Modifier
-                    .toggleable(value = separate, role = Role.Switch, onValueChange = { onToggleSpecial() })
-                    .semantics { contentDescription = description }
-                    .testTag("sort-custom"),
-            ) { color -> SplitColumnIcon(color, Modifier.size(20.dp)) }
-        }
+        val description = stringResource(R.string.sort_special)
+        SortButton(
+            selected = separate && !manualOverride,
+            enabled = !manualOverride,
+            modifier = Modifier
+                .toggleable(value = separate, enabled = !manualOverride, role = Role.Switch, onValueChange = { onToggleSpecial() })
+                .semantics { contentDescription = description }
+                .testTag("sort-custom"),
+        ) { color -> SplitColumnIcon(color, Modifier.size(20.dp)) }
     }
 }
 
-/** Botão redondo de 48dp de área de toque; [selected] = preenchido em amarelo. */
+/** Botão redondo de 48dp de área de toque; [selected] = preenchido em amarelo; [enabled] = false fica cinza (aparência desativada, mas continua visível). */
 @Composable
-private fun SortButton(selected: Boolean, modifier: Modifier, content: @Composable (Color) -> Unit) {
+private fun SortButton(selected: Boolean, enabled: Boolean = true, modifier: Modifier, content: @Composable (Color) -> Unit) {
+    val borderColor = when {
+        selected -> GColors.Champagne
+        enabled -> GColors.Steel.copy(alpha = 0.6f)
+        else -> GColors.Steel.copy(alpha = 0.3f)
+    }
+    val contentColor = when {
+        selected -> GColors.OnGold
+        enabled -> OnTable
+        else -> GColors.Steel.copy(alpha = 0.5f)
+    }
     Box(modifier.size(48.dp), contentAlignment = Alignment.Center) {
         Box(
             Modifier
                 .size(36.dp)
                 .then(if (selected) Modifier.background(GoldBrush, CircleShape) else Modifier)
-                .border(1.dp, if (selected) GColors.Champagne else GColors.Steel.copy(alpha = 0.6f), CircleShape),
+                .border(1.dp, borderColor, CircleShape),
             contentAlignment = Alignment.Center,
-        ) { content(if (selected) GColors.OnGold else OnTable) }
+        ) { content(contentColor) }
     }
 }
 
