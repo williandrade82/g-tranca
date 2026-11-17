@@ -3,6 +3,16 @@ import java.util.Properties
 /** Commits antes do primeiro versionado: o commit 87 do histórico vira a versão 0.1. */
 val VERSION_BASE_COMMITS = 86
 
+/**
+ * Folga somada só ao `versionCode` (nunca ao `versionName`, que continua "0.<commits>"): em 17/11/2026 um APK de
+ * teste veio de um branch temporário (`tmp/apk-combinado12`, commit 2b9b70c, mesclava várias branches de feature
+ * ainda não voltadas ao `main`) com `versionCode` 637, maior que o do `main` daquele dia (616) — o Android recusa
+ * atualizar para um `versionCode` menor, e desinstalar para forçar apagaria as moedas/progresso dos testadores.
+ * Esta folga garante que o próximo APK do `main` sempre fique acima de qualquer build de teste já distribuído,
+ * sem precisar reinstalar. Só suba este número se acontecer de novo (nunca baixe).
+ */
+val VERSION_CODE_SAFETY_OFFSET = 100
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -23,7 +33,7 @@ android {
         // Gere o APK depois de commitar para que a versão bata com o hash no nome do arquivo.
         val build = providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
             .standardOutput.asText.map { it.trim().toInt() - VERSION_BASE_COMMITS }.getOrElse(1).coerceAtLeast(1)
-        versionCode = build
+        versionCode = build + VERSION_CODE_SAFETY_OFFSET
         versionName = "0.$build"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // §18.2: chave do aplicativo para o jogo online, lida de local.properties (fora do git). Vazia = sem assinatura.
