@@ -1900,6 +1900,21 @@ private fun HandCardItem(
     )
 }
 
+/** Distância (ao quadrado) de [point] até a borda de [this]; zero se [point] já está dentro. */
+private fun Rect.distanceTo(point: Offset): Float {
+    val dx = when {
+        point.x < left -> left - point.x
+        point.x > right -> point.x - right
+        else -> 0f
+    }
+    val dy = when {
+        point.y < top -> top - point.y
+        point.y > bottom -> point.y - bottom
+        else -> 0f
+    }
+    return dx * dx + dy * dy
+}
+
 /**
  * HandSort.MANUAL (16/11/2026): a mão flui como [CardFlow], mas cada carta pode ser arrastada pra outra
  * posição; as demais abrem espaço ao vivo (técnica "FLIP": ao medir a nova posição, a carta começa deslocada na
@@ -1924,6 +1939,13 @@ private fun ManualHandFlow(cards: List<Card>, state: GameUiState, events: TableE
     // linha, a carta "perdia a referência" e pulava pro layout novo somado ao deslocamento de antes (achado
     // 16/11/2026).
     var dragStartRect by remember { mutableStateOf<Rect?>(null) }
+    // Grade de posições no instante em que o gesto começou (uma por índice de `draft`, na ordem de então): fica
+    // fixa durante todo o arrasto. O alvo do dedo é sempre comparado contra essa grade, nunca contra `bounds`
+    // ao vivo — senão, a cada troca de posição os próprios alvos mudam (o reflow do FlowRow recalcula `bounds`
+    // de todo mundo), criando um ciclo de realimentação que bagunça a mão e abre buracos entre as cartas
+    // (achado 16/11/2026: piorava ainda mais quando uma carta com destaque de seleção também mudava de
+    // tamanho/posição no meio do arrasto, pois isso também disparava `bounds` novo pra ela e pras vizinhas).
+    var dragStartSlots by remember { mutableStateOf<List<Rect>>(emptyList()) }
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
@@ -1969,21 +1991,35 @@ private fun ManualHandFlow(cards: List<Card>, state: GameUiState, events: TableE
                     }
                     .pointerInput(card) {
                         detectDragGestures(
-                            onDragStart = { dragCard = card; dragOffset = Offset.Zero; dragStartRect = bounds[card] },
+                            onDragStart = {
+                                dragCard = card
+                                dragOffset = Offset.Zero
+                                dragStartRect = bounds[card]
+                                dragStartSlots = draft.map { bounds[it] ?: Rect.Zero }
+                            },
                             onDrag = { change, amount ->
                                 change.consume()
                                 dragOffset += amount
                                 val start = dragStartRect ?: return@detectDragGestures
+                                val slots = dragStartSlots
+                                if (slots.isEmpty()) return@detectDragGestures
                                 val point = start.center + dragOffset
-                                val target = bounds.entries.firstOrNull { (other, box) -> other != card && box.contains(point) }?.key
+                                val to = slots.indices.minByOrNull { slots[it].distanceTo(point) } ?: return@detectDragGestures
                                 val from = draft.indexOf(card)
-                                val to = target?.let { draft.indexOf(it) } ?: -1
-                                if (target != null && from != -1 && to != -1 && from != to) {
-                                    draft = draft.toMutableList().apply { add(to, removeAt(from)) }
+                                if (from != -1 && to != from) {
+                                    draft = draft.toMutableList().apply {
+                                        val removed = removeAt(from)
+                                        add(to.coerceIn(0, size), removed)
+                                    }
                                 }
                             },
-                            onDragEnd = { dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; events.onHandReorder(draft) },
-                            onDragCancel = { dragCard = null; dragOffset = Offset.Zero; dragStartRect = null },
+                            onDragEnd = {
+                                dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
+                                events.onHandReorder(draft)
+                            },
+                            onDragCancel = {
+                                dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
+                            },
                         )
                     }
                 HandCardItem(card, state, events, strings, hasSelection, greenLed, landing, extra)
