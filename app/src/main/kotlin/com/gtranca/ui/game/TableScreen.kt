@@ -1956,10 +1956,13 @@ private fun CardFlow(
                                 val start = bounds[card]
                                 dragStartRect = start
                                 carryingThis = card in state.selected && start != null
-                                if (carryingThis) {
-                                    tableDrag?.payload = TableDragPayload(state.selected, start!!)
-                                    tableDrag?.offset = Offset.Zero
-                                } else {
+                                // Carregar pra mesa (e as cartas somem da mão) só é CONFIRMADO depois de um
+                                // pouco de movimento de verdade — ver onDrag. Só segurar (sem mover) não basta,
+                                // senão um toque de seleção um pouco mais longo que o normal já escondia a
+                                // seleção inteira sem o jogador ter arrastado nada (achado 17/11/2026: o limiar
+                                // de toque longo varia por aparelho/configuração de acessibilidade, então até um
+                                // toque comum podia cruzá-lo).
+                                if (!carryingThis) {
                                     dragStartOrder = draft
                                     dragStartSlots = draft.map { bounds[it] ?: Rect.Zero }
                                 }
@@ -1968,14 +1971,25 @@ private fun CardFlow(
                                 change.consume()
                                 dragOffset += amount
                                 if (carryingThis) {
-                                    val payload = tableDrag?.payload ?: return@detectDragGesturesAfterLongPress
-                                    tableDrag.offset = dragOffset
+                                    var payload = tableDrag?.payload
+                                    if (payload == null) {
+                                        // Ainda não confirmado: exige um deslocamento mínimo (12dp, igual à
+                                        // margem de toque normal do Android) antes de esconder qualquer coisa.
+                                        val slopPx = 12.dp.toPx()
+                                        if (dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y < slopPx * slopPx) {
+                                            return@detectDragGesturesAfterLongPress
+                                        }
+                                        val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
+                                        payload = TableDragPayload(state.selected, start)
+                                        tableDrag?.payload = payload
+                                    }
+                                    tableDrag?.offset = dragOffset
                                     val point = payload.origin.center + dragOffset
                                     val target = dropTarget(
                                         point, tableAnchors, currentViewport, ownSide,
                                         state.addableMelds, state.canCreateNew, state.canDiscardSelected,
                                     )
-                                    if (target != payload.target) tableDrag.payload = payload.copy(target = target)
+                                    if (target != payload.target) tableDrag?.payload = payload.copy(target = target)
                                     return@detectDragGesturesAfterLongPress
                                 }
                                 val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
@@ -2022,6 +2036,15 @@ private fun CardFlow(
                                 dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
                             },
                             onDragCancel = {
+                                // 17/11/2026: `detectDragGesturesAfterLongPress` chama onDragCancel até pro
+                                // gesto OCIOSO (nunca chegou a virar toque longo) quando a corrotina dele é
+                                // cancelada — e `state.selected` na chave do pointerInput (acima) cancela a
+                                // de TODAS as cartas de uma vez a cada seleção/deseleção, mesmo as que o dedo
+                                // nunca tocou. Sem este guard, cada carta ociosa fazia `draft = dragStartOrder`
+                                // com o valor inicial (`emptyList()`, nunca chegou a ter um gesto de verdade) —
+                                // a mão sumia por completo a cada toque de seleção. Só quem é dono do arrasto
+                                // ativo (`dragCard == card`) pode tocar no estado compartilhado.
+                                if (dragCard != card) return@detectDragGesturesAfterLongPress
                                 if (carryingThis) tableDrag?.payload = null else draft = dragStartOrder
                                 dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
                             },
