@@ -1171,7 +1171,12 @@ private fun SideArea(
         // 16/11/2026: o arrasto até a mesa destaca mais forte o alvo que está por cima agora, além do brilho
         // pulsante de "alvo possível" (que já vale para qualquer um dos jeitos de baixar, tocar ou arrastar).
         // Só no lado do próprio jogador: ver o porquê em [ownSide].
-        val hoveredTarget = if (side == ownSide) LocalTableDrag.current?.payload?.target else null
+        val ownDragPayload = if (side == ownSide) LocalTableDrag.current?.payload else null
+        val hoveredTarget = ownDragPayload?.target
+        // 17/11/2026 (pedido do usuário): com o arrasto ativo, o brilho pulsante comum (liga em TODOS os jogos
+        // que aceitam a seleção) apaga — senão, no pico do pulso ele fica indistinguível do destaque de
+        // `hovering`, e o jogador não sabe qual conjunto vai receber a solta se dois estiverem perto.
+        val dragActive = ownDragPayload != null
         if (melds.isEmpty() && onNewMeld == null) {
             Text(stringResource(R.string.no_melds), color = OnTable, style = MaterialTheme.typography.bodySmall)
         } else {
@@ -1187,7 +1192,7 @@ private fun SideArea(
                         flash = flashes.lastOrNull { it.side == side && it.meldId == meld.id.value },
                         animationMillis = animationMillis,
                         targeted = meld.id == targetMeld,
-                        addGlow = if (canAdd) glow else 0f,
+                        addGlow = if (canAdd && !dragActive) glow else 0f,
                         hovering = hoveredTarget == DropTarget.Meld(meld.id.value),
                         points = if (!scoreboard) null else settledValue(
                             com.gtranca.engine.meldPoints(meld.meld, rules),
@@ -1197,7 +1202,7 @@ private fun SideArea(
                         scoreTag = "meld-score-${meld.id.value}",
                     )
                 }
-                onNewMeld?.let { NewMeldSlot(glow, hoveredTarget == DropTarget.NewMeld, Modifier.anchor(AnimAnchor.NewMeldSlot(side)), it) }
+                onNewMeld?.let { NewMeldSlot(if (dragActive) 0f else glow, hoveredTarget == DropTarget.NewMeld, Modifier.anchor(AnimAnchor.NewMeldSlot(side)), it) }
             }
         }
     }
@@ -1211,6 +1216,9 @@ private fun NewMeldSlot(glow: Float, hovering: Boolean, modifier: Modifier, onCl
     Box(
         modifier
             .size(width = 96.dp, height = 70.dp)
+            // 17/11/2026: fundo tingido só no `hovering` — um destaque que o brilho pulsante (que só colore a
+            // borda tracejada) nunca produz, pra não ficar igual ao pico do pulso.
+            .background(if (hovering) GColors.Gold.copy(alpha = 0.22f) else Color.Transparent, RoundedCornerShape(6.dp))
             .drawBehind {
                 drawRoundRect(
                     color,
@@ -1292,7 +1300,9 @@ private fun MeldView(
             }
             .semantics { canastaPulse = pulse.value }
             .heightIn(min = 48.dp)
-            .background(flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(Corner.xs))
+            // 17/11/2026: `hovering` tinge o fundo (destaque que o brilho pulsante, só na borda, nunca produz),
+            // mais forte que o pulso do flash de canastra, que fica suprimido enquanto o arrasto estiver em cima.
+            .background(if (hovering) GColors.Gold.copy(alpha = 0.22f) else flashColor.copy(alpha = 0.45f * pulse.value), RoundedCornerShape(Corner.xs))
             .border(BorderStroke(if (hovering) 4.dp else if (targeted || addGlow > 0f) 3.dp else 2.dp, borderColor), RoundedCornerShape(Corner.xs))
             .then(if (onClick != null) Modifier.clickable { onClick(tableMeld.id) } else Modifier)
             .semantics(mergeDescendants = true) {
@@ -1496,7 +1506,7 @@ private fun CenterArea(state: GameUiState, events: TableEvents, onShowDiscardPil
                 Modifier
                     .weight(1f)
                     .heightIn(min = 52.dp)
-                    .background(GColors.Midnight.copy(alpha = 0.25f), RoundedCornerShape(Corner.sm))
+                    .background(if (pileHovering) GColors.Gold.copy(alpha = 0.22f) else GColors.Midnight.copy(alpha = 0.25f), RoundedCornerShape(Corner.sm))
                     .border(
                         if (pileHovering) 3.dp else if (pileActive) 2.dp else 1.dp,
                         if (pileHovering) GColors.Gold else if (pileActive) TableAccent else OnTable.copy(alpha = 0.35f),
@@ -1976,24 +1986,34 @@ private fun CardFlow(
                     // qualquer critério, toda carta "sequestra" o gesto e a mão de 3+ linhas não rola mais com o
                     // dedo sobre uma carta (pedido do usuário, confirmado via pergunta: opção recomendada).
                     .pointerInput(card, shown) {
-                        // Vale pra todo o gesto (onDragStart decide e as outras callbacks só leem, exceto a
-                        // promoção em onDrag abaixo): carta já selecionada vira arrastar a seleção inteira até a
-                        // mesa (baixar/descartar); senão, começa reordenando a mão, mas PROMOVE pra carregar se o
-                        // dedo sair da área da mão sem ter mudado nada (pedido do usuário, 17/11/2026: arrastar
-                        // uma carta não selecionada direto pra mesa junta ela à seleção existente, ou vira a
-                        // seleção sozinha se não havia nenhuma — nunca os dois papéis ao mesmo tempo depois disso).
+                        // Unifica os dois papéis do arrasto (17/11/2026, pedido do usuário): toda carta pode ser
+                        // arrastada, selecionada ou não. Ao pegar, a carta tocada ENTRA na seleção se ainda não
+                        // estava (junta com o que já tiver selecionado, ou vira a seleção sozinha) — vale mesmo
+                        // que o gesto termine como reordenação, não é desfeito depois. Enquanto o dedo estiver
+                        // dentro da mão, a seleção inteira (não só a carta tocada) se move junto, na ordem que já
+                        // tinha na mão (`localGroup`/`blockMove`, abaixo). Se o dedo sair da área da mão, a
+                        // seleção passa a carregar até a mesa (baixar/descartar) em vez de reordenar —
+                        // `carryingThis` nunca volta a `false` depois disso.
                         var carryingThis = false
+                        var localGroup = emptySet<Card>()
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
                                 dragCard = card
                                 dragOffset = Offset.Zero
                                 val start = bounds[card]
                                 dragStartRect = start
-                                carryingThis = card in currentState.selected && start != null
-                                if (!carryingThis) {
-                                    dragStartOrder = draft
-                                    dragStartSlots = draft.map { bounds[it] ?: Rect.Zero }
-                                }
+                                dragStartOrder = draft
+                                dragStartSlots = draft.map { bounds[it] ?: Rect.Zero }
+                                carryingThis = false
+                                if (card !in currentState.selected) events.onCardClick(card)
+                                // `events.onCardClick` é assíncrono (só reflete em `currentState` numa próxima
+                                // recomposição) — o grupo deste gesto fica fixo aqui, calculado na mão.
+                                val groupSet = currentState.selected.toSet() + card
+                                localGroup = groupSet.intersect(dragStartOrder.toSet())
+                                // Ordem da mão, não a ordem do clique (pedido do usuário): quem monta o payload
+                                // (overlay, leque e o índice de cada carta em `topLeftFor`) usa esta lista.
+                                val ordered = currentState.hand.filter { it in groupSet }
+                                if (start != null) tableDrag?.payload = TableDragPayload(ordered, start)
                             },
                             onDrag = { change, amount ->
                                 change.consume()
@@ -2003,41 +2023,30 @@ private fun CardFlow(
                                     val point = start.center + dragOffset
                                     val handBounds = tableAnchors[AnimAnchor.OwnHand]
                                     if (handBounds == null || handBounds.contains(point)) {
-                                        // Dentro da mão: reordena contra a grade fixa, como antes.
-                                        val slots = dragStartSlots
-                                        if (slots.isNotEmpty()) {
-                                            val to = slots.indices.minByOrNull { slots[it].distanceTo(point) }
-                                            val from = draft.indexOf(card)
-                                            if (to != null && from != -1 && to != from) {
-                                                draft = draft.toMutableList().apply {
-                                                    val removed = removeAt(from)
-                                                    add(to.coerceIn(0, size), removed)
+                                        // Dentro da mão: o bloco inteiro (`localGroup`) reordena junto, contra a
+                                        // grade fixa do início do gesto. Exige um deslocamento mínimo (12dp,
+                                        // margem de toque normal do Android) antes de reordenar: sem isso, uma
+                                        // seleção que não estivesse já junta na mão colapsaria num lugar contíguo
+                                        // no primeiro pixel do toque longo, sem o jogador ter arrastado nada.
+                                        val slopPx = 12.dp.toPx()
+                                        if (dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y >= slopPx * slopPx) {
+                                            val slots = dragStartSlots
+                                            if (slots.isNotEmpty()) {
+                                                val to = slots.indices.minByOrNull { slots[it].distanceTo(point) }
+                                                if (to != null) {
+                                                    val newDraft = blockMove(dragStartOrder, localGroup, to)
+                                                    if (newDraft != draft) draft = newDraft
                                                 }
                                             }
                                         }
-                                        return@detectDragGesturesAfterLongPress
+                                    } else {
+                                        // Saiu da mão: desfaz qualquer reordenação visual local (a seleção ainda
+                                        // não saiu de verdade da mão) e passa a carregar até a mesa.
+                                        draft = dragStartOrder
+                                        carryingThis = true
                                     }
-                                    // Saiu da mão sem estar selecionada: devolve a mão pra ordem de antes (nunca
-                                    // chegou a reordenar de verdade) e promove — entra na seleção (junto com o
-                                    // que já estiver selecionado, ou sozinha) e passa a carregar daqui pra frente.
-                                    draft = dragStartOrder
-                                    if (card !in currentState.selected) events.onCardClick(card)
-                                    carryingThis = true
-                                    tableDrag?.payload = TableDragPayload(currentState.selected + card, start)
                                 }
-                                var payload = tableDrag?.payload
-                                if (payload == null) {
-                                    // Ainda não confirmado (carta já estava selecionada ao começar o gesto): exige
-                                    // um deslocamento mínimo (12dp, igual à margem de toque normal do Android)
-                                    // antes de esconder qualquer coisa.
-                                    val slopPx = 12.dp.toPx()
-                                    if (dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y < slopPx * slopPx) {
-                                        return@detectDragGesturesAfterLongPress
-                                    }
-                                    val start = dragStartRect ?: return@detectDragGesturesAfterLongPress
-                                    payload = TableDragPayload(currentState.selected, start)
-                                    tableDrag?.payload = payload
-                                }
+                                val payload = tableDrag?.payload ?: return@detectDragGesturesAfterLongPress
                                 tableDrag?.offset = dragOffset
                                 // O alvo embaixo do dedo é testado onde a carta é DESENHADA (com a subida), não
                                 // onde o dedo fisicamente está — senão o jogador mira pela carta visível (mais
@@ -2103,13 +2112,11 @@ private fun CardFlow(
                                         tableDrag?.payload = null
                                     }
                                 } else {
-                                    // Soltou fora da mão (nunca chegou a reordenar nada, acima): não chama nada —
-                                    // a mão já está na ordem de antes do gesto.
-                                    val point = (dragStartRect?.center ?: Offset.Zero) + dragOffset
-                                    val handBounds = tableAnchors[AnimAnchor.OwnHand]
-                                    if (handBounds == null || handBounds.contains(point)) {
-                                        events.onHandReorder(currentToFullHand(draft))
-                                    }
+                                    // Nunca saiu da mão: confirma a reordenação do bloco (mesmo que o bloco seja
+                                    // só a carta tocada) e libera o overlay — a seleção feita ao pegar a carta
+                                    // continua valendo de qualquer jeito (não é desfeita por ter só reordenado).
+                                    if (draft != dragStartOrder) events.onHandReorder(currentToFullHand(draft))
+                                    tableDrag?.payload = null
                                 }
                                 dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
                             },
@@ -2119,7 +2126,8 @@ private fun CardFlow(
                                 // cancelada. Só quem é dono do arrasto ativo (`dragCard == card`) pode tocar no
                                 // estado compartilhado.
                                 if (dragCard != card) return@detectDragGesturesAfterLongPress
-                                if (carryingThis) tableDrag?.payload = null else draft = dragStartOrder
+                                if (!carryingThis) draft = dragStartOrder
+                                tableDrag?.payload = null
                                 dragCard = null; dragOffset = Offset.Zero; dragStartRect = null; dragStartSlots = emptyList()
                             },
                         )
@@ -2894,6 +2902,33 @@ internal fun dropTarget(
     if (canCreateNew && anchors[AnimAnchor.NewMeldSlot(ownSide)]?.contains(point) == true) return DropTarget.NewMeld
     if (canDiscardSelected && anchors[AnimAnchor.DiscardPile]?.contains(point) == true) return DropTarget.Discard
     return null
+}
+
+/**
+ * [order] com as cartas de [selected] (0, 1 ou mais, não precisam estar juntas em [order]) removidas e
+ * reinseridas juntas, na própria ordem relativa de [order], perto do índice [insertAt] (contado em [order],
+ * ANTES de remover nada — pura, sem depender de posição ao vivo, mesmo motivo do `dragStartSlots` fixo:
+ * recalcular contra um layout que já mudou criaria um ciclo de realimentação). [insertAt] fora da faixa é
+ * recortado para o início/fim de [order]. 17/11/2026: generaliza o arrasto de 1 carta (mover a seleção inteira
+ * junto, "na ordem da mão", pedido do usuário) — bloco de 1 cai no mesmo resultado de mover só aquela carta.
+ */
+internal fun blockMove(order: List<Card>, selected: Set<Card>, insertAt: Int): List<Card> {
+    if (selected.isEmpty() || order.isEmpty()) return order
+    val clamped = insertAt.coerceIn(0, order.size - 1)
+    val block = order.filter { it in selected }
+    val rest = order.filterNot { it in selected }
+    val firstSelectedIndex = order.indices.first { order[it] in selected }
+    // Alvejar um slot ANTES do início do bloco conta só quem está antes dele (exclusive — alcança o início da
+    // mão); alvejar o próprio bloco ou depois dele conta até o slot incluído (inclusive — alcança o fim da mão
+    // e, para qualquer slot dentro do próprio bloco, sempre dá o mesmo resultado: fica tudo como está). Um bloco
+    // de 1 carta cai exatamente no algoritmo antigo (mover só aquela carta): os dois ramos coincidem no próprio
+    // índice dela, único ponto em que um slot "antes" e "dentro" do bloco são a mesma coisa.
+    val restInsertIndex = if (clamped < firstSelectedIndex) {
+        order.take(clamped).count { it !in selected }
+    } else {
+        order.take(clamped + 1).count { it !in selected }
+    }
+    return rest.toMutableList().apply { addAll(restInsertIndex.coerceIn(0, size), block) }
 }
 
 /** Ponto bem fora de [bounds], pela [edge] pedida, para a origem de [AnimAnchor.DealEntry] (telas.md 3.8.1). A
