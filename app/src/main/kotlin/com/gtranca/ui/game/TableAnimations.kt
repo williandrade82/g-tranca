@@ -52,6 +52,9 @@ sealed interface AnimAnchor {
     /** Área de jogos do lado (alvo de reserva). */
     data class SideArea(val side: Int) : AnimAnchor
 
+    /** Conjunto vazio ("Novo jogo") do lado, 16/11/2026: alvo de arrastar a seleção até a mesa para baixar. */
+    data class NewMeldSlot(val side: Int) : AnimAnchor
+
     /** Área de 3 vermelhos do lado (§6.5). */
     data class RedThrees(val side: Int) : AnimAnchor
 
