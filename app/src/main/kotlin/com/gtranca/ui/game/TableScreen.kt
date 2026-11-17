@@ -94,6 +94,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -121,6 +122,7 @@ import com.gtranca.engine.model.Meld
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -168,7 +170,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import androidx.compose.ui.zIndex
@@ -486,7 +490,13 @@ private fun TableScreenContent(
         // Sem a margem de baixo: a barra de ações cobre a área da navegação e põe o espaço dentro dela.
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     ) { padding ->
-        val tableDrag = remember { TableDragState() }
+        val dragScope = rememberCoroutineScope()
+        // A mesma lista/conjunto que `HandArea`/a mesa usam (abaixo) — não os de dentro de uma `CardFlow`
+        // específica, que param de atualizar se aquela `CardFlow` for descartada no meio da espera (ver
+        // `TableDragState.confirmDrop`).
+        val currentHand by rememberUpdatedState(state.hand)
+        val currentLanding by rememberUpdatedState(landing)
+        val tableDrag = remember { TableDragState(dragScope, { currentHand }, { currentLanding }) }
         CompositionLocalProvider(LocalAnchors provides anchors, LocalLanding provides landing, LocalTableDrag provides tableDrag, LocalTableViewport provides tableViewport) {
             var headerHeightPx by remember { mutableStateOf(0) }
             // Limites visíveis da mesa (telas.md 3.8.1): referência para o ponto de entrada da distribuição inicial
@@ -591,7 +601,10 @@ private fun TableScreenContent(
                     GuessSideReactionOverlay(state.ownGuessReaction, tableViewport, sideArea)
                     GuessSideReactionOverlay(state.partnerGuessReaction, tableViewport, sideArea)
                 }
-                FlightsLayer(state.flights, anchors, state.animationMillis, { readyFlights[it] == true }) { id ->
+                FlightsLayer(
+                    state.flights, anchors, state.animationMillis, { readyFlights[it] == true },
+                    onTakeoff = tableDrag::takeoff,
+                ) { id ->
                     arrived[id] = true
                     // O som acompanha a chegada da carta ao destino.
                     state.flights.firstOrNull { it.id == id }?.let(SoundMap::forFlight)?.let(sound::play)
@@ -1879,8 +1892,15 @@ private fun CardFlow(
     // tamanho/posição no meio do arrasto, pois isso também disparava `bounds` novo pra ela e pras vizinhas).
     var dragStartSlots by remember { mutableStateOf<List<Rect>>(emptyList()) }
     val tableDrag = LocalTableDrag.current
-    val tableAnchors = LocalAnchors.current ?: emptyMap()
+    // Mapa mutável de verdade (não só a visão `Map` de leitura): precisa pra congelar, no solto, a posição de onde
+    // a carta vai voar de verdade (ver `onDragEnd` abaixo) — sem isso o voo nasceria do lugar original na mão.
+    val rawAnchors = LocalAnchors.current
+    val tableAnchors = rawAnchors ?: emptyMap()
     val ownSide = state.snapshot.view.side.index
+    // Tamanho (px) da carta pousada na mão, pra montar o retângulo congelado com o mesmo centro que o overlay
+    // desenhava (só o centro importa pro voo — `Map<AnimAnchor, Rect>.resolve` só lê `.center`).
+    val density = LocalDensity.current
+    val cardPx = with(density) { Size(CardSize.MEDIUM.width.toPx(), CardSize.MEDIUM.height.toPx()) }
     // `toFullHand`/`LocalTableViewport.current` por `rememberUpdatedState`: a própria lambda de `toFullHand` é um
     // objeto novo a cada recomposição (não pode entrar na chave de `pointerInput`, senão o gesto reiniciaria sem
     // parar) e o viewport pode mudar depois que este cartão já tinha o gesto montado (1ª medida só chega depois).
@@ -2019,7 +2039,10 @@ private fun CardFlow(
                                     tableDrag?.payload = payload
                                 }
                                 tableDrag?.offset = dragOffset
-                                val point = payload.origin.center + dragOffset
+                                // O alvo embaixo do dedo é testado onde a carta é DESENHADA (com a subida), não
+                                // onde o dedo fisicamente está — senão o jogador mira pela carta visível (mais
+                                // alta) e o destaque/alvo não bate (pedido do usuário, 17/11/2026).
+                                val point = payload.origin.center + dragOffset - Offset(0f, TableDragLift.toPx())
                                 val target = dropTarget(
                                     point, tableAnchors, currentViewport, ownSide,
                                     currentState.addableMelds, currentState.canCreateNew, currentState.canDiscardSelected,
@@ -2031,23 +2054,54 @@ private fun CardFlow(
                                     // Recalcula o alvo agora (em vez de confiar só no que ficou de `onDrag`): um
                                     // gesto rápido o bastante pode soltar sem outro evento de movimento depois da
                                     // promoção, deixando `payload.target` parado em `null` mesmo em cima de um
-                                    // alvo válido. Nada no alvo (soltou fora de qualquer área válida): a seleção
-                                    // (incluindo uma promoção desta vez) só fica como está, sem baixar/descartar.
+                                    // alvo válido. Mesmo ponto de `onDrag` (com a subida descontada, acima). Nada
+                                    // no alvo (soltou fora de qualquer área válida): a seleção (incluindo uma
+                                    // promoção desta vez) só fica como está, sem baixar/descartar.
                                     val payload = tableDrag?.payload
                                     val target = payload?.let {
                                         dropTarget(
-                                            it.origin.center + dragOffset, tableAnchors, currentViewport, ownSide,
+                                            it.origin.center + dragOffset - Offset(0f, TableDragLift.toPx()),
+                                            tableAnchors, currentViewport, ownSide,
                                             currentState.addableMelds, currentState.canCreateNew, currentState.canDiscardSelected,
                                         )
                                     }
-                                    target?.let {
-                                        when (it) {
-                                            is DropTarget.Meld -> events.onAddToMeld(MeldId(it.meldId))
-                                            DropTarget.NewMeld -> events.onNewMeld()
-                                            DropTarget.Discard -> events.onDiscard()
-                                        }
+                                    if (payload != null && target != null) {
+                                        // Mantém o alvo aceso (destaque no máximo) durante os 0,3s de espera —
+                                        // sem isso um gesto rápido o bastante soltava com `payload.target` ainda
+                                        // `null` (nunca atualizado por outro `onDrag`) e nada ficava destacado.
+                                        val litPayload = payload.copy(target = target)
+                                        tableDrag?.payload = litPayload
+                                        val frozenOffset = dragOffset
+                                        val cards = payload.cards
+                                        tableDrag?.confirmDrop(
+                                            held = litPayload,
+                                            cards = cards,
+                                            target = target,
+                                            topLeftFor = { index -> dragCardTopLeft(payload, frozenOffset, index, density) },
+                                            cardPx = cardPx,
+                                            anchors = rawAnchors,
+                                            // Nunca confia só no que valia ao soltar o dedo: durante os 0,3s de
+                                            // espera o jogador pode tocar em outra coisa (ex.: ✕ Limpar, ou outra
+                                            // carta) — só despacha se a seleção e o alvo continuarem exatamente
+                                            // os mesmos (nada automático/irreversível por causa do atraso).
+                                            stillValid = {
+                                                currentState.selected.toSet() == cards.toSet() && when (target) {
+                                                    is DropTarget.Meld -> MeldId(target.meldId) in currentState.addableMelds
+                                                    DropTarget.NewMeld -> currentState.canCreateNew
+                                                    DropTarget.Discard -> currentState.canDiscardSelected
+                                                }
+                                            },
+                                            dispatch = {
+                                                when (target) {
+                                                    is DropTarget.Meld -> events.onAddToMeld(MeldId(target.meldId))
+                                                    DropTarget.NewMeld -> events.onNewMeld()
+                                                    DropTarget.Discard -> events.onDiscard()
+                                                }
+                                            },
+                                        )
+                                    } else {
+                                        tableDrag?.payload = null
                                     }
-                                    tableDrag?.payload = null
                                 } else {
                                     // Soltou fora da mão (nunca chegou a reordenar nada, acima): não chama nada —
                                     // a mão já está na ordem de antes do gesto.
@@ -2557,14 +2611,145 @@ private val LocalTableViewport = staticCompositionLocalOf<Rect?> { null }
  * carregado ou o alvo em baixo mudam de verdade, bem mais raro, já que cada leitura dele recompõe toda carta da
  * mão e os dois lados da mesa (o destaque de quem vai receber a solta).
  */
-private class TableDragState {
+private class TableDragState(
+    private val scope: CoroutineScope,
+    private val hand: () -> List<Card>,
+    private val landing: () -> Set<Card>,
+) {
     var payload by mutableStateOf<TableDragPayload?>(null)
     var offset by mutableStateOf(Offset.Zero)
+
+    /** Cartas do grupo carregado cujo voo de verdade já começou a aparecer ([FlyingCard] saiu da fase `BEFORE`,
+     * via [takeoff]) — o [TableDragOverlay] para de desenhá-las assim que entram aqui, senão ficaria uma cópia
+     * parada no ponto da solta por baixo da carta voando de verdade (ver [confirmDrop]). */
+    var tookOff by mutableStateOf<Set<Card>>(emptySet())
+
+    /** Cartas que algum [confirmDrop] em andamento está mesmo esperando decolar agora — não um estado observado
+     * pela UI (não precisa de `mutableStateOf`, só este objeto lê). Sem este portão, [takeoff] aceitaria TODA
+     * carta que sai da própria mão por qualquer jogada (inclusive pelos botões de sempre) e ficaria presa em
+     * [tookOff] para sempre (nada depois tira ela de lá) — a próxima vez que ESSA MESMA carta voltasse pra mão
+     * (ex.: pegar o lixo de volta) e fosse arrastada de novo, o overlay nunca a desenharia, e `confirmDrop`
+     * liberaria na hora, sem nunca ter esperado o voo de verdade aparecer. */
+    private var awaiting: Set<Card> = emptySet()
+
+    /** Chamado por toda [FlyingCard] cuja origem é a própria mão, assim que ela sai da fase `BEFORE` (ver
+     * `FlightsLayer`) — só conta se algum [confirmDrop] estiver mesmo esperando por essa carta agora ([awaiting]);
+     * o resto (toda jogada de botão, ou um arrasto antigo já concluído) passa por aqui à toa, sem efeito. */
+    fun takeoff(card: Card) {
+        if (card in awaiting) tookOff = tookOff + card
+    }
+
+    /**
+     * Confirma a solta (pedido do usuário, 17/11/2026): espera [TableDragHoldMillis] com a carta congelada onde
+     * foi solta — [held] continua sendo [payload] o tempo todo, então o overlay não muda nada sozinho — confere
+     * que a seleção e o alvo ainda valem (nunca confia só no que valia no instante de soltar: o jogador pode
+     * tocar outra coisa durante a espera; "nada automático" — ver `feedback-no-auto-irreversible`). Duas fases
+     * depois disso, sempre limpando tudo no [finally] (nunca trava o overlay na tela pra sempre, mesmo numa
+     * recusa do motor ou numa resposta mais lenta num convidado do multijogador):
+     * 1. Grava a posição congelada de cada carta como a âncora `HandCard` dela e despacha; espera a carta sumir
+     *    de verdade de [hand] (limite [TableDragGoneTimeoutMillis]) — se der timeout (recusa, ou um diálogo que
+     *    o jogador cancelou), desfaz a âncora (volta ao que era antes) e para por aqui: a carta continua na mão
+     *    de verdade, não há voo nenhum pra esperar.
+     * 2. Grava a âncora congelada DE NOVO (um relayout entre o despacho e a carta sumir pode ter sobrescrito com
+     *    a posição real — `.anchor()` só reage a relayout de verdade, não a este `set` manual) e só então espera
+     *    cada carta decolar ([tookOff], via [takeoff]) ou nunca vir a decolar de verdade — não está mais "a
+     *    caminho" ([landing], o mesmo conjunto que a mesa usa pra esconder o destino até o voo chegar; cobre
+     *    também animação desligada e um grupo maior que o limite de cartas por voo, que nunca ganham
+     *    `FlyingCard` nenhuma). Limite bem folgado ([TableDragFlightTimeoutMillis]): a esta altura a carta já
+     *    saiu da mão de verdade, então o voo É garantido (ou já nem está mais "a caminho") — é só uma rede de
+     *    segurança, não uma condição esperada de acontecer.
+     *
+     * Soltar o overlay cedo demais na fase 1 reapareceria a carta de verdade no lugar original por 1+ quadros
+     * (apagando a âncora congelada); soltar só quando o voo CHEGA (em vez de só começar, fase 2) deixaria duas
+     * cópias na tela enquanto ele viaja. [hand]/[landing] (lidos via `snapshotFlow`, não um polling por tempo)
+     * são os mesmos que `HandArea`/a mesa usam — não a seleção local desta carta, que para de atualizar se a
+     * `CardFlow` dela for descartada (ex.: soltar o último 3 preto/coringa da coluna separada troca a mesa pro
+     * fluxo sem coluna, descartando a `CardFlow` de todo mundo) — por isso tudo isto fica ligado à composição da
+     * MESA (criado uma vez em `TableScreenContent`), nunca a de nenhum cartão específico.
+     */
+    fun confirmDrop(
+        held: TableDragPayload,
+        cards: List<Card>,
+        target: DropTarget,
+        topLeftFor: (Int) -> Offset,
+        cardPx: Size,
+        anchors: MutableMap<AnimAnchor, Rect>?,
+        stillValid: () -> Boolean,
+        dispatch: () -> Unit,
+    ) {
+        scope.launch {
+            delay(TableDragHoldMillis)
+            if (payload !== held) return@launch
+            if (!stillValid()) {
+                payload = null
+                return@launch
+            }
+            val saved = cards.associateWith { anchors?.get(AnimAnchor.HandCard(it)) }
+            fun pin() = cards.forEachIndexed { index, c -> anchors?.set(AnimAnchor.HandCard(c), Rect(topLeftFor(index), cardPx)) }
+            fun restore() = cards.forEach { c ->
+                val prev = saved[c]
+                val key = AnimAnchor.HandCard(c)
+                if (prev != null) anchors?.set(key, prev) else anchors?.remove(key)
+            }
+            val cardSet = cards.toSet()
+            awaiting = awaiting + cardSet
+            try {
+                pin()
+                dispatch()
+                val left = withTimeoutOrNull(TableDragGoneTimeoutMillis) {
+                    snapshotFlow { cards.none { it in hand() } }.first { it }
+                } != null
+                if (!left) {
+                    restore()
+                    return@launch
+                }
+                pin()
+                withTimeoutOrNull(TableDragFlightTimeoutMillis) {
+                    snapshotFlow { cards.all { it in tookOff || it !in landing() } }.first { it }
+                }
+            } finally {
+                awaiting = awaiting - cardSet
+                tookOff = tookOff - cardSet
+                if (payload === held) payload = null
+            }
+        }
+    }
 }
 
 private data class TableDragPayload(val cards: List<Card>, val origin: Rect, val target: DropTarget? = null)
 
 private val LocalTableDrag = staticCompositionLocalOf<TableDragState?> { null }
+
+/** Arrasto até a mesa (17/11/2026, pedido do usuário): a carta (ou o grupo) sobe esse tanto acima do ponto que o
+ * dedo define, pra não ficar escondida embaixo do próprio dedo durante o arrasto. O alvo embaixo do dedo
+ * (`dropTarget`) usa o mesmo deslocamento, senão o jogador mira pela carta visível mas o teste de alvo continua
+ * no ponto de baixo (onde o dedo de fato está) — os dois têm que combinar. */
+private val TableDragLift = 56.dp
+
+/** Quanto tempo a carta fica parada onde foi solta antes de confirmar a jogada (pedido do usuário, 17/11/2026) —
+ * dá tempo do jogador ver que acertou o alvo antes dela "sumir" da mão de vez. */
+private const val TableDragHoldMillis = 300L
+
+/** Limite de espera pela carta sumir mesmo da mão (depois de despachada) antes de desistir de segurar o overlay
+ * — cobre uma recusa do motor ou uma resposta mais lenta num convidado do multijogador; nunca trava pra sempre. */
+private const val TableDragGoneTimeoutMillis = 1_500L
+
+/** Limite de espera, DEPOIS de a carta já ter saído da mão de verdade, pelo voo dela aparecer (ou deixar de estar
+ * "a caminho") — bem mais folgado que [TableDragGoneTimeoutMillis]: a esta altura o voo é praticamente garantido,
+ * isto é só uma rede de segurança (nunca trava o overlay pra sempre). */
+private const val TableDragFlightTimeoutMillis = 10_000L
+
+/**
+ * Topo-esquerda, em coordenadas de raiz, de onde a carta [index] do grupo carregado por [payload] é desenhada
+ * agora — a posição que o dedo define ([TableDragPayload.origin] + [offset]), um pouco pra cada lado (leque) e
+ * [TableDragLift] mais pra cima. Usada tanto pelo [TableDragOverlay] (a cada quadro, durante o arrasto) quanto
+ * pelo congelamento no solto (dentro do próprio gesto, bem depois de `onDragEnd` já ter voltado) — as duas têm
+ * que concordar, senão o voo de verdade nasceria num ponto diferente de onde a carta estava visualmente parada.
+ * [density] explícito (em vez de receiver `Density`) pra poder ser chamada de dentro de um `launch{}` sem
+ * depender de resolução de receiver implícito atravessando escopos aninhados.
+ */
+private fun dragCardTopLeft(payload: TableDragPayload, offset: Offset, index: Int, density: Density): Offset =
+    with(density) { payload.origin.topLeft + offset + Offset(index * 10.dp.toPx(), -TableDragLift.toPx()) }
 
 /** Camada por cima da mesa com as cartas carregadas por [TableDragState.payload]; sem toque, some sozinha
  * quando o arrasto termina (sucesso ou não — o lugar de origem na mão nunca para de existir, só fica invisível
@@ -2572,14 +2757,18 @@ private val LocalTableDrag = staticCompositionLocalOf<TableDragState?> { null }
 @Composable
 private fun TableDragOverlay(tableDrag: TableDragState) {
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val density = LocalDensity.current
     val payload = tableDrag.payload ?: return
     Box(
         Modifier.fillMaxSize().clearAndSetSemantics {}.onGloballyPositioned { origin = it.positionInRoot() },
     ) {
         payload.cards.forEachIndexed { index, card ->
+            // Já decolou (o voo de verdade está aparecendo): para de desenhar a cópia parada aqui, senão fica
+            // uma carta "fantasma" no ponto da solta por baixo da que está voando de verdade.
+            if (card in tableDrag.tookOff) return@forEachIndexed
             Box(
                 Modifier.offset {
-                    val point = payload.origin.topLeft + tableDrag.offset + Offset(index * 10.dp.toPx(), 0f) - origin
+                    val point = dragCardTopLeft(payload, tableDrag.offset, index, density) - origin
                     IntOffset(point.x.roundToInt(), point.y.roundToInt())
                 },
             ) { PlayingCard(card, size = CardSize.MEDIUM) }
@@ -2611,6 +2800,7 @@ private fun FlightsLayer(
     anchors: Map<AnimAnchor, Rect>,
     durationMillis: Long,
     isReady: (Long) -> Boolean,
+    onTakeoff: (Card) -> Unit,
     onArrived: (Long) -> Unit,
 ) {
     // [durationMillis] e os atrasos dos voos já vêm escalados pelo ViewModel (escala 0 = nenhum voo).
@@ -2634,7 +2824,7 @@ private fun FlightsLayer(
             .testTag("flights-layer"),
     ) {
         flights.forEach { flight ->
-            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, { isReady(flight.id) }, clock, onArrived) }
+            key(flight.id) { FlyingCard(flight, anchors, { origin }, durationMillis, flight.delayMillis, { isReady(flight.id) }, clock, onTakeoff, onArrived) }
         }
     }
 }
@@ -2759,6 +2949,7 @@ private fun FlyingCard(
     delayMillis: Long,
     isReady: () -> Boolean,
     clock: androidx.compose.runtime.MutableFloatState,
+    onTakeoff: (Card) -> Unit,
     onArrived: (Long) -> Unit,
 ) {
     // Instante do relógio compartilhado em que esta carta ficou liberada para voar (-1 enquanto não chegou a vez dela).
@@ -2782,6 +2973,13 @@ private fun FlyingCard(
     }
     var overlayGone by remember { mutableStateOf(false) }
     LaunchedEffect(phase) {
+        // Arrasto até a mesa (17/11/2026): avisa assim que ESTA carta sai da fase BEFORE (`!=`, não `== FLYING`
+        // — um voo bem curto pode pular direto pra ARRIVED sem passar visivelmente por FLYING), pro overlay do
+        // arrasto parar de desenhar a cópia parada no ponto da solta exatamente quando a de verdade aparece —
+        // nem antes (abriria um vão sem nenhuma das duas visível) nem só quando ela chega (duas cópias juntas
+        // durante o voo inteiro). Inofensivo pra voos que não vieram de um arrasto: `tableDrag.tookOff` só
+        // importa pra quem está esperando por ela em `TableDragState.confirmDrop`.
+        if (phase != FlightPhase.BEFORE && flight.from == AnimAnchor.OwnHand) flight.card?.let(onTakeoff)
         if (phase == FlightPhase.ARRIVED) {
             onArrived(flight.id)
             delay(OVERLAY_LINGER_MILLIS)
