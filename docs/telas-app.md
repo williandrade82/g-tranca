@@ -41,7 +41,6 @@ Use estes nomes nos pedidos.
 | **Mão** | As cartas do jogador, em grade, com o seletor de ordem (Valor/Naipe e "separar 3 pretos e coringas"); qualquer carta pode ser arrastada para outra posição | mesa de jogo |
 | **Mesa** | O feltro verde com o monte, os mortos e o lixo | mesa de jogo |
 | **Verso da carta** | Cor do baralho do jogador + coroa no centro | monte, mãos viradas |
-| **Fundo dos perdedores** | Degradê vermelho escuro (embaixo) → transparente (em cima), que esmaece e reaparece em ciclo, atrás dos robôs que perderam | fim de jogo |
 | **Chip de escolha** | Cápsula selecionável (selecionada: azul royal com borda dourada) | Iniciar novo jogo, regras |
 | **Botão de Wi-Fi** | Botão com o símbolo de Wi-Fi (a mesma configuração **Wi-Fi do jogo** do Perfil); ligado, anuncia a presença do jogador e procura jogadores por perto (§16); desligado, nada de rede é usado. Ligar/desligar **nunca trava** a tela onde está | Iniciar novo jogo, Seleção de jogadores (bloco Multiplayer), mesa de jogo |
 | **Pílula de humano remoto** | Pílula do assento de outro humano: medalhão com a **foto** dele (se tiver e se a opção *Ver fotos nas mesas compartilhadas* do Perfil estiver ligada) ou com a inicial, nome, mão em cartas viradas e última jogada; a vez dele é indicada como a dos robôs | mesa de jogo |
