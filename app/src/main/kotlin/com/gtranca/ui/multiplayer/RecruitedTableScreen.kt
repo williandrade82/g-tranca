@@ -29,6 +29,7 @@ import com.gtranca.game.Persona
 import com.gtranca.net.RecruitStatus
 import com.gtranca.ui.persona.LevelStars
 import com.gtranca.ui.persona.labelRes
+import com.gtranca.ui.selection.TABLE_WIDTH_FRACTION
 import com.gtranca.ui.selection.SeatTable
 import com.gtranca.ui.tables.BottomButton
 import com.gtranca.ui.tables.RulesDetailsDialog
@@ -38,9 +39,6 @@ import com.gtranca.ui.theme.GButtonKind
 import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.Spacing
-
-/** A fração da largura da mesa, igual à da seleção de jogadores do anfitrião (docs/telas-app.md 3.3). */
-private const val RECRUITED_TABLE_WIDTH_FRACTION = 0.8f
 
 /**
  * §16.2 *Mesa do recrutado* (docs/telas.md 3.13): a mesa do recrutador, **só para leitura** e ao vivo, para quem aceitou o
@@ -63,7 +61,8 @@ fun RecruitedTableScreen(joined: RecruitStatus.Joined, self: Persona, photos: Ma
     ) {
         SeatTable(
             table.layout, viewerSeat = joined.you, level = level, self = self, hostName = table.hostName, photos = photos,
-            modifier = Modifier.fillMaxWidth(RECRUITED_TABLE_WIDTH_FRACTION).align(Alignment.CenterHorizontally),
+            // Mesma fração do anfitrião (achado 16/11/2026): sem ela, a mesa do recrutado aparecia maior.
+            modifier = Modifier.fillMaxWidth(TABLE_WIDTH_FRACTION).align(Alignment.CenterHorizontally),
             tagPrefix = "recruited-seat",
         )
         // O resumo da montagem do recrutador (só leitura).
