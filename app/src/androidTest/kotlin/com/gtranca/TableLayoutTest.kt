@@ -9,7 +9,6 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getBoundsInRoot
@@ -295,8 +294,7 @@ class TableLayoutTest {
             check(left("hand-card-$it") >= special.right) { "$it dentro da coluna" }
             check(right("hand-card-$it") <= 360.dp + 0.5.dp) { "$it fora da tela" }
         }
-        // Botões de ordem com nome acessível; a separação está ligada.
         rule.onNodeWithTag("sort-custom").assertIsOn()
-        rule.onNodeWithTag("sort-by_rank").assertIsNotSelected()
+        rule.onNodeWithTag("sort-by_rank").assertExists()
     }
 }

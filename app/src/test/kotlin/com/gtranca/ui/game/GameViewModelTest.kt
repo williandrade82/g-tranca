@@ -242,6 +242,65 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `16-11-2026 arrasto com posicao real diferente liga manualOverride, desliga separar, poe carta nova no fim e some a jogada`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        val before = vm.uiState.value.hand
+        vm.uiState.value.manualOverride shouldBe false
+
+        // Arrasto: a 2ª carta vai pro começo.
+        val reordered = before.toMutableList().apply { add(0, removeAt(1)) }
+        vm.onHandReorder(reordered)
+        advanceUntilIdle()
+        vm.uiState.value.manualOverride shouldBe true
+        vm.uiState.value.customHand.shouldBeNull() // "separar" desligou sozinha; sem critério ativo não há coluna
+        vm.uiState.value.hand shouldBe reordered
+
+        // Carta nova (compra do monte) sempre no fim, sem mudar a ordem das demais.
+        vm.onDraw()
+        advanceUntilIdle()
+        val afterDraw = vm.uiState.value.hand
+        afterDraw.dropLast(1) shouldBe reordered
+        afterDraw.size shouldBe reordered.size + 1
+
+        // Jogada (descarte) tira a carta do meio sem embaralhar o resto.
+        val discard = vm.uiState.value.snapshot.humanLegal.filterIsInstance<Action.Discard>().first()
+        val discardedCard = vm.uiState.value.physical(listOf(discard.card)).first()
+        vm.select(listOf(discardedCard))
+        vm.onDiscard()
+        advanceUntilIdle()
+        vm.uiState.value.hand shouldBe afterDraw - discardedCard
+    }
+
+    @Test
+    fun `soltar no mesmo lugar (ou sem mudar nada de verdade) nao liga manualOverride`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        val before = vm.uiState.value.hand
+        // "Arrasto" que a UI só chama ao soltar numa posição válida (nunca em área inválida): aqui a ordem
+        // devolvida é igual à exibida — representa soltar no próprio lugar.
+        vm.onHandReorder(before)
+        advanceUntilIdle()
+        vm.uiState.value.manualOverride shouldBe false
+        vm.uiState.value.hand shouldBe before
+    }
+
+    @Test
+    fun `sair do arrasto livre por Valor ou Naipe desliga manualOverride e nao reativa separar sozinho`() = runTest(dispatcher) {
+        val vm = newGame(seed = 3)
+        val before = vm.uiState.value.hand
+        vm.onHandReorder(before.reversed())
+        advanceUntilIdle()
+        vm.uiState.value.manualOverride shouldBe true
+
+        vm.onSortChange(HandSort.BY_RANK)
+        advanceUntilIdle()
+        vm.uiState.value.manualOverride shouldBe false
+        vm.uiState.value.sort shouldBe HandSort.BY_RANK
+        vm.uiState.value.hand.map { it.rank }.shouldBeSortedWith(compareBy { it.ordinal })
+        // "Separar" tinha desligado no arrasto; não volta sozinho só por sair do arrasto.
+        vm.uiState.value.customHand.shouldBeNull()
+    }
+
+    @Test
     fun `comprar, recusa explicada, baixar com a outra copia e descartar tocando no lixo`() = runTest(dispatcher) {
         // Procura uma semente em que o humano possa baixar depois de comprar.
         var vm: GameViewModel? = null
