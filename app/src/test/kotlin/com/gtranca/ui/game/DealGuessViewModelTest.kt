@@ -208,12 +208,14 @@ class DealGuessViewModelTest {
     }
 
     /**
-     * §3.6 (ajuste de 15/11/2026, reação própria não bloqueante): o motor é liberado **na hora**, para qualquer
-     * papel — não existe mais um toque que "fecha" a reação e só então libera o morto. Por isso, dentro do MESMO
-     * `runCurrent()` do palpite da mão, o morto (sempre outro assento, um robô) já resolve sozinho e a mesa já
-     * avança até a 1ª jogada de verdade (`Phase.AWAITING_DRAW`). O monte continua escondido
-     * ([GameUiState.isDealGuessing]) só enquanto a reação pequena do próprio jogador ([GameUiState.ownGuessReaction])
-     * ainda está à vista, por [GameViewModel.OWN_GUESS_REACTION_MILLIS] (1,5 s) — sem esperar toque nenhum.
+     * §3.6 (ajuste de 15/11/2026, reação própria não bloqueante; 17/11/2026, selo dentro do modal): o motor é
+     * liberado **na hora**, para qualquer papel — não existe mais um toque que "fecha" a reação e só então libera o
+     * morto. Por isso, dentro do MESMO `runCurrent()` do palpite da mão, o morto (sempre outro assento, um robô) já
+     * resolve sozinho e a mesa já avança até a 1ª jogada de verdade (`Phase.AWAITING_DRAW`). O monte continua
+     * escondido ([GameUiState.isDealGuessing]) durante DUAS pausas em sequência: primeiro o selo dentro do modal
+     * ([GameUiState.dealGuessModalResult], [GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS]), só depois a reação
+     * pequena na mesa ([GameUiState.ownGuessReaction], [GameViewModel.OWN_GUESS_REACTION_MILLIS]) — sem esperar
+     * toque nenhum em nenhuma das duas.
      */
     @Test
     fun `§3_6 §12_1 palpite certo da mao mostra a reacao propria e libera o morto no mesmo runCurrent`() = runTest(dispatcher) {
@@ -228,17 +230,32 @@ class DealGuessViewModelTest {
         val afterGuess = vm.uiState.value
         // §3.6 o palpite nunca é jogada da vez: não aparece no registro do próprio assento.
         afterGuess.snapshot.view.dealGuess?.hand?.correct shouldBe true
-        val reaction = afterGuess.ownGuessReaction.shouldNotBeNull()
-        reaction.correct shouldBe true
-        reaction.own shouldBe true
-        reaction.stage shouldBe DealGuessStage.HAND
+        // Fase 1: o modal continua aberto, com o selo — a reação na mesa ainda não começou.
+        val modalResult = afterGuess.dealGuessModalResult.shouldNotBeNull()
+        modalResult.correct shouldBe true
+        modalResult.own shouldBe true
+        modalResult.stage shouldBe DealGuessStage.HAND
+        afterGuess.ownGuessReaction.shouldBeNull()
         afterGuess.dealGuessPills[0]?.correct shouldBe true
-        afterGuess.dealGuessPrompt.shouldBeNull()
+        afterGuess.dealGuessPrompt.shouldNotBeNull() // o modal (com o selo) ainda é o que a tela mostra.
         // O morto (outro assento, um robô) já resolveu sozinho, sem nenhum toque deste aparelho.
         afterGuess.snapshot.view.dealGuess?.morto.shouldNotBeNull()
         afterGuess.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
-        // O monte continua escondido enquanto a reação própria (1,5 s) ainda está à vista.
+        // O monte continua escondido enquanto o selo do modal ainda está à vista.
         afterGuess.isDealGuessing shouldBe true
+
+        advanceTimeBy(GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS)
+        runCurrent()
+
+        // Fase 2: o modal fechou e a reação própria na mesa começou.
+        val afterModal = vm.uiState.value
+        afterModal.dealGuessModalResult.shouldBeNull()
+        afterModal.dealGuessPrompt.shouldBeNull()
+        val reaction = afterModal.ownGuessReaction.shouldNotBeNull()
+        reaction.correct shouldBe true
+        reaction.own shouldBe true
+        reaction.stage shouldBe DealGuessStage.HAND
+        afterModal.isDealGuessing shouldBe true
 
         advanceTimeBy(GameViewModel.OWN_GUESS_REACTION_MILLIS)
         runCurrent()
@@ -250,9 +267,11 @@ class DealGuessViewModelTest {
     }
 
     /**
-     * §3.6 (ajuste de 15/11/2026): o motor já avança para a 1ª jogada de verdade na hora (sem esperar toque); o
-     * monte só reaparece quando a reação pequena do próprio jogador ([GameUiState.ownGuessReaction]) some sozinha,
-     * depois de [GameViewModel.OWN_GUESS_REACTION_MILLIS] (1,5 s) — nunca por um toque explícito.
+     * §3.6 (ajuste de 15/11/2026; 17/11/2026, selo dentro do modal): o motor já avança para a 1ª jogada de verdade
+     * na hora (sem esperar toque); o monte só reaparece depois das DUAS pausas em sequência — primeiro o selo
+     * dentro do modal ([GameUiState.dealGuessModalResult], [GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS]), depois
+     * a reação pequena na mesa ([GameUiState.ownGuessReaction], [GameViewModel.OWN_GUESS_REACTION_MILLIS]) — nunca
+     * por um toque explícito em nenhuma das duas.
      */
     @Test
     fun `§3_6 §12_1 palpite errado do morto mostra a reacao propria e some sozinha apos 1,5s`() = runTest(dispatcher) {
@@ -270,19 +289,30 @@ class DealGuessViewModelTest {
         runCurrent()
 
         val afterGuess = vm.uiState.value
-        val reaction = afterGuess.ownGuessReaction.shouldNotBeNull()
-        reaction.correct shouldBe false
-        reaction.own shouldBe true
-        reaction.stage shouldBe DealGuessStage.MORTO
+        // Fase 1: o selo dentro do modal, com o erro — a reação na mesa ainda não começou.
+        val modalResult = afterGuess.dealGuessModalResult.shouldNotBeNull()
+        modalResult.correct shouldBe false
+        modalResult.own shouldBe true
+        modalResult.stage shouldBe DealGuessStage.MORTO
+        afterGuess.ownGuessReaction.shouldBeNull()
         afterGuess.dealGuessPills[0]?.correct shouldBe false
-        // A 1ª jogada de verdade já começou no motor, mas o monte continua escondido até a reação própria terminar.
+        // A 1ª jogada de verdade já começou no motor, mas o monte continua escondido até o selo do modal terminar.
         afterGuess.isDealGuessing shouldBe true
         afterGuess.snapshot.view.phase shouldBe Phase.AWAITING_DRAW
-        // §3.6 BUG em potencial: a antiga tela cheia consumia qualquer toque por baixo; a reação pequena de agora
-        // não cobre a tela, então sem gating explícito `canDraw` ficaria `true` (e tocável) com o monte ainda
-        // escondido — em individual, `mortoDealerSeat` é sempre quem abre a partida (`firstSeat`), então é
-        // exatamente este caso (humano palpitando o morto) que exporia o vazamento.
+        // §3.6 BUG em potencial: a antiga tela cheia consumia qualquer toque por baixo; nem a reação pequena nem o
+        // selo do modal cobrem a tela por conta própria, então sem gating explícito `canDraw` ficaria `true` (e
+        // tocável) com o monte ainda escondido — em individual, `mortoDealerSeat` é sempre quem abre a partida
+        // (`firstSeat`), então é exatamente este caso (humano palpitando o morto) que exporia o vazamento.
         afterGuess.canDraw shouldBe false
+
+        advanceTimeBy(GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS)
+        runCurrent()
+
+        // Fase 2: o modal fechou, a reação própria na mesa começou, e `canDraw` continua bloqueado.
+        val afterModal = vm.uiState.value
+        afterModal.dealGuessModalResult.shouldBeNull()
+        afterModal.ownGuessReaction.shouldNotBeNull()
+        afterModal.canDraw shouldBe false
 
         advanceTimeBy(GameViewModel.OWN_GUESS_REACTION_MILLIS)
         runCurrent()
@@ -333,6 +363,16 @@ class DealGuessViewModelTest {
         vm.onGuessDealNumber(wrongNumber)
         runCurrent()
 
+        // Primeiro mostra no selo dentro do modal, com o número de verdade.
+        val modalResult = vm.uiState.value.dealGuessModalResult.shouldNotBeNull()
+        modalResult.correct shouldBe false
+        modalResult.own shouldBe true
+        modalResult.guessedWidth shouldBe wrongNumber
+
+        advanceTimeBy(GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS)
+        runCurrent()
+
+        // E depois na reação pequena da mesa, com o mesmo número.
         val reaction = vm.uiState.value.ownGuessReaction.shouldNotBeNull()
         reaction.correct shouldBe false
         reaction.own shouldBe true
@@ -382,9 +422,9 @@ class DealGuessViewModelTest {
         vm.onGuessDealNumber(mortoTarget)
         runCurrent()
 
-        // Os dois avisos chegam juntos: a reação própria do palpite e "Baixar 3 vermelho" do início da vez — e o
-        // motor já foi reconhecido na hora (sem esperar a troca ser confirmada).
-        vm.uiState.value.ownGuessReaction.shouldNotBeNull()
+        // Os dois avisos chegam juntos: o selo do modal (ainda não a reação na mesa, §3.6 17/11/2026) e "Baixar 3
+        // vermelho" do início da vez — e o motor já foi reconhecido na hora (sem esperar a troca ser confirmada).
+        vm.uiState.value.dealGuessModalResult.shouldNotBeNull()
         vm.uiState.value.ownSwapPending shouldBe true
 
         // Pode haver mais de um 3 vermelho na mão inicial (cada um é uma troca própria em `state.swaps`,
@@ -395,9 +435,15 @@ class DealGuessViewModelTest {
             runCurrent()
         }
         vm.uiState.value.ownSwapPending shouldBe false
-        // §3.6 `canDraw` continua bloqueado enquanto a reação própria (1,5 s) ainda está à vista — mesmo gate que
-        // evita o vazamento provado em "palpite errado do morto mostra a reacao propria..." (acima); só depois do
-        // timer é que o monte (e `canDraw`) voltam a valer.
+        // §3.6 `canDraw` continua bloqueado enquanto o selo do modal e, depois, a reação própria na mesa (duas
+        // pausas de 1,5 s em sequência) ainda estão à vista — mesmo gate que evita o vazamento provado em "palpite
+        // errado do morto mostra a reacao propria..." (acima); só depois das duas é que o monte (e `canDraw`)
+        // voltam a valer.
+        vm.uiState.value.canDraw shouldBe false
+        advanceTimeBy(GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS)
+        runCurrent()
+        vm.uiState.value.dealGuessModalResult.shouldBeNull()
+        vm.uiState.value.ownGuessReaction.shouldNotBeNull()
         vm.uiState.value.canDraw shouldBe false
         advanceTimeBy(GameViewModel.OWN_GUESS_REACTION_MILLIS)
         runCurrent()
@@ -673,11 +719,12 @@ class DealGuessViewModelTest {
         vm.onGuessDealNumber(dealGuessHandTarget(view0.mode, view0.rules))
         runCurrent()
 
-        // Adianta alem de TODAS as reacoes transitorias (pilula, reacao propria e do parceiro) — nenhuma delas
-        // precisa estar viva para os selos permanentes continuarem corretos.
+        // Adianta alem de TODAS as reacoes transitorias (pilula, selo do modal, reacao propria e do parceiro) —
+        // nenhuma delas precisa estar viva para os selos permanentes continuarem corretos. A do próprio jogador
+        // (modal + reação) é a soma das DUAS pausas em sequência (17/11/2026), não só uma.
         val pastAllTransientReactions = maxOf(
             GameViewModel.DEAL_GUESS_PILL_MILLIS,
-            GameViewModel.OWN_GUESS_REACTION_MILLIS,
+            GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS + GameViewModel.OWN_GUESS_REACTION_MILLIS,
             GameViewModel.PARTNER_GUESS_REACTION_MILLIS,
         ) + 500
         advanceTimeBy(pastAllTransientReactions)
@@ -685,6 +732,7 @@ class DealGuessViewModelTest {
 
         val settled = vm.uiState.value
         settled.dealGuessPills.shouldBeEmpty()
+        settled.dealGuessModalResult.shouldBeNull()
         settled.ownGuessReaction.shouldBeNull()
         settled.partnerGuessReaction.shouldBeNull()
         val dealGuess = settled.snapshot.view.dealGuess.shouldNotBeNull()
@@ -711,8 +759,11 @@ class DealGuessViewModelTest {
      * desde o primeiro quadro, em vez de esperar os 1,5 s dela (telas-app.md 3.8.2: "antes de qualquer carta do
      * monte aparecer na tela"/"é também o tempo em que o monte continua escondido"). Corrigido com a mesma técnica
      * já usada para `GameUiState.opening` (atraso em `CardFlight.delayMillis`, nunca escondendo o voo da lista).
-     * Aqui provamos que todo voo de `AnimAnchor.DealEntry` nasce com `delayMillis >= OWN_GUESS_REACTION_MILLIS`
-     * quando quem acabou de resolver o palpite é o PRÓPRIO assento do visualizador (mão ou morto).
+     * Ampliado em 17/11/2026 (pedido do usuário) com o selo dentro do próprio modal
+     * ([GameUiState.dealGuessModalResult], antes mesmo da reação na mesa): aqui provamos que todo voo de
+     * `AnimAnchor.DealEntry` nasce com `delayMillis >= DEAL_GUESS_MODAL_RESULT_MILLIS + OWN_GUESS_REACTION_MILLIS`
+     * (as DUAS pausas em sequência) quando quem acabou de resolver o palpite é o PRÓPRIO assento do visualizador
+     * (mão ou morto).
      */
     @Test
     fun `§3_6 os voos da distribuicao esperam a reacao propria antes de comecar, no palpite da mao`() = runTest(dispatcher) {
@@ -721,10 +772,11 @@ class DealGuessViewModelTest {
         vm.onGuessDealNumber(dealGuessHandTarget(view0.mode, view0.rules))
         runCurrent()
 
-        vm.uiState.value.ownGuessReaction.shouldNotBeNull()
+        vm.uiState.value.dealGuessModalResult.shouldNotBeNull()
         val dealFlights = vm.uiState.value.flights.filter { it.from is AnimAnchor.DealEntry }
         dealFlights.shouldNotBeEmpty()
-        dealFlights.forEach { it.delayMillis shouldBeGreaterThanOrEqual GameViewModel.OWN_GUESS_REACTION_MILLIS }
+        val minExpected = GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS + GameViewModel.OWN_GUESS_REACTION_MILLIS
+        dealFlights.forEach { it.delayMillis shouldBeGreaterThanOrEqual minExpected }
     }
 
     /** Mesma prova do teste acima, para quem palpita o morto (e, em individual, também abre a partida). */
@@ -736,10 +788,11 @@ class DealGuessViewModelTest {
         vm.onGuessDealNumber(mortoTarget)
         runCurrent()
 
-        vm.uiState.value.ownGuessReaction.shouldNotBeNull()
+        vm.uiState.value.dealGuessModalResult.shouldNotBeNull()
         val dealFlights = vm.uiState.value.flights.filter { it.from is AnimAnchor.DealEntry }
         dealFlights.shouldNotBeEmpty()
-        dealFlights.forEach { it.delayMillis shouldBeGreaterThanOrEqual GameViewModel.OWN_GUESS_REACTION_MILLIS }
+        val minExpected = GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS + GameViewModel.OWN_GUESS_REACTION_MILLIS
+        dealFlights.forEach { it.delayMillis shouldBeGreaterThanOrEqual minExpected }
     }
 
     /**

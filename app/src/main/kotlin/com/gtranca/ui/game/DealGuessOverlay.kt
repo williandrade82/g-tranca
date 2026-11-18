@@ -176,9 +176,15 @@ private fun DealGuessGauge(fill: Float, modifier: Modifier = Modifier) {
  * ignorado por uma corrida de estado passageira (multijogador/online, §16.8/§16.9) sem que o jogo tenha avançado —
  * só congela a barra ([frozen]) quando a devolução for `true`; senão, o próximo toque tenta de novo normalmente,
  * como qualquer outro controle da mesa (nenhum outro usa um "já toquei, ignoro pra sempre" do lado da tela).
+ *
+ * [result] (17/11/2026, pedido do usuário): `null` enquanto o jogador ainda não tocou ou o motor ainda não
+ * respondeu; depois do toque, vira o `correct` do palpite ([GameUiState.dealGuessModalResult]) e o modal mostra o
+ * selo ✓/✗ ([GuessOutcomeMark]) ao lado do número, continuando aberto por mais um tempo (quem chama decide por
+ * quanto, via `GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS`) antes de fechar — pausa separada da reação na mesa
+ * ([GuessSideReactionOverlay]), que só começa depois.
  */
 @Composable
-fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int) -> Boolean) {
+fun DealGuessModal(prompt: DealGuessPrompt, result: Boolean?, onGuess: (Int) -> Boolean) {
     var frozen by remember(prompt) { mutableStateOf<Int?>(null) }
     val stage = dealGuessLiveStage(prompt.range, frozen)
     val title = stringResource(if (prompt.stage == DealGuessStage.HAND) R.string.deal_guess_title_hand else R.string.deal_guess_title_morto)
@@ -267,7 +273,14 @@ fun DealGuessModal(prompt: DealGuessPrompt, onGuess: (Int) -> Boolean) {
             Spacer(Modifier.height(Spacing.lg))
             // §3.6 (toque único, 15/11/2026): um único campo, com o número que o indicador mostra agora (atualizado
             // a cada quadro) — nunca mais Início/Fim/Total, que só faziam sentido com dois toques.
-            DealGuessField(stringResource(R.string.deal_guess_number_label), stage, Modifier.testTag("deal-guess-number"))
+            // §3.6 (17/11/2026) com [result] resolvido, o selo ✓/✗ nasce ao lado do número, dentro do mesmo modal.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DealGuessField(stringResource(R.string.deal_guess_number_label), stage, Modifier.testTag("deal-guess-number"))
+                if (result != null) {
+                    Spacer(Modifier.width(Spacing.sm))
+                    GuessOutcomeMark(result, Modifier.size(28.dp).testTag("deal-guess-modal-outcome-mark"))
+                }
+            }
         }
     }
 }

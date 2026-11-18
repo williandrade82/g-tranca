@@ -656,7 +656,7 @@ private fun TableScreenContent(
     // por cima de tudo o mais da mesa. As reações (própria e do parceiro) são compostas dentro da mesa, antes do
     // `FlightsLayer` (acima), para ficar atrás das cartas voando; nenhuma delas bloqueia o modal seguinte (15/11/2026).
     if (onReviewContinue == null) {
-        state.dealGuessPrompt?.let { prompt -> DealGuessModal(prompt, events::onGuessDealNumber) }
+        state.dealGuessPrompt?.let { prompt -> DealGuessModal(prompt, state.dealGuessModalResult?.correct, events::onGuessDealNumber) }
     }
     }
 

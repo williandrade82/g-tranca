@@ -235,17 +235,25 @@ data class GameUiState(
      * antiga tela cheia bloqueante — ver [DealGuessSideReaction]).
      */
     val ownGuessReaction: DealGuessSideReaction? = null,
+    /**
+     * §3.6 (17/11/2026, pedido do usuário) o palpite do PRÓPRIO jogador acabou de resolver e o modal continua
+     * aberto, mostrando o selo ✓/✗ ao lado do número escolhido, por [GameViewModel.DEAL_GUESS_MODAL_RESULT_MILLIS]
+     * antes de fechar — pausa separada da de [ownGuessReaction] (a reação na mesa, que só começa depois desta aqui
+     * terminar). Reaproveita [DealGuessSideReaction] (sempre com `own = true`) só pelos campos que já tinha.
+     */
+    val dealGuessModalResult: DealGuessSideReaction? = null,
     /** §3.6 reação reduzida (pílula) por assento (índice), enquanto estiver à vista. */
     val dealGuessPills: Map<Int, DealGuessPillReaction> = emptyMap(),
     /** §3.6 reação pequena do palpite do parceiro (duplas), ancorada no canto da mesa; some sozinha. */
     val partnerGuessReaction: DealGuessSideReaction? = null,
 ) {
     val isHumanTurn: Boolean get() = snapshot.isHumanTurn && !ownSwapPending && !turnHeld
-    // §3.6 (15/11/2026): a antiga tela cheia da reação própria consumia qualquer toque por baixo; a reação pequena
-    // de agora não cobre a tela, então sem este gate `canDraw`/outros controles ficariam ativos (e tocáveis) por
-    // 1,5 s com o monte ainda escondido — em individual, o morto é sempre quem abre a partida (`firstSeat`), então
-    // a própria vez já começa no instante em que a reação nasce.
-    private val legal: List<Action> get() = if (ownSwapPending || turnHeld || ownGuessReaction != null) emptyList() else snapshot.humanLegal
+    // §3.6 (15/11/2026, ampliado 17/11/2026 com dealGuessModalResult): a antiga tela cheia da reação própria
+    // consumia qualquer toque por baixo; a reação pequena de agora (e o selo dentro do modal, antes dela) não
+    // cobrem a tela por conta própria, então sem este gate `canDraw`/outros controles ficariam ativos (e tocáveis)
+    // com o monte ainda escondido — em individual, o morto é sempre quem abre a partida (`firstSeat`), então a
+    // própria vez já começa no instante em que o motor libera a vez (antes do selo do modal, antes da reação).
+    private val legal: List<Action> get() = if (ownSwapPending || turnHeld || ownGuessReaction != null || dealGuessModalResult != null) emptyList() else snapshot.humanLegal
     /** §3.6 fases de palpite da distribuição certeira (não são "jogar", "comprar" etc.: nenhum outro controle vale). */
     private val dealGuessPhase: Boolean get() = snapshot.view.phase == Phase.DEAL_GUESS_HAND || snapshot.view.phase == Phase.DEAL_GUESS_MORTO
     val awaitingDraw: Boolean get() = isHumanTurn && snapshot.view.phase == Phase.AWAITING_DRAW
@@ -259,9 +267,22 @@ data class GameUiState(
      * `dealerSeat`/`mortoDealerSeat` são sempre assentos diferentes (inclusive em individual, §3.6): o humano só
      * palpita uma das duas etapas por partida, nunca as duas. O monte some da mesa no mesmo intervalo (fora daqui:
      * ver [isDealGuessing]).
+     *
+     * §3.6 (17/11/2026) com [dealGuessModalResult] preenchido, o palpite já resolveu (o motor já foi liberado), mas
+     * o modal continua na tela mostrando o selo ✓/✗ — reconstrói o mesmo [DealGuessPrompt] que valia antes de
+     * resolver (mesmo `stage`/`range`/`target`), para o `remember(prompt)` do `DealGuessModal` (chave por
+     * igualdade estrutural) não perder o número que o jogador tinha congelado no toque.
      */
     val dealGuessPrompt: DealGuessPrompt?
         get() {
+            dealGuessModalResult?.let { result ->
+                val range = if (result.stage == DealGuessStage.HAND) {
+                    com.gtranca.engine.model.dealGuessHandRange(snapshot.view.mode)
+                } else {
+                    com.gtranca.engine.model.dealGuessMortoRange()
+                }
+                return DealGuessPrompt(result.stage, range, result.target)
+            }
             if (!isHumanTurn || ownGuessReaction != null || opening) return null
             val view = snapshot.view
             return when (view.phase) {
@@ -287,11 +308,11 @@ data class GameUiState(
     /**
      * §3.6 o monte fica escondido (em qualquer lugar da mesa que o desenha) enquanto o palpite não termina. O
      * palpite do morto já resolve o motor para [Phase.AWAITING_DRAW] (nenhuma carta troca de lugar com o palpite em
-     * si, §3.6): o monte continua escondido até a reação pequena do próprio jogador ([ownGuessReaction]) terminar
-     * sozinha (15/11/2026, timer de 1,5 s — antes era o toque que fechava a antiga tela cheia), para a distribuição
-     * nunca aparecer antes dela.
+     * si, §3.6): o monte continua escondido até o selo do modal ([dealGuessModalResult], 1,5 s, 17/11/2026) **e**
+     * depois a reação pequena do próprio jogador ([ownGuessReaction], outros 1,5 s) terminarem, para a distribuição
+     * nunca aparecer antes delas.
      */
-    val isDealGuessing: Boolean get() = dealGuessPhase || ownGuessReaction != null
+    val isDealGuessing: Boolean get() = dealGuessPhase || dealGuessModalResult != null || ownGuessReaction != null
 
     /** §5.3/§5.5 só com algum plano de pegar o lixo em `legalActions`. */
     val canTakeDiscardPile: Boolean get() = legal.any { it is Action.TakeDiscardPile }
@@ -497,6 +518,8 @@ class GameViewModel(
         val lastReaction: ReactionEvent? = null,
         /** §3.6 reação pequena do palpite do PRÓPRIO jogador, até o timer local ([OWN_GUESS_REACTION_MILLIS]) zerar. */
         val ownGuessReaction: DealGuessSideReaction? = null,
+        /** §3.6 (17/11/2026) o modal do palpite próprio continua aberto com o selo, até [DEAL_GUESS_MODAL_RESULT_MILLIS] zerar. */
+        val dealGuessModalResult: DealGuessSideReaction? = null,
         /** §3.6 reação reduzida (pílula) por assento (índice), enquanto estiver à vista. */
         val dealGuessPills: Map<Int, DealGuessPillReaction> = emptyMap(),
         /** §3.6 reação pequena do palpite do parceiro (duplas), ancorada no canto da mesa; some sozinha. */
@@ -772,6 +795,12 @@ class GameViewModel(
      * toque): agora `YOU` e `PARTNER` (duplas) ganham a mesma reação pequena e não bloqueante
      * ([DealGuessSideReaction], dentro da mesa, na área de jogos do próprio lado), só com [DealGuessSideReaction.own]
      * diferente (controla o tempo de repouso e o selo de acerto/erro — ver [GuessSideReactionOverlay]).
+     *
+     * §3.6 (17/11/2026, pedido do usuário) só para `YOU`: antes de armar [GameUiState.ownGuessReaction] (a reação na
+     * mesa), passa primeiro por [GameUiState.dealGuessModalResult] — o modal do palpite (ainda na tela, com o
+     * mesmo número congelado) ganha o selo ✓/✗ e fica assim por [DEAL_GUESS_MODAL_RESULT_MILLIS] antes de fechar.
+     * São duas pausas de 1,5 s em sequência, não a mesma: a de [PARTNER] continua imediata, como sempre (ele nunca
+     * teve modal).
      */
     private fun reactToGuess(stage: DealGuessStage, seat: Seat, guess: Guess, snapshot: GameSnapshot) {
         val id = animationIds.incrementAndGet()
@@ -792,16 +821,20 @@ class GameViewModel(
         }
         val own = role == com.gtranca.game.SeatRole.YOU
         val reaction = DealGuessSideReaction(own, guess.correct, stage, id, target, guess.width)
-        local.update { if (own) it.copy(ownGuessReaction = reaction) else it.copy(partnerGuessReaction = reaction) }
-        viewModelScope.launch {
-            delay(if (own) OWN_GUESS_REACTION_MILLIS else PARTNER_GUESS_REACTION_MILLIS)
-            local.update { state ->
-                if (own) {
-                    if (state.ownGuessReaction?.id == id) state.copy(ownGuessReaction = null) else state
-                } else {
-                    if (state.partnerGuessReaction?.id == id) state.copy(partnerGuessReaction = null) else state
-                }
+        if (!own) {
+            local.update { it.copy(partnerGuessReaction = reaction) }
+            viewModelScope.launch {
+                delay(PARTNER_GUESS_REACTION_MILLIS)
+                local.update { state -> if (state.partnerGuessReaction?.id == id) state.copy(partnerGuessReaction = null) else state }
             }
+            return
+        }
+        local.update { it.copy(dealGuessModalResult = reaction) }
+        viewModelScope.launch {
+            delay(DEAL_GUESS_MODAL_RESULT_MILLIS)
+            local.update { state -> if (state.dealGuessModalResult?.id == id) state.copy(dealGuessModalResult = null, ownGuessReaction = reaction) else state }
+            delay(OWN_GUESS_REACTION_MILLIS)
+            local.update { state -> if (state.ownGuessReaction?.id == id) state.copy(ownGuessReaction = null) else state }
         }
     }
 
@@ -860,8 +893,9 @@ class GameViewModel(
         // rodada acabaram de resolver (saída de verdade da fase de palpite para `AWAITING_DRAW`): se o VISUALIZADOR
         // foi quem palpitou nesta rodada, em qualquer um dos dois papéis (`dealerSeat`/`mortoDealerSeat ==
         // snapshot.viewerSeat`, equivalente a `SeatRole.YOU`, telas-app.md 3.8.2 — nunca os dois ao mesmo tempo,
-        // `dealGuessSeats`), os voos da distribuição esperam o mesmo tempo da reação ([OWN_GUESS_REACTION_MILLIS])
-        // antes de começar — mesma técnica de atraso por `delayMillis` já usada para a abertura do jogo
+        // `dealGuessSeats`), os voos da distribuição esperam as DUAS pausas em sequência (17/11/2026: o selo dentro
+        // do modal, [DEAL_GUESS_MODAL_RESULT_MILLIS], e só depois o repouso da reação na mesa,
+        // [OWN_GUESS_REACTION_MILLIS]) antes de começar — mesma técnica de atraso por `delayMillis` já usada para a abertura do jogo
         // ([GameUiState.opening]/`PREPARE_MILLIS`, logo abaixo). Não é um diff "resolveu agora mesmo": com o motor
         // liberado na hora (§3.6), a transição de DEAL_GUESS_HAND a AWAITING_DRAW pode levar um ou dois passos deste
         // `absorb` (um snapshot intermediário em DEAL_GUESS_MORTO, conforme a StateFlow do controlador intercala ou
@@ -927,7 +961,7 @@ class GameViewModel(
             TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet, durationMillis = animationMillis, style = dealStyle)
                 .map { it.scaled(state.animationScale) }
                 .map { if (state.opening) it.copy(delayMillis = it.delayMillis + com.gtranca.net.PREPARE_MILLIS) else it }
-                .map { if (viewerGuessedThisRound) it.copy(delayMillis = it.delayMillis + OWN_GUESS_REACTION_MILLIS) else it }
+                .map { if (viewerGuessedThisRound) it.copy(delayMillis = it.delayMillis + DEAL_GUESS_MODAL_RESULT_MILLIS + OWN_GUESS_REACTION_MILLIS) else it }
         } else {
             emptyList()
         }
@@ -1059,6 +1093,7 @@ class GameViewModel(
             ownReactionId = state.ownReactionId,
             opponentFits = if (com.gtranca.engine.BoosterCatalog.RED_LED in boosters && !ownSwapPending && !held) com.gtranca.engine.RedLed.marks(snapshot.view) else emptyMap(),
             ownGuessReaction = state.ownGuessReaction,
+            dealGuessModalResult = state.dealGuessModalResult,
             dealGuessPills = state.dealGuessPills,
             partnerGuessReaction = state.partnerGuessReaction,
             dealPending = !state.dealDone,
@@ -1461,6 +1496,15 @@ class GameViewModel(
          * mais algumas centenas de ms depois deste timer zerar o estado — mesma folga que já existia pro parceiro).
          */
         const val OWN_GUESS_REACTION_MILLIS: Long = 1_500
+
+        /**
+         * §3.6 (17/11/2026, pedido do usuário) quanto tempo o modal do palpite do PRÓPRIO jogador ([GameUiState.
+         * dealGuessModalResult]) continua aberto, mostrando o selo ✓/✗ ao lado do número escolhido, antes de fechar
+         * — pausa **separada** da de [OWN_GUESS_REACTION_MILLIS] (o repouso da reação na mesa, que só começa depois
+         * desta aqui terminar): duas pausas de 1,5 s em sequência, não a mesma. O parceiro nunca teve modal, então
+         * a reação dele ([PARTNER_GUESS_REACTION_MILLIS]) continua armada na hora, sem esta fase.
+         */
+        const val DEAL_GUESS_MODAL_RESULT_MILLIS: Long = 1_500
 
         /** Fator de duração da velocidade "lenta" (30% mais lenta). */
         const val SLOW_FACTOR: Float = 1.3f
