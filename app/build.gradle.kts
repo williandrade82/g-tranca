@@ -10,8 +10,12 @@ val VERSION_BASE_COMMITS = 86
  * atualizar para um `versionCode` menor, e desinstalar para forçar apagaria as moedas/progresso dos testadores.
  * Esta folga garante que o próximo APK do `main` sempre fique acima de qualquer build de teste já distribuído,
  * sem precisar reinstalar. Só suba este número se acontecer de novo (nunca baixe).
+ *
+ * 18/11/2026: aconteceu de novo — o APK instalado (`e57e299`, branch `feature/amigos-presenca`, 743 commits)
+ * tinha `versionCode` maior que um branch novo criado a partir do `main` (728 commits, bem antes dos commits de
+ * amigos/presença). Subiu de 100 para 200 pelo mesmo motivo de antes.
  */
-val VERSION_CODE_SAFETY_OFFSET = 100
+val VERSION_CODE_SAFETY_OFFSET = 200
 
 plugins {
     alias(libs.plugins.android.application)
