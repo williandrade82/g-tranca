@@ -163,6 +163,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.delay
@@ -1923,6 +1925,10 @@ private fun CardFlow(
     val currentToFullHand by rememberUpdatedState(toFullHand)
     val currentViewport by rememberUpdatedState(LocalTableViewport.current)
     val currentState by rememberUpdatedState(state)
+    // Pedido do usuário (17/11/2026): segurar pra arrastar a carta fica 50% mais rápido que o toque longo padrão.
+    val baseViewConfiguration = LocalViewConfiguration.current
+    val fastLongPress = remember(baseViewConfiguration) { FastLongPressViewConfiguration(baseViewConfiguration) }
+    CompositionLocalProvider(LocalViewConfiguration provides fastLongPress) {
     FlowRow(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
@@ -2177,6 +2183,12 @@ private fun CardFlow(
             }
         }
     }
+    }
+}
+
+/** Metade do toque longo padrão, só pro arrasto da mão ([CardFlow]); delega o resto do [ViewConfiguration]. */
+private class FastLongPressViewConfiguration(private val base: ViewConfiguration) : ViewConfiguration by base {
+    override val longPressTimeoutMillis: Long get() = base.longPressTimeoutMillis / 2
 }
 
 /** Distância (ao quadrado) de [point] até a borda de [this]; zero se [point] já está dentro. */

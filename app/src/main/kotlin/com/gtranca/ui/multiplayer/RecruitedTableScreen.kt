@@ -39,6 +39,9 @@ import com.gtranca.ui.theme.GColors
 import com.gtranca.ui.theme.GPanel
 import com.gtranca.ui.theme.Spacing
 
+/** A fração da largura da mesa, igual à da seleção de jogadores do anfitrião (docs/telas-app.md 3.3). */
+private const val RECRUITED_TABLE_WIDTH_FRACTION = 0.8f
+
 /**
  * §16.2 *Mesa do recrutado* (docs/telas.md 3.13): a mesa do recrutador, **só para leitura** e ao vivo, para quem aceitou o
  * convite. Lê só do [joined] (nunca do estado local do jogador): lugares (o recrutado se vê embaixo), aposta, tipo, nível,
@@ -60,7 +63,7 @@ fun RecruitedTableScreen(joined: RecruitStatus.Joined, self: Persona, photos: Ma
     ) {
         SeatTable(
             table.layout, viewerSeat = joined.you, level = level, self = self, hostName = table.hostName, photos = photos,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(RECRUITED_TABLE_WIDTH_FRACTION).align(Alignment.CenterHorizontally),
             tagPrefix = "recruited-seat",
         )
         // O resumo da montagem do recrutador (só leitura).
