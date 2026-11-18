@@ -85,6 +85,87 @@ voce escolhe (as duas apagam algo, por isso nenhum script faz isso sozinho):
   docker compose up -d admin-api
   ```
 
+## Rodar sem Docker (servico a servico, decisao de 17/11/2026)
+
+Para iterar no codigo mais rapido que o `docker compose up --build`, rode cada servico Kotlin direto na
+JVM (plugin `application` do Gradle, ja configurado nos quatro: `lobby-service`, `game-service`,
+`economy-service`, `admin-api`) contra o seu Postgres local, sem build de imagem nenhum. Decisao do
+usuario: durante o desenvolvimento, so construir a imagem e implantar (Compose ou cluster) quando ele
+pedir explicitamente — ver `.claude/agents/online-backend-dev.md` e `admin-console-dev.md`.
+
+Pre-requisito: um Postgres seu rodando em `localhost:5432` (fora do Docker), com um banco e um usuario.
+O exemplo abaixo usa `gtranca`/`gtranca`/`mude-isto` — **troque pelos valores do seu Postgres real**. Cada
+servico migra o proprio esquema sozinho ao subir (Flyway), no mesmo banco.
+
+Abra um terminal PowerShell por servico (suba `economy-service` e `lobby-service` primeiro; os outros
+dependem deles para `GAME_SERVICE_URL`/`ECONOMY_URL`/`LOBBY_URL`):
+
+```powershell
+# economy-service (porta 8083)
+$env:PORT = "8083"
+$env:DB_URL = "jdbc:postgresql://localhost:5432/gtranca"
+$env:DB_USER = "gtranca"
+$env:DB_PASSWORD = "mude-isto"
+$env:INTERNAL_SECRET = "dev-local-internal-secret"
+$env:ADMIN_INTERNAL_SECRET = "dev-local-admin-secret"
+$env:LOBBY_URL = "http://localhost:8081"
+.\gradlew.bat :economy-service:run
+```
+
+```powershell
+# lobby-service (porta 8081)
+$env:PORT = "8081"
+$env:DB_URL = "jdbc:postgresql://localhost:5432/gtranca"
+$env:DB_USER = "gtranca"
+$env:DB_PASSWORD = "mude-isto"
+$env:INTERNAL_SECRET = "dev-local-internal-secret"
+$env:ADMIN_INTERNAL_SECRET = "dev-local-admin-secret"
+$env:GAME_SERVICE_URL = "http://localhost:8082"
+$env:ECONOMY_URL = "http://localhost:8083"
+.\gradlew.bat :lobby-service:run
+```
+
+```powershell
+# game-service (porta 8082, sem banco - so memoria)
+$env:PORT = "8082"
+.\gradlew.bat :game-service:run
+```
+
+```powershell
+# admin-api (porta 8084)
+$env:PORT = "8084"
+$env:DB_URL = "jdbc:postgresql://localhost:5432/gtranca"
+$env:DB_USER = "gtranca"
+$env:DB_PASSWORD = "mude-isto"
+$env:ADMIN_INTERNAL_SECRET = "dev-local-admin-secret"
+$env:LOBBY_SERVICE_URL = "http://localhost:8081"
+$env:ECONOMY_SERVICE_URL = "http://localhost:8083"
+$env:LOBBY_SERVICE_HEALTH_URL = "http://localhost:8081/health"
+$env:GAME_SERVICE_HEALTH_URL = "http://localhost:8082/health"
+$env:ECONOMY_SERVICE_HEALTH_URL = "http://localhost:8083/health"
+$env:ADMIN_SEED_EMAIL = "admin@local.invalid"
+$env:ADMIN_SEED_PASSWORD = "mude-isto-tambem"
+.\gradlew.bat :admin-api:run
+```
+
+```powershell
+# admin-web (porta 5173 por padrao do Vite)
+cd admin-web
+npm run dev
+```
+
+Observacoes:
+- `INTERNAL_SECRET` e `ADMIN_INTERNAL_SECRET` precisam ser **iguais entre os servicos que rodam juntos**
+  nesta sessao local; podem ser qualquer valor de teste, diferente do `.env` do Compose/cluster.
+- `APP_SIGNING_KEY` e `GOOGLE_CLIENT_ID` ficam de fora (opcionais): sem eles os servicos sobem do mesmo
+  jeito, sem verificar assinatura do app nem oferecer login Google — igual ao Compose.
+- `gradlew.bat :servico:run` recompila so o que mudou (bem mais rapido que `docker compose build`); o
+  processo fica no terminal (Ctrl+C para parar). Sem orquestracao automatica: se um servico cair, suba-o
+  de novo a mao.
+- Isto substitui o Compose **so para iterar no codigo**. Testar pelo celular, validar Helm/NetworkPolicy,
+  ou qualquer coisa que dependa do proxy `edge`/ingress continua precisando do Compose ou do cluster (ver
+  secoes abaixo e `deploy/README.md`).
+
 ## O que fica de fora (por enquanto)
 
 - **Ingress/roteamento por caminho**: no cluster, Traefik expoe um unico host com `/api/lobby`, `/economy`

@@ -1,6 +1,6 @@
 # Plano: jogar online (pela internet), em microserviços
 
-Status: **versão 2, com as decisões do usuário de 28/10/2026**; nada implementado. Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
+Status: **versão 3, atualizado em 17/11/2026**. Fases 0 a 3 **concluídas e em produção** (esqueleto e jogo, contas e economia, console de gerenciamento); fases 4 a 6 **adiadas sem data**, decisão do usuário de 09/11/2026 (ver tabela "Fases" abaixo e a memória do projeto). A decisão de identidade mudou no caminho: deixou de ser "Google primeiro" e passou a ser **e-mail/senha**, implementado dentro do próprio `lobby-service` (sem `identity-service` separado) — ver "Identidade (revisão de 02/11/2026)". Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
 
 > **"Ficar online" = jogar com outras pessoas pela internet.** Publicar na Play Store é outra frente (lista em `docs/loja/` e na memória do projeto) e entra só como fase final.
 
@@ -17,7 +17,7 @@ Tudo o que existe para **jogadores próximos** (multijogador local por Nearby, �
 |---|---|
 | 1 | **Servidor dedicado** para o online; o **celular anfitrião** (Nearby) continua para amigos próximos. |
 | 2 | Mesa **só por convite** no começo: a **chave da mesa** é distribuída pelo anfitrião por **QR Code** na tela dele ou por **link** para enviar por mensagem. O radar público fica para depois (ver "Mesas públicas"). |
-| 3 | **Login só com Google** no começo; e-mail e senha entram depois, **se a arquitetura permitir sem retrabalho** (ver "Identidade"). |
+| 3 | **Login só com Google** no começo; e-mail e senha entram depois, **se a arquitetura permitir sem retrabalho** (ver "Identidade"). *(Revisto em 02/11/2026: trocado por e-mail/senha como método principal; Google foi para o backlog — ver "Identidade (revisão de 02/11/2026)".)* |
 | 4 | A **carteira local migra** para o online (ver dúvida sobre as regras da migração). |
 | 5 | **Critérios da mesa:** tempo de jogada **indeterminado, 1 min ou 5 min**; punição de abandono: **perde a aposta**, com **devolução se sair nos primeiros 60 s**. |
 | 6 | Por ora roda numa **rede local, em Kubernetes**; depois migra para uma **nuvem a definir**. O Perfil ganha um **campo temporário** (gravado só no aparelho) com o **IP ou hostname** do serviço online. Preferência por **software que se possa rodar localmente** (auto-hospedável), para depois contratar o serviço profissional equivalente no data center. |
@@ -51,7 +51,7 @@ Cada serviço tem **um dono de dados** (banco/esquema próprio), fala com os out
 | Serviço | Responsabilidade | Dono dos dados |
 |---|---|---|
 | **ingress** (Traefik ou NGINX, pronto) | entrada única, TLS, roteamento, WebSocket, limite de taxa | — |
-| **identity-service** | login com Google (valida o *ID token*; depois e-mail/senha), contas, perfil público (nome, foto), emissão e renovação de tokens | contas, credenciais |
+| **identity-service** *(não construído como serviço separado — ver "Identidade (revisão de 02/11/2026)")* | login (hoje e-mail/senha; Google validado no servidor mas sem tela no app, backlog), contas, perfil público (nome, foto), emissão e renovação de tokens | contas, credenciais — hoje dentro do `lobby-service` |
 | **economy-service** | **carteira, inventário, loja, ganho diário, presente diário** e a **migração** da carteira local; livro-razão idempotente (a mesma ideia do `ShopRepository`, agora no servidor) | saldo, boosters, lançamentos |
 | **lobby-service** | mesas: criar, **chave/QR/link**, regras e critérios da mesa, assentos, chamada de amigos, estado "aberta/em jogo/encerrada" | mesas, convites |
 | **game-service** | **a partida autoritativa**: roda o `:core-engine`, bots do `:ai`, WebSocket com os celulares, relógio de jogada, abandono, reconexão; ao fim publica o resultado | só memória (e o resultado ao terminar) |
@@ -73,6 +73,12 @@ Cada serviço tem **um dono de dados** (banco/esquema próprio), fala com os out
 - **E-mail/senha depois, sem retrabalho:** o identity-service guarda **contas** separadas de **métodos de login** (Google, senha); acrescentar senha é um método novo (hash Argon2, verificação de e-mail, recuperação). Não precisa implementar os dois já no começo.
 - Alternativa avaliada e **não** escolhida: Keycloak. Ele resolve os dois métodos, mas o fluxo de redirecionamento do Google não aceita IP/hostname de rede local como endereço de retorno; o ID token direto do Android evita o problema.
 
+### Identidade (revisão de 02/11/2026): e-mail/senha no lugar de Google
+- O usuário pediu para trocar o login Google (que exige um client OAuth Android novo no Google Cloud, insumo fora do código) por **e-mail/senha**, de implementação mais rápida. Decisão tomada: login Google fica **no backlog**; e-mail/senha é o método principal desde esta data (`definition.md` §18.1 reescrito).
+- **Não existe `identity-service` separado.** Contas por e-mail (`AccountKind.EMAIL`, prefixo `E_`) vivem dentro do **`lobby-service`**: cadastro sem confirmação de e-mail, senha mínima de 6 caracteres, hash com bcrypt (custo 12, pré-hash SHA-512), limitador de tentativas erradas por e-mail, rota interna sem tela para o suporte gerar senha temporária (console de gerenciamento ainda não existia quando isso foi feito).
+- **Login Google não foi abandonado, só não tem UI:** o servidor já sabe validar o *ID token* (`GoogleLoginRequest` em `online/contracts`, verificação por JWKS), usado pela migração do convidado; falta só a tela no app (Credential Manager) e o client OAuth Android no Google Cloud.
+- Riscos aceitos dessa escolha (limitadores em memória por pod, bloqueio por e-mail em vez de IP, sem forçar troca de senha no reset, sem revogar sessões no reset) estão em `docs/seguranca-pendencias.md` (2026-11-02, `EmailAccounts.kt`/`Support.kt`): o `lobby-service` precisa continuar com **1 réplica só** até os limitadores saírem da memória.
+
 ### Mesa: critérios (decisão 5)
 - **Tempo de jogada:** `INDETERMINADO`, `1 MINUTO` ou `5 MINUTOS`, escolhido pelo anfitrião ao criar a mesa; imutável depois (como as regras, §14.4); aparece no convite, como a aposta.
 - **Punição de abandono:** quem **sai** perde a aposta; se sai **nos primeiros 60 s** do jogo, a aposta é **devolvida**. Um robô assume o assento (§16.9). *Pontos em aberto abaixo.*
@@ -90,15 +96,17 @@ Desenhar já o campo `visibilidade` da mesa (`PRIVADA` | `PUBLICA`) mas **implem
 - **Regra de escolha de software:** quando houver um serviço que existe como produto remoto **e** pode rodar local (Postgres, NATS, Grafana, Traefik, MinIO...), usar a versão local agora; na migração, trocar pelo equivalente profissional.
 
 ## Fases (cada uma termina jogável e com um critério de saída)
-| Fase | Entrega | Critério de saída |
-|---|---|---|
-| **0. Docs e decisões** | `definition.md` §18, telas novas, respostas às dúvidas | usuário aprova |
-| **1. Esqueleto e jogo** | `online/` (build, contracts, Helm, Postgres, NATS), **game-service** e **lobby-service** com conta anônima, mesa por chave/QR/link, 1×1 e duplas, robôs, reconexão, critérios da mesa; `:online-client` e telas mínimas | 2 e depois 4 celulares jogam um jogo inteiro por Wi-Fi do cluster, sem moedas; `:sim` joga 1000 partidas pelo servidor sem estado ilegal |
-| **2. Contas e economia** | **identity-service** (Google), **economy-service** (carteira, apostas, loja, presente), migração da carteira, punição de abandono | compra e aposta sobrevivem a reinstalar o app; saldo nunca negativo sob concorrência |
-| **3. Console de gerenciamento** | **admin-api** e **admin-web** (contas, mesas, economia, configurações, auditoria) | operador bloqueia uma conta e ajusta um saldo, com registro |
-| **4. Amigos e presença** | lista de amigos, "online agora", convite direto, push (FCM) | convidar um amigo com o app fechado |
-| **5. Endurecimento e nuvem** | observabilidade, backup, LGPD (exportar/apagar), migração para a nuvem, Play Store | beta fechado por 2 semanas |
-| **6. (futuro) Mesas públicas** | radar, denúncia, bloqueio, moderação | decidir depois do beta |
+| Fase | Entrega | Critério de saída | Status |
+|---|---|---|---|
+| **0. Docs e decisões** | `definition.md` §18, telas novas, respostas às dúvidas | usuário aprova | **Concluída** |
+| **1. Esqueleto e jogo** | `online/` (build, contracts, Helm, Postgres, NATS), **game-service** e **lobby-service** com conta anônima, mesa por chave/QR/link, 1×1 e duplas, robôs, reconexão, critérios da mesa; `:online-client` e telas mínimas | 2 e depois 4 celulares jogam um jogo inteiro por Wi-Fi do cluster, sem moedas; `:sim` joga 1000 partidas pelo servidor sem estado ilegal | **Concluída** (revisada em 30/10/2026: mesa deixou de ser criada pelo jogador e passou a ser mantida pelo servidor, §18.2; mesa por chave/QR/link saiu desta fase) |
+| **2. Contas e economia** | ~~identity-service (Google)~~ → e-mail/senha no `lobby-service` (ver "Identidade"), **economy-service** (carteira, apostas, loja, presente), migração da carteira, punição de abandono | compra e aposta sobrevivem a reinstalar o app; saldo nunca negativo sob concorrência | **Concluída** (02/11/2026), **exceto login Google**, que ficou no backlog por escolha do usuário (etapa 2.6, servidor pronto, falta só a tela) |
+| **3. Console de gerenciamento** | **admin-api** e **admin-web** (contas, mesas, economia, configurações, auditoria) | operador bloqueia uma conta e ajusta um saldo, com registro | **Concluída** (entre 02/11 e 09/11/2026, 8 telas) |
+| **4. Amigos e presença** | lista de amigos, "online agora", convite direto, push (FCM) | convidar um amigo com o app fechado | **Adiada sem data** (decisão do usuário, 09/11/2026) |
+| **5. Endurecimento e nuvem** | observabilidade, backup, LGPD (exportar/apagar), migração para a nuvem, Play Store | beta fechado por 2 semanas | **Adiada sem data** (decisão do usuário, 09/11/2026) |
+| **6. (futuro) Mesas públicas** | radar, denúncia, bloqueio, moderação | decidir depois do beta | **Adiada sem data** (decisão do usuário, 09/11/2026) |
+
+Não propor trabalho nas fases 4 a 6 até o usuário pedir.
 
 ## Riscos
 1. **Interferir no que já funciona.** Mitigação: o princípio acima, pontos de contato mínimos e `./gradlew.bat test` a cada etapa.
@@ -107,6 +115,8 @@ Desenhar já o campo `visibilidade` da mesa (`PRIVADA` | `PUBLICA`) mas **implem
 4. **Versões:** protocolo versionado; serviço aceita a versão atual e a anterior por um tempo.
 5. **Carteira migrada:** abre caminho para criar moedas offline e levá-las ao online (ver dúvidas).
 6. **Chave de assinatura (keystore):** o login Google do Android exige registrar a impressão digital (SHA-1) do app; o certificado de *debug* serve nos testes, mas a chave definitiva precisa existir antes de publicar.
+
+Riscos de segurança aceitos por etapa (não bloqueantes, mas em aberto) ficam em `docs/seguranca-pendencias.md`, não duplicados aqui.
 
 ## Pontos confirmados em 28/10/2026 (`definition.md` §18)
 - **Queda de conexão** (§18.4): com tempo de jogada, a vez continua contando; no indeterminado a mesa espera e o anfitrião pode trocar o jogador por robô.
@@ -128,22 +138,22 @@ O jogador **não cria mesa**; o servidor mantém mesas abertas (Duplas, Clássic
 | App etapa A (3.21–3.24, `:online-client`) | **parcial** | 3.21 vira a lista; 3.23 perde criar/QR/link/robô e ganha Iniciar sempre habilitado; 3.24 sai; o cliente assina os pedidos |
 | Aposta 50 / carteira | fase 2 | até lá só registrada |
 
-### Próximas tarefas (ordem)
-1. **Backend (online-backend-dev):** pool de mesas + lista + anfitrião/sucessão + 90 s + 15 min + assinatura do app; testes citando §18.2/§18.4; reimplantar e provar com o probe (o probe passa a assinar e a usar a lista).
-2. **App (android-ui-dev):** lista de mesas (3.21), sala (3.23), assinatura no `:online-client`, mensagens de erro (429, app não reconhecido), retry de `STALE_STATE`, permissão de rede local do Android 17.
-3. **Teste com 2–4 celulares** na sala (APK com hash).
-4. **Etapa B:** mesa de jogo online (`OnlineTableDriver`).
-5. Fase 2 (conta Google, carteira: aposta 50 e devoluções de B1/B6/B7), fase 3 (console).
+### Tarefas desta revisão — todas concluídas
+1. ~~**Backend (online-backend-dev):** pool de mesas + lista + anfitrião/sucessão + 90 s + 15 min + assinatura do app; testes citando §18.2/§18.4; reimplantar e provar com o probe (o probe passa a assinar e a usar a lista).~~ **Concluída.**
+2. ~~**App (android-ui-dev):** lista de mesas (3.21), sala (3.23), assinatura no `:online-client`, mensagens de erro (429, app não reconhecido), retry de `STALE_STATE`, permissão de rede local do Android 17.~~ **Concluída.**
+3. ~~**Teste com 2–4 celulares** na sala (APK com hash).~~ **Concluída.**
+4. ~~**Etapa B:** mesa de jogo online (`OnlineTableDriver`).~~ **Concluída** (`d70d0a8`).
+5. ~~Fase 2 (conta/carteira: aposta 50 e devoluções de B1/B6/B7), fase 3 (console).~~ **Concluídas** (ver tabelas "Fases" e "Fase 2" acima).
 
-## Fase 2 (iniciada em 30/10/2026): contas e economia
-Decisões: o **convidado também tem carteira** (§18.5, migra para a conta Google no 1º login se a conta ainda não tem carteira); ordem **banco + carteira primeiro**, login Google depois.
+## Fase 2 (iniciada em 30/10/2026, concluída em 02/11/2026 exceto a 2.6): contas e economia
+Decisões: o **convidado também tem carteira** (§18.5, migra para a conta no 1º login se a conta ainda não tem carteira); ordem **banco + carteira primeiro**, login depois. Em 02/11/2026 a 2.6 foi trocada de Google para e-mail/senha (ver "Identidade"); a 2.7 foi concluída mas, por decisão do usuário em 09/11/2026, **não está em uso**: carteira local e online coexistem sem migrar (a migração é opt-in, por um botão, e nada a dispara automaticamente).
 
-| Etapa | Entrega | Verificação |
-|---|---|---|
-| **2.1 Banco** | Postgres no cluster (Secret com senha nova); migrações (Flyway); testes com Postgres embutido (sem Docker) | serviço sobe e migra; testes passam |
-| **2.2 economy-service** | carteira, inventário e **livro-razão** (cada lançamento com motivo e chave de idempotência; saldo nunca negativo, sob concorrência); saldo inicial e boosters iniciais ao criar o convidado; ganho diário, presente diário e loja (§14.6, §17.5, §17.10) | testes de concorrência e idempotência citando §18.5 |
-| **2.3 Apostas na mesa** | lobby confere saldo ≥ 50 ao sentar (§18.2); retenção ao iniciar; liquidação no fim (§14.6 prêmio por assento, §16.13); abandonos (perde a aposta / 60 s / todos desconectados devolvem, B1/B6/B7) | probe com saldos antes/depois; testes por caso de §18.4 |
-| **2.4 Persistência do lobby** | convidados, fotos e mesas no banco (reiniciar o servidor não apaga ninguém) | reiniciar o pod e seguir jogando |
-| **2.5 App** | saldo online na tela Jogar online, seletor de boosters online no início do jogo (§18.3), loja online, ganho diário online | APK + teste com celulares |
-| **2.6 Login Google** | identity: verificação do ID token no servidor; convidado → conta; foto da conta | depende do projeto no Google Cloud (usuário) |
-| **2.7 Migração da carteira local** | uma vez por conta (§18.6) | teste |
+| Etapa | Entrega | Verificação | Status |
+|---|---|---|---|
+| **2.1 Banco** | Postgres no cluster (Secret com senha nova); migrações (Flyway); testes com Postgres embutido (sem Docker) | serviço sobe e migra; testes passam | **Concluída** |
+| **2.2 economy-service** | carteira, inventário e **livro-razão** (cada lançamento com motivo e chave de idempotência; saldo nunca negativo, sob concorrência); saldo inicial e boosters iniciais ao criar o convidado; ganho diário, presente diário e loja (§14.6, §17.5, §17.10) | testes de concorrência e idempotência citando §18.5 | **Concluída** |
+| **2.3 Apostas na mesa** | lobby confere saldo ≥ 50 ao sentar (§18.2); retenção ao iniciar; liquidação no fim (§14.6 prêmio por assento, §16.13); abandonos (perde a aposta / 60 s / todos desconectados devolvem, B1/B6/B7) | probe com saldos antes/depois; testes por caso de §18.4 | **Concluída** |
+| **2.4 Persistência do lobby** | convidados, fotos e mesas no banco (reiniciar o servidor não apaga ninguém) | reiniciar o pod e seguir jogando | **Concluída** |
+| **2.5 App** | saldo online na tela Jogar online, seletor de boosters online no início do jogo (§18.3), loja online, ganho diário online | APK + teste com celulares | **Concluída** |
+| **2.6 Login** | ~~identity: verificação do ID token no servidor~~ → e-mail/senha no `lobby-service`; convidado → conta; foto da conta | login por e-mail/senha testado ponta a ponta pelo ingress | **Concluída para e-mail/senha** (02/11/2026); **Google no backlog** — servidor já valida o ID token, falta a tela (Credential Manager) e um client OAuth Android novo no Google Cloud |
+| **2.7 Migração da carteira local** | uma vez por conta (§18.6) | teste | **Concluída** (02/11/2026), mas **não usada por decisão do usuário** (09/11/2026): é opt-in, carteira local e online seguem separadas enquanto o jogador não apertar "Trazer minha carteira". Pendência de produto em aberto (`docs/seguranca-pendencias.md`, 2026-11-02): migração "por conta" permite contas-fantasma repetindo a mesma carteira local adulterada — falta decidir travar por aparelho/`guestToken` ou impor um teto. |
