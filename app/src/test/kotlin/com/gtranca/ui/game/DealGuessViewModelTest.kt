@@ -11,6 +11,9 @@ import com.gtranca.engine.model.dealGuessHandTarget
 import com.gtranca.engine.model.dealGuessMortoRange
 import com.gtranca.engine.model.dealGuessMortoTarget
 import com.gtranca.game.GameConfig
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
+import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -698,5 +701,90 @@ class DealGuessViewModelTest {
             vm.uiState.value.snapshot.view.dealGuess?.hand.shouldNotBeNull()
             vm.uiState.value.snapshot.view.dealGuess?.morto.shouldNotBeNull()
         }
+    }
+
+    /**
+     * §3.6 BUG relatado 17/11/2026 (confirmado ao vivo no emulador): os voos de verdade da distribuição (R12,
+     * `AnimAnchor.DealEntry`) nasciam no mesmo instante em que o palpite do PRÓPRIO jogador resolvia — `absorb`
+     * calculava `dealFlights` a partir de `leavingGuessPhases`, sem olhar para a reação própria (armada só DEPOIS,
+     * em `reactToGuess`, no mesmo `collect`) — então a distribuição de verdade voava por cima da reação pequena
+     * desde o primeiro quadro, em vez de esperar os 1,5 s dela (telas-app.md 3.8.2: "antes de qualquer carta do
+     * monte aparecer na tela"/"é também o tempo em que o monte continua escondido"). Corrigido com a mesma técnica
+     * já usada para `GameUiState.opening` (atraso em `CardFlight.delayMillis`, nunca escondendo o voo da lista).
+     * Aqui provamos que todo voo de `AnimAnchor.DealEntry` nasce com `delayMillis >= OWN_GUESS_REACTION_MILLIS`
+     * quando quem acabou de resolver o palpite é o PRÓPRIO assento do visualizador (mão ou morto).
+     */
+    @Test
+    fun `§3_6 os voos da distribuicao esperam a reacao propria antes de comecar, no palpite da mao`() = runTest(dispatcher) {
+        val vm = humanDealerGame(animationMillis = 50)
+        val view0 = vm.uiState.value.snapshot.view
+        vm.onGuessDealNumber(dealGuessHandTarget(view0.mode, view0.rules))
+        runCurrent()
+
+        vm.uiState.value.ownGuessReaction.shouldNotBeNull()
+        val dealFlights = vm.uiState.value.flights.filter { it.from is AnimAnchor.DealEntry }
+        dealFlights.shouldNotBeEmpty()
+        dealFlights.forEach { it.delayMillis shouldBeGreaterThanOrEqual GameViewModel.OWN_GUESS_REACTION_MILLIS }
+    }
+
+    /** Mesma prova do teste acima, para quem palpita o morto (e, em individual, também abre a partida). */
+    @Test
+    fun `§3_6 os voos da distribuicao esperam a reacao propria antes de comecar, no palpite do morto`() = runTest(dispatcher) {
+        val vm = humanMortoDealerGame(animationMillis = 50)
+        val beforeMorto = vm.uiState.value
+        val mortoTarget = dealGuessMortoTarget(beforeMorto.snapshot.view.rules)
+        vm.onGuessDealNumber(mortoTarget)
+        runCurrent()
+
+        vm.uiState.value.ownGuessReaction.shouldNotBeNull()
+        val dealFlights = vm.uiState.value.flights.filter { it.from is AnimAnchor.DealEntry }
+        dealFlights.shouldNotBeEmpty()
+        dealFlights.forEach { it.delayMillis shouldBeGreaterThanOrEqual GameViewModel.OWN_GUESS_REACTION_MILLIS }
+    }
+
+    /**
+     * Contraprova: quando é o PARCEIRO (duplas) quem acabou de resolver o palpite (nunca o próprio assento), os
+     * voos da distribuição NÃO esperam nada — a reação do parceiro nunca bloqueia (telas-app.md 3.8.2: "não bloqueia
+     * nada"), só a do próprio jogador hospeda esse atraso.
+     */
+    @Test
+    fun `§3_6 os voos da distribuicao NAO esperam a reacao do parceiro`() = runTest(dispatcher) {
+        // Acha a semente direto no motor (`:core-engine`, sem nenhum `GameViewModel`/`GameController` no caminho da
+        // busca): mesma conta de `GameController` (`startMatch(mode, alvo, Random(gameSeed), regras)`), bem mais
+        // barata que construir e descartar até 300 `GameViewModel` no mesmo `TestScope`.
+        var seed: Long? = null
+        for (candidate in 1L..300L) {
+            val match = com.gtranca.engine.startMatch(GameMode.DUPLAS, 3000, kotlin.random.Random(candidate))
+            val guess = match.currentRound.dealGuess
+            if (guess?.mortoDealerSeat == Seat(2) && match.currentRound.hands[0].none { it.isRedThree }) {
+                seed = candidate
+                break
+            }
+        }
+        val chosenSeed = seed ?: error("Nenhuma semente com o parceiro (assento 2) distribuindo o morto em duplas em 300 tentativas")
+
+        val vm = GameViewModel(
+            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
+            gameSeed = chosenSeed, computeDispatcher = dispatcher, botDelayMillis = 0,
+            swapAnimationMillis = 0, animationMillis = 50,
+        )
+        // §3.6 a partida 1 espera `PREPARE_MILLIS` (o "Prepare-se!") antes mesmo do 1º palpite começar
+        // (`GameController`, `dealDelayMillis = dealAnimationMillis(config)` quando `animationMillis > 0`) — um
+        // `delay()` de verdade, que só passa com `advanceTimeBy`, nunca só `runCurrent()`.
+        var waited = 0L
+        while (vm.uiState.value.partnerGuessReaction == null && waited < 6_000L) {
+            advanceTimeBy(100)
+            runCurrent()
+            waited += 100
+        }
+
+        vm.uiState.value.ownGuessReaction.shouldBeNull()
+        vm.uiState.value.partnerGuessReaction.shouldNotBeNull()
+        val dealFlights = vm.uiState.value.flights.filter { it.from is AnimAnchor.DealEntry }
+        dealFlights.shouldNotBeEmpty()
+        // `minOf`, não `forEach`: os voos são escalonados (um atraso crescente por carta), então uma carta mais
+        // tardia pode já passar de [GameViewModel.OWN_GUESS_REACTION_MILLIS] por conta própria, sem nenhum atraso
+        // extra desta correção — o que prova "não espera nada" é o PRIMEIRO voo, sem atraso nenhum somado.
+        dealFlights.minOf { it.delayMillis } shouldBeLessThan GameViewModel.OWN_GUESS_REACTION_MILLIS
     }
 }

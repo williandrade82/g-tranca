@@ -840,6 +840,25 @@ class GameViewModel(
         val leavingGuessPhases = old.view.phase == Phase.DEAL_GUESS_HAND || old.view.phase == Phase.DEAL_GUESS_MORTO
         val dealing = effectiveMillis(state) > 0 && snapshot.stage == Stage.PLAYING && !dealingGuessPhases &&
             (previous == null || !sameRound || leavingGuessPhases)
+        // §3.6 bug relatado 17/11/2026: o palpite do PRÓPRIO jogador ([GameUiState.ownGuessReaction], 1,5 s) só
+        // escondia o monte (`isDealGuessing`) — nada aqui impedia os voos da distribuição de verdade (R12) de
+        // começarem no mesmo instante em que o motor libera a vez (`reactToGuess` → `controller.guessRevealDone`,
+        // sempre na hora). Resultado: a reação nascia e a distribuição já voava por cima dela, dando a impressão de
+        // que a pausa nunca aconteceu. `leavingGuessPhases` marca a transição exata em que os dois palpites desta
+        // rodada acabaram de resolver (saída de verdade da fase de palpite para `AWAITING_DRAW`): se o VISUALIZADOR
+        // foi quem palpitou nesta rodada, em qualquer um dos dois papéis (`dealerSeat`/`mortoDealerSeat ==
+        // snapshot.viewerSeat`, equivalente a `SeatRole.YOU`, telas-app.md 3.8.2 — nunca os dois ao mesmo tempo,
+        // `dealGuessSeats`), os voos da distribuição esperam o mesmo tempo da reação ([OWN_GUESS_REACTION_MILLIS])
+        // antes de começar — mesma técnica de atraso por `delayMillis` já usada para a abertura do jogo
+        // ([GameUiState.opening]/`PREPARE_MILLIS`, logo abaixo). Não é um diff "resolveu agora mesmo": com o motor
+        // liberado na hora (§3.6), a transição de DEAL_GUESS_HAND a AWAITING_DRAW pode levar um ou dois passos deste
+        // `absorb` (um snapshot intermediário em DEAL_GUESS_MORTO, conforme a StateFlow do controlador intercala ou
+        // não) — então o alvo certo é só "o visualizador participou do palpite desta partida", não "este diff
+        // específico resolveu o papel dele". A reação do parceiro (duplas) nunca atrasa nada (telas-app.md: "não
+        // bloqueia nada").
+        val newGuess = snapshot.view.dealGuess
+        val viewerGuessedThisRound = leavingGuessPhases && newGuess != null &&
+            (newGuess.dealerSeat == snapshot.viewerSeat || newGuess.mortoDealerSeat == snapshot.viewerSeat)
         var delivers = if (sameRound) state.delivers else emptyMap()
         if (ownSwaps.isNotEmpty()) {
             val fromDeal = !(sameRound && previous != null)
@@ -896,6 +915,7 @@ class GameViewModel(
             TableAnimations.deal(snapshot, dealt, animationIds::incrementAndGet, durationMillis = animationMillis, style = dealStyle)
                 .map { it.scaled(state.animationScale) }
                 .map { if (state.opening) it.copy(delayMillis = it.delayMillis + com.gtranca.net.PREPARE_MILLIS) else it }
+                .map { if (viewerGuessedThisRound) it.copy(delayMillis = it.delayMillis + OWN_GUESS_REACTION_MILLIS) else it }
         } else {
             emptyList()
         }
