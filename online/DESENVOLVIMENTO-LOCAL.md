@@ -93,9 +93,16 @@ JVM (plugin `application` do Gradle, ja configurado nos quatro: `lobby-service`,
 usuario: durante o desenvolvimento, so construir a imagem e implantar (Compose ou cluster) quando ele
 pedir explicitamente — ver `.claude/agents/online-backend-dev.md` e `admin-console-dev.md`.
 
-Pre-requisito: um Postgres seu rodando em `localhost:5432` (fora do Docker), com um banco e um usuario.
-O exemplo abaixo usa `gtranca`/`gtranca`/`mude-isto` — **troque pelos valores do seu Postgres real**. Cada
-servico migra o proprio esquema sozinho ao subir (Flyway), no mesmo banco.
+**Atalho (18/11/2026):** `.\start-local.ps1` (nesta pasta) faz os passos abaixo sozinho — le o `online\.env`
+que voce ja tem para o Compose, sobe so o container do Postgres se nao achar um em `localhost:5432`, e abre
+os quatro servicos (mais o `admin-web`) cada um na sua janela. `-SkipPostgres` pula a parte do banco (se ja
+tiver um rodando por fora); `-SkipAdminWeb` deixa o `admin-web` de fora. Os passos manuais abaixo continuam
+valendo para quem preferir terminal por terminal, ou tiver um Postgres de verdade (nao o do Compose).
+
+Pre-requisito (se nao usar o `.\start-local.ps1`): um Postgres seu rodando em `localhost:5432` (fora do
+Docker), com um banco e um usuario. O exemplo abaixo usa `gtranca`/`gtranca`/`mude-isto` — **troque pelos
+valores do seu Postgres real**. Cada servico migra o proprio esquema sozinho ao subir (Flyway), no mesmo
+banco.
 
 Abra um terminal PowerShell por servico (suba `economy-service` e `lobby-service` primeiro; os outros
 dependem deles para `GAME_SERVICE_URL`/`ECONOMY_URL`/`LOBBY_URL`):
