@@ -12,6 +12,7 @@ import com.gtranca.engine.model.Seat
 import com.gtranca.engine.model.Side
 import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -72,6 +73,25 @@ class GameControllerTest {
     fun `semente dos bots segue a formula do simulador`() {
         botSeed(11, 0) shouldBe 11L * 1_000_003L + 1
         botSeed(11, 3) shouldBe 11L * 1_000_003L + 4
+    }
+
+    /**
+     * §4.1 (16/11/2026, pedido do usuário): o jogador inicial da 1ª partida de um jogo novo é sorteado, não fixo
+     * num assento. Era assim antes de um ajuste temporário de 14/11/2026 (`GameController.forcePartnerDeals`, já
+     * removido) que, só para testar mais rápido a distribuição certeira (§3.6), sempre pousava o parceiro do
+     * visualizador na vaga de quem distribui a mão em duplas. Prova que diferentes sementes dão assentos iniciais
+     * diferentes (sem buscar nenhum padrão: só confere que não ficou preso num só).
+     */
+    @Test
+    fun `§4_1 jogador inicial da 1a partida nao fica fixo num assento - varia com a semente`() {
+        val config = GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 1000, rules = NO_DEAL_GUESS)
+        val firstSeats = (1L..20L).map { seed ->
+            GameController(
+                config, seed, simLikePlayers(GameMode.DUPLAS, listOf(Difficulty.FACIL, Difficulty.FACIL), seed),
+                computeDispatcher = StandardTestDispatcher(), botDelayMillis = 0,
+            ).currentMatch.currentRound.firstSeat
+        }
+        firstSeats.distinct().size shouldBeGreaterThan 1
     }
 
     /** Bot que registra o que recebe, delegando a decisão ao Fácil. */

@@ -605,56 +605,10 @@ class DealGuessViewModelTest {
      * ligado), então os dois relógios começam juntos — e o laço do controlador só decide a vez de quem palpita
      * depois de alguns passos síncronos mais a pausa real entre jogadas de robô ([GameController.DEFAULT_BOT_DELAY_MILLIS],
      * nunca zero fora dos testes), o que empurra qualquer palpite de robô para depois do fim da cortina, nunca
-     * antes. Este teste usa `forcePartnerDeals = true` (como `AppNavHost.GameDestination` liga para todo jogo novo
-     * local, ajustado em 14/11/2026 pra sempre cair no parceiro, não mais no próprio humano, e assim testar mais
-     * rápido a reação pequena dele): em duplas isso faz o PARCEIRO (assento 2) ser sempre `dealGuess.dealerSeat`, a
-     * mão nunca sendo palpitada pelo humano — e prova a invariante de forma determinística, sem precisar buscar
-     * semente: enquanto `opening` ainda está `true`, a reação do parceiro nunca aparece — ela só nasce depois, e
-     * fica à vista o tempo inteiro ([GameViewModel.PARTNER_GUESS_REACTION_MILLIS]) sem a cortina por cima.
-     */
-    @Test
-    fun `§3_6 a reacao do parceiro so nasce depois do Prepare-se, nunca escondida atras dele`() = runTest(dispatcher) {
-        val vm = GameViewModel(
-            GameConfig(GameMode.DUPLAS, Difficulty.FACIL, 3000),
-            gameSeed = 42L,
-            computeDispatcher = dispatcher,
-            botDelayMillis = GameController.DEFAULT_BOT_DELAY_MILLIS,
-            swapAnimationMillis = 300,
-            animationMillis = 450,
-            forcePartnerDeals = true,
-        )
-        // Com `forcePartnerDeals`, o parceiro (assento 2) é sempre quem palpita a mão (§3.6, `dealGuessSeats`): o
-        // humano (assento 0) não palpita nada nesta partida (nem a mão, nem o morto, que cai num adversário) —
-        // por isso a prova é inteiramente sobre `partnerGuessReaction`, e `dealGuessPrompt` nunca deve aparecer.
-        var openingWasTrueWhileReacting = false
-        var sawHumanPrompt = false
-        var sawPartnerReaction = false
-        var sawReactionDisappear = false
-
-        repeat(80) {
-            advanceTimeBy(100)
-            runCurrent()
-            val state = vm.uiState.value
-            if (state.dealGuessPrompt != null) sawHumanPrompt = true
-            if (state.partnerGuessReaction != null) {
-                sawPartnerReaction = true
-                if (state.opening) openingWasTrueWhileReacting = true
-            } else if (sawPartnerReaction) {
-                sawReactionDisappear = true
-            }
-        }
-        sawHumanPrompt.shouldBeFalse()
-        sawPartnerReaction.shouldBeTrue()
-        sawReactionDisappear.shouldBeTrue()
-        openingWasTrueWhileReacting.shouldBeFalse()
-    }
-
-    /**
-     * Mesma invariante do teste acima, mas buscando por semente (sem `forcePartnerDeals`, como numa partida depois
-     * da 1ª do jogo, em que `firstSeat` não é mais forçado) um caso em que o parceiro (assento 2) é mesmo quem
-     * palpita — a mão ou o morto, o que a semente der. Prova que
-     * `partnerGuessReaction` nunca aparece enquanto `opening` ainda vale `true`, e que ela fica à vista o tempo
-     * inteiro depois de nascer (nunca é apagada por um "catch-up" que a esconderia atrás do Prepare-se).
+     * antes. Busca por semente um caso em que o parceiro (assento 2) é quem palpita — a mão ou o morto, o que a
+     * semente der — e prova que `partnerGuessReaction` nunca aparece enquanto `opening` ainda vale `true`, e que
+     * ela fica à vista o tempo inteiro depois de nascer ([GameViewModel.PARTNER_GUESS_REACTION_MILLIS]), nunca
+     * apagada por um "catch-up" que a esconderia atrás do Prepare-se.
      */
     @Test
     fun `§3_6 a reacao pequena do parceiro nunca aparece atras do Prepare-se`() = runTest(dispatcher) {
@@ -682,7 +636,6 @@ class DealGuessViewModelTest {
             botDelayMillis = GameController.DEFAULT_BOT_DELAY_MILLIS,
             swapAnimationMillis = 300,
             animationMillis = 450,
-            forcePartnerDeals = false,
         )
         var openingWasTrueWhileReacting = false
         var sawPartnerReaction = false
