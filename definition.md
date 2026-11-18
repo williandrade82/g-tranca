@@ -892,3 +892,12 @@ O jogo online é um **adicional**: permite jogar pela internet, em **mesas manti
 
 ### **18.8. Versões**
 - O protocolo online tem **versão**. App e servidor de versões incompatíveis recusam a conexão com a mensagem "Atualize o aplicativo" (ou "servidor em manutenção"), sem afetar o jogo offline.
+
+### **18.9. Amigos e presença (fase 4, decisões de 18/11/2026)**
+- **Só conta por e-mail:** a lista de amigos pertence à **conta** (`E_`, §18.1); o **convidado** não tem amigos (consistente com a carteira dele não migrar sozinha, §18.5).
+- **Código de amigo:** toda conta `E_` tem um **código** de 6 caracteres (mesmo alfabeto do id da mesa, §18.2: letras e números sem 0/O, 1/I/L), único entre as contas, mostrado no **Perfil**. Para adicionar alguém, o jogador digita o **código** do outro.
+- **Pedido de amizade:** vira **pendente** até o destinatário **aceitar** ou **recusar**; quem enviou vê "pendente" até lá. A lista de amigos mostra separadamente os **pedidos recebidos**, os **enviados** e os **amigos já aceitos**. Recusar não avisa quem enviou (sem mensagem de rejeição) nem impede um novo pedido depois.
+- **Remover amigo:** ação unilateral e sem aviso ao outro lado (como bloquear, mas sem impedir pedido novo de nenhum dos dois).
+- **Presença ("online agora"):** um amigo aparece **online** enquanto a conta dele tem uma **sessão ativa** no servidor (conectado ao lobby ou numa partida); a lista de amigos atualiza ao vivo. Cair a conexão por 90 segundos (§18.4) tira o "online".
+- **Convite direto:** só pode convidar quem **já está sentado** numa mesa online **com lugar livre** (§18.2); o convite vale para **aquele lugar**, naquela mesa. Um amigo **online** recebe o convite na hora (destaque na lista de amigos e, se estiver na tela *Jogar online*, um aviso); um amigo **offline** só vê o convite quando entrar de novo (lista de **convites pendentes**), sem notificação alguma enquanto o app está fechado — isso depende de **push (etapa futura, sem data)**, que exige um projeto de notificação (Firebase) a ser criado pelo usuário, insumo externo como o client do login Google (§18.1). Aceitar um convite tenta ocupar o lugar pela mesma regra de corrida do §18.2 (quem chega primeiro ao servidor vence); se o lugar já foi ocupado por outra via, o convite cai e mostra "Esse lugar acabou de ser ocupado".
+- **Convite expira:** um convite pendente vale só enquanto a mesa de destino existir e tiver aquele lugar livre; mesa encerrada ou lugar ocupado por outro jogador apaga o convite da lista de quem recebeu.

@@ -1,6 +1,6 @@
 # Plano: jogar online (pela internet), em microserviços
 
-Status: **versão 3, atualizado em 17/11/2026**. Fases 0 a 3 **concluídas e em produção** (esqueleto e jogo, contas e economia, console de gerenciamento); fases 4 a 6 **adiadas sem data**, decisão do usuário de 09/11/2026 (ver tabela "Fases" abaixo e a memória do projeto). A decisão de identidade mudou no caminho: deixou de ser "Google primeiro" e passou a ser **e-mail/senha**, implementado dentro do próprio `lobby-service` (sem `identity-service` separado) — ver "Identidade (revisão de 02/11/2026)". Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
+Status: **versão 4, atualizado em 18/11/2026**. Fases 0 a 3 **concluídas e em produção** (esqueleto e jogo, contas e economia, console de gerenciamento); **fase 4 (amigos e presença) retomada em 18/11/2026**, dividida em 4.1 (a fazer) e 4.2/push (bloqueada, depende de projeto Firebase do usuário); fases 5 e 6 continuam **adiadas sem data** (decisão do usuário de 09/11/2026; ver tabela "Fases" abaixo e a memória do projeto). A decisão de identidade mudou no caminho: deixou de ser "Google primeiro" e passou a ser **e-mail/senha**, implementado dentro do próprio `lobby-service` (sem `identity-service` separado) — ver "Identidade (revisão de 02/11/2026)". Fluxo de sempre: `definition.md` e `docs/telas-app.md` primeiro, depois testes, código, `rules-auditor`, um commit por etapa, APK com hash. Agentes: `online-backend-dev` (serviços do jogo) e `admin-console-dev` (interface de gerenciamento, backend e frontend).
 
 > **"Ficar online" = jogar com outras pessoas pela internet.** Publicar na Play Store é outra frente (lista em `docs/loja/` e na memória do projeto) e entra só como fase final.
 
@@ -102,11 +102,19 @@ Desenhar já o campo `visibilidade` da mesa (`PRIVADA` | `PUBLICA`) mas **implem
 | **1. Esqueleto e jogo** | `online/` (build, contracts, Helm, Postgres, NATS), **game-service** e **lobby-service** com conta anônima, mesa por chave/QR/link, 1×1 e duplas, robôs, reconexão, critérios da mesa; `:online-client` e telas mínimas | 2 e depois 4 celulares jogam um jogo inteiro por Wi-Fi do cluster, sem moedas; `:sim` joga 1000 partidas pelo servidor sem estado ilegal | **Concluída** (revisada em 30/10/2026: mesa deixou de ser criada pelo jogador e passou a ser mantida pelo servidor, §18.2; mesa por chave/QR/link saiu desta fase) |
 | **2. Contas e economia** | ~~identity-service (Google)~~ → e-mail/senha no `lobby-service` (ver "Identidade"), **economy-service** (carteira, apostas, loja, presente), migração da carteira, punição de abandono | compra e aposta sobrevivem a reinstalar o app; saldo nunca negativo sob concorrência | **Concluída** (02/11/2026), **exceto login Google**, que ficou no backlog por escolha do usuário (etapa 2.6, servidor pronto, falta só a tela) |
 | **3. Console de gerenciamento** | **admin-api** e **admin-web** (contas, mesas, economia, configurações, auditoria) | operador bloqueia uma conta e ajusta um saldo, com registro | **Concluída** (entre 02/11 e 09/11/2026, 8 telas) |
-| **4. Amigos e presença** | lista de amigos, "online agora", convite direto, push (FCM) | convidar um amigo com o app fechado | **Adiada sem data** (decisão do usuário, 09/11/2026) |
+| **4. Amigos e presença** | lista de amigos, "online agora", convite direto, push (FCM) | convidar um amigo com o app fechado | **Retomada em 18/11/2026** (decisão do usuário), dividida em 4.1 (amigos, presença, convite — sem push) e 4.2 (push, depende de projeto Firebase do usuário) — ver "Fase 4" abaixo |
 | **5. Endurecimento e nuvem** | observabilidade, backup, LGPD (exportar/apagar), migração para a nuvem, Play Store | beta fechado por 2 semanas | **Adiada sem data** (decisão do usuário, 09/11/2026) |
 | **6. (futuro) Mesas públicas** | radar, denúncia, bloqueio, moderação | decidir depois do beta | **Adiada sem data** (decisão do usuário, 09/11/2026) |
 
-Não propor trabalho nas fases 4 a 6 até o usuário pedir.
+Não propor trabalho nas fases 5 e 6 até o usuário pedir.
+
+## Fase 4 (retomada em 18/11/2026): amigos e presença
+Decisões do usuário (18/11/2026, `definition.md` §18.9): lista de amigos só para conta por e-mail (convidado não tem amigos); adicionar por **código de amigo** (não por e-mail, para não vazar quem tem conta); convite direto **puxa o amigo para a mesa em que o remetente já está** (não reserva assento futuro); **push fica para depois** — o critério original ("convidar com o app fechado") só vale na etapa 4.2, que depende de o usuário criar um projeto Firebase (insumo externo, como o client OAuth do login Google que ficou no backlog, §18.1).
+
+| Etapa | Entrega | Verificação | Status |
+|---|---|---|---|
+| **4.1 Amigos e presença** | `lobby-service`: código de amigo por conta, pedido/aceite/recusa/remoção, presença ("online agora" = sessão ativa), convite direto para o lugar livre da mesa atual do remetente (mesma regra de corrida do §18.2); `:online-client` e telas 3.21a/3.6f/3.23 (`online-table-invite`) | dois celulares com conta por e-mail se adicionam, um vê o outro online, convida para a própria mesa e o convidado entra pelo lugar certo | **A fazer** |
+| **4.2 Push (FCM)** | notificação do convite com o app fechado | app fechado recebe o convite e abre na mesa certa | **Bloqueada**: depende do usuário criar um projeto Firebase e gerar `google-services.json`; sem data |
 
 ## Riscos
 1. **Interferir no que já funciona.** Mitigação: o princípio acima, pontos de contato mínimos e `./gradlew.bat test` a cada etapa.
